@@ -93,10 +93,10 @@ public class NativeObfuscator {
         methodProcessor = new MethodProcessor(this);
     }
 
-    public void process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
-                        List<String> blackList, List<String> whiteList, String plainLibName,
-                        String customLibraryDirectory,
-                        Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -413,6 +413,8 @@ public class NativeObfuscator {
                 .getBytes(StandardCharsets.UTF_8));
 
         Files.write(cppDir.resolve("CMakeLists.txt"), cMakeBuilder.build().getBytes(StandardCharsets.UTF_8));
+
+        return nativeDir;
     }
 
     public Snippets getSnippets() {

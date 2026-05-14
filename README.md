@@ -152,6 +152,51 @@ to the directory of the .jar file that this tool will print in `stdout` (by defa
 
 ---
 
+### Zig toolchain support
+
+Steps 2–5 can be replaced with a single `--use-zig` flag that compiles the
+generated cpp/ tree directly with the Zig toolchain (no CMake / no host
+compiler required, cross-compilation built in).
+
+#### Install Zig
+
+```
+java -jar native-obfuscator.jar install-zig [--version <x.y.z>] [--install-dir <path>] [--force]
+```
+
+Downloads the official Zig release (SHA-256 verified), extracts it under
+`~/.native-obfuscator/zig/` by default, and writes an `installed.json` marker
+so subsequent builds can locate it.
+
+Options:
+- `--version` – pin a specific stable version. Defaults to the latest stable in `https://ziglang.org/download/index.json`.
+- `--install-dir` – custom install root.
+- `--force` – re-download even if already installed.
+- `--index-url` – use a mirror of the release index.
+
+#### Transpile + build in one shot
+
+```
+java -jar native-obfuscator.jar --use-zig \
+     [--zig-targets x64-windows,x64-linux,arm64-linux] \
+     [--jdk-home <path-to-jdk>] \
+     <input.jar> <output-dir>
+```
+
+- `--use-zig` – after transpilation, invoke `zig c++` for each requested target and pack the resulting shared library back into the produced jar (or into `<output-dir>/native-libs/` when `--plain-lib-name` is used).
+- `--zig-targets` – comma-separated list. Defaults to `host`. Known targets:
+  `x64-linux`, `x64-windows`, `x64-macos`, `arm64-linux`, `arm64-windows`,
+  `arm64-macos`, `x86-linux`, `x86-windows`, `arm32-linux`, plus `host`.
+- `--zig-path` – use a specific `zig` executable instead of the installed/PATH one.
+- `--jdk-home` – JDK whose `include/jni.h` should be used (defaults to `JAVA_HOME`, then `java.home`). `jni_md.h` is supplied as a portable shim per target, so the JDK's host-specific subfolder is not required.
+- `--zig-install-dir` – tell the build where Zig was installed (only needed if you used a non-default `--install-dir`).
+
+The compiled libraries are named according to LoaderUnpack's convention
+(`x64-windows.dll`, `x64-linux.so`, `arm64-macos.dylib`, …) and dropped into
+the output jar under the loader directory printed at the end of step 1.
+
+---
+
 ### Building the tool by yourself
 1. Run `gradlew assemble` to force gradle not to run tests after the build
 
