@@ -46,8 +46,30 @@ fallback-before-mutation invariant.
 
 ## (d) Verification / 验证
 
-Focused test counts and native harness results will be recorded from the actual
-`CC=gcc CXX=g++` run after this implementation commit.
+The focused `CC=gcc CXX=g++` Gradle run passed **31/31**, with 0 skipped,
+failures, or errors: `CodegenModeTest` 4/4, `IrCompilerTest` 18/18, and
+`InterpreterStreamStrategyTest` 9/9.
 
-聚焦测试数量与原生 harness 结果将在本实现提交后，根据实际执行的
-`CC=gcc CXX=g++` 结果记录。
+- Serializer assertions cover every new Java opcode number and assert the same
+  constants in the C++ evaluator.
+- The g++ translation-unit smoke and linked native harness executed. The
+  harness verified `LADD`/`LSUB`/`LMUL` wraparound, negative `I2L` sign
+  extension, `L2I` truncation, and `(J)J` value transport.
+- Generated-source inspection found evaluator data plus an `evaluate_i64`
+  trampoline for `roundTrip(J)J`, with no direct/legacy method body.
+- The unsupported-unary test still proves rejection before method, output,
+  registration, or cache mutation. CLI tests still prove the `legacy` codegen
+  and `direct` IR-lowering defaults.
+
+聚焦 `CC=gcc CXX=g++` Gradle 测试共 **31/31** 通过，0 skipped、0 failures、
+0 errors：`CodegenModeTest` 4/4、`IrCompilerTest` 18/18、
+`InterpreterStreamStrategyTest` 9/9。
+
+- 序列化断言覆盖全部新增 Java opcode 数值，并断言 C++ evaluator 使用相同常量。
+- g++ 翻译单元检查与链接后的原生 harness 均实际执行；harness 验证了
+  `LADD`/`LSUB`/`LMUL` 回绕、负数 `I2L` 符号扩展、`L2I` 截断，以及
+  `(J)J` 值传递。
+- 生成源码检查确认 `roundTrip(J)J` 使用 evaluator 数据和 `evaluate_i64`
+  trampoline，且没有 direct/legacy 方法体。
+- 不支持的一元操作测试继续证明方法、输出、注册与缓存修改前即拒绝；CLI 测试继续
+  证明默认 codegen 为 `legacy`、默认 IR lowering 为 `direct`。
