@@ -137,6 +137,11 @@ public final class IrMethod {
             return constant.getResult() + ":" + constant.getResult().getType()
                     + " = lconst " + constant.getValue();
         }
+        if (instruction instanceof IrNodes.NullReference) {
+            IrNodes.NullReference constant = (IrNodes.NullReference) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = aconst_null";
+        }
         if (instruction instanceof IrNodes.Binary) {
             IrNodes.Binary binary = (IrNodes.Binary) instruction;
             return binary.getResult() + ":" + binary.getResult().getType() + " = "
@@ -265,6 +270,12 @@ public final class IrMethod {
                     + ", " + (branch.getRight() == null ? "0" : branch.getRight())
                     + " -> " + branch.getTrueTarget().getName() + ", "
                     + branch.getFalseTarget().getName();
+        }
+        if (terminator instanceof IrNodes.ReferenceBranch) {
+            IrNodes.ReferenceBranch branch = (IrNodes.ReferenceBranch) terminator;
+            return "branch " + branch.getCondition().getMnemonic() + " "
+                    + branch.getReference() + " -> " + branch.getTrueTarget().getName()
+                    + ", " + branch.getFalseTarget().getName();
         }
         if (terminator instanceof IrNodes.Switch) {
             IrNodes.Switch switchTerminator = (IrNodes.Switch) terminator;

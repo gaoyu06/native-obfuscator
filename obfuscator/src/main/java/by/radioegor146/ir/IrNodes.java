@@ -91,6 +91,26 @@ public final class IrNodes {
         }
     }
 
+    public static final class NullReference implements IrInstruction {
+        private final IrValue result;
+        private final int bytecodeOffset;
+
+        public NullReference(IrValue result, int bytecodeOffset) {
+            this.result = requireReference(result, "result");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class GetField implements IrInstruction {
         private final IrValue result;
         private final String owner;
@@ -1108,6 +1128,70 @@ public final class IrNodes {
         }
     }
 
+    public static final class ReferenceBranch implements IrTerminator {
+        public enum Condition {
+            IS_NULL("ifnull", "=="),
+            IS_NON_NULL("ifnonnull", "!=");
+
+            private final String mnemonic;
+            private final String cppOperator;
+
+            Condition(String mnemonic, String cppOperator) {
+                this.mnemonic = mnemonic;
+                this.cppOperator = cppOperator;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+
+            public String getCppOperator() {
+                return cppOperator;
+            }
+        }
+
+        private final Condition condition;
+        private final IrValue reference;
+        private final IrBlock trueTarget;
+        private final IrBlock falseTarget;
+        private final int bytecodeOffset;
+
+        public ReferenceBranch(Condition condition, IrValue reference, IrBlock trueTarget,
+                               IrBlock falseTarget, int bytecodeOffset) {
+            this.condition = Objects.requireNonNull(condition, "condition");
+            this.reference = requireReference(reference, "reference");
+            this.trueTarget = Objects.requireNonNull(trueTarget, "trueTarget");
+            this.falseTarget = Objects.requireNonNull(falseTarget, "falseTarget");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        public Condition getCondition() {
+            return condition;
+        }
+
+        public IrValue getReference() {
+            return reference;
+        }
+
+        public IrBlock getTrueTarget() {
+            return trueTarget;
+        }
+
+        public IrBlock getFalseTarget() {
+            return falseTarget;
+        }
+
+        @Override
+        public List<IrBlock> getSuccessors() {
+            return Arrays.asList(trueTarget, falseTarget);
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class Switch implements IrTerminator {
         private final IrValue selector;
         private final List<Integer> keys;
@@ -1177,9 +1261,10 @@ public final class IrNodes {
         public Return(IrValue value, int bytecodeOffset) {
             if (value != null) {
                 IrType type = value.getType();
-                if (type != IrType.I32 && type != IrType.I64) {
+                if (type != IrType.I32 && type != IrType.I64
+                        && type != IrType.REFERENCE) {
                     throw new IllegalArgumentException(
-                            "value must be i32 or i64, got " + type);
+                            "value must be i32, i64, or reference, got " + type);
                 }
             }
             this.value = value;

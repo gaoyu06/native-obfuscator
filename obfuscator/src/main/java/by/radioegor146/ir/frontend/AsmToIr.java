@@ -162,9 +162,11 @@ public final class AsmToIr {
             irReturn = IrType.I32;
         } else if (returnType.getSort() == Type.LONG) {
             irReturn = IrType.I64;
+        } else if (isReference(returnType)) {
+            irReturn = IrType.REFERENCE;
         } else {
             throw new UnsupportedIrConstructException(
-                    "Only void, JVM int-carrier, and long method returns are supported");
+                    "Only void, JVM int-carrier, long, and reference method returns are supported");
         }
 
         boolean staticMethod = (method.access & Opcodes.ACC_STATIC) != 0;
@@ -221,9 +223,11 @@ public final class AsmToIr {
                 switch (node.getType()) {
                     case AbstractInsnNode.INSN:
                         supported = opcode == Opcodes.NOP
+                                || opcode == Opcodes.ACONST_NULL
                                 || opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                                 || opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1
                                 || opcode == Opcodes.DUP
+                                || opcode == Opcodes.POP
                                 || isIntBinaryOp(opcode)
                                 || isLongBinaryOp(opcode)
                                 || isIntDivRem(opcode)
@@ -235,6 +239,7 @@ public final class AsmToIr {
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
                                 || opcode == Opcodes.LRETURN
+                                || opcode == Opcodes.ARETURN
                                 || opcode == Opcodes.RETURN;
                         break;
                     case AbstractInsnNode.INT_INSN:
@@ -255,7 +260,7 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.JUMP_INSN:
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
-                                || isBinaryIntJump(opcode);
+                                || isBinaryIntJump(opcode) || isReferenceNullJump(opcode);
                         break;
                     case AbstractInsnNode.TABLESWITCH_INSN:
                     case AbstractInsnNode.LOOKUPSWITCH_INSN:
@@ -402,7 +407,9 @@ public final class AsmToIr {
                                     MethodNode method, MethodShape shape) {
         AbstractInsnNode node = instruction.getNode();
         int opcode = node.getOpcode();
-        if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
+        if (opcode == Opcodes.ACONST_NULL) {
+            stack.add(IrType.REFERENCE);
+        } else if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                 || opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH
                 || opcode == Opcodes.LDC || opcode == Opcodes.ILOAD) {
             stack.add(IrType.I32);
@@ -431,6 +438,14 @@ public final class AsmToIr {
                 throw unsupported("DUP requires a category-one operand", instruction);
             }
             stack.add(top);
+        } else if (opcode == Opcodes.POP) {
+            if (stack.isEmpty()) {
+                throw unsupported("Operand stack underflow", instruction);
+            }
+            IrType top = stack.remove(stack.size() - 1);
+            if (top.getJvmSlots() != 1) {
+                throw unsupported("POP requires a category-one operand", instruction);
+            }
         } else if (isIntBinaryOp(opcode) || isIntDivRem(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
@@ -506,6 +521,8 @@ public final class AsmToIr {
         } else if (isBinaryIntJump(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
+        } else if (isReferenceNullJump(opcode)) {
+            popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.TABLESWITCH || opcode == Opcodes.LOOKUPSWITCH) {
             popType(stack, IrType.I32, instruction);
         } else if (opcode == Opcodes.IRETURN) {
@@ -517,6 +534,11 @@ public final class AsmToIr {
             popType(stack, IrType.I64, instruction);
             if (!stack.isEmpty()) {
                 throw unsupported("LRETURN requires exactly one operand", instruction);
+            }
+        } else if (opcode == Opcodes.ARETURN) {
+            popType(stack, IrType.REFERENCE, instruction);
+            if (!stack.isEmpty()) {
+                throw unsupported("ARETURN requires exactly one operand", instruction);
             }
         } else if (opcode == Opcodes.RETURN && !stack.isEmpty()) {
             throw unsupported("RETURN requires an empty operand stack", instruction);
@@ -696,7 +718,12 @@ public final class AsmToIr {
             if (opcode == Opcodes.NOP) {
                 continue;
             }
-            if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
+            if (opcode == Opcodes.ACONST_NULL) {
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                block.addInstruction(new IrNodes.NullReference(result,
+                        instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
                 pushConstant(irMethod, block, state, opcode - Opcodes.ICONST_0,
                         instruction.getOriginalIndex());
             } else if (opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1) {
@@ -763,6 +790,11 @@ public final class AsmToIr {
                 IrValue value = pop(state, instruction);
                 state.stack.add(value);
                 state.stack.add(value);
+            } else if (opcode == Opcodes.POP) {
+                IrValue value = pop(state, instruction);
+                if (value.getType().getJvmSlots() != 1) {
+                    throw unsupported("POP requires a category-one operand", instruction);
+                }
             } else if (isIntBinaryOp(opcode)) {
                 IrValue right = pop(state, IrType.I32, instruction);
                 IrValue left = pop(state, IrType.I32, instruction);
@@ -925,6 +957,14 @@ public final class AsmToIr {
                 }
                 block.setTerminator(new IrNodes.Return(pop(state, IrType.I64, instruction),
                         instruction.getOriginalIndex()));
+            } else if (opcode == Opcodes.ARETURN) {
+                if (shape.returnType != IrType.REFERENCE) {
+                    throw unsupported("ARETURN does not match the method descriptor",
+                            instruction);
+                }
+                block.setTerminator(new IrNodes.Return(
+                        pop(state, IrType.REFERENCE, instruction),
+                        instruction.getOriginalIndex()));
             } else if (opcode == Opcodes.RETURN) {
                 if (shape.returnType != IrType.VOID) {
                     throw unsupported("RETURN does not match the method descriptor", instruction);
@@ -959,6 +999,21 @@ public final class AsmToIr {
             return;
         }
 
+        if (rawBlock.getSuccessors().size() != 2) {
+            throw unsupported("Conditional branch does not have two successors", instruction);
+        }
+        if (isReferenceNullJump(jump.getOpcode())) {
+            IrValue reference = pop(state, IrType.REFERENCE, instruction);
+            IrNodes.ReferenceBranch.Condition condition =
+                    jump.getOpcode() == Opcodes.IFNULL
+                            ? IrNodes.ReferenceBranch.Condition.IS_NULL
+                            : IrNodes.ReferenceBranch.Condition.IS_NON_NULL;
+            block.setTerminator(new IrNodes.ReferenceBranch(condition, reference,
+                    irBlocks.get(target), irBlocks.get(rawBlock.getSuccessors().get(1)),
+                    instruction.getOriginalIndex()));
+            return;
+        }
+
         IrValue right = null;
         IrValue left;
         if (isBinaryIntJump(jump.getOpcode())) {
@@ -966,9 +1021,6 @@ public final class AsmToIr {
             left = pop(state, IrType.I32, instruction);
         } else {
             left = pop(state, IrType.I32, instruction);
-        }
-        if (rawBlock.getSuccessors().size() != 2) {
-            throw unsupported("Conditional branch does not have two successors", instruction);
         }
         block.setTerminator(new IrNodes.Branch(condition(jump.getOpcode()), left, right,
                 irBlocks.get(target), irBlocks.get(rawBlock.getSuccessors().get(1)),
@@ -1293,6 +1345,10 @@ public final class AsmToIr {
 
     private static boolean isBinaryIntJump(int opcode) {
         return opcode >= Opcodes.IF_ICMPEQ && opcode <= Opcodes.IF_ICMPLE;
+    }
+
+    private static boolean isReferenceNullJump(int opcode) {
+        return opcode == Opcodes.IFNULL || opcode == Opcodes.IFNONNULL;
     }
 
     private static IrNodes.Branch.Condition condition(int opcode) {

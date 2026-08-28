@@ -101,6 +101,12 @@ public final class IrCppEmitter {
                     new CppAst.Assignment(variable(constant.getResult()),
                             new CppAst.LongLiteral(constant.getValue())));
         }
+        if (instruction instanceof IrNodes.NullReference) {
+            IrNodes.NullReference constant = (IrNodes.NullReference) instruction;
+            return Collections.<CppAst.Statement>singletonList(
+                    new CppAst.Assignment(variable(constant.getResult()),
+                            new CppAst.NullLiteral()));
+        }
         if (instruction instanceof IrNodes.Binary) {
             return emitBinary((IrNodes.Binary) instruction);
         }
@@ -775,8 +781,15 @@ public final class IrCppEmitter {
     }
 
     private CppAst.Return earlyReturn(IrMethod method) {
-        return new CppAst.Return(method.getReturnType() == IrType.VOID
-                ? null : new CppAst.IntLiteral(0));
+        CppAst.Expression defaultValue;
+        if (method.getReturnType() == IrType.VOID) {
+            defaultValue = null;
+        } else if (method.getReturnType() == IrType.REFERENCE) {
+            defaultValue = new CppAst.NullLiteral();
+        } else {
+            defaultValue = new CppAst.IntLiteral(0);
+        }
+        return new CppAst.Return(defaultValue);
     }
 
     private CppAst.MemberCall memberCall(String receiver, String method,
@@ -807,6 +820,16 @@ public final class IrCppEmitter {
                     ? new CppAst.IntLiteral(0) : expression(branch.getRight());
             CppAst.Expression condition = new CppAst.Binary(expression(branch.getLeft()),
                     branch.getCondition().getCppOperator(), right);
+            statements.add(new CppAst.If(condition,
+                    new CppAst.Block(edgeTransfer(predecessor, branch.getTrueTarget())),
+                    new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));
+            return;
+        }
+        if (terminator instanceof IrNodes.ReferenceBranch) {
+            IrNodes.ReferenceBranch branch = (IrNodes.ReferenceBranch) terminator;
+            CppAst.Expression condition = new CppAst.Binary(
+                    expression(branch.getReference()),
+                    branch.getCondition().getCppOperator(), new CppAst.NullLiteral());
             statements.add(new CppAst.If(condition,
                     new CppAst.Block(edgeTransfer(predecessor, branch.getTrueTarget())),
                     new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));

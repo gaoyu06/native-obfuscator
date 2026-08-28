@@ -251,6 +251,118 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void returnsAllocatedObjectWithReferenceCarrier() {
+        MethodNode method = returnAllocatedObjectMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertEquals(IrType.REFERENCE, ir.getReturnType());
+        assertTrue(ir.toString().contains(" = new java/lang/Object"));
+        assertTrue(ir.toString().contains("return %v0"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        int allocation = cpp.indexOf("env->AllocObject(cclasses[");
+        assertTrue(cpp.contains("jobject JNICALL __ngen_native_returnAllocatedObject0"));
+        assertTrue(allocation >= 0);
+        assertTrue(cpp.indexOf("return nullptr;", allocation) > allocation);
+        assertTrue(cpp.indexOf("return v0;", allocation) > allocation);
+    }
+
+    @Test
+    public void returnsTypedNullReference() {
+        MethodNode method = returnNullMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertEquals(IrType.REFERENCE, ir.getReturnType());
+        assertTrue(ir.getBlocks().get(0).getInstructions().get(0)
+                instanceof IrNodes.NullReference);
+        assertTrue(ir.toString().contains("%v0:ref = aconst_null"));
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("jobject v0;"));
+        assertTrue(cpp.contains("v0 = nullptr;"));
+        assertTrue(cpp.contains("return v0;"));
+    }
+
+    @Test
+    public void lowersIfnullAndIfnonnullAsReferenceConditions() {
+        MethodNode ifNullMethod = referenceNullBranchMethod("ifNull", Opcodes.IFNULL);
+        IrMethod ifNull = frontend.build("example/Math", ifNullMethod);
+        IrNodes.ReferenceBranch ifNullBranch = ifNull.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.ReferenceBranch.class::isInstance)
+                .map(IrNodes.ReferenceBranch.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrNodes.ReferenceBranch.Condition.IS_NULL,
+                ifNullBranch.getCondition());
+        assertEquals(IrType.REFERENCE, ifNullBranch.getReference().getType());
+        assertTrue(ifNull.toString().contains("branch ifnull %arg0"));
+        assertTrue(emitter.emitBody(ifNull).contains("if (arg0 == nullptr) {"));
+
+        MethodNode ifNonNullMethod =
+                referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL);
+        IrMethod ifNonNull = frontend.build("example/Math", ifNonNullMethod);
+        IrNodes.ReferenceBranch ifNonNullBranch = ifNonNull.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.ReferenceBranch.class::isInstance)
+                .map(IrNodes.ReferenceBranch.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrNodes.ReferenceBranch.Condition.IS_NON_NULL,
+                ifNonNullBranch.getCondition());
+        assertEquals(IrType.REFERENCE, ifNonNullBranch.getReference().getType());
+        assertTrue(ifNonNull.toString().contains("branch ifnonnull %arg0"));
+        assertTrue(emitter.emitBody(ifNonNull).contains("if (arg0 != nullptr) {"));
+    }
+
+    @Test
+    public void popsUnusedCategoryOneInvokeResult() {
+        MethodNode method = popUnusedCategoryOneInvokeResultMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertEquals(IrType.VOID, ir.getReturnType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->CallStaticIntMethod"));
+        assertTrue(cpp.contains("return;"));
+    }
+
+    @Test
+    public void rejectsPopOfCategoryTwoValue() {
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> frontend.build("example/Math", popLongMethod()));
+
+        assertEquals(Opcodes.POP, error.getOpcode());
+        assertTrue(error.getMessage().contains("category-one"));
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseNineOpsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseNineOpsMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.POP2, error.getOpcode());
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
     public void rejectsUnsupportedInstructionAfterNewBeforeMutation() {
         MethodNode method = unsupportedAfterNewMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -261,7 +373,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.POP, error.getOpcode());
+        assertEquals(Opcodes.POP2, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -478,7 +590,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.POP, error.getOpcode());
+        assertEquals(Opcodes.POP2, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -803,7 +915,10 @@ public class IrCompilerTest {
                 checkCastCatchMethod(), longArithmeticMethod(), longConversionMethod(),
                 wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
                 virtualStringInvokeMethod(), staticStringInvokeMethod(),
-                staticVoidLongInvokeMethod()
+                staticVoidLongInvokeMethod(), returnAllocatedObjectMethod(),
+                returnNullMethod(), referenceNullBranchMethod("ifNull", Opcodes.IFNULL),
+                referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL),
+                popUnusedCategoryOneInvokeResultMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -881,6 +996,14 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->CallObjectMethod"));
         assertTrue(source.contains("env->CallStaticObjectMethod"));
         assertTrue(source.contains("env->CallStaticVoidMethod"));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.returnAllocatedObject()Ljava/lang/Object;"));
+        assertTrue(source.contains("IR codegen: example/Math.returnNull()Ljava/lang/Object;"));
+        assertTrue(source.contains("IR codegen: example/Math.ifNull"));
+        assertTrue(source.contains("if (arg0 == nullptr) {"));
+        assertTrue(source.contains("IR codegen: example/Math.ifNonNull"));
+        assertTrue(source.contains("if (arg0 != nullptr) {"));
+        assertTrue(source.contains("IR codegen: example/Math.discardInvokeResult()V"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
         assertTrue(source.contains("uint64_t"));
         assertTrue(source.contains("(jlong)"));
@@ -1006,6 +1129,98 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode returnAllocatedObjectMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "returnAllocatedObject", "()Ljava/lang/Object;", null, null);
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode returnNullMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "returnNull", "()Ljava/lang/Object;", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode referenceNullBranchMethod(String name, int opcode) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        LabelNode target = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new JumpInsnNode(opcode, target));
+        if (opcode == Opcodes.IFNULL) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        }
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(target);
+        if (opcode == Opcodes.IFNULL) {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        } else {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        }
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode popUnusedCategoryOneInvokeResultMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "discardInvokeResult", "()V", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/Math", "identity", "(I)I", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode popLongMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "popLong", "()V", null, null);
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseNineOpsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseNineOps",
+                "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        LabelNode nonNull = new LabelNode();
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNONNULL, nonNull));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(nonNull);
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode staticLongInvokeMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "callLong", "(J)J", null, null);
@@ -1065,7 +1280,7 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.DUP));
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
                 "java/lang/Object", "<init>", "()V", false));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 0;
         method.maxStack = 2;
@@ -1289,7 +1504,7 @@ public class IrCompilerTest {
                 "unsupportedAfterObjectArray", "(I)V", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
         method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
