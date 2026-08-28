@@ -12,7 +12,8 @@ public class MainBackendOptionTest {
     @Test
     public void backendDefaultsToCpp() throws Exception {
         Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
-        new CommandLine(runner).parseArgs("input.jar", "output");
+        new CommandLine(runner).setCaseInsensitiveEnumValuesAllowed(true)
+                .parseArgs("input.jar", "output");
 
         assertEquals(CompilerBackend.CPP, backendOf(runner));
     }
