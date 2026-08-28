@@ -99,7 +99,7 @@ The evaluator lowering currently accepts:
 
 - static methods with JVM integer-carrier/long arguments and an i32 or i64
   return;
-- integer constants;
+- i32 constants;
 - `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
 - `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `I2L`, `L2I`, and `LRETURN`
   through the shared typed SSA representation;
