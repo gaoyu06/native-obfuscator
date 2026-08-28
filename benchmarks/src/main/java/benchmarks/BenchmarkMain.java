@@ -5,7 +5,9 @@ import benchmarks.kernels.IrFriendlyIntKernel;
 import benchmarks.kernels.RecursionKernel;
 import benchmarks.kernels.StringConcatHashKernel;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public final class BenchmarkMain {
     private static volatile long sink;
@@ -15,10 +17,11 @@ public final class BenchmarkMain {
 
     public static void main(String[] args) {
         String mode = option(args, "--mode", "unspecified");
+        String kernelSelection = option(args, "--kernel", "all");
         int warmup = positiveInt(option(args, "--warmup", "5"), "warmup");
         int iterations = positiveInt(option(args, "--iterations", "10"), "iterations");
 
-        KernelSpec[] kernels = new KernelSpec[]{
+        KernelSpec[] availableKernels = new KernelSpec[]{
                 new KernelSpec("ir-friendly-int-loop", "5,000,000 int-only loop iterations") {
                     @Override
                     long call() {
@@ -48,10 +51,19 @@ public final class BenchmarkMain {
                     }
                 }
         };
+        List<KernelSpec> selectedKernels = new ArrayList<>();
+        for (KernelSpec kernel : availableKernels) {
+            if ("all".equals(kernelSelection) || kernel.name.equals(kernelSelection)) {
+                selectedKernels.add(kernel);
+            }
+        }
+        if (selectedKernels.isEmpty()) {
+            throw new IllegalArgumentException("unknown kernel: " + kernelSelection);
+        }
 
-        KernelResult[] results = new KernelResult[kernels.length];
-        for (int i = 0; i < kernels.length; i++) {
-            results[i] = measure(kernels[i], warmup, iterations);
+        KernelResult[] results = new KernelResult[selectedKernels.size()];
+        for (int i = 0; i < selectedKernels.size(); i++) {
+            results[i] = measure(selectedKernels.get(i), warmup, iterations);
         }
         printJson(mode, warmup, iterations, results);
     }

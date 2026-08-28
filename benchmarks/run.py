@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the plain-JVM/current-transpiler benchmark pair."""
+"""Build and run the selected plain-JVM/transpiled benchmark pair."""
 
 import json
 import os
@@ -13,19 +13,21 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CODEGEN = os.environ.get("BENCH_CODEGEN", "legacy").strip().lower()
-RESULT = ROOT / "build" / "benchmarks" / "results-{}.json".format(CODEGEN)
+MODE = os.environ.get("BENCH_MODE", "legacy").strip().lower()
+MODE_CONFIG = {
+    "legacy": ("legacy", None),
+    "ir-direct": ("ir", "direct"),
+    "ir-eval": ("ir", "eval"),
+}
+CODEGEN, IR_LOWER = MODE_CONFIG.get(MODE, (None, None))
+RESULT = ROOT / "build" / "benchmarks" / "results-{}.json".format(MODE)
 LATEST_RESULT = ROOT / "build" / "benchmarks" / "results.json"
-WORK = ROOT / "build" / "benchmarks" / "work" / CODEGEN
+WORK = ROOT / "build" / "benchmarks" / "work" / MODE
 LOG_DIR = ROOT / "build" / "benchmarks" / "logs"
 WARMUP = int(os.environ.get("BENCH_WARMUP", "5"))
 ITERATIONS = int(os.environ.get("BENCH_ITERATIONS", "10"))
 KERNEL_METHODS = (
     ("ir-friendly-int-loop", "benchmarks/kernels/IrFriendlyIntKernel", "run", "(I)I"),
-    ("integer-loop", "benchmarks/kernels/IntegerLoopKernel", "run", "(I)J"),
-    ("string-concat-hash", "benchmarks/kernels/StringConcatHashKernel", "run", "(I)I"),
-    ("recursion", "benchmarks/kernels/RecursionKernel", "run", "(II)J"),
-    ("recursion", "benchmarks/kernels/RecursionKernel", "recurse", "(IJ)J"),
 )
 
 
@@ -204,7 +206,7 @@ def cpu_model():
 
 
 def classify_method_paths(output, transpile_output):
-    if CODEGEN == "legacy":
+    if MODE == "legacy":
         return [
             {
                 "kernel": kernel,
@@ -223,12 +225,17 @@ def classify_method_paths(output, transpile_output):
     paths = []
     for kernel, owner, name, descriptor in KERNEL_METHODS:
         method = "{}.{}{}".format(owner, name, descriptor)
-        marker = "IR codegen: {}".format(method)
+        if IR_LOWER == "eval":
+            marker = "IR evaluator data: {}".format(method)
+            intended_path = "ir-eval"
+        else:
+            marker = "IR codegen: {}".format(method)
+            intended_path = "ir-direct"
         fallback = "IR codegen unsupported for {}#{}{}".format(
             owner, name, descriptor
         )
         if marker in generated:
-            path = "ir"
+            path = intended_path
             evidence = "// {}".format(marker)
         elif fallback in transpile_output:
             path = "legacy-fallback"
@@ -263,7 +270,9 @@ def main():
     report = {
         "schemaVersion": 2,
         "status": "FAIL",
+        "mode": MODE,
         "codegen": CODEGEN,
+        "irLower": IR_LOWER,
         "warmup": WARMUP,
         "iterations": ITERATIONS,
         "environment": {
@@ -285,14 +294,17 @@ def main():
         "transpiledNative": {
             "status": "NOT_RUN",
             "nativeBuildSkipped": True,
+            "mode": MODE,
             "codegen": CODEGEN,
+            "irLower": IR_LOWER,
         },
     }
 
     try:
-        if CODEGEN not in {"legacy", "ir"}:
+        if MODE not in MODE_CONFIG:
             raise HarnessFailure(
-                "configuration", "BENCH_CODEGEN must be legacy or ir"
+                "configuration",
+                "BENCH_MODE must be legacy, ir-direct, or ir-eval",
             )
         if WARMUP < 1 or ITERATIONS < 2:
             raise HarnessFailure(
@@ -318,6 +330,7 @@ def main():
             "-jar",
             input_jar,
             "--mode=plain-jvm",
+            "--kernel=ir-friendly-int-loop",
             "--warmup={}".format(WARMUP),
             "--iterations={}".format(ITERATIONS),
         ]
@@ -338,15 +351,16 @@ def main():
             "--white-list={}".format(ROOT / "benchmarks" / "whitelist.txt"),
             "--plain-lib-name=native_library",
             "--codegen={}".format(CODEGEN),
-            input_jar,
-            output,
         ]
+        if IR_LOWER is not None:
+            transpile_command.append("--ir-lower={}".format(IR_LOWER))
+        transpile_command.extend([input_jar, output])
         transpile_completed = execute(
             report,
             "transpile",
             transpile_command,
             timeout=180,
-            log_path=LOG_DIR / "transpile-{}.log".format(CODEGEN),
+            log_path=LOG_DIR / "transpile-{}.log".format(MODE),
         )
         transpile_output = transpile_completed.stdout + transpile_completed.stderr
         report["methodPaths"] = classify_method_paths(output, transpile_output)
@@ -390,7 +404,8 @@ def main():
             "-Djava.library.path={}".format(output),
             "-jar",
             transpiled_jar,
-            "--mode=transpiled-jni-{}".format(CODEGEN),
+            "--mode=transpiled-jni-{}".format(MODE),
+            "--kernel=ir-friendly-int-loop",
             "--warmup={}".format(WARMUP),
             "--iterations={}".format(ITERATIONS),
         ]
@@ -402,7 +417,9 @@ def main():
         report["transpiledNative"] = {
             "status": "PASS",
             "nativeBuildSkipped": False,
+            "mode": MODE,
             "codegen": CODEGEN,
+            "irLower": IR_LOWER,
             "command": printable(native_command),
             "library": str(native_library.relative_to(ROOT)),
             "result": native,
