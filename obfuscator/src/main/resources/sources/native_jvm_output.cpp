@@ -1,6 +1,7 @@
 #include "native_jvm.hpp"
 #include "native_jvm_output.hpp"
 #include "sdk/native_primitives.hpp"
+#include "sdk/native_strings.hpp"
 #include "string_pool.hpp"
 
 $includes
@@ -21,6 +22,9 @@ namespace native_jvm {
             return false;
 
         if (!native_obfuscator::sdk::register_natives(env))
+            return false;
+
+        if (!native_obfuscator::sdk::register_native_strings(env))
             return false;
 
         char* string_pool = string_pool::get_pool();

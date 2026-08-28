@@ -65,9 +65,50 @@ public final class NativePrimitivesVerifier {
         expectNullPointer(() -> NativePrimitives.constantTimeEquals(null, new byte[0]));
         expectNullPointer(() -> NativePrimitives.constantTimeEquals(new byte[0], null));
 
+        verifyStrings();
+
         System.out.println(
                 "NativePrimitivesVerifier: PASS "
-                        + "(2 FIPS vectors, 9 MessageDigest cases, 5 equality cases)");
+                        + "(2 FIPS vectors, 9 MessageDigest cases, 5 equality cases, "
+                        + "5 string vectors, 4 concatenations)");
+    }
+
+    private static void verifyStrings() {
+        String[] inputs = {
+                "",
+                "plain ASCII",
+                "你好，世界",
+                "A\uD83D\uDE00Z",
+                "\u0000embedded\u0000nulls"
+        };
+        for (String input : inputs) {
+            require(
+                    NativeStrings.length(input) == input.length(),
+                    "String.length mismatch for " + printable(input));
+            require(
+                    NativeStrings.hashCode(input) == input.hashCode(),
+                    "String.hashCode mismatch for " + printable(input));
+        }
+
+        verifyConcat("", "");
+        verifyConcat("", "suffix");
+        verifyConcat("prefix", "");
+        verifyConcat("你好", "\uD83D\uDE00world");
+
+        expectNullPointer(() -> NativeStrings.length(null));
+        expectNullPointer(() -> NativeStrings.hashCode(null));
+        expectNullPointer(() -> NativeStrings.concat(null, ""));
+        expectNullPointer(() -> NativeStrings.concat("", null));
+    }
+
+    private static void verifyConcat(String left, String right) {
+        require(
+                NativeStrings.concat(left, right).equals(left.concat(right)),
+                "String.concat mismatch for " + printable(left) + " + " + printable(right));
+    }
+
+    private static String printable(String value) {
+        return value.replace("\u0000", "\\0");
     }
 
     private static void verifyVector(byte[] input, String expectedHex) {
