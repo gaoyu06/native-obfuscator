@@ -1,92 +1,57 @@
-# IR evaluator backend compiler review / IR evaluator 后端编译器审阅
+# IR shared-evaluator compiler artifact / IR 共享 evaluator 编译器产物
 
-This branch reviews
-[`cursor/ir-evaluator-backend-6d81-875b` (PR #42)](https://github.com/gaoyu06/native-obfuscator/pull/42)
-on top of
-[`cursor/ir-phase4-fable-review-6d81` (PR #39)](https://github.com/gaoyu06/native-obfuscator/pull/39).
-It adds the review report and this bilingual handoff only; no compiler code
-changed because no correctness blocker was found.
+This branch prepares only a live, stripped compiler artifact from
+`--codegen=ir --ir-lower=eval` on top of
+[`cursor/ir-evaluator-review-6d81` (PR #44)](https://github.com/gaoyu06/native-obfuscator/pull/44).
+It contains no packing and no reader, recovery, or scoring pass.
 
-本分支审阅基于
-[`cursor/ir-phase4-fable-review-6d81`（PR #39）](https://github.com/gaoyu06/native-obfuscator/pull/39)
-的 [`cursor/ir-evaluator-backend-6d81-875b`（PR #42）](https://github.com/gaoyu06/native-obfuscator/pull/42)。
-本分支仅新增审阅报告与本双语说明；因未发现正确性阻塞项，未修改编译器代码。
+本分支基于
+[`cursor/ir-evaluator-review-6d81`（PR #44）](https://github.com/gaoyu06/native-obfuscator/pull/44)，
+仅准备由 `--codegen=ir --ir-lower=eval` 生成的活跃、全剥离编译器产物；不含 packing，
+也不含 reader、recovery 或评分工作。
 
-## (a) Verdict and scope / 结论与范围
+## (a) Change scope / 改动范围
 
-**Accept with nits (`accept-with-nits`).**
+- Publish `published.so`, `published.jar`, `run.md`, and `liveness.md` under
+  `docs/eval/ir-eval-lower/`.
+- Keep `mix(II)I` on the shared evaluator with serialized method data and an
+  `evaluate_i32` trampoline.
+- Build the ordinary generated JNI/C++ project as GCC Release and run
+  `strip --strip-all`.
+- Do not change compiler code, pack the artifact, or write a recovery report.
 
-The Java serializer, C++ evaluator, trampoline shell, CLI selection, generated
-native integration, and requested tests were reviewed against
-`docs/architecture/ir-compiler.md` §9.3 and
-`docs/architecture/ir-evaluator-backend.md`. The ISA agrees on every opcode and
-field; phi edge copies are parallel; integer arithmetic wraps as the JVM
-requires; evaluator validation and serialization finish before method mutation;
-and the legacy/direct defaults remain unchanged.
+- 在 `docs/eval/ir-eval-lower/` 下发布 `published.so`、`published.jar`、
+  `run.md` 与 `liveness.md`。
+- 保证 `mix(II)I` 以序列化 method data 与 `evaluate_i32` trampoline 的形式留在
+  shared evaluator 上。
+- 用 GCC Release 构建普通生成的 JNI/C++ 工程，并执行 `strip --strip-all`。
+- 不修改编译器、不打包产物，也不撰写 recovery 报告。
 
-**接受，但有非阻塞小问题（accept-with-nits）。**
+## (b) Can this ship to production as-is? / 是否可直接上线
 
-已按 `ir-compiler.md` §9.3 与 `ir-evaluator-backend.md` 审阅 Java 序列化端、C++
-evaluator、trampoline shell、CLI 选择、生成工程集成及指定测试。两端所有 opcode 与
-字段一致；phi 边复制为并行复制；整数运算按 JVM 规则回绕；能力检查和序列化早于方法
-改写；legacy/direct 默认值保持不变。
+**No.** This is a controlled evaluation subject, not a production release.
 
-## (b) Ship-ready? / 是否可直接上线
+**否。** 这是受控评估样本，不是生产发布版本。
 
-**No.** This remains an opt-in, intentionally narrow static-integer lowering,
-with established per-method fallback for the rest of the IR. Broader runtime
-parity remains a release gate. The reviewed slice itself has no known
-correctness blocker.
+## (c) Is review required? / 是否需要 review
 
-**否。** 当前仍是可选且有意收窄的静态整数 lowering；其余 IR 继续逐方法回退。更广泛的
-运行时一致性仍是发布门槛，但本次已审阅切片没有已知正确性阻塞项。
+**Yes.** A later independent reader must first confirm the published bytes pass
+the documented stdout and liveness gates before drawing recovery conclusions.
 
-## (c) Review status / 审阅状态
+**是。** 后续独立 reader 必须先确认已发布字节通过文档中的 stdout 与存活性门槛，再得出
+任何 recovery 结论。
 
-**This branch IS the review.** The requirement-by-requirement evidence and nits
-are in `docs/architecture/ir-evaluator-review.md`. No GitHub PR was opened for
-this review branch.
+## (d) Review preconditions and evidence / Review 前置条件与证据
 
-**本分支即为 review。** 逐项证据与非阻塞小问题详见
-`docs/architecture/ir-evaluator-review.md`。本审阅分支未创建 GitHub PR。
+1. Require byte-identical Java-oracle and native-jar stdout (`cmp` exit 0).
+2. Require six `mix` cases, at least four distinct outputs, and a nonzero output.
+3. Confirm the native `mix` symbol is a trampoline and that the evaluator plus
+   serialized blob retain live integer arithmetic and branches.
+4. Treat this branch only as compiler-artifact preparation; it supplies no
+   reader or recovery result.
 
-## (d) Verification / 验证
-
-1. Required Gradle command: **BUILD SUCCESSFUL**.
-   JUnit XML: `CodegenModeTest` 4/4, `IrCompilerTest` 17/17,
-   `InterpreterStreamStrategyTest` 6/6; total **27/27**, 0 skipped,
-   0 failures, 0 errors.
-2. All three selected tests that invoke g++ actually ran: direct generated-C++
-   syntax, evaluator translation-unit syntax, and the linked evaluator runtime
-   harness. None was skipped.
-3. Exact CLI generation with `--codegen=ir --ir-lower=eval` produced
-   `ir_method_data` + `evaluate_i32` trampolines for both `add` and `sumTo`,
-   with no straight-line arithmetic body. The complete generated CMake project
-   compiled and linked with g++.
-4. Exact default CLI generation produced the legacy body; `--codegen=ir`
-   without `--ir-lower` produced the existing direct-IR body. Neither generated
-   evaluator runtime files.
-5. ISA constants match (`0x01`, `0x02`, `0x10`–`0x12`, `0x20`–`0x22`);
-   two-phase temporary staging preserves phi parallel-copy semantics.
-   A separate g++ harness confirmed add/subtract/multiply wrap boundaries.
-6. No correctness blockers were fixed because none were found. Nits:
-   `supports(...)` is not consulted by the compiler, the full generated CMake
-   build is not automated, focused branch/wrap boundary coverage is thin, and
-   one status sentence describes selection timing too broadly.
-
-1. 指定 Gradle 命令 **BUILD SUCCESSFUL**。JUnit XML：`CodegenModeTest` 4/4、
-   `IrCompilerTest` 17/17、`InterpreterStreamStrategyTest` 6/6；合计
-   **27/27**，0 skipped、0 failures、0 errors。
-2. 三个调用 g++ 的测试均真实执行：direct 生成 C++ 语法检查、evaluator 翻译单元
-   语法检查、已链接 evaluator 运行 harness；均未跳过。
-3. 精确 CLI 参数 `--codegen=ir --ir-lower=eval` 下，`add` 与 `sumTo` 均生成
-   `ir_method_data` + `evaluate_i32` trampoline，不含直线算术函数体；完整生成
-   CMake 工程已用 g++ 编译并链接成功。
-4. 默认 CLI 仍生成 legacy body；只指定 `--codegen=ir` 时仍生成 direct-IR body；
-   两者都不生成 evaluator runtime 文件。
-5. ISA 常量完全一致（`0x01`、`0x02`、`0x10`–`0x12`、`0x20`–`0x22`）；
-   两阶段临时寄存器 staging 保证 phi 并行复制。额外 g++ harness 已验证加、减、乘
-   溢出边界。
-6. 未发现正确性阻塞项，因此没有 blocker 修复。小问题为：编译器未调用
-   `supports(...)`、完整生成 CMake 编译尚未自动化、分支/溢出边界测试偏少，以及状态
-   文档一句话对选择时机描述略宽。
+1. Java oracle 与 native jar 的 stdout 必须逐字节一致（`cmp` 退出码 0）。
+2. 必须有六组 `mix` 输入、至少四个不同输出，且输出不能全为零。
+3. 必须确认 native `mix` 符号是 trampoline，且 evaluator 与序列化 blob 中保留活跃整数
+   算术和分支。
+4. 本分支只能视为编译器产物准备，不提供 reader 或 recovery 结论。
