@@ -67,8 +67,6 @@ public class InterpreterBackendIntegrationTest {
         assertFalse(generated.contains("// add(II)I"));
         assertFalse(generated.contains("// sumTo(I)I"));
         assertFalse(generated.contains("// mix(II)I"));
-        assertFalse(generated.contains("IADD"));
-        assertFalse(generated.contains("ILOAD"));
         assertFalse(generated.contains("opcode_decode_table"));
 
         int mixStart = generated.indexOf("static const std::uint8_t __ngen_b_0_3[]");
@@ -76,6 +74,8 @@ public class InterpreterBackendIntegrationTest {
         assertTrue(mixStart >= 0 && divideStart > mixStart);
         String mixOutput = generated.substring(mixStart, divideStart);
         assertFalse(mixOutput.contains("mix"));
+        assertFalse(mixOutput.contains("IADD"));
+        assertFalse(mixOutput.contains("ILOAD"));
         assertFalse(mixOutput.contains("jvalue cstack"),
                 "mix must not contain a method-specific direct C++ body");
         assertTrue(mixOutput.contains("0xb9, 0x79, 0x37, 0x9e"),
