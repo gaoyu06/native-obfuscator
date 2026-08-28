@@ -257,7 +257,12 @@ public class IrCompilerTest {
 
         assertEquals(IrType.REFERENCE, ir.getReturnType());
         assertTrue(ir.toString().contains(" = new java/lang/Object"));
-        assertTrue(ir.toString().contains("return %v0"));
+        IrNodes.Return returnTerminator = ir.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.Return.class::isInstance)
+                .map(IrNodes.Return.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrType.REFERENCE, returnTerminator.getValue().getType());
 
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
@@ -268,7 +273,8 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("jobject JNICALL __ngen_native_returnAllocatedObject0"));
         assertTrue(allocation >= 0);
         assertTrue(cpp.indexOf("return nullptr;", allocation) > allocation);
-        assertTrue(cpp.indexOf("return v0;", allocation) > allocation);
+        assertTrue(cpp.indexOf("return v" + returnTerminator.getValue().getId() + ";",
+                allocation) > allocation);
     }
 
     @Test
