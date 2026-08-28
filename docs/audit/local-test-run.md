@@ -89,4 +89,75 @@ JDK, CMake, and g++ are installed. Required Krakatau command `krak2` is missing.
 
 ## Gradle test attempt
 
-The exact `./gradlew test` result is added below after the documentation checkpoint is committed and pushed, as required by this cloud run's branch workflow.
+Command: `./gradlew test --console=plain` — exit 1
+
+```text
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build
+Configuration on demand is an incubating feature.
+> Task :obfuscator:processResources
+> Task :obfuscator:processTestResources
+
+> Task :annotations:compileJava
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :annotations:processResources NO-SOURCE
+> Task :annotations:classes
+> Task :annotations:jar
+> Task :annotations:compileTestJava NO-SOURCE
+> Task :annotations:processTestResources NO-SOURCE
+> Task :annotations:testClasses UP-TO-DATE
+> Task :annotations:test NO-SOURCE
+
+> Task :obfuscator:compileJava
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+Note: /workspace/obfuscator/src/main/java/by/radioegor146/zig/ZigInstaller.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+3 warnings
+
+> Task :obfuscator:classes
+
+> Task :obfuscator:compileTestJava
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+3 warnings
+
+> Task :obfuscator:testClasses
+> Task :obfuscator:test FAILED
+
+[Incubating] Problems report is available at: file:///workspace/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':obfuscator:test'.
+> Test process encountered an unexpected problem.
+   > Could not start Gradle Test Executor 2: Failed to load JUnit Platform.  Please ensure that all JUnit Platform dependencies are available on the test's runtime classpath, including the JUnit Platform launcher.
+   > Could not start Gradle Test Executor 1: Failed to load JUnit Platform.  Please ensure that all JUnit Platform dependencies are available on the test's runtime classpath, including the JUnit Platform launcher.
+   > Could not start Gradle Test Executor 3: Failed to load JUnit Platform.  Please ensure that all JUnit Platform dependencies are available on the test's runtime classpath, including the JUnit Platform launcher.
+   > Could not start Gradle Test Executor 4: Failed to load JUnit Platform.  Please ensure that all JUnit Platform dependencies are available on the test's runtime classpath, including the JUnit Platform launcher.
+
+* Try:
+> Check common problems https://docs.gradle.org/9.3.1/userguide/java_testing.html#sec:java_testing_troubleshooting.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 11s
+7 actionable tasks: 7 executed
+```
+
+Observed conclusion: production and test sources compiled, but **zero JUnit tests actually ran**. Gradle could not launch the JUnit Platform because the test runtime has API/engine dependencies but no launcher (`obfuscator/build.gradle:47-49`). Therefore this command did not reach any dynamic test's `javac`, transpiler, CMake, native compile, or transformed-jar execution. `krak2` is independently missing, but it was not the cause of this run's first failure.
