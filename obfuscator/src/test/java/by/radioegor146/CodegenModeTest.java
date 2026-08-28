@@ -3,22 +3,27 @@ package by.radioegor146;
 import org.junit.jupiter.api.Test;
 import picocli.CommandLine;
 
+import java.lang.reflect.Field;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class CodegenModeTest {
     @Test
-    public void cliDefaultsToLegacy() {
-        CommandLine.ParseResult result = new CommandLine(new Main.NativeObfuscatorRunner())
-                .parseArgs("input.jar", "output");
-
-        assertEquals(CodegenMode.LEGACY, result.valueFor("--codegen"));
+    public void cliDefaultsToLegacy() throws Exception {
+        assertEquals(CodegenMode.LEGACY, parseCodegen("input.jar", "output"));
     }
 
     @Test
-    public void cliAcceptsIr() {
-        CommandLine.ParseResult result = new CommandLine(new Main.NativeObfuscatorRunner())
-                .parseArgs("input.jar", "output", "--codegen=ir");
+    public void cliAcceptsIr() throws Exception {
+        assertEquals(CodegenMode.IR,
+                parseCodegen("input.jar", "output", "--codegen=ir"));
+    }
 
-        assertEquals(CodegenMode.IR, result.valueFor("--codegen"));
+    private CodegenMode parseCodegen(String... args) throws Exception {
+        Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
+        new CommandLine(runner).parseArgs(args);
+        Field field = Main.NativeObfuscatorRunner.class.getDeclaredField("codegenMode");
+        field.setAccessible(true);
+        return (CodegenMode) field.get(runner);
     }
 }
