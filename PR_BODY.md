@@ -1,15 +1,16 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Updates the documentation-only maintainer brief through draft PR #59 using
-only claims recorded in the named branch documents. It adds #59's benchmark
-remeasurement after #57's evaluator ISA extension while preserving #53's
-`N/A` eval timing, #37/#50's unmet requirement 7, and the complete written
-goal.
+Updates the documentation-only maintainer brief through draft PR #62 using
+only claims recorded in the named branch documents. It adds #61's review of
+the evaluator IUSHR ISA and #62's partial opt-in IR phase 8 while preserving
+#53's `N/A` eval timing, #37/#50's unmet requirement 7, and the complete
+written goal.
 
-将仅文档的维护者简报更新至草稿 PR #59，仅采用指定分支文档已经记录的声明。
-新增 #57 evaluator ISA 扩展后的 #59 benchmark 重新测量，同时保留 #53 的 eval
-timing `N/A`、#37/#50 对 requirement 7 未满足的结论，以及完整书面目标。
+将仅文档的维护者简报更新至草稿 PR #62，仅采用指定分支文档已经记录的声明。
+新增 #61 对 evaluator IUSHR ISA 的审阅与 #62 的部分、opt-in IR phase 8，
+同时保留 #53 的 eval timing `N/A`、#37/#50 对 requirement 7 未满足的结论，
+以及完整书面目标。
 
 ## (a) 本次改动范围 / Change scope
 
@@ -25,20 +26,30 @@ timing `N/A`、#37/#50 对 requirement 7 未满足的结论，以及完整书面
   10,017,146.0 ns, 167,870,311.5 ns, 10,021,957.0 ns, and 411,875,537.5 ns;
   an evaluator-data marker; and no target-method or `IUSHR` fallback. This is
   not a portable result or speedup claim.
+- Add #61, Sol's documentation-only review of #57. Its recorded verdict is
+  **accept**, with no compiler change and a 28/28 focused-test rerun. This is
+  not a ship-readiness finding.
+- Add #62, stacked on #56. Still-opt-in phase 8 adds `NEW` via `AllocObject`,
+  constructor-only `INVOKESPECIAL` via `CallNonvirtualVoidMethod`, and broader
+  `I`/`J`/reference invoke shapes. Constructor bodies remain excluded and
+  legacy remains the default. Its source records 36 + 2 = 38 focused tests
+  and a 34-method g++ smoke translation unit. It remains partial and not
+  ship-ready.
 - Preserve #53 exactly as prior evidence: eval rejected `USHR` and used legacy
   fallback, so its eval median remains `N/A`. Do not back-fill #53 from #57
   or #59.
 - Retain #37 and #50: each reports full recovery of all four methods from its
   valid live subject, so requirement 7 remains unmet.
-- Advance the direct-IR coverage/review lane #45 → #47 → #51 → #54 → #56 and keep
-  evaluator experiment #42 → #44 → #48 → #50 with #57 as an ISA sibling.
+- Advance the direct-IR coverage/review lane #45 → #47 → #51 → #54 → #56 → #62
+  and keep evaluator experiment #42 → #44 → #48 → #50 with #57 as an ISA
+  sibling and #61 as its review.
   Keep benchmark lane #34 → #53, plus #59 stacked on #57, without collapsing
   the two measurements. Preserve SDK #12 → #15 → #46, compatibility
-  #6 → #9 → #14 → #41, and options briefs #55 → #58 → this PR.
+  #6 → #9 → #14 → #41, and options briefs … → #58 → #60 → this PR.
 - Preserve the complete written engineering goal; option A remains only the
   v1 product recommendation.
 - Update only `docs/architecture/goal-status-and-options.md` and this bilingual
-  PR body. PRs #1–#59 remain open drafts; `master` remains `e7ca4c8`.
+  PR body. PRs #1–#62 remain open drafts; `master` remains `e7ca4c8`.
 
 - 新增 #56：Sol 对 phase 7（#54）的纯文档审阅。记录结论为 **accept**，未改
   编译器；审阅文档记录重新运行 35/35 个聚焦测试。
@@ -50,18 +61,26 @@ timing `N/A`、#37/#50 对 requirement 7 未满足的结论，以及完整书面
   evaluator-IR 中位数 10,017,146.0 / 167,870,311.5 / 10,021,957.0 /
   411,875,537.5 ns、evaluator-data marker，以及无目标方法或 `IUSHR`
   fallback。该结果不是可移植结论或加速声明。
+- 新增 #61：Sol 对 #57 的纯文档审阅。记录结论为 **accept**，未改编译器，
+  并重新运行 28/28 个聚焦测试；该结论不是上线就绪声明。
+- 新增叠加在 #56 上的 #62：仍为 opt-in 的 phase 8 通过 `AllocObject` 支持
+  `NEW`，通过 `CallNonvirtualVoidMethod` 支持仅限构造器的
+  `INVOKESPECIAL`，并扩展 `I`/`J`/引用 invoke 形状。构造器方法体仍排除，
+  默认仍为 legacy。来源记录 36 + 2 = 38 个聚焦测试及包含 34 个方法的 g++
+  烟测翻译单元；该阶段仍部分且未达上线就绪。
 - 原样保留 #53 的既有证据：eval 因 `USHR` 使用 legacy fallback，故其 eval
   中位数仍为 `N/A`；不得用 #57 或 #59 回填 #53。
 - 保留 #37 与 #50：两者均报告从各自有效 live 样本完整恢复四个方法，因此
   requirement 7 仍未满足。
-- 将 direct-IR coverage/review 路线推进为 #45 → #47 → #51 → #54 → #56；保持
-  evaluator 实验 #42 → #44 → #48 → #50，并将 #57 作为 ISA sibling；另行
+- 将 direct-IR coverage/review 路线推进为 #45 → #47 → #51 → #54 → #56 →
+  #62；保持 evaluator 实验 #42 → #44 → #48 → #50，将 #57 作为 ISA
+  sibling，并将 #61 作为其审阅；另行
   保持 benchmark 路线 #34 → #53，并加入叠加在 #57 上的 #59，但不合并两次
   测量。保留 SDK #12 → #15 → #46、compatibility #6 → #9 → #14 → #41，
-  以及 options brief #55 → #58 → 本 PR。
+  以及 options brief … → #58 → #60 → 本 PR。
 - 保留完整书面工程目标；A 仅为 v1 产品建议。
 - 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
-  PR #1–#59 仍均为 open draft；`master` 仍为 `e7ca4c8`。
+  PR #1–#62 仍均为 open draft；`master` 仍为 `e7ca4c8`。
 
 ## (b) 是否可直接上线 / Can this ship to production as-is?
 
@@ -69,31 +88,36 @@ No. / 否。
 
 All referenced work remains in draft PRs and `master` contains none of it.
 #56 is a scoped review, not ship-readiness approval; #57 remains an opt-in,
-narrow evaluator lowering with per-method fallback. #53 still has no valid
-eval timing. #57 adds no benchmark result; #59 is one separate local
-diagnostic, not a portable speedup claim. #37 and #50 fully recovered all four
-methods from valid live direct-IR and shared-evaluator subjects, so requirement
-7 is not met.
+narrow evaluator lowering with per-method fallback, and #61's accept review
+does not make it ship-ready. #62 remains partial and opt-in, with per-method
+fallback, constructor bodies excluded, and legacy as the default. #53 still
+has no valid eval timing. #57 adds no benchmark result; #59 is one separate
+local diagnostic, not a portable speedup claim. #37 and #50 fully recovered
+all four methods from valid live direct-IR and shared-evaluator subjects, so
+requirement 7 is not met.
 
 所有相关工作仍在草稿 PR 中，`master` 未包含这些内容。#56 是限定范围审阅，
 不是上线批准；#57 仍是 opt-in、窄范围且逐方法 fallback 的 evaluator lowering。
-#53 仍没有有效 eval timing；#57 本身不新增 benchmark 结果，#59 只是一次独立
-本地诊断，并非可移植加速声明。#37 与 #50 分别从有效 live direct-IR 与
-shared-evaluator 样本完整恢复全部四个方法，因此 requirement 7 未满足。
+#61 的 accept 审阅不使其达到上线就绪。#62 仍部分、opt-in 且逐方法 fallback，
+构造器方法体仍排除，默认仍为 legacy。#53 仍没有有效 eval timing；#57 本身
+不新增 benchmark 结果，#59 只是一次独立本地诊断，并非可移植加速声明。#37
+与 #50 分别从有效 live direct-IR 与 shared-evaluator 样本完整恢复全部四个
+方法，因此 requirement 7 未满足。
 
 ## (c) 上线前是否需要 review / Is review required?
 
 Yes. / 是。
 
 Review each statement against the named source document and preserve its
-scope, including #59's path classification, samples, and non-portability
-boundary. Each implementation stack still requires independent code review,
-post-rebase verification, supported-platform/JDK CI, and applicable
-product/release approval.
+scope, including #59's path classification and non-portability boundary,
+#61's review-only verdict, and #62's partial compiler boundary. Each
+implementation stack still requires independent code review, post-rebase
+verification, supported-platform/JDK CI, and applicable product/release
+approval.
 
-每项陈述均须与指定来源文档核对并保留其范围，包括 #59 的路径分类、样本与
-不可移植边界；每条实现栈仍需独立代码审查、rebase 后复测、受支持平台/JDK
-CI，以及适用的产品/发布审批。
+每项陈述均须与指定来源文档核对并保留其范围，包括 #59 的路径分类与不可移植
+边界、#61 仅限审阅的结论，以及 #62 的部分编译器边界；每条实现栈仍需独立
+代码审查、rebase 后复测、受支持平台/JDK CI，以及适用的产品/发布审批。
 
 ## (d) review 的前置条件 / Review preconditions
 
@@ -118,10 +142,21 @@ CI，以及适用的产品/发布审批。
    met.
 6. Preserve the complete written goal. Option A remains only the v1 product
    recommendation, not a rewrite of the engineering goal.
-7. Preserve the lanes: direct IR coverage/review #45 → #47 → #51 → #54 → #56;
+7. Preserve the lanes: direct IR coverage/review #45 → #47 → #51 → #54 → #56
+   → #62;
    benchmark #34 → #53 plus #59 stacked on #57; evaluator experiment
-   #42 → #44 → #48 → #50 with #57 as an ISA sibling; SDK #12 → #15 → #46;
-   compatibility #6 → #9 → #14 → #41; options briefs #55 → #58 → this PR.
+   #42 → #44 → #48 → #50 with #57 as an ISA sibling and #61 reviewing #57;
+   SDK #12 → #15 → #46; compatibility #6 → #9 → #14 → #41; options briefs
+   … → #58 → #60 → this PR.
+8. Use #61's `docs/architecture/ir-evaluator-ushr-review.md`: preserve the
+   **accept** verdict, documentation-only scope, no compiler change, recorded
+   28/28 focused tests, and explicit non-ship-readiness boundary.
+9. Use #62's `docs/architecture/ir-phase8-status.md` and bilingual
+   `PR_BODY.md`: preserve its #56 base, opt-in `NEW`/`AllocObject`,
+   constructor-only `INVOKESPECIAL`/`CallNonvirtualVoidMethod`, broader exact
+   `I`/`J`/reference invoke shapes, constructor-body exclusion, legacy default,
+   36 + 2 = 38 focused tests, 34-method g++ smoke, and partial/not-ship-ready
+   status.
 
 中文核对项：
 
@@ -140,10 +175,19 @@ CI，以及适用的产品/发布审批。
    #50 的 `recovery.md` 与 `scores.md` 为准：有效 live evaluator code 的四个
    方法均为 full。保留 #37 与 #50 作为 requirement 7 未满足的证据。
 6. 保留完整书面目标；A 仅作为 v1 产品建议，不改写工程目标。
-7. 保持各线：direct IR coverage/review 为 #45 → #47 → #51 → #54 → #56；
+7. 保持各线：direct IR coverage/review 为 #45 → #47 → #51 → #54 → #56 →
+   #62；
    benchmark 为 #34 → #53，另有叠加在 #57 上的 #59；evaluator 实验为
-   #42 → #44 → #48 → #50，#57 为 ISA sibling；SDK 为 #12 → #15 → #46；
-   compatibility 为 #6 → #9 → #14 → #41；options brief 为 #55 → #58 →
-   本 PR。
+   #42 → #44 → #48 → #50，#57 为 ISA sibling，#61 审阅 #57；SDK 为
+   #12 → #15 → #46；compatibility 为 #6 → #9 → #14 → #41；options brief
+   为 … → #58 → #60 → 本 PR。
+8. 以 #61 的 `docs/architecture/ir-evaluator-ushr-review.md` 为准：保留
+   **accept** 结论、纯文档范围、无编译器改动、记录的 28/28 聚焦测试，以及
+   明确的非上线就绪边界。
+9. 以 #62 的 `docs/architecture/ir-phase8-status.md` 与双语 `PR_BODY.md`
+   为准：保留其 #56 基线、opt-in `NEW`/`AllocObject`、仅限构造器的
+   `INVOKESPECIAL`/`CallNonvirtualVoidMethod`、更广的精确 `I`/`J`/引用
+   invoke 形状、构造器方法体排除、legacy 默认值、36 + 2 = 38 个聚焦测试、
+   34-method g++ 烟测，以及仍部分/未达上线就绪的状态。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
