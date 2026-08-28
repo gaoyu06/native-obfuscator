@@ -47,9 +47,12 @@ fallback-before-mutation boundary, and generated CMake integration.
 
 1. Run
    `./gradlew :obfuscator:test --tests by.radioegor146.CodegenModeTest --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest`.
-   运行上述 focused test。
+   Current result: 26/26 passed (`4 + 17 + 5`), 0 skipped, 0 failed,
+   0 errors. 运行上述 focused test；当前结果为 26/26 通过、0 跳过、0 失败、
+   0 error。
 2. Confirm the two g++ tests are not skipped when g++ and JNI headers exist.
-   当 g++ 与 JNI headers 存在时，确认两个 g++ 测试未被跳过。
+   Both executed in the recorded run. 当 g++ 与 JNI headers 存在时，确认两个
+   g++ 测试未被跳过；本次记录中二者均已执行。
 3. Inspect generated `add` and `sumTo` functions: each must contain
    `ir_method_data` plus one `evaluate_i32` call and no direct arithmetic body.
    检查生成的 `add` 与 `sumTo`：每个函数都应包含 `ir_method_data` 和一次
