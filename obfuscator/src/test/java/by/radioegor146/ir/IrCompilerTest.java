@@ -530,6 +530,147 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersCheckcastAndInstanceofWithJvmNullSemantics() {
+        MethodNode method = checkCastInstanceOfMethod("typeTest", "java/lang/String");
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .anyMatch(instruction -> instruction instanceof IrNodes.CheckCast));
+        assertTrue(ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .anyMatch(instruction -> instruction instanceof IrNodes.InstanceOf));
+        assertTrue(ir.toString().contains("checkcast java/lang/String"));
+        assertTrue(ir.toString().contains("instanceof java/lang/String"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("arg0 != nullptr"));
+        assertTrue(cpp.contains("env->IsInstanceOf(arg0"));
+        assertTrue(cpp.contains("== 0"));
+        assertTrue(cpp.contains(" = arg0;"));
+        assertTrue(cpp.contains(" = 0;"));
+        assertTrue(cpp.contains("utils::throw_re"));
+        assertTrue(obfuscator.getCachedClasses().getCache()
+                .containsKey("java/lang/String"));
+    }
+
+    @Test
+    public void resolvesArrayCheckcastAndInstanceofWithFindClass() {
+        MethodNode method = checkCastInstanceOfMethod("arrayTypeTest",
+                "[Ljava/lang/String;");
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("// IR codegen: example/Math.arrayTypeTest"));
+        assertTrue(cpp.contains("env->FindClass(((char *)(string_pool + "));
+        assertTrue(cpp.contains("env->IsInstanceOf(arg0"));
+        assertTrue(obfuscator.getCachedClasses().getCache()
+                .containsKey("[Ljava/lang/String;"));
+        assertFalse(obfuscator.getCachedStrings().getCache()
+                .containsKey("[Ljava.lang.String;"));
+    }
+
+    @Test
+    public void checkcastFailureInsideTryUsesSharedCatchDispatch() {
+        MethodNode method = checkCastCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock checkCastBlock = ir.getBlocks().stream()
+                .filter(block -> block.getInstructions().stream()
+                        .anyMatch(instruction -> instruction instanceof IrNodes.CheckCast))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/ClassCastException",
+                checkCastBlock.getExceptionEdges().get(0).getCatchType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        int failedCast = cpp.indexOf("env->IsInstanceOf(arg0");
+        int throwCast = cpp.indexOf("utils::throw_re", failedCast);
+        int dispatch = cpp.indexOf("goto IR_CATCH_0;", throwCast);
+        assertTrue(failedCast >= 0 && throwCast > failedCast && dispatch > throwCast);
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->ExceptionClear();"));
+        assertTrue(cpp.contains("= -15;"));
+    }
+
+    @Test
+    public void lowersTwoSlotLongLocalsArithmeticAndConversions() {
+        IrMethod arithmetic = frontend.build("example/Math", longArithmeticMethod());
+        String pretty = arithmetic.toString();
+        assertTrue(pretty.contains("%arg0:i64, %arg1:i64"));
+        assertTrue(pretty.contains("ladd"));
+        assertTrue(pretty.contains("lsub"));
+        assertTrue(pretty.contains("lmul"));
+
+        String cpp = emitter.emitBody(arithmetic);
+        assertTrue(cpp.contains("jlong v2;"));
+        assertTrue(cpp.contains("(uint64_t)"));
+        assertTrue(cpp.contains("1LL"));
+        assertTrue(cpp.contains("return"));
+        assertFalse(cpp.contains("julong"));
+
+        IrMethod conversion = frontend.build("example/Math", longConversionMethod());
+        assertTrue(conversion.toString().contains("i2l"));
+        assertTrue(conversion.toString().contains("l2i"));
+        String conversionCpp = emitter.emitBody(conversion);
+        assertTrue(conversionCpp.contains("(jlong) arg0"));
+        assertTrue(conversionCpp.contains("(jint) (uint32_t)"));
+    }
+
+    @Test
+    public void numbersWideStackPhiSlotsByJvmSlotWidth() {
+        IrMethod ir = frontend.build("example/Math", wideStackPhiMethod());
+        IrBlock join = ir.getBlocks().stream()
+                .filter(block -> block.getPhis().stream()
+                        .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
+                        .count() == 2)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrPhi longPhi = join.getPhis().stream()
+                .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK
+                        && phi.getResult().getType() == IrType.I64)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrPhi intPhi = join.getPhis().stream()
+                .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK
+                        && phi.getResult().getType() == IrType.I32)
+                .findFirst().orElseThrow(AssertionError::new);
+
+        assertEquals(0, longPhi.getSlotIndex());
+        assertEquals(2, intPhi.getSlotIndex());
+        assertEquals(2, longPhi.getIncoming().size());
+        assertEquals(2, intPhi.getIncoming().size());
+        assertTrue(emitter.emitBody(ir).contains("jlong"));
+    }
+
+    @Test
+    public void rejectsUnsupportedWideOperationBeforeMutation() {
+        MethodNode method = unsupportedWideOperationMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.LDIV, error.getOpcode());
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
     public void rejectsIntStoreIntoInstanceReceiverLocal() {
         MethodNode method = new MethodNode(Opcodes.ASM9, 0,
                 "badStore", "()V", null, null);
@@ -579,7 +720,11 @@ public class IrCompilerTest {
                 divRemMethod(), divideCatchMethod(), newIntArrayCatchMethod(),
                 staticIntFieldMethod(), tableSwitchMethod(), lookupSwitchMethod(),
                 newObjectArrayCatchMethod(), newObjectArrayMethod(),
-                newNestedObjectArrayMethod()
+                newNestedObjectArrayMethod(),
+                checkCastInstanceOfMethod("typeTest", "java/lang/String"),
+                checkCastInstanceOfMethod("arrayTypeTest", "[Ljava/lang/String;"),
+                checkCastCatchMethod(), longArithmeticMethod(), longConversionMethod(),
+                wideStackPhiMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -644,7 +789,17 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.allocateStringRows(I)I"));
         assertTrue(source.contains("env->NewObjectArray(arg0"));
         assertTrue(source.contains("env->FindClass(((char *)(string_pool + "));
+        assertTrue(source.contains("IR codegen: example/Math.typeTest"));
+        assertTrue(source.contains("IR codegen: example/Math.arrayTypeTest"));
+        assertTrue(source.contains("IR codegen: example/Math.catchCast"));
+        assertTrue(source.contains("IR codegen: example/Math.longArithmetic(JJ)J"));
+        assertTrue(source.contains("IR codegen: example/Math.longConversion(I)I"));
+        assertTrue(source.contains("IR codegen: example/Math.widePhi(JI)J"));
+        assertTrue(source.contains("env->IsInstanceOf(arg0"));
+        assertTrue(source.contains("uint64_t"));
+        assertTrue(source.contains("(jlong)"));
         assertFalse(source.contains("juint"));
+        assertFalse(source.contains("julong"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
         Path sourceFile = directory.resolve("ir-smoke.cpp");
@@ -1099,6 +1254,108 @@ public class IrCompilerTest {
                 "java/lang/ArithmeticException"));
         method.maxLocals = 3;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode checkCastInstanceOfMethod(String name, String targetType) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(Ljava/lang/Object;)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.CHECKCAST, targetType));
+        method.instructions.add(new TypeInsnNode(Opcodes.INSTANCEOF, targetType));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode checkCastCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchCast", "(Ljava/lang/Object;)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.CHECKCAST, "java/lang/String"));
+        method.instructions.add(new TypeInsnNode(Opcodes.INSTANCEOF, "java/lang/String"));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -15));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ClassCastException"));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode longArithmeticMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longArithmetic", "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 4));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.LSUB));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.LMUL));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 6;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode longConversionMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longConversion", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.I2L));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new InsnNode(Opcodes.L2I));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode wideStackPhiMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "widePhi", "(JI)J", null, null);
+        LabelNode alternate = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, alternate));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(alternate);
+        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode unsupportedWideOperationMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedWide", "(J)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.LMUL));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 4;
         return method;
     }
 

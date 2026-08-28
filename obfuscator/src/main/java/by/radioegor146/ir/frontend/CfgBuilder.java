@@ -258,6 +258,7 @@ public final class CfgBuilder {
         int opcode = node.getOpcode();
         return opcode == Opcodes.IDIV || opcode == Opcodes.IREM
                 || opcode == Opcodes.NEWARRAY || opcode == Opcodes.ANEWARRAY
+                || opcode == Opcodes.CHECKCAST || opcode == Opcodes.INSTANCEOF
                 || opcode == Opcodes.ARRAYLENGTH || opcode == Opcodes.IALOAD
                 || opcode == Opcodes.IASTORE || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.GETSTATIC

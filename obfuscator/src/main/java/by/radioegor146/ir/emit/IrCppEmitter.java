@@ -95,11 +95,23 @@ public final class IrCppEmitter {
                     new CppAst.Assignment(variable(constant.getResult()),
                             new CppAst.IntLiteral(constant.getValue())));
         }
+        if (instruction instanceof IrNodes.LongConst) {
+            IrNodes.LongConst constant = (IrNodes.LongConst) instruction;
+            return Collections.<CppAst.Statement>singletonList(
+                    new CppAst.Assignment(variable(constant.getResult()),
+                            new CppAst.LongLiteral(constant.getValue())));
+        }
         if (instruction instanceof IrNodes.Binary) {
             return emitBinary((IrNodes.Binary) instruction);
         }
+        if (instruction instanceof IrNodes.LongBinary) {
+            return emitLongBinary((IrNodes.LongBinary) instruction);
+        }
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
+        }
+        if (instruction instanceof IrNodes.Conversion) {
+            return emitConversion((IrNodes.Conversion) instruction);
         }
         if (context == null) {
             throw new IllegalStateException(
@@ -126,6 +138,12 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.StringLength) {
             return emitStringLength(method, block, (IrNodes.StringLength) instruction, context);
+        }
+        if (instruction instanceof IrNodes.CheckCast) {
+            return emitCheckCast(method, block, (IrNodes.CheckCast) instruction, context);
+        }
+        if (instruction instanceof IrNodes.InstanceOf) {
+            return emitInstanceOf(method, block, (IrNodes.InstanceOf) instruction, context);
         }
         if (instruction instanceof IrNodes.GetField) {
             return emitGetField(method, block, (IrNodes.GetField) instruction, context);
@@ -197,6 +215,29 @@ public final class IrCppEmitter {
                 new CppAst.Cast("uint32_t", right)));
     }
 
+    private List<CppAst.Statement> emitLongBinary(IrNodes.LongBinary binary) {
+        String operator;
+        switch (binary.getOperation()) {
+            case ADD:
+                operator = "+";
+                break;
+            case SUBTRACT:
+                operator = "-";
+                break;
+            case MULTIPLY:
+                operator = "*";
+                break;
+            default:
+                throw new IllegalStateException("Unknown long binary operation "
+                        + binary.getOperation());
+        }
+        CppAst.Expression value = new CppAst.Cast("jlong", new CppAst.Binary(
+                new CppAst.Cast("uint64_t", expression(binary.getLeft())), operator,
+                new CppAst.Cast("uint64_t", expression(binary.getRight()))));
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
     private CppAst.Expression shiftAmount(CppAst.Expression right) {
         return new CppAst.Binary(new CppAst.Cast("uint32_t", right), "&",
                 new CppAst.IntLiteral(31));
@@ -225,6 +266,24 @@ public final class IrCppEmitter {
         }
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(unary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitConversion(IrNodes.Conversion conversion) {
+        CppAst.Expression value;
+        switch (conversion.getOperation()) {
+            case I2L:
+                value = new CppAst.Cast("jlong", expression(conversion.getOperand()));
+                break;
+            case L2I:
+                value = new CppAst.Cast("jint", new CppAst.Cast("uint32_t",
+                        expression(conversion.getOperand())));
+                break;
+            default:
+                throw new IllegalStateException("Unknown conversion "
+                        + conversion.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                variable(conversion.getResult()), value));
     }
 
     private List<CppAst.Statement> emitIntDivRem(IrMethod method, IrBlock block,
@@ -392,6 +451,57 @@ public final class IrCppEmitter {
         statements.add(new CppAst.Assignment(variable(length.getResult()),
                 memberCall("env", "GetStringLength",
                         new CppAst.Cast("jstring", expression(length.getReceiver())))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitCheckCast(IrMethod method, IrBlock block,
+                                                 IrNodes.CheckCast checkCast,
+                                                 MethodContext context) {
+        int classId = context.getCachedClasses().getId(checkCast.getTargetType());
+        List<CppAst.Statement> statements = emitClassCache(method, block, classId, context,
+                checkCast.getTargetType());
+        statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+
+        CppAst.Expression nonNull = new CppAst.Binary(expression(checkCast.getOperand()), "!=",
+                new CppAst.NullLiteral());
+        CppAst.Expression notInstance = new CppAst.Binary(
+                memberCall("env", "IsInstanceOf", expression(checkCast.getOperand()),
+                        array("cclasses", classId)),
+                "==", new CppAst.IntLiteral(0));
+        List<CppAst.Statement> failed = new ArrayList<>();
+        failed.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                Arrays.asList(variable("env"),
+                        pool(context.getStringPool().getOffset(
+                                "java/lang/ClassCastException")),
+                        pool(context.getStringPool().getOffset(
+                                "CHECKCAST " + checkCast.getTargetType())),
+                        new CppAst.IntLiteral(checkCast.getSourceLine())))));
+        failed.addAll(exceptionalExit(method, block));
+        statements.add(new CppAst.If(new CppAst.Binary(nonNull, "&&", notInstance),
+                new CppAst.Block(failed), null));
+        statements.add(new CppAst.Assignment(variable(checkCast.getResult()),
+                expression(checkCast.getOperand())));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitInstanceOf(IrMethod method, IrBlock block,
+                                                  IrNodes.InstanceOf instanceOf,
+                                                  MethodContext context) {
+        int classId = context.getCachedClasses().getId(instanceOf.getTargetType());
+        List<CppAst.Statement> statements = emitClassCache(method, block, classId, context,
+                instanceOf.getTargetType());
+        statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        statements.add(new CppAst.Assignment(variable(instanceOf.getResult()),
+                new CppAst.IntLiteral(0)));
+
+        CppAst.Assignment test = new CppAst.Assignment(variable(instanceOf.getResult()),
+                new CppAst.Cast("jint", memberCall("env", "IsInstanceOf",
+                        expression(instanceOf.getOperand()), array("cclasses", classId))));
+        statements.add(new CppAst.If(new CppAst.Binary(expression(instanceOf.getOperand()),
+                "!=", new CppAst.NullLiteral()), new CppAst.Block(
+                Collections.<CppAst.Statement>singletonList(test)), null));
         return statements;
     }
 
