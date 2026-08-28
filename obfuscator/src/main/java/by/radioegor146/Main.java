@@ -1,5 +1,6 @@
 package by.radioegor146;
 
+import by.radioegor146.cmake.CMakeBuilder;
 import by.radioegor146.zig.ZigBuilder;
 import by.radioegor146.zig.ZigInstaller;
 import by.radioegor146.zig.ZigTarget;
@@ -12,10 +13,13 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Main {
 
@@ -58,6 +62,14 @@ public class Main {
                 description = "Compiler backend: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CompilerBackend backend = CompilerBackend.CPP;
 
+        @CommandLine.Option(names = {"--publish-native-lib"},
+                description = "Link interpreter output in a private build directory and publish only the transformed jar and LoaderUnpack-named shared library")
+        private boolean publishNativeLib;
+
+        @CommandLine.Option(names = {"--opcode-seed"},
+                description = "Seed for per-translation interpreter opcode bytes (default: random)")
+        private Long opcodeSeed;
+
         @CommandLine.Option(names = {"-a", "--annotations"}, description = "Use annotations to ignore/include native obfuscation")
         private boolean useAnnotations;
 
@@ -90,6 +102,18 @@ public class Main {
                 System.err.println("Run 'native-obfuscator help' for usage.");
                 return 2;
             }
+            if (publishNativeLib && backend != CompilerBackend.INTERPRETER) {
+                throw new IllegalArgumentException(
+                        "--publish-native-lib requires --backend=interpreter");
+            }
+            if (publishNativeLib && libraryName != null) {
+                throw new IllegalArgumentException(
+                        "--publish-native-lib uses LoaderUnpack and cannot be combined with --plain-lib-name");
+            }
+            if (opcodeSeed != null && backend != CompilerBackend.INTERPRETER) {
+                throw new IllegalArgumentException(
+                        "--opcode-seed requires --backend=interpreter");
+            }
 
             List<Path> libs = new ArrayList<>();
             if (librariesDirectory != null) {
@@ -109,18 +133,50 @@ public class Main {
             }
 
             Path outputDir = Paths.get(outputDirectory);
-            String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
+            if (publishNativeLib) {
+                publishNativeLibrary(outputDir, libs, blackList, whiteList);
+                return 0;
+            }
+
+            String nativeDir = createObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
                     platform, useAnnotations, generateDebugJar, backend);
 
             if (useZig) {
-                runZigBuild(outputDir, nativeDir);
+                runZigBuild(outputDir, nativeDir, false);
             }
 
             return 0;
         }
 
-        private void runZigBuild(Path outputDir, String nativeDir) throws Exception {
+        private NativeObfuscator createObfuscator() {
+            return opcodeSeed == null
+                    ? new NativeObfuscator()
+                    : new NativeObfuscator(opcodeSeed);
+        }
+
+        private void publishNativeLibrary(Path outputDir, List<Path> libs,
+                                          List<String> blackList, List<String> whiteList)
+                throws Exception {
+            requireEmptyOutputDirectory(outputDir);
+            Path privateBuild = Files.createTempDirectory("native-obfuscator-link-");
+            try {
+                String nativeDir = createObfuscator().process(jarFile.toPath(), privateBuild,
+                        libs, blackList, whiteList, null, customLibraryDirectory,
+                        platform, useAnnotations, generateDebugJar, backend);
+                if (useZig) {
+                    runZigBuild(privateBuild, nativeDir, true);
+                } else {
+                    runCMakeBuild(privateBuild, nativeDir);
+                }
+                copyPublishedArtifacts(privateBuild, outputDir);
+            } finally {
+                deleteRecursively(privateBuild);
+            }
+        }
+
+        private void runZigBuild(Path outputDir, String nativeDir, boolean publish)
+                throws Exception {
             Path zigExe = ZigBuilder.locateZig(
                     zigPath != null ? zigPath.toPath() : null,
                     zigInstallDir != null ? zigInstallDir.toPath() : null);
@@ -155,7 +211,10 @@ public class Main {
             req.jdkInclude = jdkInclude;
             req.targets = targets;
             req.nativeDir = nativeDir;
-            if (libraryName != null) {
+            if (publish) {
+                req.externalLibsDir = outputDir.resolve("native-libs");
+                req.outputJar = outputDir.resolve(jarFile.getName());
+            } else if (libraryName != null) {
                 // LoaderPlain: shared libs live outside the jar
                 req.externalLibsDir = outputDir.resolve("native-libs");
             } else {
@@ -164,6 +223,80 @@ public class Main {
             }
 
             new ZigBuilder().build(req);
+        }
+
+        private void runCMakeBuild(Path privateBuild, String nativeDir) throws Exception {
+            Path jdkInclude = ZigBuilder.resolveJdkInclude(
+                    jdkHome != null ? jdkHome.toPath() : null);
+            if (jdkInclude == null || !Files.isDirectory(jdkInclude)) {
+                throw new IOException("Could not locate JDK include/ directory. " +
+                        "Pass --jdk-home or set JAVA_HOME.");
+            }
+
+            CMakeBuilder.BuildRequest request = new CMakeBuilder.BuildRequest();
+            request.cppDir = privateBuild.resolve("cpp");
+            request.buildDir = privateBuild.resolve("cmake-build");
+            request.jdkHome = jdkInclude.getParent();
+            request.outputJar = privateBuild.resolve(jarFile.getName());
+            request.externalLibsDir = privateBuild.resolve("native-libs");
+            request.nativeDir = nativeDir;
+            new CMakeBuilder().build(request);
+        }
+
+        private void copyPublishedArtifacts(Path privateBuild, Path outputDir)
+                throws IOException {
+            Path linkedLibraries = privateBuild.resolve("native-libs");
+            if (!Files.isDirectory(linkedLibraries)) {
+                throw new IOException("Native build produced no publication directory");
+            }
+            List<Path> libraries;
+            try (Stream<Path> paths = Files.list(linkedLibraries)) {
+                libraries = paths.filter(Files::isRegularFile).collect(Collectors.toList());
+            }
+            if (libraries.isEmpty()) {
+                throw new IOException("Native build produced no shared library");
+            }
+
+            Files.createDirectories(outputDir);
+            Files.copy(privateBuild.resolve(jarFile.getName()),
+                    outputDir.resolve(jarFile.getName()), StandardCopyOption.REPLACE_EXISTING);
+            if (generateDebugJar && Files.isRegularFile(privateBuild.resolve("debug.jar"))) {
+                Files.copy(privateBuild.resolve("debug.jar"), outputDir.resolve("debug.jar"),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+            for (Path library : libraries) {
+                Files.copy(library, outputDir.resolve(library.getFileName()),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+
+        private static void requireEmptyOutputDirectory(Path outputDir) throws IOException {
+            if (!Files.exists(outputDir)) {
+                return;
+            }
+            if (!Files.isDirectory(outputDir)) {
+                throw new IOException("Published output path is not a directory: " + outputDir);
+            }
+            try (Stream<Path> paths = Files.list(outputDir)) {
+                if (paths.findAny().isPresent()) {
+                    throw new IOException(
+                            "--publish-native-lib requires an empty output directory: " +
+                                    outputDir);
+                }
+            }
+        }
+
+        private static void deleteRecursively(Path root) throws IOException {
+            if (!Files.exists(root)) {
+                return;
+            }
+            try (Stream<Path> paths = Files.walk(root)) {
+                List<Path> entries = paths.sorted(Comparator.reverseOrder())
+                        .collect(Collectors.toList());
+                for (Path entry : entries) {
+                    Files.deleteIfExists(entry);
+                }
+            }
         }
     }
 

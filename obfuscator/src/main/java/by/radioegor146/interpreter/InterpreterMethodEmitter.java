@@ -17,43 +17,25 @@ import org.objectweb.asm.tree.VarInsnNode;
 import java.io.ByteArrayOutputStream;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Minimal ASM-to-opcode lowering for the first integer-only interpreter slice.
  */
 public final class InterpreterMethodEmitter {
 
-    public static final int ISA_VERSION = 2;
-
-    private static final int IPUSH = 0xa7;
-    private static final int ILOAD = 0x31;
-    private static final int ISTORE = 0xd4;
-    private static final int IADD = 0x6b;
-    private static final int ISUB = 0xe2;
-    private static final int IFEQ = 0x19;
-    private static final int IFNE = 0xc8;
-    private static final int IFLT = 0x45;
-    private static final int IFGE = 0x9a;
-    private static final int IFGT = 0xf1;
-    private static final int IFLE = 0x2d;
-    private static final int IF_ICMPEQ = 0x74;
-    private static final int IF_ICMPNE = 0xb6;
-    private static final int IF_ICMPLT = 0x0f;
-    private static final int IF_ICMPGE = 0x83;
-    private static final int IF_ICMPGT = 0xdc;
-    private static final int IF_ICMPLE = 0x52;
-    private static final int GOTO = 0xae;
-    private static final int IRETURN = 0x67;
-    private static final int IMUL = 0x3c;
-    private static final int IXOR = 0xf8;
-    private static final int ISHL = 0x21;
-    private static final int IUSHR = 0x95;
-    private static final int IROTL = 0xca;
+    public static final int ISA_VERSION = 3;
 
     private InterpreterMethodEmitter() {
     }
 
     public static CompiledMethod tryCompile(ClassNode owner, MethodNode method) {
+        return tryCompile(owner, method, InterpreterOpcodeMap.standard());
+    }
+
+    public static CompiledMethod tryCompile(ClassNode owner, MethodNode method,
+                                            InterpreterOpcodeMap opcodeMap) {
+        Objects.requireNonNull(opcodeMap, "opcodeMap");
         if ((owner.access & Opcodes.ACC_INTERFACE) != 0 ||
                 (method.access & Opcodes.ACC_STATIC) == 0 ||
                 (method.access & Opcodes.ACC_SYNCHRONIZED) != 0 ||
@@ -86,7 +68,7 @@ public final class InterpreterMethodEmitter {
 
         ByteArrayOutputStream code = new ByteArrayOutputStream(codeLength);
         for (AbstractInsnNode instruction : method.instructions) {
-            if (!emit(instruction, labelOffsets, code, codeLength)) {
+            if (!emit(instruction, labelOffsets, code, codeLength, opcodeMap)) {
                 return null;
             }
         }
@@ -147,7 +129,7 @@ public final class InterpreterMethodEmitter {
             return variable >= 0 && variable <= 0xffff ? 12 : -1;
         }
         if (instruction instanceof JumpInsnNode) {
-            return branchOpcode(opcode) >= 0 ? 5 : -1;
+            return branchOperation(opcode) >= 0 ? 5 : -1;
         }
         if (instruction instanceof MethodInsnNode) {
             return isIntegerRotateLeft((MethodInsnNode) instruction) ? 1 : -1;
@@ -156,7 +138,8 @@ public final class InterpreterMethodEmitter {
     }
 
     private static boolean emit(AbstractInsnNode instruction, Map<LabelNode, Integer> labelOffsets,
-                                ByteArrayOutputStream code, int codeLength) {
+                                ByteArrayOutputStream code, int codeLength,
+                                InterpreterOpcodeMap opcodeMap) {
         int opcode = instruction.getOpcode();
         if (opcode < 0 || opcode == Opcodes.NOP) {
             return true;
@@ -170,54 +153,55 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ICONST_3:
                 case Opcodes.ICONST_4:
                 case Opcodes.ICONST_5:
-                    emitIntConstant(code, opcode - Opcodes.ICONST_0);
+                    emitIntConstant(code, opcode - Opcodes.ICONST_0, opcodeMap);
                     return true;
                 case Opcodes.IADD:
-                    code.write(IADD);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.ADD));
                     return true;
                 case Opcodes.ISUB:
-                    code.write(ISUB);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.SUBTRACT));
                     return true;
                 case Opcodes.IMUL:
-                    code.write(IMUL);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.MULTIPLY));
                     return true;
                 case Opcodes.IXOR:
-                    code.write(IXOR);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.XOR));
                     return true;
                 case Opcodes.ISHL:
-                    code.write(ISHL);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.SHIFT_LEFT));
                     return true;
                 case Opcodes.IUSHR:
-                    code.write(IUSHR);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.SHIFT_RIGHT_UNSIGNED));
                     return true;
                 case Opcodes.IRETURN:
-                    code.write(IRETURN);
+                    code.write(opcodeMap.value(InterpreterOpcodeMap.RETURN));
                     return true;
                 default:
                     return false;
             }
         }
         if (instruction instanceof IntInsnNode) {
-            emitIntConstant(code, ((IntInsnNode) instruction).operand);
+            emitIntConstant(code, ((IntInsnNode) instruction).operand, opcodeMap);
             return true;
         }
         if (instruction instanceof LdcInsnNode) {
-            emitIntConstant(code, (Integer) ((LdcInsnNode) instruction).cst);
+            emitIntConstant(code, (Integer) ((LdcInsnNode) instruction).cst, opcodeMap);
             return true;
         }
         if (instruction instanceof VarInsnNode) {
             VarInsnNode variable = (VarInsnNode) instruction;
-            code.write(opcode == Opcodes.ILOAD ? ILOAD : ISTORE);
+            code.write(opcodeMap.value(opcode == Opcodes.ILOAD
+                    ? InterpreterOpcodeMap.LOAD : InterpreterOpcodeMap.STORE));
             writeU16(code, variable.var);
             return true;
         }
         if (instruction instanceof IincInsnNode) {
             IincInsnNode increment = (IincInsnNode) instruction;
-            code.write(ILOAD);
+            code.write(opcodeMap.value(InterpreterOpcodeMap.LOAD));
             writeU16(code, increment.var);
-            emitIntConstant(code, increment.incr);
-            code.write(IADD);
-            code.write(ISTORE);
+            emitIntConstant(code, increment.incr, opcodeMap);
+            code.write(opcodeMap.value(InterpreterOpcodeMap.ADD));
+            code.write(opcodeMap.value(InterpreterOpcodeMap.STORE));
             writeU16(code, increment.var);
             return true;
         }
@@ -227,7 +211,7 @@ public final class InterpreterMethodEmitter {
             if (target == null || target < 0 || target >= codeLength) {
                 return false;
             }
-            code.write(branchOpcode(opcode));
+            code.write(opcodeMap.value(branchOperation(opcode)));
             writeI32(code, target);
             return true;
         }
@@ -235,45 +219,46 @@ public final class InterpreterMethodEmitter {
             if (!isIntegerRotateLeft((MethodInsnNode) instruction)) {
                 return false;
             }
-            code.write(IROTL);
+            code.write(opcodeMap.value(InterpreterOpcodeMap.ROTATE_LEFT));
             return true;
         }
         return false;
     }
 
-    private static void emitIntConstant(ByteArrayOutputStream code, int value) {
-        code.write(IPUSH);
+    private static void emitIntConstant(ByteArrayOutputStream code, int value,
+                                        InterpreterOpcodeMap opcodeMap) {
+        code.write(opcodeMap.value(InterpreterOpcodeMap.PUSH));
         writeI32(code, value);
     }
 
-    private static int branchOpcode(int asmOpcode) {
+    private static int branchOperation(int asmOpcode) {
         switch (asmOpcode) {
             case Opcodes.IFEQ:
-                return IFEQ;
+                return InterpreterOpcodeMap.BRANCH_EQ_ZERO;
             case Opcodes.IFNE:
-                return IFNE;
+                return InterpreterOpcodeMap.BRANCH_NE_ZERO;
             case Opcodes.IFLT:
-                return IFLT;
+                return InterpreterOpcodeMap.BRANCH_LT_ZERO;
             case Opcodes.IFGE:
-                return IFGE;
+                return InterpreterOpcodeMap.BRANCH_GE_ZERO;
             case Opcodes.IFGT:
-                return IFGT;
+                return InterpreterOpcodeMap.BRANCH_GT_ZERO;
             case Opcodes.IFLE:
-                return IFLE;
+                return InterpreterOpcodeMap.BRANCH_LE_ZERO;
             case Opcodes.IF_ICMPEQ:
-                return IF_ICMPEQ;
+                return InterpreterOpcodeMap.BRANCH_EQ;
             case Opcodes.IF_ICMPNE:
-                return IF_ICMPNE;
+                return InterpreterOpcodeMap.BRANCH_NE;
             case Opcodes.IF_ICMPLT:
-                return IF_ICMPLT;
+                return InterpreterOpcodeMap.BRANCH_LT;
             case Opcodes.IF_ICMPGE:
-                return IF_ICMPGE;
+                return InterpreterOpcodeMap.BRANCH_GE;
             case Opcodes.IF_ICMPGT:
-                return IF_ICMPGT;
+                return InterpreterOpcodeMap.BRANCH_GT;
             case Opcodes.IF_ICMPLE:
-                return IF_ICMPLE;
+                return InterpreterOpcodeMap.BRANCH_LE;
             case Opcodes.GOTO:
-                return GOTO;
+                return InterpreterOpcodeMap.JUMP;
             default:
                 return -1;
         }

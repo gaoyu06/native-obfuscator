@@ -91,7 +91,11 @@ public class InterpreterBackendIntegrationTest {
         String runtimeSource = read(interpreterOutput.resolve("cpp/native_jvm_interp.cpp"));
         assertFalse(runtimeHeader.contains("enum class opcode"));
         assertFalse(runtimeHeader.contains("opcode_decode_table"));
-        assertTrue(runtimeSource.contains("opcode_decode_table"));
+        assertFalse(runtimeSource.contains("opcode_decode_table"));
+        assertFalse(runtimeSource.contains("opcode::"));
+        assertFalse(runtimeSource.contains("IADD"));
+        assertFalse(runtimeSource.contains("iadd"));
+        assertTrue(runtimeSource.contains("case 0x"));
     }
 
     private static void writeFixtureJar(Path destination) throws IOException {

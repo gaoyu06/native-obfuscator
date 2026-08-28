@@ -3,6 +3,7 @@ package by.radioegor146;
 import by.radioegor146.bytecode.PreprocessorRunner;
 import by.radioegor146.interpreter.InterpreterMethodEmitter;
 import by.radioegor146.interpreter.InterpreterMethodProcessor;
+import by.radioegor146.interpreter.InterpreterOpcodeMap;
 import by.radioegor146.source.CMakeFilesBuilder;
 import by.radioegor146.source.ClassSourceBuilder;
 import by.radioegor146.source.MainSourceBuilder;
@@ -44,6 +45,7 @@ public class NativeObfuscator {
     private final StringPool stringPool;
     private final MethodProcessor methodProcessor;
     private final InterpreterMethodProcessor interpreterMethodProcessor;
+    private final InterpreterOpcodeMap interpreterOpcodeMap;
 
     private final NodeCache<String> cachedStrings;
     private final NodeCache<String> cachedClasses;
@@ -87,6 +89,14 @@ public class NativeObfuscator {
     private String nativeDir;
 
     public NativeObfuscator() {
+        this(InterpreterOpcodeMap.random());
+    }
+
+    public NativeObfuscator(long interpreterOpcodeSeed) {
+        this(InterpreterOpcodeMap.fromSeed(interpreterOpcodeSeed));
+    }
+
+    private NativeObfuscator(InterpreterOpcodeMap interpreterOpcodeMap) {
         stringPool = new StringPool();
         snippets = new Snippets(stringPool);
         cachedStrings = new NodeCache<>("(cstrings[%d])");
@@ -95,6 +105,7 @@ public class NativeObfuscator {
         cachedFields = new NodeCache<>("(cfields[%d])");
         methodProcessor = new MethodProcessor(this);
         interpreterMethodProcessor = new InterpreterMethodProcessor();
+        this.interpreterOpcodeMap = interpreterOpcodeMap;
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -135,8 +146,10 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
         if (backend == CompilerBackend.INTERPRETER) {
-            Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
+            Files.write(cppDir.resolve("native_jvm_interp.cpp"),
+                    interpreterOpcodeMap.renderRuntimeSource().getBytes(StandardCharsets.UTF_8));
             Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
+            logger.info("Interpreter opcode seed: {}", interpreterOpcodeMap.getSeed());
         }
 
         String projectName = "native_library";
@@ -287,7 +300,8 @@ public class NativeObfuscator {
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
                             InterpreterMethodEmitter.CompiledMethod interpreted =
                                     backend == CompilerBackend.INTERPRETER
-                                            ? InterpreterMethodEmitter.tryCompile(classNode, method)
+                                            ? InterpreterMethodEmitter.tryCompile(
+                                                    classNode, method, interpreterOpcodeMap)
                                             : null;
                             if (interpreted != null) {
                                 interpreterMethodProcessor.processMethod(context, interpreted);

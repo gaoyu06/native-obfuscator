@@ -4,75 +4,6 @@
 
 namespace native_jvm::interp {
     namespace {
-        enum class opcode : std::uint8_t {
-            ipush,
-            iload,
-            istore,
-            iadd,
-            isub,
-            ifeq,
-            ifne,
-            iflt,
-            ifge,
-            ifgt,
-            ifle,
-            if_icmpeq,
-            if_icmpne,
-            if_icmplt,
-            if_icmpge,
-            if_icmpgt,
-            if_icmple,
-            goto_,
-            ireturn,
-            imul,
-            ixor,
-            ishl,
-            iushr,
-            irotl
-        };
-
-        struct opcode_decode_entry {
-            std::uint8_t encoded;
-            opcode decoded;
-        };
-
-        constexpr opcode_decode_entry opcode_decode_table[] = {
-                {0xa7u, opcode::ipush},
-                {0x31u, opcode::iload},
-                {0xd4u, opcode::istore},
-                {0x6bu, opcode::iadd},
-                {0xe2u, opcode::isub},
-                {0x19u, opcode::ifeq},
-                {0xc8u, opcode::ifne},
-                {0x45u, opcode::iflt},
-                {0x9au, opcode::ifge},
-                {0xf1u, opcode::ifgt},
-                {0x2du, opcode::ifle},
-                {0x74u, opcode::if_icmpeq},
-                {0xb6u, opcode::if_icmpne},
-                {0x0fu, opcode::if_icmplt},
-                {0x83u, opcode::if_icmpge},
-                {0xdcu, opcode::if_icmpgt},
-                {0x52u, opcode::if_icmple},
-                {0xaeu, opcode::goto_},
-                {0x67u, opcode::ireturn},
-                {0x3cu, opcode::imul},
-                {0xf8u, opcode::ixor},
-                {0x21u, opcode::ishl},
-                {0x95u, opcode::iushr},
-                {0xcau, opcode::irotl}
-        };
-
-        bool decode_opcode(std::uint8_t encoded, opcode &decoded) noexcept {
-            for (const opcode_decode_entry &entry : opcode_decode_table) {
-                if (entry.encoded == encoded) {
-                    decoded = entry.decoded;
-                    return true;
-                }
-            }
-            return false;
-        }
-
         bool read_u16(const method_desc &method, std::uint32_t &pc,
                       std::uint16_t &value) noexcept {
             if (pc > method.code_len || method.code_len - pc < 2) {
@@ -131,12 +62,9 @@ namespace native_jvm::interp {
         std::uint16_t sp = 0;
 
         while (pc < method.code_len) {
-            opcode current;
-            if (!decode_opcode(method.code[pc++], current)) {
-                return false;
-            }
+            std::uint8_t current = method.code[pc++];
             switch (current) {
-                case opcode::ipush: {
+                case $op0: {
                     std::int32_t value;
                     if (!read_i32(method, pc, value) || sp >= method.max_stack) {
                         return false;
@@ -144,7 +72,7 @@ namespace native_jvm::interp {
                     current_frame.stack[sp++] = value;
                     break;
                 }
-                case opcode::iload: {
+                case $op1: {
                     std::uint16_t local;
                     if (!read_u16(method, pc, local) || local >= method.max_locals ||
                             sp >= method.max_stack) {
@@ -153,7 +81,7 @@ namespace native_jvm::interp {
                     current_frame.stack[sp++] = current_frame.locals[local];
                     break;
                 }
-                case opcode::istore: {
+                case $op2: {
                     std::uint16_t local;
                     if (!read_u16(method, pc, local) || local >= method.max_locals ||
                             sp == 0) {
@@ -162,13 +90,13 @@ namespace native_jvm::interp {
                     current_frame.locals[local] = current_frame.stack[--sp];
                     break;
                 }
-                case opcode::iadd:
-                case opcode::isub:
-                case opcode::imul:
-                case opcode::ixor:
-                case opcode::ishl:
-                case opcode::iushr:
-                case opcode::irotl: {
+                case $op3:
+                case $op4:
+                case $op19:
+                case $op20:
+                case $op21:
+                case $op22:
+                case $op23: {
                     if (sp < 2) {
                         return false;
                     }
@@ -178,25 +106,25 @@ namespace native_jvm::interp {
                             static_cast<std::uint32_t>(current_frame.stack[sp - 1]);
                     std::uint32_t value;
                     switch (current) {
-                        case opcode::iadd:
+                        case $op3:
                             value = left + right;
                             break;
-                        case opcode::isub:
+                        case $op4:
                             value = left - right;
                             break;
-                        case opcode::imul:
+                        case $op19:
                             value = left * right;
                             break;
-                        case opcode::ixor:
+                        case $op20:
                             value = left ^ right;
                             break;
-                        case opcode::ishl:
+                        case $op21:
                             value = left << (right & 31u);
                             break;
-                        case opcode::iushr:
+                        case $op22:
                             value = left >> (right & 31u);
                             break;
-                        case opcode::irotl: {
+                        case $op23: {
                             std::uint32_t distance = right & 31u;
                             value = (left << distance) |
                                     (left >> ((32u - distance) & 31u));
@@ -209,35 +137,35 @@ namespace native_jvm::interp {
                     --sp;
                     break;
                 }
-                case opcode::ifeq:
-                case opcode::ifne:
-                case opcode::iflt:
-                case opcode::ifge:
-                case opcode::ifgt:
-                case opcode::ifle: {
+                case $op5:
+                case $op6:
+                case $op7:
+                case $op8:
+                case $op9:
+                case $op10: {
                     std::uint32_t target;
                     if (!read_u32(method, pc, target) ||
                             !valid_target(method, target) || sp == 0) {
                         return false;
                     }
                     std::int32_t value = current_frame.stack[--sp];
-                    bool taken = (current == opcode::ifeq && value == 0) ||
-                            (current == opcode::ifne && value != 0) ||
-                            (current == opcode::iflt && value < 0) ||
-                            (current == opcode::ifge && value >= 0) ||
-                            (current == opcode::ifgt && value > 0) ||
-                            (current == opcode::ifle && value <= 0);
+                    bool taken = (current == $op5 && value == 0) ||
+                            (current == $op6 && value != 0) ||
+                            (current == $op7 && value < 0) ||
+                            (current == $op8 && value >= 0) ||
+                            (current == $op9 && value > 0) ||
+                            (current == $op10 && value <= 0);
                     if (taken) {
                         pc = target;
                     }
                     break;
                 }
-                case opcode::if_icmpeq:
-                case opcode::if_icmpne:
-                case opcode::if_icmplt:
-                case opcode::if_icmpge:
-                case opcode::if_icmpgt:
-                case opcode::if_icmple: {
+                case $op11:
+                case $op12:
+                case $op13:
+                case $op14:
+                case $op15:
+                case $op16: {
                     std::uint32_t target;
                     if (!read_u32(method, pc, target) ||
                             !valid_target(method, target) || sp < 2) {
@@ -245,18 +173,18 @@ namespace native_jvm::interp {
                     }
                     std::int32_t right = current_frame.stack[--sp];
                     std::int32_t left = current_frame.stack[--sp];
-                    bool taken = (current == opcode::if_icmpeq && left == right) ||
-                            (current == opcode::if_icmpne && left != right) ||
-                            (current == opcode::if_icmplt && left < right) ||
-                            (current == opcode::if_icmpge && left >= right) ||
-                            (current == opcode::if_icmpgt && left > right) ||
-                            (current == opcode::if_icmple && left <= right);
+                    bool taken = (current == $op11 && left == right) ||
+                            (current == $op12 && left != right) ||
+                            (current == $op13 && left < right) ||
+                            (current == $op14 && left >= right) ||
+                            (current == $op15 && left > right) ||
+                            (current == $op16 && left <= right);
                     if (taken) {
                         pc = target;
                     }
                     break;
                 }
-                case opcode::goto_: {
+                case $op17: {
                     std::uint32_t target;
                     if (!read_u32(method, pc, target) || !valid_target(method, target)) {
                         return false;
@@ -264,7 +192,7 @@ namespace native_jvm::interp {
                     pc = target;
                     break;
                 }
-                case opcode::ireturn:
+                case $op18:
                     if (sp == 0) {
                         return false;
                     }

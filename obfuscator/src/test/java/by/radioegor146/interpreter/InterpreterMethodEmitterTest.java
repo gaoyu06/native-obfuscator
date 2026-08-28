@@ -13,10 +13,16 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class InterpreterMethodEmitterTest {
 
@@ -64,6 +70,34 @@ public class InterpreterMethodEmitterTest {
                 0x31, 1, 0,
                 0xe2,
                 0x67), compiled.getCode());
+    }
+
+    @Test
+    public void seededAssignmentsAreStableDistinctAndSharedWithDispatcher() {
+        InterpreterOpcodeMap first = InterpreterOpcodeMap.fromSeed(123456789L);
+        InterpreterOpcodeMap repeated = InterpreterOpcodeMap.fromSeed(123456789L);
+        InterpreterOpcodeMap different = InterpreterOpcodeMap.fromSeed(987654321L);
+        MethodNode method = addMethod();
+
+        byte[] firstCode = InterpreterMethodEmitter.tryCompile(owner(), method, first).getCode();
+        byte[] repeatedCode = InterpreterMethodEmitter.tryCompile(owner(), addMethod(), repeated)
+                .getCode();
+        byte[] differentCode = InterpreterMethodEmitter.tryCompile(owner(), addMethod(), different)
+                .getCode();
+
+        assertArrayEquals(firstCode, repeatedCode);
+        assertFalse(Arrays.equals(firstCode, differentCode));
+
+        Set<Integer> assigned = new HashSet<>();
+        for (int operation = 0; operation < 24; operation++) {
+            assertTrue(assigned.add(first.value(operation)));
+        }
+        String runtime = first.renderRuntimeSource();
+        assertTrue(runtime.contains(String.format("case 0x%02x:", first.value(
+                InterpreterOpcodeMap.ADD))));
+        assertFalse(runtime.contains("$op"));
+        assertFalse(runtime.contains("opcode_decode_table"));
+        assertFalse(runtime.contains("opcode::"));
     }
 
     @Test
@@ -192,6 +226,18 @@ public class InterpreterMethodEmitterTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxStack = 4;
         method.maxLocals = 4;
+        return method;
+    }
+
+    private static MethodNode addMethod() {
+        MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "add", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 2;
         return method;
     }
 

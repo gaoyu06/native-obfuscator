@@ -1,23 +1,17 @@
 package by.radioegor146.zig;
 
+import by.radioegor146.NativeLibraryArtifacts;
 import by.radioegor146.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -120,30 +114,14 @@ public class ZigBuilder {
 
     private void placeArtifact(BuildRequest req, ZigTarget target, Path libFile) throws IOException {
         String fileName = target.loaderFileName();
+        NativeLibraryArtifacts.place(libFile, fileName, req.externalLibsDir,
+                req.outputJar, req.nativeDir);
         if (req.externalLibsDir != null) {
-            Files.createDirectories(req.externalLibsDir);
             Path dest = req.externalLibsDir.resolve(fileName);
-            Files.copy(libFile, dest, StandardCopyOption.REPLACE_EXISTING);
             logger.info("  -> {}", dest);
-        } else {
-            if (req.outputJar == null || !Files.isRegularFile(req.outputJar)) {
-                throw new IOException("Output jar not found for injection: " + req.outputJar);
-            }
-            injectIntoJar(req.outputJar, req.nativeDir + "/" + fileName, libFile);
-            logger.info("  -> {}!{}/{}", req.outputJar.getFileName(), req.nativeDir, fileName);
         }
-    }
-
-    private static void injectIntoJar(Path jar, String entryPath, Path source) throws IOException {
-        URI uri = URI.create("jar:" + jar.toUri());
-        Map<String, String> env = new HashMap<>();
-        env.put("create", "false");
-        try (FileSystem fs = FileSystems.newFileSystem(uri, env)) {
-            Path inside = fs.getPath(entryPath);
-            if (inside.getParent() != null) {
-                Files.createDirectories(inside.getParent());
-            }
-            Files.copy(source, inside, StandardCopyOption.REPLACE_EXISTING);
+        if (req.outputJar != null) {
+            logger.info("  -> {}!{}/{}", req.outputJar.getFileName(), req.nativeDir, fileName);
         }
     }
 

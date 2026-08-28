@@ -32,7 +32,8 @@ public class InterpreterRuntimeTest {
         Assumptions.assumeTrue(hasGpp(), "g++ is not available");
         Path directory = Files.createTempDirectory("native-jvm-interpreter-runtime-");
         copyResource("sources/native_jvm_interp.hpp", directory.resolve("native_jvm_interp.hpp"));
-        copyResource("sources/native_jvm_interp.cpp", directory.resolve("native_jvm_interp.cpp"));
+        writeRuntimeSource(directory.resolve("native_jvm_interp.cpp"),
+                InterpreterOpcodeMap.standard());
         Files.write(directory.resolve("runtime_test.cpp"), harness().getBytes(StandardCharsets.UTF_8));
 
         ProcessResult compile = run(directory, Arrays.asList(
@@ -53,7 +54,8 @@ public class InterpreterRuntimeTest {
 
         Path directory = Files.createTempDirectory("native-jvm-interpreter-mix-");
         copyResource("sources/native_jvm_interp.hpp", directory.resolve("native_jvm_interp.hpp"));
-        copyResource("sources/native_jvm_interp.cpp", directory.resolve("native_jvm_interp.cpp"));
+        writeRuntimeSource(directory.resolve("native_jvm_interp.cpp"),
+                InterpreterOpcodeMap.standard());
         Files.write(directory.resolve("mix_test.cpp"),
                 mixHarness(compiled).getBytes(StandardCharsets.UTF_8));
 
@@ -370,6 +372,11 @@ public class InterpreterRuntimeTest {
             }
             Files.copy(input, destination);
         }
+    }
+
+    private static void writeRuntimeSource(Path destination, InterpreterOpcodeMap opcodeMap)
+            throws IOException {
+        Files.write(destination, opcodeMap.renderRuntimeSource().getBytes(StandardCharsets.UTF_8));
     }
 
     private static boolean hasGpp() {

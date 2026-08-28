@@ -5,7 +5,7 @@
 
 namespace native_jvm::interp {
 
-    constexpr std::uint16_t ISA_VERSION = 2;
+    constexpr std::uint16_t ISA_VERSION = 3;
 
     struct method_desc {
         std::uint16_t isa_version;
