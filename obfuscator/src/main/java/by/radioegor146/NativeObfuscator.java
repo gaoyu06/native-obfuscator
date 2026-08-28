@@ -13,6 +13,7 @@ import org.objectweb.asm.commons.Remapper;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +38,7 @@ import java.util.zip.ZipOutputStream;
 public class NativeObfuscator {
 
     private static final Logger logger = LoggerFactory.getLogger(NativeObfuscator.class);
+    private static final String SDK_CLASS_NAME = "by/radioegor146/sdk/NativePrimitives";
 
     private final Snippets snippets;
     private final StringPool stringPool;
@@ -121,6 +123,18 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
 
+        Path sdkDir = cppDir.resolve("sdk");
+        Path sdkThirdPartyDir = sdkDir.resolve("third_party");
+        Path sha256Dir = sdkThirdPartyDir.resolve("sha-2");
+        Files.createDirectories(sha256Dir);
+        Util.copyResource("sources/sdk/c_api.h", sdkDir);
+        Util.copyResource("sources/sdk/native_primitives.hpp", sdkDir);
+        Util.copyResource("sources/sdk/native_primitives.cpp", sdkDir);
+        Util.copyResource("sources/sdk/third_party/README.md", sdkThirdPartyDir);
+        Util.copyResource("sources/sdk/third_party/sha-2/sha-256.h", sha256Dir);
+        Util.copyResource("sources/sdk/third_party/sha-2/sha-256.cpp", sha256Dir);
+        Util.copyResource("sources/sdk/third_party/sha-2/LICENSE.md", sha256Dir);
+
         String projectName = "native_library";
 
         CMakeFilesBuilder cMakeBuilder = new CMakeFilesBuilder(projectName);
@@ -130,6 +144,11 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("native_jvm_output.cpp");
         cMakeBuilder.addMainFile("string_pool.hpp");
         cMakeBuilder.addMainFile("string_pool.cpp");
+        cMakeBuilder.addMainFile("sdk/c_api.h");
+        cMakeBuilder.addMainFile("sdk/native_primitives.hpp");
+        cMakeBuilder.addMainFile("sdk/native_primitives.cpp");
+        cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.h");
+        cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
 
         if (platform == Platform.HOTSPOT) {
             cMakeBuilder.addFlag("USE_HOTSPOT");
@@ -168,6 +187,13 @@ public class NativeObfuscator {
                 if (entry.getName().equals(JarFile.MANIFEST_NAME)) return;
 
                 try {
+                    if (entry.getName().equals(SDK_CLASS_NAME + ".class")) {
+                        if (debug != null) {
+                            Util.writeEntry(jar, debug, entry);
+                        }
+                        return;
+                    }
+
                     if (!entry.getName().endsWith(".class")) {
                         Util.writeEntry(jar, out, entry);
                         if (debug != null) {
@@ -396,6 +422,7 @@ public class NativeObfuscator {
             ClassWriter classWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
             resultLoaderClass.accept(classWriter);
             Util.writeEntry(out, loaderClassName + ".class", classWriter.toByteArray());
+            Util.writeEntry(out, SDK_CLASS_NAME + ".class", buildSdkClass(loaderClassName));
 
             logger.info("Jar file ready!");
             Manifest mf = jar.getManifest();
@@ -415,6 +442,47 @@ public class NativeObfuscator {
         Files.write(cppDir.resolve("CMakeLists.txt"), cMakeBuilder.build().getBytes(StandardCharsets.UTF_8));
 
         return nativeDir;
+    }
+
+    private byte[] buildSdkClass(String loaderClassName) throws IOException {
+        String resourceName = SDK_CLASS_NAME + ".class";
+        ClassNode sdkClass = new ClassNode(Opcodes.ASM9);
+        try (InputStream input = NativeObfuscator.class.getClassLoader().getResourceAsStream(resourceName)) {
+            if (input == null) {
+                throw new IOException("SDK class resource is missing: " + resourceName);
+            }
+            new ClassReader(input).accept(sdkClass, 0);
+        }
+
+        MethodNode classInitializer = sdkClass.methods.stream()
+                .filter(method -> method.name.equals("<clinit>") && method.desc.equals("()V"))
+                .findFirst()
+                .orElse(null);
+        MethodInsnNode loadLibrary = new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                loaderClassName,
+                "load",
+                "()V",
+                false);
+        if (classInitializer == null) {
+            classInitializer = new MethodNode(
+                    Opcodes.ASM9,
+                    Opcodes.ACC_STATIC,
+                    "<clinit>",
+                    "()V",
+                    null,
+                    new String[0]);
+            classInitializer.instructions.add(loadLibrary);
+            classInitializer.instructions.add(new org.objectweb.asm.tree.InsnNode(Opcodes.RETURN));
+            sdkClass.methods.add(classInitializer);
+        } else {
+            classInitializer.instructions.insert(loadLibrary);
+        }
+
+        sdkClass.version = Opcodes.V1_8;
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        sdkClass.accept(writer);
+        return writer.toByteArray();
     }
 
     public Snippets getSnippets() {

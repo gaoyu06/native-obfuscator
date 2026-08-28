@@ -8,6 +8,9 @@ import java.io.InputStream;
 public class LoaderUnpack {
     public static native void registerNativesForClass(int index, Class<?> clazz);
 
+    public static void load() {
+    }
+
     static {
         String osName = System.getProperty("os.name").toLowerCase();
         String platform = System.getProperty("os.arch").toLowerCase();
