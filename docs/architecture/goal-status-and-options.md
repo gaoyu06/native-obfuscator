@@ -3,7 +3,7 @@
 ## Executive status
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
-requests returned by `gh pr list --state all --limit 30` on 2026-08-28. All 16
+requests returned by `gh pr list --state all --limit 30` on 2026-08-28. All 25
 listed PRs are open drafts. None of their code or documentation is therefore a
 capability of `master`, and no PR had a reported status check or accepted GitHub
 review at the time of this snapshot. Results below are evidence recorded on the
@@ -21,8 +21,27 @@ Sol review in [#3](https://github.com/gaoyu06/native-obfuscator/pull/3)
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | The entire #6 → #9 → #14 stack is still draft. [#4](https://github.com/gaoyu06/native-obfuscator/pull/4) remains the audit baseline, not a pass result. | JDK 22–25 feature/class-file fixtures, JDK 25 compiler output, `ConstantDynamic`, modules, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence. The #14 machine had `javac 21.0.10`, so it could not create JDK 25 fixtures. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. | Both PRs are draft; #11 still needs the #6 launcher, concurrency/cache review, full E2E, and a same-machine rerun through #10. | JMH/forked baselines, confidence intervals, native-only isolation, IR/interpreter/SDK variants, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | #12 → #15 is still a draft stack. The product surface, unconditional embedding, provider/update policy, target matrix, and Zig path remain unresolved. | Broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and a release security sign-off. |
-| Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. | `origin/cursor/interpreter-backend-slice-e758` contains an implementation/test slice (latest observed commit `ef02f68`), but the PR list contains no PR for that branch. There is consequently no reviewable PR result, and its conformance to the shared-IR sequencing in #5/#7 is unverified. | A reviewed PR based on stable shared IR, broad opcode/runtime semantics, resource limits, direct-C++/interpreter/Java differential tests, target/toolchain gates, and a human default/selection policy. |
-| Automated-reader evaluation | [#3's general protocol](https://github.com/gaoyu06/native-obfuscator/blob/cursor/docs-production-roadmap-6d81/docs/architecture/eval-automated-analysis.md) and [#7's interpreter protocol](https://github.com/gaoyu06/native-obfuscator/blob/cursor/docs-interpreter-backend-6d81/docs/architecture/interpreter-eval-protocol.md) define methodology and honest-reporting rules only. | Dataset, privacy/provider, prompt, metric, and publication choices await human approval. | No harness, frozen corpus, analyzer runs, raw records, calibration, or measured result exists. In particular, there is no measured analysis-resistance result and no such claim may be inferred. |
+| Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; and [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs. | The implementation remains an open draft stack, default off, and integer-only. The three reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) all recovered both compared trees fully. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
+| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated forms. Both compared trees scored full in every run, and H0 was not rejected. | All runs are `N=1` and tool-assisted. #21 was contaminated and `mix` fell back to direct C++; #23 had status-text contamination; #25 had limited procedural contamination and sequential carryover. | Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions would be required for a broader empirical claim. |
+
+### Reader-eval evidence
+
+Each run compared direct-C++ and interpreter-backend trees generated from the
+same fixture revision, deferred the source/oracle comparison until after both
+recoveries were written, and confirmed matching executable output. The
+full/partial/fail scores below are the recorded categorical outcomes, not a new
+derived metric.
+
+| Run | What was controlled | What failed or limited the run | Measured outcome |
+|---|---|---|---|
+| [#21: first reader](https://github.com/gaoyu06/native-obfuscator/pull/21) | Same Java 8 class and compiler commit; interpreter tree read before direct C++; Java source reopened only after both recovery texts; Java, direct, and interpreter outputs matched. | `mix` fell back to method-specific direct C++ because the slice could not lower it. The reader had prior exposure to protocol text, fixture names, and opcode names, so the run was contaminated rather than unaided. | Interpreter and direct trees were both **full** for `add`, `sumTo`, and `mix`; H0 was not rejected. The `mix` result did not test opcode recovery. |
+| [#23: blinded run after `mix` lowering](https://github.com/gaoyu06/native-obfuscator/pull/23) | Same preserved fixture for both trees; opcode recovery committed before direct recovery; fixture construction opened only afterward; `mix` was confirmed on the opcode path; both builds produced identical output. | A status-document query exposed method names and a fallback notice before recovery. No constants, instruction sequence, control flow, or source oracle was exposed, but the status-text contamination prevents an unaided claim. | Opcode and direct trees each scored **4 full / 0 partial / 0 fail**; H0 was not rejected. |
+| [#25: compact-blob blinded run](https://github.com/gaoyu06/native-obfuscator/pull/25) | Same preserved fixture and source-last ordering; opcode and direct recoveries committed separately before opening fixture construction; original, direct, and opcode outputs matched exactly. | Class/build metadata and a fallback test name were exposed; the same reader handled the opcode condition before the direct condition. `divide` remained direct fallback. | Both trees scored **4 full / 0 partial / 0 fail**. The blobs plus `native_jvm_interp.cpp` were sufficient to recover all three lowered methods exactly; H0 was not rejected. |
+
+These runs do not establish a population effect or equal reading effort.
+They do establish the outcome for the tested fixture: **current in-tree
+backends do not meet an unaided GPT-5.6 Sol bar on this kernel when the
+generated tree (including the dispatcher) is available.**
 
 ## Decisions
 
@@ -40,9 +59,27 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 | Build a project-owned typed CFG over ASM and emit structured C++ before a second backend. | Independent Sol #3 and Fable #5 designs converge on this migration shape. It addresses the audited string-template limitations while keeping backend semantics shared. Whether and when IR becomes the public default remains a human decision. |
 | Validate an entire IR method before mutating output, and keep legacy as the migration default. | #13/#16 verify clean per-method fallback and compileability for their narrow slices. This contains experimental risk; it does not establish parity or authorize an eventual default flip. |
 | Require checksums, raw samples, environment metadata, and scoped wording for performance evidence. | #10 demonstrates both modes actually ran and agreed. #11's mixed result shows why a single local run cannot become a global speed or non-regression claim. |
-| Keep automated-reader dimensions separate and make no claim without an approved, reproducible run. | The cited #3 and #7 evaluation protocols separate buildability, structural recovery, comprehension, traceability, and defect detection. They explicitly state that no evaluation has run. |
+| Keep reader outcomes scoped to the measured fixture and recorded limitations. | The three runs are `N=1`, tool-assisted, and contaminated to differing degrees. Their full/full scores support the kernel-specific conclusion above, but not a population effect or broader claim. |
 
 ### Human decisions still required
+
+#### Reader-eval maintainer options
+
+- **A. Accept that this bar is out of scope for v1.** Ship only the
+  compiler, compatibility, and SDK work that passes its own correctness and
+  release gates.
+- **B. Change the product boundary.** Do not ship the decode table as readable
+  C++ in the same generated tree. This is high difficulty and needs a product
+  and architecture design, not another hexadecimal-blob tweak.
+- **C. Keep iterating encodings.** This is likely wasted effort while the
+  decoder remains in the generated tree and the reader can recover the method
+  semantics from the two together.
+
+**Recommendation:** choose A for v1, or B if the reader bar remains a product
+requirement. Do not choose C unless a human explicitly insists on continuing
+that line of work.
+
+#### Other product decisions
 
 | Decision | Concrete options | Recommendation | Main risk |
 |---|---|---|---|
@@ -53,7 +90,6 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 | Interpreter product policy | Off; explicit per-method/build opt-in; automatic fallback; default backend. Keep format internal or promise public compatibility. | Keep it off by default and explicitly selected with manifest/resource limits; version the format for rejection but keep it internal. | Automatic/default interpretation can conceal compiler gaps, add runtime attack surface, and impose dispatch cost; a public format freezes evolution. |
 | Native target/toolchain tiers | Linux only; x86-64 Linux/Windows/macOS; add arm64; CMake host compilers, Zig, or both. | Start with an evidence-backed x86-64 Linux/Windows/macOS CMake tier; validate arm64 and Zig separately before promotion. | A broad matrix multiplies ABI, loader, sanitizer, signing, and support work; a narrow one excludes customers. |
 | Performance release gates | No threshold; absolute limits; relative-to-HotSpot limits; per-workload regression budgets. | Establish repeatable baselines first, then approve correctness-first, workload-specific budgets; never use one global speedup target. | No gate permits regressions; premature/noisy thresholds can be gamed and optimize the wrong workloads. |
-| Automated-reader evaluation/public wording | Deterministic tools only; local models; hosted models; combinations plus human calibration. Publish component metrics, a composite, or no external result. | Approve dataset licenses/privacy and frozen metrics first; use deterministic baselines plus at least two pinned configurations where policy permits; publish only narrow component findings with uncertainty. | Hosted-code disclosure, model drift, benchmark leakage, and composite scores can turn a quality experiment into an unsupported security claim. |
 
 ## Suggested merge order
 
@@ -88,9 +124,18 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) after resolving
    the same #6 launcher overlap. The Fable accept-with-nits review is not the
    human product/security approval listed above.
-6. Merge no interpreter implementation from the unsubmitted branch. Land #7
-   first, require a normal PR, and review that PR against the stable shared IR
-   and default-off constraints before placing it after the direct-C++ slice.
+6. Land [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) first, then
+   review the interpreter implementation stack in order:
+   [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) →
+   [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) →
+   [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) →
+   [#24](https://github.com/gaoyu06/native-obfuscator/pull/24). Keep it
+   default off and review it against the stable shared IR before placing it
+   after the direct-C++ slice. Preserve the corresponding reader records:
+   [#21](https://github.com/gaoyu06/native-obfuscator/pull/21) for #17,
+   [#23](https://github.com/gaoyu06/native-obfuscator/pull/23) for #22, and
+   [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) for #24; these
+   document measured outcomes and are not implementation prerequisites.
 
 The independent compatibility, benchmark, IR, and SDK lanes may be reviewed in
 parallel, but their order within each arrowed stack must be preserved.
@@ -99,19 +144,17 @@ parallel, but their order within each arrowed stack must be preserved.
 
 - There are no JDK 25 fixtures. The newest fixture branch used `javac 21.0.10`;
   parser support or a configured CI lane is not JDK 25 transpiler evidence.
-- No automated-reader evaluation has run and no analysis-resistance has been
-  measured. The only permissible current statement is the methodology in the
-  cited [general](https://github.com/gaoyu06/native-obfuscator/blob/cursor/docs-production-roadmap-6d81/docs/architecture/eval-automated-analysis.md)
-  and [interpreter](https://github.com/gaoyu06/native-obfuscator/blob/cursor/docs-interpreter-backend-6d81/docs/architecture/interpreter-eval-protocol.md)
-  protocols.
+- Three automated-reader evaluations have run, but each is an `N=1`,
+  tool-assisted case study with recorded contamination. All three produced
+  full/full outcomes and did not reject H0. They support only the
+  kernel-and-artifact conclusion in the reader-eval subsection.
 - IR is opt-in and incomplete; legacy snippet codegen remains the default.
 - #10's one local checksum-correct run shows the current transpiled-JNI path
   much slower than plain HotSpot for all three exact kernels: median ratios are
   about 18× for the integer loop, 23× for string concat/hash, and 199× for
   recursion. This is diagnostic evidence for those workloads, not a portable
   estimate, but it directly contradicts any present speedup claim.
-- All referenced work is still in open draft PRs, and the interpreter slice has
-  no PR. `master` contains none of it.
+- All referenced work is still in open draft PRs. `master` contains none of it.
 
 ## Before any production claim
 
@@ -143,10 +186,11 @@ not the union of claims from draft branches:
    the shared IR, then prove differential parity, deterministic refusal,
    resource limits, format/version rejection, and target/toolchain behavior.
    Otherwise exclude it from the release claim.
-7. Make no automated-reader or related security claim unless the cited protocol
-   is implemented and approved, raw reproducible results support the exact
-   wording, and privacy/methodology reviewers sign off. Such a claim is not a
-   prerequisite if the release makes none.
+7. Do not claim that the reader bar has been met: the three current runs report
+   full/full recovery and recorded contamination. Any broader reader claim
+   needs raw reproducible results whose scope and limitations support its exact
+   wording, plus privacy and methodology approval. Such a claim is not a
+   prerequisite if option A is selected.
 8. Produce reproducible signed/provenanced artifacts, an SBOM and symbol
    allowlist, package/native-access documentation, crash/support and
    incident-response ownership, upgrade/rollback instructions, and final
