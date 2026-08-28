@@ -49,9 +49,11 @@ other opcodes fall back.
   only `UnsupportedIrConstructException`, and only before method mutation.
   Falling back after an internal error could run legacy codegen on partially
   mutated state and hide a compiler defect.
-- Arithmetic emission casts operands through `juint` before add/subtract/multiply
+- Arithmetic emission casts operands through `uint32_t` before add/subtract/multiply
   and casts the result back to `jint`, preserving JVM 32-bit wraparound without
-  C++ signed-overflow undefined behavior.
+  C++ signed-overflow undefined behavior. (`uint32_t` is the same unsigned carrier
+  the legacy `IUSHR`/`LUSHR` snippets use; `juint` is not part of the JNI headers
+  or the frozen runtime ABI, so emitting it would not compile.)
 - The phase-one C++ is direct label/goto CFG output. A relooper and interpreter
   backend remain out of scope.
 

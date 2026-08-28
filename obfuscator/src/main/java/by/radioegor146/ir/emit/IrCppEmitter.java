@@ -73,9 +73,9 @@ public final class IrCppEmitter {
                             + binary.getOperation());
             }
             CppAst.Expression wrapped = new CppAst.Binary(
-                    new CppAst.Cast("juint", expression(binary.getLeft())),
+                    new CppAst.Cast("uint32_t", expression(binary.getLeft())),
                     operator,
-                    new CppAst.Cast("juint", expression(binary.getRight())));
+                    new CppAst.Cast("uint32_t", expression(binary.getRight())));
             return new CppAst.Assignment(variable(binary.getResult()),
                     new CppAst.Cast("jint", wrapped));
         }

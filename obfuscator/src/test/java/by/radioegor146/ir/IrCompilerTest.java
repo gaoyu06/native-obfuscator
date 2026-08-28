@@ -48,7 +48,7 @@ public class IrCompilerTest {
         String cpp = emitter.emitBody(ir);
         assertTrue(cpp.contains("// IR codegen: example/Math.add(II)I"));
         assertTrue(cpp.contains("jint v2;"));
-        assertTrue(cpp.contains("(juint) arg0 + (juint) arg1"));
+        assertTrue(cpp.contains("(uint32_t) arg0 + (uint32_t) arg1"));
         assertTrue(cpp.contains("return v2;"));
     }
 
