@@ -37,6 +37,7 @@ repositories {
 dependencies {
     implementation project(':annotations')
     implementation project(':sdk')
+    benchmarkImplementation project(':sdk')
 
     implementation 'org.ow2.asm:asm:9.8'
     implementation 'org.ow2.asm:asm-tree:9.8'
@@ -78,7 +79,7 @@ def benchmarkJarTask = tasks.register('benchmarkJar', Jar) {
 
 tasks.register('bench', Exec) {
     group = 'verification'
-    description = 'Runs plain-JVM and transpiled-JNI benchmarks (not part of check).'
+    description = 'Compares plain Java, SDK native strings, and transpiled JNI strings.'
     dependsOn shadowJar, benchmarkJar
     workingDir rootProject.projectDir
     commandLine 'python3', rootProject.file('benchmarks/run.py')

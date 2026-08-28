@@ -1,8 +1,7 @@
-# Reproducible JVM versus transpiled-JNI benchmark
+# Reproducible native string fast-path benchmark
 
-This harness measures the current generator against plain Java. It does not
-claim that the transpiler is faster, and it does not benchmark a future IR,
-interpreter, or C++ crypto SDK.
+This harness compares plain Java string operations, the explicit native string
+SDK, and the current per-bytecode JNI transpiler path.
 
 ## Run
 
@@ -41,27 +40,23 @@ At least one warmup and two measurement iterations are enforced.
 Gradle builds one Java 8 benchmark JAR and the transpiler fat JAR. The Python
 driver then:
 
-1. runs the unmodified benchmark JAR on the JVM;
-2. transpiles only `benchmarks/kernels/**` from that same JAR;
+1. runs the unmodified Java string kernel on the JVM;
+2. transpiles only `benchmarks/kernels/JavaStringKernel**` from that same JAR;
 3. configures and compiles the generated C++ shared library with CMake;
-4. runs the transformed JAR with that shared library;
-5. rejects mismatched kernel sets or checksums.
+4. runs the untransformed SDK kernel against `NativeStrings`;
+5. runs the transformed Java kernel through the existing snippet/JNI path;
+6. rejects mismatched kernel sets or checksums.
 
 Every measured sample uses `System.nanoTime()`. An untimed checksum preflight
 and warmup iterations precede the recorded samples. A volatile sink consumes
 each result. The report retains every sample and computes mean and median from
 only those recorded samples.
 
-The kernels are:
-
-- `integer-loop`: 5,000,000 iterations of deterministic integer arithmetic;
-- `string-concat-hash`: 200 calls of 96 concatenations plus `String.hashCode`;
-- `recursion`: 2,000 recursive traversals at depth 32.
-
-The work is batched inside each measured sample. In the string case, calls are
-split so the current JNI generator can release local references between calls.
-The timings therefore represent these exact workloads, including the current
-Java/native call boundaries; they are not normalized algorithm-only costs.
+The `string-length-hash-concat` kernel performs 127 calls of 256 iterations.
+Each iteration concatenates two strings, reads the UTF-16 length, and computes
+the Java-compatible hash. Inputs include ASCII, BMP Unicode, a surrogate pair,
+and an embedded NUL. The timings represent this exact workload, including each
+mode's Java/native boundaries; they are not normalized algorithm-only costs.
 
 ## Failure behavior
 
@@ -81,5 +76,6 @@ intervals. Treat a single run as local diagnostic evidence, not a release
 threshold or a general performance claim. Compare repeated runs on controlled
 hardware before drawing conclusions.
 
-The checked-in local run is in
-[`results-local.md`](results-local.md).
+The string fast-path run is recorded in
+[`string-fastpath-results.md`](string-fastpath-results.md). The older general
+generator baseline remains in [`results-local.md`](results-local.md).

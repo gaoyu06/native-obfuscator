@@ -1,8 +1,7 @@
 package benchmarks;
 
-import benchmarks.kernels.IntegerLoopKernel;
-import benchmarks.kernels.RecursionKernel;
-import benchmarks.kernels.StringConcatHashKernel;
+import benchmarks.kernels.JavaStringKernel;
+import benchmarks.kernels.NativeStringKernel;
 
 import java.util.Arrays;
 
@@ -16,28 +15,26 @@ public final class BenchmarkMain {
         String mode = option(args, "--mode", "unspecified");
         int warmup = positiveInt(option(args, "--warmup", "5"), "warmup");
         int iterations = positiveInt(option(args, "--iterations", "10"), "iterations");
+        boolean useNativeStrings = "sdk-native".equals(mode);
+        if (!useNativeStrings &&
+                !"plain-java".equals(mode) &&
+                !"snippet-transpiled".equals(mode)) {
+            throw new IllegalArgumentException("Unsupported mode: " + mode);
+        }
 
         KernelSpec[] kernels = new KernelSpec[]{
-                new KernelSpec("integer-loop", "5,000,000 loop iterations") {
-                    @Override
-                    long call() {
-                        return IntegerLoopKernel.run(5_000_000);
-                    }
-                },
-                new KernelSpec("string-concat-hash", "200 calls x 96 concatenations") {
+                new KernelSpec(
+                        "string-length-hash-concat",
+                        "127 calls x 256 UTF-16 concat/length/hash operations") {
                     @Override
                     long call() {
                         long result = 0;
-                        for (int i = 0; i < 200; i++) {
-                            result += StringConcatHashKernel.run(96);
+                        for (int i = 0; i < 127; i++) {
+                            result ^= useNativeStrings
+                                    ? NativeStringKernel.run(256)
+                                    : JavaStringKernel.run(256);
                         }
                         return result;
-                    }
-                },
-                new KernelSpec("recursion", "2,000 traversals x depth 32") {
-                    @Override
-                    long call() {
-                        return RecursionKernel.run(2_000, 32);
                     }
                 }
         };

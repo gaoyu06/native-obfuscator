@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the plain-JVM/current-transpiler benchmark pair."""
+"""Build and compare plain Java, SDK native strings, and transpiled JNI."""
 
 import json
 import os
@@ -179,8 +179,12 @@ def main():
             "cmake": version(["cmake", "--version"]),
         },
         "commands": [],
-        "plainJvm": {"status": "NOT_RUN"},
-        "transpiledNative": {
+        "plainJava": {"status": "NOT_RUN"},
+        "sdkNative": {
+            "status": "NOT_RUN",
+            "nativeBuildSkipped": True,
+        },
+        "snippetTranspiled": {
             "status": "NOT_RUN",
             "nativeBuildSkipped": True,
         },
@@ -210,15 +214,15 @@ def main():
             "java",
             "-jar",
             input_jar,
-            "--mode=plain-jvm",
+            "--mode=plain-java",
             "--warmup={}".format(WARMUP),
             "--iterations={}".format(ITERATIONS),
         ]
         plain_completed = execute(
-            report, "plain-jvm", plain_command, timeout=300
+            report, "plain-java", plain_command, timeout=300
         )
-        plain = parse_benchmark("plain-jvm", plain_completed)
-        report["plainJvm"] = {
+        plain = parse_benchmark("plain-java", plain_completed)
+        report["plainJava"] = {
             "status": "PASS",
             "command": printable(plain_command),
             "result": plain,
@@ -256,7 +260,8 @@ def main():
             timeout=180,
             env=build_env,
         )
-        report["transpiledNative"]["nativeBuildSkipped"] = False
+        report["sdkNative"]["nativeBuildSkipped"] = False
+        report["snippetTranspiled"]["nativeBuildSkipped"] = False
         execute(
             report,
             "native-build",
@@ -268,26 +273,52 @@ def main():
         native_library = find_native_library(cmake_build)
         shutil.copy2(native_library, output / native_library.name)
         transpiled_jar = output / input_jar.name
-        native_command = [
+        sdk_command = [
             "java",
             "-Djava.library.path={}".format(output),
             "-jar",
             transpiled_jar,
-            "--mode=transpiled-jni",
+            "--mode=sdk-native",
             "--warmup={}".format(WARMUP),
             "--iterations={}".format(ITERATIONS),
         ]
-        native_completed = execute(
-            report, "transpiled-jni", native_command, cwd=output, timeout=300
+        sdk_completed = execute(
+            report, "sdk-native", sdk_command, cwd=output, timeout=300
         )
-        native = parse_benchmark("transpiled-jni", native_completed)
-        assert_equivalent(plain, native)
-        report["transpiledNative"] = {
+        sdk_native = parse_benchmark("sdk-native", sdk_completed)
+        assert_equivalent(plain, sdk_native)
+        report["sdkNative"] = {
             "status": "PASS",
             "nativeBuildSkipped": False,
-            "command": printable(native_command),
+            "command": printable(sdk_command),
             "library": str(native_library.relative_to(ROOT)),
-            "result": native,
+            "result": sdk_native,
+        }
+
+        snippet_command = [
+            "java",
+            "-Djava.library.path={}".format(output),
+            "-jar",
+            transpiled_jar,
+            "--mode=snippet-transpiled",
+            "--warmup={}".format(WARMUP),
+            "--iterations={}".format(ITERATIONS),
+        ]
+        snippet_completed = execute(
+            report,
+            "snippet-transpiled",
+            snippet_command,
+            cwd=output,
+            timeout=300,
+        )
+        snippet = parse_benchmark("snippet-transpiled", snippet_completed)
+        assert_equivalent(plain, snippet)
+        report["snippetTranspiled"] = {
+            "status": "PASS",
+            "nativeBuildSkipped": False,
+            "command": printable(snippet_command),
+            "library": str(native_library.relative_to(ROOT)),
+            "result": snippet,
         }
         report["status"] = "PASS"
     except (HarnessFailure, KeyError, ValueError) as error:
@@ -296,9 +327,10 @@ def main():
         else:
             stage = "configuration"
         report["failure"] = {"stage": stage, "reason": str(error)}
-        if report["transpiledNative"]["status"] != "PASS":
-            report["transpiledNative"]["status"] = "FAIL"
-            report["transpiledNative"]["failure"] = str(error)
+        for section in ("sdkNative", "snippetTranspiled"):
+            if report[section]["status"] != "PASS":
+                report[section]["status"] = "FAIL"
+                report[section]["failure"] = str(error)
 
     write_report(report)
     return 0 if report["status"] == "PASS" else 1
