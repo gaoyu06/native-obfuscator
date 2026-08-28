@@ -151,6 +151,7 @@ interpreter=$(java \
   -jar "$EVAL_ROOT/interpreter/input.jar")
 test "$reference" = "$direct"
 test "$reference" = "$interpreter"
+printf 'reference == direct == interpreter\n%s\n' "$reference"
 ```
 
 The equality checks both exited zero and produced:
@@ -179,6 +180,16 @@ The final generated sources used by that successful run are committed at:
 The two committed `DemoKernel_0.cpp` copies normalize only the generated files'
 missing final newline; their content otherwise matches the executable build
 inputs. The runtime files match byte-for-byte.
+
+The focused backend regression command also passed all eight selected tests:
+
+```bash
+./gradlew :obfuscator:test \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
+  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest
+```
 
 ## Preflight corrections
 
