@@ -21,7 +21,7 @@ public class CodegenModeTest {
 
     private CodegenMode parseCodegen(String... args) throws Exception {
         Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
-        new CommandLine(runner).parseArgs(args);
+        new CommandLine(runner).setCaseInsensitiveEnumValuesAllowed(true).parseArgs(args);
         Field field = Main.NativeObfuscatorRunner.class.getDeclaredField("codegenMode");
         field.setAccessible(true);
         return (CodegenMode) field.get(runner);
