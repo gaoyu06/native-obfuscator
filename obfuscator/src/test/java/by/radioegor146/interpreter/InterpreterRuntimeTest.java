@@ -77,6 +77,62 @@ public class InterpreterRuntimeTest {
                 "    return native_jvm::interp::execute_i(sum_method, f, &result) && result == expected;\n" +
                 "}\n" +
                 "\n" +
+                "static void write_i32(std::uint8_t *output, std::int32_t value) {\n" +
+                "    std::uint32_t bits = static_cast<std::uint32_t>(value);\n" +
+                "    output[0] = static_cast<std::uint8_t>(bits);\n" +
+                "    output[1] = static_cast<std::uint8_t>(bits >> 8);\n" +
+                "    output[2] = static_cast<std::uint8_t>(bits >> 16);\n" +
+                "    output[3] = static_cast<std::uint8_t>(bits >> 24);\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_unary_branch(std::uint8_t opcode, std::int32_t value, bool expected) {\n" +
+                "    std::uint8_t code[] = {\n" +
+                "        1,0,0,0,0, 0,16,0,0,0, 1,0,0,0,0,19, 1,1,0,0,0,19\n" +
+                "    };\n" +
+                "    write_i32(code + 1, value);\n" +
+                "    code[5] = opcode;\n" +
+                "    method_desc method = { 1, 1, 1, code, sizeof(code) };\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[1] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack };\n" +
+                "    return native_jvm::interp::execute_i(method, f, &result) &&\n" +
+                "           result == static_cast<std::int32_t>(expected);\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_binary_branch(std::uint8_t opcode, std::int32_t left,\n" +
+                "                              std::int32_t right, bool expected) {\n" +
+                "    std::uint8_t code[] = {\n" +
+                "        1,0,0,0,0, 1,0,0,0,0, 0,21,0,0,0,\n" +
+                "        1,0,0,0,0,19, 1,1,0,0,0,19\n" +
+                "    };\n" +
+                "    write_i32(code + 1, left);\n" +
+                "    write_i32(code + 6, right);\n" +
+                "    code[10] = opcode;\n" +
+                "    method_desc method = { 1, 2, 1, code, sizeof(code) };\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack };\n" +
+                "    return native_jvm::interp::execute_i(method, f, &result) &&\n" +
+                "           result == static_cast<std::int32_t>(expected);\n" +
+                "}\n" +
+                "\n" +
+                "static bool checks_all_branches() {\n" +
+                "    return run_unary_branch(6, 0, true) && run_unary_branch(6, 1, false) &&\n" +
+                "           run_unary_branch(7, 1, true) && run_unary_branch(7, 0, false) &&\n" +
+                "           run_unary_branch(8, -1, true) && run_unary_branch(8, 0, false) &&\n" +
+                "           run_unary_branch(9, 0, true) && run_unary_branch(9, -1, false) &&\n" +
+                "           run_unary_branch(10, 1, true) && run_unary_branch(10, 0, false) &&\n" +
+                "           run_unary_branch(11, 0, true) && run_unary_branch(11, 1, false) &&\n" +
+                "           run_binary_branch(12, 2, 2, true) && run_binary_branch(12, 2, 3, false) &&\n" +
+                "           run_binary_branch(13, 2, 3, true) && run_binary_branch(13, 2, 2, false) &&\n" +
+                "           run_binary_branch(14, 2, 3, true) && run_binary_branch(14, 3, 2, false) &&\n" +
+                "           run_binary_branch(15, 3, 2, true) && run_binary_branch(15, 2, 3, false) &&\n" +
+                "           run_binary_branch(16, 3, 2, true) && run_binary_branch(16, 2, 3, false) &&\n" +
+                "           run_binary_branch(17, 2, 3, true) && run_binary_branch(17, 3, 2, false);\n" +
+                "}\n" +
+                "\n" +
                 "static bool rejects_invalid_streams() {\n" +
                 "    static const std::uint8_t unknown_code[] = { 255 };\n" +
                 "    static const method_desc unknown_method = { 1, 1, 1, unknown_code, sizeof(unknown_code) };\n" +
@@ -94,6 +150,12 @@ public class InterpreterRuntimeTest {
                 "    static const method_desc bad_if_icmpeq_method = {\n" +
                 "        1, 2, 1, bad_if_icmpeq_code, sizeof(bad_if_icmpeq_code)\n" +
                 "    };\n" +
+                "    static const std::uint8_t bad_local_code[] = { 2, 1, 0 };\n" +
+                "    static const method_desc bad_local_method = { 1, 1, 1, bad_local_code, sizeof(bad_local_code) };\n" +
+                "    static const std::uint8_t underflow_code[] = { 4, 19 };\n" +
+                "    static const method_desc underflow_method = { 1, 2, 1, underflow_code, sizeof(underflow_code) };\n" +
+                "    static const std::uint8_t overflow_code[] = { 1, 0, 0, 0, 0, 19 };\n" +
+                "    static const method_desc overflow_method = { 1, 0, 1, overflow_code, sizeof(overflow_code) };\n" +
                 "    std::int32_t locals[1] = {};\n" +
                 "    std::int32_t stack[2] = {};\n" +
                 "    std::int32_t result = 0;\n" +
@@ -102,7 +164,10 @@ public class InterpreterRuntimeTest {
                 "           !native_jvm::interp::execute_i(truncated_method, f, &result) &&\n" +
                 "           !native_jvm::interp::execute_i(bad_goto_method, f, &result) &&\n" +
                 "           !native_jvm::interp::execute_i(bad_ifeq_method, f, &result) &&\n" +
-                "           !native_jvm::interp::execute_i(bad_if_icmpeq_method, f, &result);\n" +
+                "           !native_jvm::interp::execute_i(bad_if_icmpeq_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(bad_local_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(underflow_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(overflow_method, f, &result);\n" +
                 "}\n" +
                 "\n" +
                 "int main() {\n" +
@@ -115,7 +180,8 @@ public class InterpreterRuntimeTest {
                 "    if (!run_sum(-3, 0)) return 5;\n" +
                 "    if (!run_sum(0, 0)) return 6;\n" +
                 "    if (!run_sum(10, 45)) return 7;\n" +
-                "    if (!rejects_invalid_streams()) return 8;\n" +
+                "    if (!checks_all_branches()) return 8;\n" +
+                "    if (!rejects_invalid_streams()) return 9;\n" +
                 "    return 0;\n" +
                 "}\n";
     }
