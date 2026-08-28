@@ -102,7 +102,7 @@ Total: 19 tests, 0 skipped, 0 failures, 0 errors
 
 The phase-4 cases cover:
 
-- `IALOAD` out-of-bounds dispatch to
+- `IALOAD` with a fixed `-1` index dispatch to
   `ArrayIndexOutOfBoundsException`, whose handler returns `-7`;
 - the same throwing operation with a non-matching
   `NullPointerException` catch, followed by rethrow;
@@ -124,7 +124,7 @@ JNI headers: present
 ```
 
 `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` was `SUCCESS` in the
-JUnit XML (0.128 s), not skipped. Its generated translation unit included all
+JUnit XML (0.124 s), not skipped. Its generated translation unit included all
 four new exception methods and ran:
 
 ```text
@@ -133,7 +133,7 @@ g++ -std=c++17 -fsyntax-only \
 ```
 
 The generated file was also compiled independently with the same command after
-the final test; g++ exited `0` (0.179 s).
+the final test; g++ exited `0` (0.177 s).
 
 ## What still falls back per method
 
