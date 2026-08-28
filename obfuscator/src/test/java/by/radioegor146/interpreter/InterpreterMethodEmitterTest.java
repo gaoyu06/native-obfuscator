@@ -42,6 +42,28 @@ public class InterpreterMethodEmitterTest {
     }
 
     @Test
+    public void emitsSubtractGolden() {
+        MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "subtract", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISUB));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                2, 1, 0,
+                5,
+                19), compiled.getCode());
+    }
+
+    @Test
     public void emitsLoopGoldenAndLowersIinc() {
         MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "sumTo", "(I)I", null, null);

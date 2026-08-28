@@ -42,6 +42,8 @@ public class InterpreterRuntimeTest {
                 "\n" +
                 "static const std::uint8_t add_code[] = { 2,0,0, 2,1,0, 4, 19 };\n" +
                 "static const method_desc add_method = { 1, 2, 2, add_code, sizeof(add_code) };\n" +
+                "static const std::uint8_t sub_code[] = { 2,0,0, 2,1,0, 5, 19 };\n" +
+                "static const method_desc sub_method = { 1, 2, 2, sub_code, sizeof(sub_code) };\n" +
                 "static const std::uint8_t sum_code[] = {\n" +
                 "    1,0,0,0,0, 3,1,0, 1,0,0,0,0, 3,2,0,\n" +
                 "    2,2,0, 2,0,0, 15,54,0,0,0,\n" +
@@ -59,6 +61,14 @@ public class InterpreterRuntimeTest {
                 "    return native_jvm::interp::execute_i(add_method, f, &result) && result == expected;\n" +
                 "}\n" +
                 "\n" +
+                "static bool run_sub(std::int32_t a, std::int32_t b, std::int32_t expected) {\n" +
+                "    std::int32_t locals[2] = { a, b };\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack };\n" +
+                "    return native_jvm::interp::execute_i(sub_method, f, &result) && result == expected;\n" +
+                "}\n" +
+                "\n" +
                 "static bool run_sum(std::int32_t n, std::int32_t expected) {\n" +
                 "    std::int32_t locals[3] = { n, 0, 0 };\n" +
                 "    std::int32_t stack[4] = {};\n" +
@@ -71,9 +81,12 @@ public class InterpreterRuntimeTest {
                 "    if (!run_add(7, -3, 4)) return 1;\n" +
                 "    if (!run_add(std::numeric_limits<std::int32_t>::max(), 1,\n" +
                 "                 std::numeric_limits<std::int32_t>::min())) return 2;\n" +
-                "    if (!run_sum(-3, 0)) return 3;\n" +
-                "    if (!run_sum(0, 0)) return 4;\n" +
-                "    if (!run_sum(10, 45)) return 5;\n" +
+                "    if (!run_sub(3, 8, -5)) return 3;\n" +
+                "    if (!run_sub(std::numeric_limits<std::int32_t>::min(), 1,\n" +
+                "                 std::numeric_limits<std::int32_t>::max())) return 4;\n" +
+                "    if (!run_sum(-3, 0)) return 5;\n" +
+                "    if (!run_sum(0, 0)) return 6;\n" +
+                "    if (!run_sum(10, 45)) return 7;\n" +
                 "    return 0;\n" +
                 "}\n";
     }
