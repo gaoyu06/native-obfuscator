@@ -70,8 +70,8 @@ Result: `BUILD SUCCESSFUL`.
 Recorded directly from Gradle's JUnit XML:
 
 ```text
-IrCompilerTest: tests=42, skipped=0, failures=0, errors=0 (time=0.529 s)
-CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.114 s)
+IrCompilerTest: tests=42, skipped=0, failures=0, errors=0 (time=0.487 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.094 s)
 Total: 44 tests, 0 skipped, 0 failures, 0 errors
 ```
 
@@ -91,13 +91,13 @@ openjdk version "21.0.10" 2026-01-20
 JNI headers: present
 ```
 
-`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.160 s
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.165 s
 and has no `<skipped>` child in the JUnit XML. Its 39-method generated
 translation unit includes `returnAllocatedObject`, `returnNull`, `ifNull`,
 `ifNonNull`, and `discardInvokeResult`.
 
 The exact retained translation unit
-`/tmp/ir-compile-smoke18110346054595069834/ir-smoke.cpp` was also independently
+`/tmp/ir-compile-smoke4084502754000788893/ir-smoke.cpp` was also independently
 checked with:
 
 ```text
