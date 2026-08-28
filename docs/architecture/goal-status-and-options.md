@@ -3,7 +3,7 @@
 ## Executive status
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
-requests returned by `gh pr list --state all --limit 30` on 2026-08-28. All 25
+requests returned by `gh pr list --state all --limit 30` on 2026-08-28. All 30
 listed PRs are open drafts. None of their code or documentation is therefore a
 capability of `master`, and no PR had a reported status check or accepted GitHub
 review at the time of this snapshot. Results below are evidence recorded on the
@@ -21,27 +21,31 @@ Sol review in [#3](https://github.com/gaoyu06/native-obfuscator/pull/3)
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | The entire #6 → #9 → #14 stack is still draft. [#4](https://github.com/gaoyu06/native-obfuscator/pull/4) remains the audit baseline, not a pass result. | JDK 22–25 feature/class-file fixtures, JDK 25 compiler output, `ConstantDynamic`, modules, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence. The #14 machine had `javac 21.0.10`, so it could not create JDK 25 fixtures. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. | Both PRs are draft; #11 still needs the #6 launcher, concurrency/cache review, full E2E, and a same-machine rerun through #10. | JMH/forked baselines, confidence intervals, native-only isolation, IR/interpreter/SDK variants, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | #12 → #15 is still a draft stack. The product surface, unconditional embedding, provider/update policy, target matrix, and Zig path remain unresolved. | Broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and a release security sign-off. |
-| Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; and [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs. | The implementation remains an open draft stack, default off, and integer-only. The three reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) all recovered both compared trees fully. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
-| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated forms. Both compared trees scored full in every run, and H0 was not rejected. | All runs are `N=1` and tool-assisted. #21 was contaminated and `mix` fell back to direct C++; #23 had status-text contamination; #25 had limited procedural contamination and sequential carryover. | Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions would be required for a broader empirical claim. |
+| Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs; and [#28](https://github.com/gaoyu06/native-obfuscator/pull/28) adds opt-in link-only publication of the transformed JAR and shared library without the generated C++ tree. | The implementation remains an open draft stack, default off, and integer-only. The three source-tree reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) recovered both compared trees fully; the shared-library-only run in [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) then recovered `add`, `sumTo`, and `mix` fully from the published `.so` without the C++ tree. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
+| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth GPT-5.6 Sol run using the published `.so` alone: all three methods, including `mix`, scored full, so its shared-library-only H0 was rejected for the fixture. | All runs are `N=1` and tool-assisted. #21 was contaminated and `mix` fell back to direct C++; #23 had status-text contamination; #25 had limited procedural contamination and sequential carryover. #30 did not use generated C++ or the private compiler tree, but the reader knew method names and had recorded oracle input/output examples. | Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions would be required for a broader empirical claim. |
 
 ### Reader-eval evidence
 
-Each run compared direct-C++ and interpreter-backend trees generated from the
-same fixture revision, deferred the source/oracle comparison until after both
-recoveries were written, and confirmed matching executable output. The
-full/partial/fail scores below are the recorded categorical outcomes, not a new
-derived metric.
+The first three runs compared direct-C++ and interpreter-backend trees generated
+from the same fixture revision, deferred the source/oracle comparison until
+after both recoveries were written, and confirmed matching executable output.
+The fourth run read the link-only published `.so` before opening the Java source
+and used no generated C++ tree. The full/partial/fail scores below are the
+recorded categorical outcomes, not a new derived metric.
 
 | Run | What was controlled | What failed or limited the run | Measured outcome |
 |---|---|---|---|
 | [#21: first reader](https://github.com/gaoyu06/native-obfuscator/pull/21) | Same Java 8 class and compiler commit; interpreter tree read before direct C++; Java source reopened only after both recovery texts; Java, direct, and interpreter outputs matched. | `mix` fell back to method-specific direct C++ because the slice could not lower it. The reader had prior exposure to protocol text, fixture names, and opcode names, so the run was contaminated rather than unaided. | Interpreter and direct trees were both **full** for `add`, `sumTo`, and `mix`; H0 was not rejected. The `mix` result did not test opcode recovery. |
 | [#23: blinded run after `mix` lowering](https://github.com/gaoyu06/native-obfuscator/pull/23) | Same preserved fixture for both trees; opcode recovery committed before direct recovery; fixture construction opened only afterward; `mix` was confirmed on the opcode path; both builds produced identical output. | A status-document query exposed method names and a fallback notice before recovery. No constants, instruction sequence, control flow, or source oracle was exposed, but the status-text contamination prevents an unaided claim. | Opcode and direct trees each scored **4 full / 0 partial / 0 fail**; H0 was not rejected. |
 | [#25: compact-blob blinded run](https://github.com/gaoyu06/native-obfuscator/pull/25) | Same preserved fixture and source-last ordering; opcode and direct recoveries committed separately before opening fixture construction; original, direct, and opcode outputs matched exactly. | Class/build metadata and a fallback test name were exposed; the same reader handled the opcode condition before the direct condition. `divide` remained direct fallback. | Both trees scored **4 full / 0 partial / 0 fail**. The blobs plus `native_jvm_interp.cpp` were sufficient to recover all three lowered methods exactly; H0 was not rejected. |
+| [#30: published-`.so`-only reader](https://github.com/gaoyu06/native-obfuscator/pull/30) | GPT-5.6 Sol received only the Linux x86-64 shared library published by #28. The directory contained the transformed JAR and `.so`, no `.cpp`; no generated C++ or private compiler tree was used. Recovery was written before Java source inspection, and published output matched the oracle. | The reader knew the names and signatures of `add`, `sumTo`, and `mix`; recorded oracle input/output examples were available as a consistency check. This is still one tool-assisted reader on one fixture and target. | `add`, `sumTo`, and `mix` all scored **full**. `mix` was recovered exactly, including constants, operation order, loop condition, shifts, multiply, xor, and rotate distance. The run rejected its “cannot recover critical logic from the published shared library alone” H0 for this fixture. |
 
-These runs do not establish a population effect or equal reading effort.
-They do establish the outcome for the tested fixture: **current in-tree
-backends do not meet an unaided GPT-5.6 Sol bar on this kernel when the
-generated tree (including the dispatcher) is available.**
+These runs do not establish a population effect or equal reading effort. They
+do establish the outcome for the tested fixture: **removing the C++ sources is
+not sufficient while a decodable opcode stream and its opcode machine remain
+in the shipped binary.** The current interpreter design does not meet the
+GPT-5.6 Sol reader bar on this kernel, even when only the published `.so` is
+provided.
 
 ## Decisions
 
@@ -59,7 +63,7 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 | Build a project-owned typed CFG over ASM and emit structured C++ before a second backend. | Independent Sol #3 and Fable #5 designs converge on this migration shape. It addresses the audited string-template limitations while keeping backend semantics shared. Whether and when IR becomes the public default remains a human decision. |
 | Validate an entire IR method before mutating output, and keep legacy as the migration default. | #13/#16 verify clean per-method fallback and compileability for their narrow slices. This contains experimental risk; it does not establish parity or authorize an eventual default flip. |
 | Require checksums, raw samples, environment metadata, and scoped wording for performance evidence. | #10 demonstrates both modes actually ran and agreed. #11's mixed result shows why a single local run cannot become a global speed or non-regression claim. |
-| Keep reader outcomes scoped to the measured fixture and recorded limitations. | The three runs are `N=1`, tool-assisted, and contaminated to differing degrees. Their full/full scores support the kernel-specific conclusion above, but not a population effect or broader claim. |
+| Keep reader outcomes scoped to the measured fixture and recorded limitations. | The four runs are `N=1`, tool-assisted case studies with different artifact boundaries and recorded limitations. Their full recoveries support the kernel-specific conclusion above, but not a population effect or broader claim. |
 
 ### Human decisions still required
 
@@ -68,16 +72,20 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 - **A. Accept that this bar is out of scope for v1.** Ship only the
   compiler, compatibility, and SDK work that passes its own correctness and
   release gates.
-- **B. Change the product boundary.** Do not ship the decode table as readable
-  C++ in the same generated tree. This is high difficulty and needs a product
-  and architecture design, not another hexadecimal-blob tweak.
+- **B. Fund a different backend/product design.** **B1, link-only publication,**
+  is already evidenced as insufficient by [#28](https://github.com/gaoyu06/native-obfuscator/pull/28)
+  and [#30](https://github.com/gaoyu06/native-obfuscator/pull/30): removing the
+  C++ tree still leaves a decodable opcode stream and its machine in the
+  shipped library. The remaining B is a design that does not put a decodable
+  opcode stream in the shipped library. If that design is not funded, drop the
+  reader bar for v1 under A.
 - **C. Keep iterating encodings.** This is likely wasted effort while the
-  decoder remains in the generated tree and the reader can recover the method
-  semantics from the two together.
+  opcode machine and stream remain together in the generated tree or shipped
+  library and the reader can recover method semantics from them.
 
-**Recommendation:** choose A for v1, or B if the reader bar remains a product
-requirement. Do not choose C unless a human explicitly insists on continuing
-that line of work.
+**Recommendation:** choose A for v1 unless a new backend design that avoids a
+decodable shipped opcode stream is explicitly funded. Link-only B1 is not that
+design, and C is not recommended.
 
 #### Other product decisions
 
@@ -129,12 +137,14 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) →
    [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) →
    [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) →
-   [#24](https://github.com/gaoyu06/native-obfuscator/pull/24). Keep it
-   default off and review it against the stable shared IR before placing it
-   after the direct-C++ slice. Preserve the corresponding reader records:
+   [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) →
+   [#28](https://github.com/gaoyu06/native-obfuscator/pull/28). Keep it default
+   off and review it against the stable shared IR before placing it after the
+   direct-C++ slice. Preserve the corresponding reader records:
    [#21](https://github.com/gaoyu06/native-obfuscator/pull/21) for #17,
    [#23](https://github.com/gaoyu06/native-obfuscator/pull/23) for #22, and
-   [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) for #24; these
+   [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) for #24, followed
+   by [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) for #28; these
    document measured outcomes and are not implementation prerequisites.
 
 The independent compatibility, benchmark, IR, and SDK lanes may be reviewed in
@@ -144,10 +154,12 @@ parallel, but their order within each arrowed stack must be preserved.
 
 - There are no JDK 25 fixtures. The newest fixture branch used `javac 21.0.10`;
   parser support or a configured CI lane is not JDK 25 transpiler evidence.
-- Three automated-reader evaluations have run, but each is an `N=1`,
-  tool-assisted case study with recorded contamination. All three produced
-  full/full outcomes and did not reject H0. They support only the
-  kernel-and-artifact conclusion in the reader-eval subsection.
+- Four automated-reader evaluations have run, but each is an `N=1`,
+  tool-assisted case study with recorded limitations. The first three produced
+  full/full source-tree outcomes and did not reject H0; the fourth fully
+  recovered all three methods from the published `.so` and rejected its
+  shared-library-only H0. They support only the kernel-and-artifact conclusion
+  in the reader-eval subsection.
 - IR is opt-in and incomplete; legacy snippet codegen remains the default.
 - #10's one local checksum-correct run shows the current transpiled-JNI path
   much slower than plain HotSpot for all three exact kernels: median ratios are
@@ -186,11 +198,13 @@ not the union of claims from draft branches:
    the shared IR, then prove differential parity, deterministic refusal,
    resource limits, format/version rejection, and target/toolchain behavior.
    Otherwise exclude it from the release claim.
-7. Do not claim that the reader bar has been met: the three current runs report
-   full/full recovery and recorded contamination. Any broader reader claim
-   needs raw reproducible results whose scope and limitations support its exact
-   wording, plus privacy and methodology approval. Such a claim is not a
-   prerequisite if option A is selected.
+7. Do not claim that the reader bar has been met: the four current runs report
+   full recovery, and #30 recovered `mix` from the published `.so` without the
+   C++ tree. Removing sources alone is therefore not sufficient for this
+   fixture while the binary contains the opcode machine and stream. Any broader
+   reader claim needs raw reproducible results whose scope and limitations
+   support its exact wording, plus privacy and methodology approval. Such a
+   claim is not a prerequisite if option A is selected.
 8. Produce reproducible signed/provenanced artifacts, an SBOM and symbol
    allowlist, package/native-access documentation, crash/support and
    incident-response ownership, upgrade/rollback instructions, and final
