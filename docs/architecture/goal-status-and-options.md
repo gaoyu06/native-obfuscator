@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-28. PRs
-#1–#37 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#42 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -18,31 +18,35 @@ Sol review in [#3](https://github.com/gaoyu06/native-obfuscator/pull/3)
 
 ### (a) 本次改动范围 / Change scope
 
-本次仅更新编译器与项目状态：纳入 [#34](https://github.com/gaoyu06/native-obfuscator/pull/34)
-的 IR/legacy/JVM 本地基准、[#35](https://github.com/gaoyu06/native-obfuscator/pull/35)
-的 live direct-IR stripped `.so` 构建与存活性证据，以及
-[#36](https://github.com/gaoyu06/native-obfuscator/pull/36) 的 opt-in IR
-异常边切片；[#37](https://github.com/gaoyu06/native-obfuscator/pull/37)
-现已对 #35 的存活 artifact 完成盲读，而
-[#31](https://github.com/gaoyu06/native-obfuscator/pull/31) 仍因 `mix` 被 DCE
-而不能作为 reader bar 证据。本文不合并或实现这些草稿。
+本次仅更新文档至新草稿：纳入 [#39](https://github.com/gaoyu06/native-obfuscator/pull/39)
+对 phase 4 的 Fable “accept with nits” 文档审阅、
+[#40](https://github.com/gaoyu06/native-obfuscator/pull/40) 的 opt-in IR phase 5、
+[#41](https://github.com/gaoyu06/native-obfuscator/pull/41) 以 `javac --release 25`
+编译的 ClassicTest fixtures，以及 [#42](https://github.com/gaoyu06/native-obfuscator/pull/42)
+的 opt-in IR shared-evaluator lowering。保留
+[#37](https://github.com/gaoyu06/native-obfuscator/pull/37) 对有效 live
+direct-IR stripped `.so` 的完整恢复结论；本文不合并或实现任何草稿。
 
-This documentation-only update adds the compiler/project status recorded by
-#34's local IR/legacy/JVM benchmark, #35's live direct-IR stripped-`.so`
-builder/liveness artifact, #36's opt-in IR exception-edge slice, and #37's
-blinded reading of #35. It keeps #31 excluded from the reader bar because
-`mix` was dead-code-eliminated. It neither merges nor implements any draft.
+This documentation-only update carries the brief through #39's Fable
+accept-with-nits phase-4 review, #40's opt-in IR phase 5, #41's ClassicTest
+fixtures compiled with `javac --release 25`, and #42's opt-in IR
+shared-evaluator lowering. It retains #37's full recovery of a valid live
+direct-IR stripped `.so`. It neither merges nor implements any draft.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#37 均为草稿，`master` 未包含这些能力；默认 codegen
-仍是 legacy。#34 是单机本地诊断，#36 只是有限的 opt-in 编译器切片，而 #37
-在一个有效存活样本上完整恢复了四个方法，因此 requirement 7 并未满足。
+**No / 否。** PRs #1–#42 均为草稿，`master` 未包含这些能力；默认 codegen
+仍是 legacy。#40 仍为不完整的 opt-in IR 切片；#41 只证明四个列明的 release-25
+fixture，而非完整 JDK 25 支持；#42 仍为有限的 opt-in lowering，默认
+`--ir-lower=direct`。#37 在一个有效存活样本上完整恢复了四个方法，因此
+requirement 7 并未满足。
 
-**No.** PRs #1–#37 remain drafts and `master` has none of these capabilities;
-the default codegen remains legacy. #34 is a one-machine diagnostic, #36 is
-still a limited opt-in compiler slice, and #37 fully recovered four methods
-from one valid live subject, so requirement 7 is not met.
+**No.** PRs #1–#42 remain drafts and `master` has none of these capabilities;
+the default codegen remains legacy. #40 is still an incomplete opt-in IR
+slice; #41 proves only its four listed release-25 fixtures, not full JDK 25
+support; and #42 is a limited opt-in lowering whose default remains
+`--ir-lower=direct`. #37 fully recovered four methods from one valid live
+subject, so requirement 7 is not met.
 
 ### (c) 上线前是否需要 review / Is review required?
 
@@ -57,34 +61,39 @@ boundaries rather than generalized.
 
 ### (d) review 的前置条件 / Review preconditions
 
-1. 以 #34 的 `docs/benchmarks/results-ir-vs-legacy.md`、#35 的
-   `docs/eval/ir-live-mix/{liveness,run}.md`、#36 的
-   `docs/architecture/ir-phase4-status.md` 和 #37 的
-   `docs/eval/ir-live-mix/{recovery,scores}.md` 为对应事实来源。
-   Use those four branch records as the authorities for their respective claims.
+1. 继续以 #34–#37 的对应记录为其事实来源；新增结论仅引用 #39 的
+   `docs/architecture/ir-phase4-fable-review.md`、#40 的
+   `docs/architecture/ir-phase5-status.md`、#41 的
+   `docs/audit/jdk25-e2e-status.md` 与 #42 的
+   `docs/architecture/ir-evaluator-backend.md`。 Continue to use the #34–#37
+   records for their claims, and use only those four named branch documents
+   for the new #39–#42 claims.
 2. 只有 `IrFriendlyIntKernel.run(I)I` 可作 #34 的 IR 对比；不得把本地中位数
    当作可移植性能结论。 Only that method is a valid IR comparison in #34;
    do not treat its local medians as portable.
 3. #31 的 `mix` 被 DCE，仍不能计入 reader bar；#37 则是 #35 的有效存活
    artifact reader，并报告四个方法均为 full，因此 requirement 7 未满足。
-   #31 remains invalid, while #37 is the reader for #35's valid live artifact
-   and reports all four methods as full; requirement 7 is therefore not met.
+   #42 没有 reader evaluation，不能作为 requirement 7 证据。 #31 remains
+   invalid, while #37 reports all four methods as full on #35's valid live
+   artifact; #42 has no reader evaluation and is not requirement-7 evidence.
 4. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
-   native code 的 lowering；#36 的 IR coverage 与 JDK/SDK stacks 分别继续。
+   native code 的 lowering；#40 的 direct-IR coverage、#42 的独立 evaluator
+   实验与 JDK/SDK stacks 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
-   readable native output of the source algorithm, while #36 IR coverage and
-   the JDK/SDK stacks continue separately.
+   readable native output of the source algorithm. #40's direct IR coverage,
+   #42's separate evaluator experiment, and the JDK/SDK stacks continue as
+   separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
-| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). Phase 1 in [#8](https://github.com/gaoyu06/native-obfuscator/pull/8) implements an opt-in integer/control-flow slice; [#13](https://github.com/gaoyu06/native-obfuscator/pull/13) fixes its non-compiling `juint` output and records an accept-with-nits Fable review. | [#36](https://github.com/gaoyu06/native-obfuscator/pull/36), stacked on the phase-3 review [#33](https://github.com/gaoyu06/native-obfuscator/pull/33), adds the first exception-edge/catch-dispatch slice. Its status document records 17/17 `IrCompilerTest` and 2/2 `CodegenModeTest`, but the compiler remains opt-in, per-method fallback remains, and the default is still legacy. It is not ship-ready. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, switches, monitors, allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. |
-| JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | The entire #6 → #9 → #14 stack is still draft. [#4](https://github.com/gaoyu06/native-obfuscator/pull/4) remains the audit baseline, not a pass result. | JDK 22–25 feature/class-file fixtures, JDK 25 compiler output, `ConstantDynamic`, modules, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence. The #14 machine had `javac 21.0.10`, so it could not create JDK 25 fixtures. |
+| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in implementation stack runs through phase 4 in [#36](https://github.com/gaoyu06/native-obfuscator/pull/36); [#39](https://github.com/gaoyu06/native-obfuscator/pull/39) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. | [#40](https://github.com/gaoyu06/native-obfuscator/pull/40), stacked on #39, adds `IDIV`/`IREM`, `NEWARRAY T_INT`, and `GETSTATIC`/`PUTSTATIC` for descriptor `I`. Its status document records 22 `IrCompilerTest` plus 2 `CodegenModeTest`, all passing with 0 skipped/failures/errors; it remains opt-in, with per-method fallback and default legacy. [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate sibling on #39: `--ir-lower=eval` adds a limited shared evaluator while `direct` remains the lowering default. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, switches, monitors, object and most array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #42 has no reader evaluation and is not requirement-7 evidence. |
+| JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | [#41](https://github.com/gaoyu06/native-obfuscator/pull/41), stacked on #14, adds four ClassicTest fixtures compiled independently with `javac --release 25` (class-file major 69). Its status document records 24 total: 23 passed, 1 pre-existing `krak2` skip, 0 failed; each new fixture reached `OK` on `HOTSPOT`, `STD_JAVA`, and `ANDROID`. The full #6 → #9 → #14 → #41 stack remains draft. | #41 is not a blanket full-JDK-25 claim: it does not cover every language feature, library API, runtime mode, generated class shape, preview feature, or separate JDK 22–24 class file. `ConstantDynamic`, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence remain gaps. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) runs JVM, legacy, and IR tasks through the same harness. | All original #34 kernels fell back from IR. Only `IrFriendlyIntKernel.run(I)I` is a valid IR comparison: its recorded local medians are 10,023,918 ns for IR, 182,135,075 ns for legacy, and 10,092,919 ns for the primary JVM run (10,026,099 ns in the IR-task JVM repeat). Thus IR was approximately equal to JVM and much faster than legacy for that one local kernel; the result is not portable and the fallback rows are not IR timings. | JMH/forked baselines, confidence intervals, native-only isolation, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | #12 → #15 is still a draft stack. The product surface, unconditional embedding, provider/update policy, target matrix, and Zig path remain unresolved. | Broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and a release security sign-off. |
 | Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs; and [#28](https://github.com/gaoyu06/native-obfuscator/pull/28) adds opt-in link-only publication of the transformed JAR and shared library without the generated C++ tree. | The implementation remains an open draft stack, default off, and integer-only. The three source-tree reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) recovered both compared trees fully; the shared-library-only run in [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) then recovered `add`, `sumTo`, and `mix` fully from the published `.so` without the C++ tree. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
-| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 uses the valid live subject and supersedes the wait for a live-kernel reader, but its full recovery means requirement 7 is not met. | A materially different lowering is needed: not another encoding tweak, and not straight-line readable native output of the source algorithm. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
+| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 uses the valid live subject and supersedes the wait for a live-kernel reader, but its full recovery means requirement 7 is not met. #42 is a backend implementation draft without a reader run, so it adds no requirement-7 evidence. | A materially different lowering is needed: not another encoding tweak, and not straight-line readable native output of the source algorithm. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
 
 ### Reader-eval evidence
 
@@ -163,8 +172,9 @@ unless a materially different lowering is explicitly funded. This does **not**
 recommend rewriting or shrinking the written goal to A. #37 supersedes the
 wait for a live-kernel reader. The next reader-bar design must not leave the
 source algorithm as straight-line readable native code; encoding tweaks alone
-are not that design. Wider opt-in IR coverage in #36 and the JDK/SDK stacks
-continue as separate engineering lanes.
+are not that design. Wider opt-in direct-IR coverage in #40, #42's separate
+evaluator experiment, and the JDK/SDK stacks continue as separate engineering
+lanes.
 
 #### Other product decisions
 
@@ -194,9 +204,11 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
 2. Merge the compatibility stack exactly
    [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) →
    [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) →
-   [#14](https://github.com/gaoyu06/native-obfuscator/pull/14). This first
-   establishes a real test oracle, then fixes the failures it exposes, then
-   extends the corpus to JDK 21.
+   [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) →
+   [#41](https://github.com/gaoyu06/native-obfuscator/pull/41). This first
+   establishes a real test oracle, fixes the failures it exposes, extends the
+   corpus to JDK 21, then adds the narrowly scoped `javac --release 25`
+   fixtures; #41 is not a full-JDK-25 support claim.
 3. Merge [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) before
    [#11](https://github.com/gaoyu06/native-obfuscator/pull/11), rebase #11 over
    #6/#10, and rerun both correctness and benchmark evidence. #11's mixed local
@@ -208,17 +220,23 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#19](https://github.com/gaoyu06/native-obfuscator/pull/19) →
    [#29](https://github.com/gaoyu06/native-obfuscator/pull/29) →
    [#33](https://github.com/gaoyu06/native-obfuscator/pull/33) →
-   [#36](https://github.com/gaoyu06/native-obfuscator/pull/36). Rebase after
+   [#36](https://github.com/gaoyu06/native-obfuscator/pull/36) →
+   [#39](https://github.com/gaoyu06/native-obfuscator/pull/39) →
+   [#40](https://github.com/gaoyu06/native-obfuscator/pull/40). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
-   away review fixes or treat #36 as parity or ship-ready.
+   away review fixes or treat #40 as parity or ship-ready. #39 is the
+   docs-only phase-4 review.
+   [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
+   sibling of #40 on #39, not the next item in the direct-IR stack; review its
+   shared evaluator independently and retain `direct` as the default lowering.
    [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) is benchmark
    evidence stacked on #33, and
    [#35](https://github.com/gaoyu06/native-obfuscator/pull/35) is an eval-only
-   live-artifact sibling on #33; neither is an implementation prerequisite for
-   #36. Preserve #31 as an invalid reader-bar record rather than a successful
-   gate, then preserve [#37](https://github.com/gaoyu06/native-obfuscator/pull/37)
-   after #35 as its recovery-first reader record. #37 is evidence, not an
-   implementation merge prerequisite.
+   live-artifact sibling on #33; keep the #35 →
+   [#37](https://github.com/gaoyu06/native-obfuscator/pull/37) evaluation lane
+   separate from both #40 and #42. Preserve #31 as an invalid reader-bar record
+   and #37 as #35's recovery-first reader record. Neither evaluation draft is
+   an implementation merge prerequisite.
 5. Merge [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) →
    [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) after resolving
    the same #6 launcher overlap. The Fable accept-with-nits review is not the
@@ -243,8 +261,11 @@ parallel, but their order within each arrowed stack must be preserved.
 
 ## Honest gaps
 
-- There are no JDK 25 fixtures. The newest fixture branch used `javac 21.0.10`;
-  parser support or a configured CI lane is not JDK 25 transpiler evidence.
+- #41 adds four ClassicTest fixtures compiled independently with
+  `javac --release 25`; its status document records 23 passed, 1 pre-existing
+  skip, and 0 failed. This is evidence only for class-file major 69 and the
+  four listed surfaces on that VM, not full JDK 25 support, preview coverage,
+  or separate JDK 22–24 class-file coverage.
 - Five usable automated-reader evaluations have run, but each is an `N=1`,
   tool-assisted case study with recorded limitations. The first three produced
   full/full source-tree outcomes and did not reject H0; the fourth fully
@@ -253,8 +274,10 @@ parallel, but their order within each arrowed stack must be preserved.
   in the reader-eval subsection. The fifth, #37, fully recovered all four
   methods from #35's valid live direct-IR stripped `.so`. #31 remains invalid
   for the reader bar because its `mix` kernel was DCE'd.
-- IR is opt-in and incomplete; #36 adds a limited exception-edge slice, but
-  legacy snippet codegen remains the default and the branch is not ship-ready.
+- IR is opt-in and incomplete. #40 adds only the recorded phase-5 slice and
+  keeps legacy as the codegen default. #42's evaluator supports a narrower
+  integer subset, is selected only with `--ir-lower=eval`, and keeps `direct`
+  as the lowering default; it has no reader evaluation.
 - #10's one local checksum-correct run shows the current transpiled-JNI path
   much slower than plain HotSpot for all three exact kernels: median ratios are
   about 18× for the integer loop, 23× for string concat/hash, and 199× for
@@ -264,7 +287,7 @@ parallel, but their order within each arrowed stack must be preserved.
   `IrFriendlyIntKernel.run(I)I`. Its local median is approximately equal to
   both recorded JVM medians and 18.170x lower than the legacy median. The other
   kernels fell back and are not IR timings; none of these numbers is portable.
-- PRs #1–#37 are still open drafts. `master` contains none of their work.
+- PRs #1–#42 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -275,9 +298,10 @@ not the union of claims from draft branches:
    full commands after rebasing. Required jobs must report actual test counts
    and artifacts, not merely a configured matrix or successful compilation.
 2. Approve and publish the Java support dimensions and native target/toolchain
-   tiers. Add feature-scoped JDK 25 fixtures built with a JDK 25 compiler, plus
-   remaining required metadata, bootstrap, module/multi-release, refusal, and
-   runtime cases.
+   tiers. Treat #41's four JDK 25 fixtures as narrow evidence, then add the
+   remaining required metadata, bootstrap, module/multi-release, refusal,
+   preview-policy, runtime, and broader feature cases before any full-JDK-25
+   claim.
 3. For any production IR claim, complete the declared semantic surface, prove
    reference-Java versus generated-native behavior across the supported matrix,
    compile generated C++ with warnings-as-errors/sanitizers, run `-Xcheck:jni`,

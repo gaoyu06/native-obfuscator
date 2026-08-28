@@ -1,76 +1,94 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Updates the maintainer goal-status and human-options brief through draft PR
-#37. The document now records #34's narrowly scoped local IR benchmark, #35's
-live direct-IR artifact and #37 reader, #36's opt-in exception-edge compiler
-slice, and why #31 remains invalid reader-bar evidence.
+Updates the documentation-only maintainer brief through draft PR #42. It
+records #39's Fable accept-with-nits phase-4 review, #40's opt-in phase-5
+slice, #41's narrowly scoped JDK 25 fixtures, and #42's opt-in shared-evaluator
+lowering while preserving #37's requirement-7 result.
 
-更新维护者的目标状态与人工选项简报至草稿 PR #37：记录 #34 的窄范围本地 IR
-基准、#35 的 live direct-IR artifact 及其 #37 reader、#36 的 opt-in 异常边
-编译器切片，以及 #31 仍不能作为 reader bar 证据的原因。
+将仅文档的维护者简报更新至草稿 PR #42：记录 #39 对 phase 4 的 Fable
+accept-with-nits 审阅、#40 的 opt-in phase-5 切片、#41 的窄范围 JDK 25
+fixtures 与 #42 的 opt-in shared-evaluator lowering，并保留 #37 对
+requirement 7 的结论。
 
 ## (a) 本次改动范围 / Change scope
 
-- Documentation only: `docs/architecture/goal-status-and-options.md`
-- Bilingual maintainer brief with (a)–(d)
-- Updated draft status, benchmark boundaries, reader-evidence boundaries,
-  human options A/B/C, and suggested stack order
+- Documentation only: update
+  `docs/architecture/goal-status-and-options.md` and this bilingual PR body.
+- Record all PRs through #42 as open drafts while `master` remains unchanged.
+- Quote the named branch documents for #39–#42; do not merge or implement them.
+- Preserve option A as the v1 product recommendation without shrinking the
+  written engineering goal.
 
-仅修改 `docs/architecture/goal-status-and-options.md`，增加双语 (a)–(d)，
-并更新草稿状态、benchmark/reader 证据边界、A/B/C 人工选项和建议 stack
-顺序；不实现编译器代码，不合并任何草稿。
+- 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
+- 记录截至 #42 的 PR 均为 open draft，且 `master` 未变。
+- 仅引用 #39–#42 指定分支文档中的记录；不合并或实现这些草稿。
+- 保留 A 作为 v1 产品建议，但不缩小书面工程目标。
 
 ## (b) 是否可直接上线 / Can this ship to production as-is?
 
 No. / 否。
 
-All referenced work remains in draft PRs, `master` is unchanged, IR remains
-opt-in, and legacy remains the default. #37 fully recovered all four methods
-from #35's valid live subject in one blinded run, so requirement 7 is not met;
-#36 is also not ship-ready.
+All referenced work remains in draft PRs and `master` contains none of it.
+#40 remains opt-in and incomplete; #41 is not a blanket full-JDK-25 claim; and
+#42 is limited, opt-in, defaults to `--ir-lower=direct`, and has no reader
+evaluation. #37 fully recovered all four methods from #35's valid live
+direct-IR stripped `.so`, so requirement 7 is not met.
 
-所有相关工作仍在草稿 PR 中，`master` 未变；IR 仍需显式选择，默认仍为 legacy。
-#37 在一次盲读中完整恢复了 #35 有效存活样本的四个方法，因此 requirement 7
-未满足；#36 同样尚不可上线。
+所有相关工作仍在草稿 PR 中，`master` 未包含这些内容。#40 仍为 opt-in 且覆盖
+不完整；#41 不能解释为完整 JDK 25 支持；#42 覆盖有限、需显式选择、默认仍为
+`--ir-lower=direct`，且没有 reader evaluation。#37 从 #35 的有效 live
+direct-IR stripped `.so` 完整恢复四个方法，因此 requirement 7 未满足。
 
 ## (c) 上线前是否需要 review / Is review required?
 
-Yes. Review the documentation against the source branch records and preserve
-their kernel, artifact, and method-level limits. Each implementation stack
-still requires its own code review and post-rebase verification.
+Yes. Review every statement against the named source document and preserve its
+scope. Each implementation stack still requires independent code review,
+post-rebase verification, and applicable product/release approval.
 
-是。需依据各来源分支记录核对本文，并保留其 kernel、artifact 与方法级边界；
-每条实现栈仍需独立代码审查和 rebase 后复测。
+是。每项陈述均须与指定来源文档核对并保留其范围；每条实现栈仍需独立代码审查、
+rebase 后复测及适用的产品/发布审批。
 
 ## (d) review 的前置条件 / Review preconditions
 
-1. Read #34's `docs/benchmarks/results-ir-vs-legacy.md`; only
-   `IrFriendlyIntKernel.run(I)I` is a valid IR comparison, and its local
-   medians are not portable.
-2. Keep #31 excluded because its `mix` was dead-code-eliminated. Record #37 as
-   #35's recovery-first reader: all four methods scored full on a valid live
-   subject, so requirement 7 is not met.
-3. Confirm #36 remains opt-in, default legacy, and not ship-ready; its status
-   document records 17/17 `IrCompilerTest` and 2/2 `CodegenModeTest`.
-4. Keep option A as the prior v1 product recommendation, not a recommendation
-   to shrink the written goal. The next reader-bar engineering needs a lowering
-   that is not straight-line readable native output, not encoding tweaks.
-5. Confirm #34 and #36 are sibling branches stacked on #33, while #35 is an
-   eval-only sibling and #37 is its reader. Continue #36 IR coverage and the
-   JDK/SDK stacks as separate lanes.
+1. Use #39's `docs/architecture/ir-phase4-fable-review.md`: the verdict is
+   accept with nits, the branch is documentation only, and no compiler code
+   changed.
+2. Use #40's `docs/architecture/ir-phase5-status.md`: it records
+   `IDIV`/`IREM`, `NEWARRAY T_INT`, and static descriptor-`I`
+   `GETSTATIC`/`PUTSTATIC`; 22 `IrCompilerTest` plus 2 `CodegenModeTest`; and
+   opt-in IR with default legacy and per-method fallback.
+3. Use #41's `docs/audit/jdk25-e2e-status.md`: four ClassicTest fixtures were
+   compiled with `javac --release 25`; the full suite recorded 23 passed,
+   1 pre-existing skip, and 0 failed. Preserve its explicit boundary: this is
+   not blanket JDK 25 support. The branch stacks on #14.
+4. Use #42's `docs/architecture/ir-evaluator-backend.md`: `--ir-lower=eval`
+   selects the limited shared evaluator and `direct` remains the default.
+   #42 is a sibling of #40 on #39 and is not requirement-7 evidence.
+5. Preserve #37: all four methods were fully recovered from #35's valid live
+   subject, so requirement 7 is not met. Keep option A only as the v1 product
+   recommendation; do not shrink the written engineering goal.
+6. Preserve the suggested lanes: compatibility #6 → #9 → #14 → #41; direct IR
+   #8 through #39, then #40; #42 as a separate sibling; and #35/#37 as a
+   separate evaluation lane.
 
 中文核对项：
 
-1. 阅读 #34 的 `docs/benchmarks/results-ir-vs-legacy.md`；只有
-   `IrFriendlyIntKernel.run(I)I` 是有效 IR 对比，本地中位数不可移植。
-2. #31 的 `mix` 被 DCE，仍须排除；#37 是 #35 的 recovery-first reader，
-   有效存活样本上的四个方法均为 full，因此 requirement 7 未满足。
-3. 确认 #36 仍为 opt-in、默认 legacy、尚不可上线；其状态文档记录
-   17/17 `IrCompilerTest` 与 2/2 `CodegenModeTest`。
-4. A 仍是先前对 v1 产品范围的建议，不是缩小书面目标的建议；下一步需要不会
-   产生直线可读 native 源算法的 lowering，而不是继续调整 encoding。
-5. 确认 #34 与 #36 都基于 #33；#35 是 eval-only sibling，#37 是其 reader。
-   #36 的 IR coverage 与 JDK/SDK stacks 作为独立工程线继续。
+1. 以 #39 的 `docs/architecture/ir-phase4-fable-review.md` 为准：结论为
+   accept with nits；该分支仅含文档，未改编译器代码。
+2. 以 #40 的 `docs/architecture/ir-phase5-status.md` 为准：记录
+   `IDIV`/`IREM`、`NEWARRAY T_INT`、描述符 `I` 的静态
+   `GETSTATIC`/`PUTSTATIC`、22 个 `IrCompilerTest` 加 2 个
+   `CodegenModeTest`；IR 仍为 opt-in，默认 legacy，并保留逐方法 fallback。
+3. 以 #41 的 `docs/audit/jdk25-e2e-status.md` 为准：四个 ClassicTest fixture
+   使用 `javac --release 25` 编译；完整 suite 记录 23 通过、1 个既有 skip、
+   0 失败。不得扩大为完整 JDK 25 支持；该分支叠在 #14 上。
+4. 以 #42 的 `docs/architecture/ir-evaluator-backend.md` 为准：
+   `--ir-lower=eval` 选择有限的 shared evaluator，默认仍为 `direct`。#42
+   与 #40 同为基于 #39 的 sibling，且不是 requirement 7 证据。
+5. 保留 #37：#35 的有效 live 样本中四个方法均被完整恢复，因此 requirement 7
+   未满足。A 仅作为 v1 产品建议；不得缩小书面工程目标。
+6. 保持建议顺序：compatibility #6 → #9 → #14 → #41；direct IR 从 #8
+   依序至 #39，再到 #40；#42 为独立 sibling；#35/#37 为独立 evaluation 线。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
