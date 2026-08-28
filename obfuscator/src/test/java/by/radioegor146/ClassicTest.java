@@ -98,7 +98,7 @@ public class ClassicTest implements Executable {
 
             Optional<String> mainClassOptional = javaFiles.stream()
                     .filter(uncheckedPredicate(p -> Files.lines(p).collect(Collectors.joining("\n"))
-                            .matches("(?s).*public(\\s+static)?\\s+void\\s+main.*")))
+                            .matches("(?s).*\\b(?:public\\s+)?(?:static\\s+)?void\\s+main\\s*\\(.*")))
                     .map(p -> testData.relativize(p).toString().replace('\\', '/'))
                     .map(f -> f.substring(0, f.lastIndexOf('.')))
                     .findAny();
@@ -231,6 +231,9 @@ public class ClassicTest implements Executable {
 
     private int requiredJavaRelease() {
         for (Path part : testData) {
+            if (part.toString().equals("jdk25")) {
+                return 25;
+            }
             if (part.toString().equals("jdk21")) {
                 return 21;
             }
