@@ -1,47 +1,55 @@
-# IR compiler phase 8 / IR 编译器第八阶段
+# IR phase 8 independent review / IR 第八阶段独立审查
 
-Preferred base / 首选基线:
-`cursor/ir-phase7-sol-review-6d81-f29d`
-(`2a36df34bb8a5a7a09e1c2c870037622c6c5ac80`).
+Review stack / 审查堆叠:
+`cursor/ir-phase8-sol-review-6d81` reviews
+`cursor/ir-compiler-phase8-6d81` /
+[PR #62](https://github.com/gaoyu06/native-obfuscator/pull/62), which is
+stacked on `cursor/ir-phase7-sol-review-6d81-f29d` /
+[PR #56](https://github.com/gaoyu06/native-obfuscator/pull/56).
+
+`cursor/ir-phase8-sol-review-6d81` 审查
+`cursor/ir-compiler-phase8-6d81` /
+[PR #62](https://github.com/gaoyu06/native-obfuscator/pull/62)；后者堆叠在
+`cursor/ir-phase7-sol-review-6d81-f29d` /
+[PR #56](https://github.com/gaoyu06/native-obfuscator/pull/56) 之上。
 
 ## Summary / 摘要
 
-Opt-in IR (`--codegen=ir`) now lowers ordinary `NEW` through
-`JNIEnv::AllocObject` and high-level `INVOKESPECIAL <init>` through
-`CallNonvirtualVoidMethod`. Static and virtual invokes now cover exact `I`,
-`J`, and reference arguments plus `V`, exact `I`, `J`, and reference returns
-with the matching JNI call families. The default remains `legacy`. Detailed
-evidence is in `docs/architecture/ir-phase8-status.md`.
+Verdict: **Accept / 接受**. The independent review found no correctness bug in
+the requested phase-8 scope and therefore changes documentation only. Detailed
+findings and verification evidence are in
+`docs/architecture/ir-phase8-review.md`.
 
-可选 IR（`--codegen=ir`）现可通过 `JNIEnv::AllocObject` 降低普通 `NEW`，并将
-高层 `INVOKESPECIAL <init>` 降为 `CallNonvirtualVoidMethod`。静态与虚调用现支持
-精确 `I`、`J` 及引用参数，并支持 `V`、精确 `I`、`J` 及引用返回，使用对应 JNI
-调用族。默认值仍为 `legacy`。详细证据见
-`docs/architecture/ir-phase8-status.md`。
+结论：**接受**。独立审查未在指定的第八阶段范围内发现正确性缺陷，因此本审查分支只
+修改文档。详细发现及验证证据见
+`docs/architecture/ir-phase8-review.md`。
 
 ## (a) Change scope / 本次改动范围
 
-- Added a typed `NEW` IR node, existing-cache class resolution,
-  `AllocObject`, and exceptional-exit handling.
-- Added constructor-only `INVOKESPECIAL` with receiver/arguments represented
-  in the high-level invoke node and emitted by `CallNonvirtualVoidMethod`.
-- Expanded static/virtual high-level invokes to long arguments, and
-  void/long/object returns. Tests exercise long, String-returning, and static
-  void shapes.
-- Added three regressions, including fallback-before-mutation after newly
-  admitted allocation/constructor operations, and expanded the real g++ smoke
-  from 29 to 34 methods.
-- Kept constructor method bodies excluded, the default `legacy`, and all
-  existing snippets.
+- Reviewed typed `NEW`, existing class-cache resolution,
+  `JNIEnv::AllocObject`, and protected/unprotected exceptional exits.
+- Reviewed constructor-only `INVOKESPECIAL <init>`, including verified
+  `NEW`/`DUP`/constructor stack behavior and
+  `CallNonvirtualVoidMethod(receiver, class, method ID, arguments...)`.
+- Reviewed exact `I`, `J`, and reference arguments plus `V`, exact `I`, `J`,
+  and reference returns for static/virtual high-level invokes, including every
+  selected JNI call family.
+- Reviewed fallback-before-mutation after newly admitted operations,
+  constructor-method exclusion, the opt-in `--codegen=ir` mode, the `legacy`
+  default, and retention of existing snippets.
+- Added the phase-8 review record and refreshed this bilingual handoff; no
+  compiler implementation was changed.
 
-- 新增 typed `NEW` IR 节点、基于现有缓存的类解析、`AllocObject` 及异常出口处理。
-- 新增仅限构造器的 `INVOKESPECIAL`；receiver/参数保留在高层 invoke 节点中，并由
-  `CallNonvirtualVoidMethod` 发射。
-- 将静态/虚高层调用扩展到 long 参数及 void/long/object 返回；测试覆盖 long、
-  String 返回及静态 void 形状。
-- 新增 3 个回归，包括新接纳分配/构造器操作后的 mutation 前 fallback，并将真实
-  g++ 烟测从 29 个方法扩展到 34 个方法。
-- 构造器方法体仍不处理，默认值仍为 `legacy`，全部现有 snippets 均保留。
+- 审查 typed `NEW`、现有类缓存解析、`JNIEnv::AllocObject`，以及受保护/未受保护
+  情况下的异常出口。
+- 审查仅限构造器的 `INVOKESPECIAL <init>`，包括经验证的
+  `NEW`/`DUP`/构造器栈行为，以及
+  `CallNonvirtualVoidMethod(receiver, class, method ID, arguments...)`。
+- 审查静态/虚高层调用的精确 `I`、`J`、引用参数及 `V`、精确 `I`、`J`、引用
+  返回，包括所选择的全部 JNI 调用族。
+- 审查新接纳操作后的 mutation 前 fallback、构造器方法体排除策略、可选
+  `--codegen=ir` 模式、`legacy` 默认值及现有 snippets 保留情况。
+- 新增第八阶段审查记录并更新本双语交接说明；未修改编译器实现。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
@@ -52,38 +60,40 @@ descriptor sorts, interface/dynamic calls, non-constructor special calls, and
 reference-returning method bodies still fall back. Focused unit and C++ syntax
 evidence does not replace supported-platform native runtime-parity gates.
 
-第八阶段仍是部分、可选的编译器增量。不支持的字节码与描述符 sort、接口/动态调用、
+第八阶段仍是部分、可选的编译器增量。不支持的字节码与描述符类型、接口/动态调用、
 非构造器 special 调用及引用返回方法体仍会 fallback。聚焦单测与 C++ 语法证据不能
 替代受支持平台上的 native 运行时等价性门禁。
 
-## (c) Is review required? / 上线前是否需要 review？
+## (c) Is review required? / 是否需要 review？
 
 **Yes / 是。**
 
-Review class-cache/allocation failure routing, verified `NEW`/`DUP`/constructor
-stack behavior, `CallNonvirtualVoidMethod` argument order, invoke carrier-to-JNI
-family mapping, and fallback-before-mutation.
+This branch supplies an independent compiler review, but the stacked change
+still requires normal maintainer review and disposition. Reviewers should
+preserve allocation failure routing, constructor receiver/argument order,
+invoke carrier-to-JNI mapping, and fallback atomicity.
 
-需要审查类缓存/分配失败路由、经验证的 `NEW`/`DUP`/构造器 stack 行为、
-`CallNonvirtualVoidMethod` 参数顺序、invoke carrier 到 JNI 调用族的映射，以及
-mutation 前 fallback。
+本分支提供独立编译器审查，但该堆叠改动仍需维护者按正常流程审查并决定是否接收。
+审查者应保留分配失败路由、构造器 receiver/参数顺序、invoke carrier 到 JNI
+调用族的映射，以及 fallback 原子性。
 
 ## (d) Review preconditions / Review 前置条件
 
-1. Compare and land on `cursor/ir-phase7-sol-review-6d81-f29d` (PR #56,
-   reviewing PR #54), not `master`, preserving the stack order.
-   必须基于 `cursor/ir-phase7-sol-review-6d81-f29d`（PR #56，审查 PR #54）
-   比较与落地，不得改用 `master`，并保持堆叠顺序。
-2. Re-run the focused Gradle command and inspect JUnit XML. Recorded final
-   result: `IrCompilerTest` 36 plus `CodegenModeTest` 2, total 38; zero
-   skipped, failures, or errors.
-   重跑聚焦 Gradle 命令并检查 JUnit XML。最终记录为 36 + 2，共 38 个测试；跳过、
-   失败、错误均为零。
-3. Confirm the g++ testcase remains unskipped when g++ and JNI headers are
-   present, and independently syntax-check the retained 34-method translation
+1. Review this branch against `cursor/ir-compiler-phase8-6d81` (PR #62), and
+   keep PR #62 stacked on `cursor/ir-phase7-sol-review-6d81-f29d` (PR #56);
+   do not rebase the compiler sequence onto `master`.
+   本分支必须相对 `cursor/ir-compiler-phase8-6d81`（PR #62）审查，同时 PR #62
+   必须继续堆叠在 `cursor/ir-phase7-sol-review-6d81-f29d`（PR #56）之上；
+   不得将编译器序列改基到 `master`。
+2. Re-run the focused Gradle command and inspect JUnit XML for the claimed
+   `IrCompilerTest` 36 plus `CodegenModeTest` 2 cases.
+   重跑聚焦 Gradle 命令，并检查 JUnit XML 中声明的 `IrCompilerTest` 36 加
+   `CodegenModeTest` 2 个用例。
+3. When g++ and JNI headers are present, require the g++ testcase to be
+   unskipped and independently syntax-check its retained 34-method translation
    unit with `g++ -std=c++17 -fsyntax-only`.
-   当 g++ 与 JNI 头文件存在时，确认该测试未跳过，并使用
-   `g++ -std=c++17 -fsyntax-only` 独立语法检查保留的 34-method 翻译单元。
+   当 g++ 与 JNI 头文件存在时，必须确认 g++ 用例未跳过，并使用
+   `g++ -std=c++17 -fsyntax-only` 独立语法检查其保留的 34-method 翻译单元。
 4. Require supported-platform/JDK CI and native runtime-parity checks before
    any production decision.
    任何生产决策前都必须通过受支持平台/JDK 的 CI 及 native 运行时等价性检查。
