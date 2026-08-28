@@ -2,3 +2,4 @@ DemoKernel
 DemoKernel#add!(II)I
 DemoKernel#sumTo!(I)I
 DemoKernel#mix!(II)I
+DemoKernel#<clinit>!()V
