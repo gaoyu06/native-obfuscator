@@ -154,6 +154,7 @@ public class NativeLibraryPublicationTest {
         entries.add("LinkOnlyFixture");
         entries.add("LinkOnlyFixture#add!(II)I");
         entries.add("LinkOnlyFixture#sumTo!(I)I");
+        entries.add("LinkOnlyFixture#<clinit>!()V");
         return entries;
     }
 
