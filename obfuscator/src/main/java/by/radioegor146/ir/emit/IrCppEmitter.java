@@ -246,7 +246,8 @@ public final class IrCppEmitter {
     }
 
     private CppAst.Statement exceptionCheck(IrMethod method) {
-        return new CppAst.If(memberCall("env", "ExceptionCheck"),
+        return new CppAst.If(new CppAst.Binary(
+                memberCall("env", "ExceptionCheck"), "!=", new CppAst.IntLiteral(0)),
                 new CppAst.Block(Collections.singletonList(earlyReturn(method))), null);
     }
 
