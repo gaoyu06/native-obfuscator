@@ -16,9 +16,9 @@ from `--codegen=ir --ir-lower=eval`. No packing or recovery pass was performed.
 ## Commands
 
 The fixture source stayed outside the repository. It contains static `add`,
-`sumTo`, `subMul`, and `mix(II)I` methods; the driver is left as Java while the
-four kernel methods are selected by the whitelist. The `mix` source is
-intentionally not reproduced here.
+`sumTo`, `subMul`, and `mix(II)I` methods; the driver is left as Java while a
+`fixture/IrKernel*` whitelist selects the kernel class and its methods. The
+`mix` source is intentionally not reproduced here.
 
 ```bash
 ./gradlew :obfuscator:shadowJar
@@ -53,11 +53,12 @@ CMake identified both compilers as `GNU 13.3.0`; verbose compilation and link
 commands used `/usr/bin/g++`, `-DNDEBUG`, and optimization flags. The explicit
 `strip --strip-all` left an ELF64 x86-64 shared object reported as `stripped`.
 
-The transpiler log processed `fixture/IrKernel`, skipped the Java driver, and
-contained no fallback message. Generated `mix(II)I` had an
-`ir_method_data` array followed by a call to
-`native_jvm::ir_eval::evaluate_i32`; it contained neither a legacy `cstack`
-body nor a direct-IR straight-line body.
+The transpiler log processed `fixture/IrKernel` and skipped the Java driver.
+Its only fallback was the synthesized void `<clinit>()V`, which is outside the
+evaluator's i32-return subset. There was no fallback for `mix(II)I`: its
+generated function had an `ir_method_data` array followed by a call to
+`native_jvm::ir_eval::evaluate_i32`, with neither a legacy `cstack` body nor a
+direct-IR straight-line body.
 
 ## Candidate output
 
