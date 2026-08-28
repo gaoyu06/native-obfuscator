@@ -50,12 +50,14 @@ public class NativePrimitivesIntegrationTest {
 
         Path cppDirectory = outputDirectory.resolve("cpp");
         assertTrue(Files.isRegularFile(cppDirectory.resolve("sdk/native_primitives.cpp")));
+        assertTrue(Files.isRegularFile(cppDirectory.resolve("sdk/native_strings.cpp")));
         assertTrue(Files.isRegularFile(
                 cppDirectory.resolve("sdk/third_party/sha-2/LICENSE.md")));
         String cmakeFile = new String(
                 Files.readAllBytes(cppDirectory.resolve("CMakeLists.txt")),
                 java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(cmakeFile.contains("sdk/native_primitives.cpp"));
+        assertTrue(cmakeFile.contains("sdk/native_strings.cpp"));
         assertTrue(cmakeFile.contains("sdk/third_party/sha-2/sha-256.cpp"));
 
         ProcessHelper.run(
@@ -157,6 +159,7 @@ public class NativePrimitivesIntegrationTest {
                      new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
             writeClass(output, NativePrimitivesVerifier.class);
             writeClass(output, NativePrimitives.class);
+            writeClass(output, NativeStrings.class);
         }
     }
 

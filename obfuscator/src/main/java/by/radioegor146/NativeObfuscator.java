@@ -38,7 +38,9 @@ import java.util.zip.ZipOutputStream;
 public class NativeObfuscator {
 
     private static final Logger logger = LoggerFactory.getLogger(NativeObfuscator.class);
-    private static final String SDK_CLASS_NAME = "by/radioegor146/sdk/NativePrimitives";
+    private static final List<String> SDK_CLASS_NAMES = Arrays.asList(
+            "by/radioegor146/sdk/NativePrimitives",
+            "by/radioegor146/sdk/NativeStrings");
 
     private final Snippets snippets;
     private final StringPool stringPool;
@@ -130,6 +132,8 @@ public class NativeObfuscator {
         Util.copyResource("sources/sdk/c_api.h", sdkDir);
         Util.copyResource("sources/sdk/native_primitives.hpp", sdkDir);
         Util.copyResource("sources/sdk/native_primitives.cpp", sdkDir);
+        Util.copyResource("sources/sdk/native_strings.hpp", sdkDir);
+        Util.copyResource("sources/sdk/native_strings.cpp", sdkDir);
         Util.copyResource("sources/sdk/third_party/README.md", sdkThirdPartyDir);
         Util.copyResource("sources/sdk/third_party/sha-2/sha-256.h", sha256Dir);
         Util.copyResource("sources/sdk/third_party/sha-2/sha-256.cpp", sha256Dir);
@@ -147,6 +151,8 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("sdk/c_api.h");
         cMakeBuilder.addMainFile("sdk/native_primitives.hpp");
         cMakeBuilder.addMainFile("sdk/native_primitives.cpp");
+        cMakeBuilder.addMainFile("sdk/native_strings.hpp");
+        cMakeBuilder.addMainFile("sdk/native_strings.cpp");
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.h");
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
 
@@ -187,7 +193,8 @@ public class NativeObfuscator {
                 if (entry.getName().equals(JarFile.MANIFEST_NAME)) return;
 
                 try {
-                    if (entry.getName().equals(SDK_CLASS_NAME + ".class")) {
+                    if (SDK_CLASS_NAMES.stream().anyMatch(
+                            name -> entry.getName().equals(name + ".class"))) {
                         if (debug != null) {
                             Util.writeEntry(jar, debug, entry);
                         }
@@ -422,7 +429,12 @@ public class NativeObfuscator {
             ClassWriter classWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
             resultLoaderClass.accept(classWriter);
             Util.writeEntry(out, loaderClassName + ".class", classWriter.toByteArray());
-            Util.writeEntry(out, SDK_CLASS_NAME + ".class", buildSdkClass(loaderClassName));
+            for (String sdkClassName : SDK_CLASS_NAMES) {
+                Util.writeEntry(
+                        out,
+                        sdkClassName + ".class",
+                        buildSdkClass(sdkClassName, loaderClassName));
+            }
 
             logger.info("Jar file ready!");
             Manifest mf = jar.getManifest();
@@ -444,8 +456,8 @@ public class NativeObfuscator {
         return nativeDir;
     }
 
-    private byte[] buildSdkClass(String loaderClassName) throws IOException {
-        String resourceName = SDK_CLASS_NAME + ".class";
+    private byte[] buildSdkClass(String sdkClassName, String loaderClassName) throws IOException {
+        String resourceName = sdkClassName + ".class";
         ClassNode sdkClass = new ClassNode(Opcodes.ASM9);
         try (InputStream input = NativeObfuscator.class.getClassLoader().getResourceAsStream(resourceName)) {
             if (input == null) {
