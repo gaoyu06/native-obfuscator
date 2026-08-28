@@ -273,6 +273,7 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("jobject JNICALL __ngen_native_returnAllocatedObject0"));
         assertTrue(allocation >= 0);
         assertTrue(cpp.indexOf("return nullptr;", allocation) > allocation);
+        assertFalse(cpp.contains("env->ExceptionClear()"));
         assertTrue(cpp.indexOf("return v" + returnTerminator.getValue().getId() + ";",
                 allocation) > allocation);
     }
