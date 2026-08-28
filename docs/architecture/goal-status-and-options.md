@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-28. PRs
-#1–#54 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#57 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -39,6 +39,12 @@ Fable “accept with nits” 审阅、[#46](https://github.com/gaoyu06/native-ob
 timing。[#54](https://github.com/gaoyu06/native-obfuscator/pull/54) 为仍然 opt-in
 的 IR phase 7 增加 `CHECKCAST`、`INSTANCEOF` 与部分两槽 `I64` 算术；其状态
 文档声称 33 个 `IrCompilerTest` 加 2 个 `CodegenModeTest`。
+[#56](https://github.com/gaoyu06/native-obfuscator/pull/56) 是 Sol 对 #54 的
+纯文档审阅，记录结论 **accept**，并记录重新运行 35/35 个聚焦测试。独立的
+[#57](https://github.com/gaoyu06/native-obfuscator/pull/57) 从 #44 扩展
+evaluator ISA，加入 `IAND`、`IOR`、`IXOR`、`ISHL`、`ISHR` 与 `IUSHR`，使
+`IrFriendlyIntKernel` 的等价整数操作流可保持在 eval 路径；其双语记录声称
+28/28 个聚焦测试通过，并明确不新增 benchmark timing。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -55,20 +61,29 @@ eval-lower selection on `IrFriendlyIntKernel.run(I)I`: direct IR stayed on IR,
 while eval fell back to legacy on `USHR`, so no eval timing is claimed. #54
 adds `CHECKCAST`, `INSTANCEOF`, and a two-slot `I64` arithmetic slice to the
 still-opt-in IR phase 7; its status document claims 33 `IrCompilerTest` plus
-2 `CodegenModeTest`. This brief neither merges nor implements any draft.
+2 `CodegenModeTest`. #56 is Sol's documentation-only review of #54; it records
+an **accept** verdict and a 35/35 focused-test rerun. Separately, #57 extends
+the evaluator ISA from #44 with `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and
+`IUSHR`, allowing an `IrFriendlyIntKernel`-equivalent integer stream to stay
+on eval. Its bilingual record claims 28/28 focused tests and explicitly adds
+no benchmark timings. This brief neither merges nor implements any draft.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#54 均为草稿，`master` 未包含这些能力；默认 codegen
-仍是 legacy。#54 的 phase 7 仍为不完整的 opt-in IR 切片；#46 与 #53 的本地
-测量均不是可移植性能结论，且 #53 没有有效 eval timing。#37 与 #50 分别从
-有效 live direct-IR 与 shared-evaluator stripped `.so` 完整恢复了四个方法，
-因此 requirement 7 并未满足。
+**No / 否。** PRs #1–#57 均为草稿，`master` 未包含这些能力；默认 codegen
+仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
+批准；#57 仍是窄范围、opt-in 且逐方法 fallback 的 evaluator lowering。#46
+与 #53 的本地测量均不是可移植性能结论，#53 的 eval timing 仍为 `N/A`，而
+#57 不含新 benchmark 数字。#37 与 #50 分别从有效 live direct-IR 与
+shared-evaluator stripped `.so` 完整恢复了四个方法，因此 requirement 7
+并未满足。
 
-**No.** PRs #1–#54 remain drafts and `master` has none of these capabilities;
-the default codegen remains legacy. #54's phase 7 remains an incomplete,
-opt-in IR slice. The local measurements in #46 and #53 are not portable
-performance claims, and #53 has no valid eval timing. #37 and #50 respectively
+**No.** PRs #1–#57 remain drafts and `master` has none of these capabilities;
+the default codegen remains legacy. #56's accept review does not turn #54's
+incomplete opt-in phase 7 into ship approval, and #57 remains a narrow,
+opt-in evaluator lowering with per-method fallback. The local measurements in
+#46 and #53 are not portable performance claims; #53's eval timing remains
+`N/A`, and #57 contains no new benchmark numbers. #37 and #50 respectively
 recovered all four methods from valid live direct-IR and shared-evaluator
 stripped `.so` subjects, so requirement 7 is not met.
 
@@ -94,10 +109,12 @@ boundaries rather than generalized.
    `docs/eval/ir-eval-lower/recovery.md` 与 `scores.md`，再加 #51 的
    `docs/architecture/ir-phase6-review.md` 与更新后的
    `docs/architecture/ir-phase6-status.md`，以及 #53 的
-   `docs/benchmarks/results-ir-eval-lower.md` 与 #54 的
-   `docs/architecture/ir-phase7-status.md`。 Continue to use the
-   #34–#42 records for their claims, and use only those named branch documents
-   for the new #44–#54 claims.
+   `docs/benchmarks/results-ir-eval-lower.md`、#54 的
+   `docs/architecture/ir-phase7-status.md`、#56 的
+   `docs/architecture/ir-phase7-review.md`，以及 #57 的
+   `docs/architecture/ir-evaluator-backend.md` 与双语 `PR_BODY.md`。
+   Continue to use the #34–#42 records for their claims, and use only those
+   named branch documents for the new #44–#57 claims.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -115,19 +132,21 @@ boundaries rather than generalized.
    methods as full. Requirement 7 is not met.
 4. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
-   native code 或可解码 evaluator blob 的 lowering；#47 → #51 → #54 的
-   direct-IR coverage、#34 → #53 的 benchmark、#42 → #44 → #48 → #50 的
-   独立 evaluator 实验与 JDK/SDK stacks 分别继续。
+   native code 或可解码 evaluator blob 的 lowering；#47 → #51 → #54 → #56
+   的 direct-IR coverage/review、#34 → #53 的 benchmark、#42 → #44 →
+   #48 → #50 的独立 evaluator 实验及其 #57 ISA sibling，与 JDK/SDK stacks
+   分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
-   blobs. The #47 → #51 → #54 direct IR lane, the #34 → #53 benchmark lane,
-   the separate #42 → #44 → #48 → #50 evaluator experiment, and the JDK/SDK
-   stacks continue as separate lanes.
+   blobs. The #47 → #51 → #54 → #56 direct IR coverage/review lane, the
+   #34 → #53 benchmark lane, the separate #42 → #44 → #48 → #50 evaluator
+   experiment with #57 as an ISA sibling, and the JDK/SDK stacks continue as
+   separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
-| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), stacked on #45, adds `TABLESWITCH`/`LOOKUPSWITCH` and general object `ANEWARRAY`. After Fable was policy-blocked, [#51](https://github.com/gaoyu06/native-obfuscator/pull/51) records Sol's **accept with nits** review and fixes array-component `ANEWARRAY` to use descriptor-based `FindClass`. [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), stacked on #51, adds `CHECKCAST`/`INSTANCEOF` and an initial two-slot `I64` slice. Its status document claims 33 `IrCompilerTest` plus 2 `CodegenModeTest`, all with 0 skipped/failures/errors. The path remains opt-in, with per-method fallback and default legacy. The separate evaluator lane #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) publishes a valid live stripped `--ir-lower=eval` `.so`, then records recovery-first blinded reading in which all four methods scored full. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
+| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), stacked on #45, adds `TABLESWITCH`/`LOOKUPSWITCH` and general object `ANEWARRAY`. After Fable was policy-blocked, [#51](https://github.com/gaoyu06/native-obfuscator/pull/51) records Sol's **accept with nits** review and fixes array-component `ANEWARRAY` to use descriptor-based `FindClass`. [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), stacked on #51, adds `CHECKCAST`/`INSTANCEOF` and an initial two-slot `I64` slice. Its status document claims 33 `IrCompilerTest` plus 2 `CodegenModeTest`, all with 0 skipped/failures/errors. [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) is Sol's docs-only **accept** review of #54 and records a 35/35 focused-test rerun. This #47 → #51 → #54 → #56 path remains opt-in, with per-method fallback and default legacy. The separate evaluator experiment #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) publishes a valid live stripped `--ir-lower=eval` `.so`, then records recovery-first blinded reading in which all four methods scored full. [#57](https://github.com/gaoyu06/native-obfuscator/pull/57) is an ISA sibling from #44: it adds `IAND`/`IOR`/`IXOR`/`ISHL`/`ISHR`/`IUSHR`, records an `IrFriendlyIntKernel`-equivalent stream staying on eval, claims 28/28 focused tests, and adds no benchmark timings. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | [#41](https://github.com/gaoyu06/native-obfuscator/pull/41), stacked on #14, adds four ClassicTest fixtures compiled independently with `javac --release 25` (class-file major 69). Its status document records 24 total: 23 passed, 1 pre-existing `krak2` skip, 0 failed; each new fixture reached `OK` on `HOTSPOT`, `STD_JAVA`, and `ANDROID`. The full #6 → #9 → #14 → #41 stack remains draft. | #41 is not a blanket full-JDK-25 claim: it does not cover every language feature, library API, runtime mode, generated class shape, preview feature, or separate JDK 22–24 class file. `ConstantDynamic`, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence remain gaps. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) runs JVM, legacy, and IR tasks through the same harness. | [#53](https://github.com/gaoyu06/native-obfuscator/pull/53), stacked on #34, records `IrFriendlyIntKernel.run(I)I` local medians of 12,207,144.5 ns for JVM, 202,090,247.0 ns for legacy, and 11,311,481.5 ns for direct IR. Direct IR stayed on IR. Eval rejected `USHR` and used legacy fallback, so the evaluator median is `N/A` and no eval timing is claimed. These one-VM values are not portable. | JMH/forked baselines, confidence intervals, native-only isolation, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) cleanly stacks `NativeStrings` length/hash/concat on #12 without copying the general benchmark harness. Its local diagnostic remeasurement was slower than Java; the status document explicitly says this is not portable and not a speedup claim. The #12 → #15 → #46 lane remains draft. | The product surface, embedding and provider/update policy, target matrix, Zig execution, broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and release security sign-off remain unresolved. |
@@ -221,9 +240,10 @@ recommend rewriting or shrinking the written goal to A. #37 supersedes the
 wait for a live-kernel reader. The next reader-bar design must not leave the
 source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
-design. Wider opt-in direct-IR coverage in #47 → #51 → #54, the #34 → #53
-benchmark lane, the separate #42 → #44 → #48 → #50 evaluator experiment, and
-the JDK/SDK stacks continue as separate engineering lanes.
+design. Wider opt-in direct-IR coverage/review in #47 → #51 → #54 → #56, the
+#34 → #53 benchmark lane, the separate #42 → #44 → #48 → #50 evaluator
+experiment with #57 as an ISA sibling, and the JDK/SDK stacks continue as
+separate engineering lanes.
 
 #### Other product decisions
 
@@ -275,13 +295,15 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) →
    [#47](https://github.com/gaoyu06/native-obfuscator/pull/47) →
    [#51](https://github.com/gaoyu06/native-obfuscator/pull/51) →
-   [#54](https://github.com/gaoyu06/native-obfuscator/pull/54). Rebase after
+   [#54](https://github.com/gaoyu06/native-obfuscator/pull/54) →
+   [#56](https://github.com/gaoyu06/native-obfuscator/pull/56). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
-   away review fixes or treat #47/#51/#54 as parity or ship-ready. #39 and #45
-   are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
+   away review fixes or treat #47/#51/#54/#56 as parity or ship-ready. #39 and
+   #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
    accept-with-nits review after Fable was policy-blocked and includes the
    array-component `FindClass` fix. #54 adds the still-opt-in phase-7
-   `CHECKCAST`/`INSTANCEOF` and initial `I64` slice.
+   `CHECKCAST`/`INSTANCEOF` and initial `I64` slice. #56 is Sol's docs-only
+   **accept** review and records the 35/35 focused-test rerun.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -289,7 +311,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    artifact-only successor and [#50](https://github.com/gaoyu06/native-obfuscator/pull/50)
    as the recovery-first reader record: #42 → #44 → #48 → #50. Retain
    `direct` as the default lowering. #50 is evaluation evidence, not an
-   implementation merge prerequisite.
+   implementation merge prerequisite. [#57](https://github.com/gaoyu06/native-obfuscator/pull/57)
+   is a separate ISA sibling from #44, not a successor to #50: it adds the six
+   recorded bitwise/shift operations so the equivalent integer kernel can stay
+   on eval, claims 28/28 focused tests, and records no new benchmark timing.
    Keep benchmark evidence in order:
    [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) →
    [#53](https://github.com/gaoyu06/native-obfuscator/pull/53). #53 integrates
@@ -348,11 +373,15 @@ parallel, but their order within each arrowed stack must be preserved.
   fixing array-component resolution to use descriptor-based `FindClass`.
   #54 adds phase-7 `CHECKCAST`/`INSTANCEOF` and an initial two-slot `I64` slice;
   its status document claims 33 `IrCompilerTest` plus 2 `CodegenModeTest`, all
-  with 0 skipped/failures/errors, and keeps legacy as the codegen default. The
-  #42 evaluator supports a narrower integer subset, is selected only with
-  `--ir-lower=eval`, and keeps `direct` as the lowering default. #44 accepts it
-  with nits; #48 publishes a live stripped artifact, and #50's recovery-first
-  reader scores all four methods full.
+  with 0 skipped/failures/errors, and keeps legacy as the codegen default. #56
+  is Sol's docs-only **accept** review of #54 and records 35/35 focused tests
+  rerun. The #42 evaluator supports a narrower integer subset, is selected only
+  with `--ir-lower=eval`, and keeps `direct` as the lowering default. #44
+  accepts it with nits; #48 publishes a live stripped artifact, and #50's
+  recovery-first reader scores all four methods full. As a sibling from #44,
+  #57 adds `IAND`/`IOR`/`IXOR`/`ISHL`/`ISHR`/`IUSHR`, records the equivalent
+  integer kernel staying on eval, claims 28/28 focused tests, and adds no
+  benchmark timings.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -366,7 +395,7 @@ parallel, but their order within each arrowed stack must be preserved.
   legacy, and 11,311,481.5 ns for direct IR. Direct IR stayed on IR. Eval
   rejected `USHR` and fell back to legacy, so its median is `N/A` and no eval
   timing is claimed. None of these local values is portable.
-- PRs #1–#54 are still open drafts. `master` contains none of their work.
+- PRs #1–#57 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
