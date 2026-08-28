@@ -85,15 +85,19 @@ invoke carrier-to-JNI mapping, and fallback atomicity.
    本分支必须相对 `cursor/ir-compiler-phase8-6d81`（PR #62）审查，同时 PR #62
    必须继续堆叠在 `cursor/ir-phase7-sol-review-6d81-f29d`（PR #56）之上；
    不得将编译器序列改基到 `master`。
-2. Re-run the focused Gradle command and inspect JUnit XML for the claimed
-   `IrCompilerTest` 36 plus `CodegenModeTest` 2 cases.
-   重跑聚焦 Gradle 命令，并检查 JUnit XML 中声明的 `IrCompilerTest` 36 加
-   `CodegenModeTest` 2 个用例。
+2. Re-run the focused Gradle command and inspect JUnit XML. This review reran
+   it with `CC=gcc CXX=g++` and recorded `IrCompilerTest` 36 plus
+   `CodegenModeTest` 2, total 38; zero skips, failures, or errors.
+   重跑聚焦 Gradle 命令并检查 JUnit XML。本审查使用 `CC=gcc CXX=g++` 重跑，
+   记录为 `IrCompilerTest` 36 加 `CodegenModeTest` 2，共 38 个用例；跳过、
+   失败、错误均为零。
 3. When g++ and JNI headers are present, require the g++ testcase to be
    unskipped and independently syntax-check its retained 34-method translation
-   unit with `g++ -std=c++17 -fsyntax-only`.
+   unit with `g++ -std=c++17 -fsyntax-only`. This review confirmed both with
+   g++ 13.3.0 and OpenJDK 21.0.10 JNI headers.
    当 g++ 与 JNI 头文件存在时，必须确认 g++ 用例未跳过，并使用
    `g++ -std=c++17 -fsyntax-only` 独立语法检查其保留的 34-method 翻译单元。
+   本审查已使用 g++ 13.3.0 与 OpenJDK 21.0.10 JNI 头文件确认两项检查。
 4. Require supported-platform/JDK CI and native runtime-parity checks before
    any production decision.
    任何生产决策前都必须通过受支持平台/JDK 的 CI 及 native 运行时等价性检查。

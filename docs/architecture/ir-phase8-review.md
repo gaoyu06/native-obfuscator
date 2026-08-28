@@ -111,10 +111,55 @@ remain present and the legacy path remains selected by default.
 
 ## Verification evidence
 
-The branch-local rerun is intentionally recorded after the pre-test review
-commit. The final review commit will replace this paragraph with the exact
-commands, JUnit XML counts, g++ smoke skip state, and independent emitted-unit
-syntax result from this environment.
+Focused command rerun with the preferred compilers:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest \
+  --rerun-tasks
+```
+
+Gradle reported `BUILD SUCCESSFUL`; all seven selected prerequisite/test tasks
+executed. Final counts read directly from the generated JUnit XML were:
+
+```text
+IrCompilerTest: 36 tests, 0 skipped, 0 failures, 0 errors (0.610 s)
+CodegenModeTest: 2 tests, 0 skipped, 0 failures, 0 errors (0.119 s)
+Total: 38 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The environment had g++ 13.3.0, OpenJDK 21.0.10, and JNI headers at
+`/usr/lib/jvm/java-21-openjdk-amd64/include`. The JUnit XML testcase
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.226 s
+and has no `skipped` element, proving that its compiler smoke did run.
+
+The emitted source retained by that testcase contained 34
+`// IR codegen:` method markers:
+
+```text
+rg -c '// IR codegen:' \
+  /tmp/ir-compile-smoke3235008847643168779/ir-smoke.cpp
+```
+
+Result: `34`.
+
+Its generated calls were inspected directly and included `AllocObject`, the
+nonvirtual constructor family, static int/long/object/void families, and
+virtual int/object families. The generic result-type selection covering the
+remaining admitted virtual families was inspected in the emitter. The retained
+translation unit was then checked independently, outside the JUnit-launched
+compiler process:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke3235008847643168779/ir-smoke.cpp
+```
+
+The independent command exited 0 with empty diagnostics. The testcase's own
+`gpp-output.txt` was also empty.
 
 ## Bugs fixed
 
