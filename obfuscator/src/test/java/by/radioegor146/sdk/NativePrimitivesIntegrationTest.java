@@ -24,6 +24,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class NativePrimitivesIntegrationTest {
@@ -35,6 +36,20 @@ public class NativePrimitivesIntegrationTest {
         Path outputDirectory = temporaryDirectory.resolve("output");
         Files.createDirectories(outputDirectory);
         createInputJar(inputJar);
+
+        Path javaExecutable = javaExecutable();
+        ProcessHelper.ProcessResult plainBenchmark = ProcessHelper.run(
+                temporaryDirectory,
+                120_000,
+                Arrays.asList(
+                        javaExecutable.toString(),
+                        "-cp",
+                        inputJar.toString(),
+                        NativeStringsBenchmark.class.getName(),
+                        "java",
+                        "5",
+                        "10"));
+        plainBenchmark.check("plain Java string benchmark");
 
         String nativeDirectory = new NativeObfuscator().process(
                 inputJar,
@@ -81,12 +96,6 @@ public class NativePrimitivesIntegrationTest {
         Path outputJar = outputDirectory.resolve(inputJar.getFileName());
         injectLibrary(outputJar, nativeDirectory, library);
 
-        Path javaExecutable = java.nio.file.Paths.get(
-                System.getProperty("java.home"),
-                "bin",
-                System.getProperty("os.name").toLowerCase().contains("windows")
-                        ? "java.exe"
-                        : "java");
         ProcessHelper.ProcessResult result = ProcessHelper.run(
                 outputDirectory,
                 120_000,
@@ -100,6 +109,51 @@ public class NativePrimitivesIntegrationTest {
         assertTrue(
                 result.stdout.contains("NativePrimitivesVerifier: PASS"),
                 "Verifier output was: " + result.stdout);
+
+        ProcessHelper.ProcessResult nativeBenchmark = ProcessHelper.run(
+                outputDirectory,
+                120_000,
+                Arrays.asList(
+                        javaExecutable.toString(),
+                        "-Xcheck:jni",
+                        "-cp",
+                        outputJar.toString(),
+                        NativeStringsBenchmark.class.getName(),
+                        "native",
+                        "5",
+                        "10"));
+        nativeBenchmark.check("NativeStrings benchmark");
+        System.out.print(plainBenchmark.stdout);
+        System.out.print(nativeBenchmark.stdout);
+        assertTrue(
+                plainBenchmark.stdout.contains("NativeStringsBenchmark: mode=java"),
+                "Plain benchmark output was: " + plainBenchmark.stdout);
+        assertTrue(
+                nativeBenchmark.stdout.contains("NativeStringsBenchmark: mode=native"),
+                "Native benchmark output was: " + nativeBenchmark.stdout);
+        assertEquals(
+                outputField(plainBenchmark.stdout, "checksum="),
+                outputField(nativeBenchmark.stdout, "checksum="),
+                "Java and NativeStrings benchmark checksums differ");
+    }
+
+    private static Path javaExecutable() {
+        return java.nio.file.Paths.get(
+                System.getProperty("java.home"),
+                "bin",
+                System.getProperty("os.name").toLowerCase().contains("windows")
+                        ? "java.exe"
+                        : "java");
+    }
+
+    private static String outputField(String output, String prefix) {
+        int start = output.indexOf(prefix);
+        if (start < 0) {
+            throw new AssertionError("Missing " + prefix + " in output: " + output);
+        }
+        start += prefix.length();
+        int end = output.indexOf(' ', start);
+        return end < 0 ? output.substring(start).trim() : output.substring(start, end);
     }
 
     private static void injectLibrary(
@@ -158,6 +212,7 @@ public class NativePrimitivesIntegrationTest {
         try (JarOutputStream output =
                      new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
             writeClass(output, NativePrimitivesVerifier.class);
+            writeClass(output, NativeStringsBenchmark.class);
             writeClass(output, NativePrimitives.class);
             writeClass(output, NativeStrings.class);
         }
