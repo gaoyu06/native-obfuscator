@@ -75,15 +75,21 @@ def benchmarkJarTask = tasks.register('benchmarkJar', Jar) {
     manifest.attributes('Main-Class': 'benchmarks.BenchmarkMain')
 }
 
-tasks.register('bench', Exec) {
-    group = 'verification'
-    description = 'Runs plain-JVM and transpiled-JNI benchmarks (not part of check).'
-    dependsOn shadowJar, benchmarkJar
-    workingDir rootProject.projectDir
-    commandLine 'python3', rootProject.file('benchmarks/run.py')
-    environment 'BENCH_OBFUSCATOR_JAR', shadowJar.archiveFile.get().asFile.absolutePath
-    environment 'BENCH_INPUT_JAR', benchmarkJarTask.get().archiveFile.get().asFile.absolutePath
+def registerBenchmarkTask = { String taskName, String codegen ->
+    tasks.register(taskName, Exec) {
+        group = 'verification'
+        description = "Runs plain-JVM and ${codegen} transpiled-JNI benchmarks (not part of check)."
+        dependsOn shadowJar, benchmarkJar
+        workingDir rootProject.projectDir
+        commandLine 'python3', rootProject.file('benchmarks/run.py')
+        environment 'BENCH_CODEGEN', codegen
+        environment 'BENCH_OBFUSCATOR_JAR', shadowJar.archiveFile.get().asFile.absolutePath
+        environment 'BENCH_INPUT_JAR', benchmarkJarTask.get().archiveFile.get().asFile.absolutePath
+    }
 }
+
+registerBenchmarkTask('bench', 'legacy')
+registerBenchmarkTask('benchIr', 'ir')
 
 ConcurrentHashMap<String, StringBuilder> testOutputs = new ConcurrentHashMap<>();
 

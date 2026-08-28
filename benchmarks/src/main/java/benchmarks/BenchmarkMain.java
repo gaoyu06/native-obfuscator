@@ -1,6 +1,7 @@
 package benchmarks;
 
 import benchmarks.kernels.IntegerLoopKernel;
+import benchmarks.kernels.IrFriendlyIntKernel;
 import benchmarks.kernels.RecursionKernel;
 import benchmarks.kernels.StringConcatHashKernel;
 
@@ -18,6 +19,12 @@ public final class BenchmarkMain {
         int iterations = positiveInt(option(args, "--iterations", "10"), "iterations");
 
         KernelSpec[] kernels = new KernelSpec[]{
+                new KernelSpec("ir-friendly-int-loop", "5,000,000 int-only loop iterations") {
+                    @Override
+                    long call() {
+                        return IrFriendlyIntKernel.run(5_000_000);
+                    }
+                },
                 new KernelSpec("integer-loop", "5,000,000 loop iterations") {
                     @Override
                     long call() {
