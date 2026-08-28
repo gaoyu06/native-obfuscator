@@ -280,7 +280,14 @@ public class NativeObfuscator {
                             ClassMethodFilter.cleanAnnotations(classNode);
                         }
 
-                        classNode.version = 52;
+                        // Raise legacy classes to Java 8 (52), because injected code needs it
+                        // (interface method bodies require 52, class-literal LDC requires 49).
+                        // Never downgrade: stamping e.g. a Java 17 (61) class as 52 makes the JVM
+                        // ignore its NestHost/NestMembers, Record and PermittedSubclasses
+                        // attributes even though ASM still writes them.
+                        if ((classNode.version & 0xFFFF) < Opcodes.V1_8) {
+                            classNode.version = Opcodes.V1_8;
+                        }
                         ClassWriter classWriter = new SafeClassWriter(metadataReader,
                                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
                         classNode.accept(classWriter);
