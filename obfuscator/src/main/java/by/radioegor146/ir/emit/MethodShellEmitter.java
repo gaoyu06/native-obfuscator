@@ -31,22 +31,31 @@ public final class MethodShellEmitter {
     }
 
     public Shell beginLegacy(MethodContext context) {
-        return begin(context, true);
+        return begin(context, true, false);
     }
 
     public Shell beginIr(MethodContext context) {
-        return begin(context, false);
+        return begin(context, false, false);
+    }
+
+    public Shell beginEvaluator(MethodContext context) {
+        return begin(context, false, true);
     }
 
     public void finishLegacy(MethodContext context, Shell shell) {
-        finish(context, shell, true);
+        finish(context, shell, true, true);
     }
 
     public void finishIr(MethodContext context, Shell shell) {
-        finish(context, shell, false);
+        finish(context, shell, false, true);
     }
 
-    private Shell begin(MethodContext context, boolean legacyState) {
+    public void finishEvaluator(MethodContext context, Shell shell) {
+        finish(context, shell, false, false);
+    }
+
+    private Shell begin(MethodContext context, boolean legacyState,
+                        boolean thinEvaluator) {
         MethodNode method = context.method;
         StringBuilder output = context.output;
         SpecialMethodProcessor specialMethodProcessor = getSpecialMethodProcessor(method.name);
@@ -101,65 +110,67 @@ public final class MethodShellEmitter {
         if (context.proxyMethod != null) {
             output.append("    env->DeleteLocalRef(ignored_hidden);\n");
         }
-        if (!isStatic) {
-            output.append("    jclass clazz = utils::get_class_from_object(env, obj);\n");
-            output.append("    if (env->ExceptionCheck()) { ")
-                    .append(String.format("return (%s) 0;",
-                            MethodProcessor.CPP_TYPES[context.ret.getSort()]))
-                    .append(" }\n");
-        }
-        output.append("    jobject classloader = utils::get_classloader_from_class(env, clazz);\n");
-        output.append("    if (env->ExceptionCheck()) { ")
-                .append(String.format("return (%s) 0;",
-                        MethodProcessor.CPP_TYPES[context.ret.getSort()]))
-                .append(" }\n");
-        output.append("    if (classloader == nullptr) { env->FatalError(")
-                .append(context.getStringPool().get("classloader == null"))
-                .append(String.format("); return (%s) 0; }\n",
-                        MethodProcessor.CPP_TYPES[context.ret.getSort()]));
-        output.append("\n");
-        if (!isStatic) {
-            output.append("    env->DeleteLocalRef(clazz);\n");
-            output.append("    clazz = utils::find_class_wo_static(env, classloader, ")
-                    .append(context.getCachedStrings()
-                            .getPointer(context.clazz.name.replace('/', '.')))
-                    .append(");\n");
-            output.append("    if (env->ExceptionCheck()) { ")
-                    .append(String.format("return (%s) 0;",
-                            MethodProcessor.CPP_TYPES[context.ret.getSort()]))
-                    .append(" }\n");
-        }
-        output.append("    jobject lookup = nullptr;\n");
-
-        if (method.tryCatchBlocks != null) {
-            for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
-                context.getLabelPool().getName(tryCatch.start.getLabel());
-                context.getLabelPool().getName(tryCatch.end.getLabel());
-                context.getLabelPool().getName(tryCatch.handler.getLabel());
+        if (!thinEvaluator) {
+            if (!isStatic) {
+                output.append("    jclass clazz = utils::get_class_from_object(env, obj);\n");
+                output.append("    if (env->ExceptionCheck()) { ")
+                        .append(String.format("return (%s) 0;",
+                                MethodProcessor.CPP_TYPES[context.ret.getSort()]))
+                        .append(" }\n");
             }
-            Set<String> classesForTryCatches = method.tryCatchBlocks.stream()
-                    .filter(tryCatchBlock -> tryCatchBlock.type != null)
-                    .map(tryCatchBlock -> tryCatchBlock.type)
-                    .collect(Collectors.toSet());
-            classesForTryCatches.forEach(clazz -> {
-                int classId = context.getCachedClasses().getId(clazz);
-                context.output.append(String.format("    // try-catch-class %s\n",
-                        Util.escapeCommentString(clazz)));
-                context.output.append(String.format(
-                        "    if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); "
-                                + "if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } "
-                                + "cclasses_mtx[%d].unlock(); if (env->ExceptionCheck()) { return (%s) 0; } }\n",
-                        classId, classId, classId, classId, classId,
-                        MethodProcessor.getClassGetter(context, clazz), classId, classId,
-                        MethodProcessor.CPP_TYPES[context.ret.getSort()]));
-            });
-        }
-
-        if (legacyState) {
-            emitLegacySlotsAndArguments(context, method, argNames);
-        } else {
-            output.append("    std::unordered_set<jobject> refs;\n");
+            output.append("    jobject classloader = utils::get_classloader_from_class(env, clazz);\n");
+            output.append("    if (env->ExceptionCheck()) { ")
+                    .append(String.format("return (%s) 0;",
+                            MethodProcessor.CPP_TYPES[context.ret.getSort()]))
+                    .append(" }\n");
+            output.append("    if (classloader == nullptr) { env->FatalError(")
+                    .append(context.getStringPool().get("classloader == null"))
+                    .append(String.format("); return (%s) 0; }\n",
+                            MethodProcessor.CPP_TYPES[context.ret.getSort()]));
             output.append("\n");
+            if (!isStatic) {
+                output.append("    env->DeleteLocalRef(clazz);\n");
+                output.append("    clazz = utils::find_class_wo_static(env, classloader, ")
+                        .append(context.getCachedStrings()
+                                .getPointer(context.clazz.name.replace('/', '.')))
+                        .append(");\n");
+                output.append("    if (env->ExceptionCheck()) { ")
+                        .append(String.format("return (%s) 0;",
+                                MethodProcessor.CPP_TYPES[context.ret.getSort()]))
+                        .append(" }\n");
+            }
+            output.append("    jobject lookup = nullptr;\n");
+
+            if (method.tryCatchBlocks != null) {
+                for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
+                    context.getLabelPool().getName(tryCatch.start.getLabel());
+                    context.getLabelPool().getName(tryCatch.end.getLabel());
+                    context.getLabelPool().getName(tryCatch.handler.getLabel());
+                }
+                Set<String> classesForTryCatches = method.tryCatchBlocks.stream()
+                        .filter(tryCatchBlock -> tryCatchBlock.type != null)
+                        .map(tryCatchBlock -> tryCatchBlock.type)
+                        .collect(Collectors.toSet());
+                classesForTryCatches.forEach(clazz -> {
+                    int classId = context.getCachedClasses().getId(clazz);
+                    context.output.append(String.format("    // try-catch-class %s\n",
+                            Util.escapeCommentString(clazz)));
+                    context.output.append(String.format(
+                            "    if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); "
+                                    + "if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } "
+                                    + "cclasses_mtx[%d].unlock(); if (env->ExceptionCheck()) { return (%s) 0; } }\n",
+                            classId, classId, classId, classId, classId,
+                            MethodProcessor.getClassGetter(context, clazz), classId, classId,
+                            MethodProcessor.CPP_TYPES[context.ret.getSort()]));
+                });
+            }
+
+            if (legacyState) {
+                emitLegacySlotsAndArguments(context, method, argNames);
+            } else {
+                output.append("    std::unordered_set<jobject> refs;\n");
+                output.append("\n");
+            }
         }
         return new Shell(specialMethodProcessor);
     }
@@ -207,10 +218,13 @@ public final class MethodShellEmitter {
         context.stackPointer = 0;
     }
 
-    private void finish(MethodContext context, Shell shell, boolean legacyCatches) {
+    private void finish(MethodContext context, Shell shell, boolean legacyCatches,
+                        boolean appendDefaultReturn) {
         StringBuilder output = context.output;
-        output.append(String.format("    return (%s) 0;\n",
-                MethodProcessor.CPP_TYPES[context.ret.getSort()]));
+        if (appendDefaultReturn) {
+            output.append(String.format("    return (%s) 0;\n",
+                    MethodProcessor.CPP_TYPES[context.ret.getSort()]));
+        }
 
         if (legacyCatches) {
             emitLegacyCatchDispatch(context);

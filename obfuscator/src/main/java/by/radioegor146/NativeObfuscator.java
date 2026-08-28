@@ -105,7 +105,7 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
         return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
                 customLibraryDirectory, platform, useAnnotations, generateDebugJar,
-                CodegenMode.LEGACY);
+                CodegenMode.LEGACY, IrLoweringMode.DIRECT);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -113,7 +113,22 @@ public class NativeObfuscator {
                           String customLibraryDirectory,
                           Platform platform, boolean useAnnotations, boolean generateDebugJar,
                           CodegenMode codegenMode) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, IrLoweringMode.DIRECT);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, IrLoweringMode irLoweringMode)
+            throws IOException {
         final CodegenMode selectedCodegen = Objects.requireNonNull(codegenMode, "codegenMode");
+        final IrLoweringMode selectedIrLowering =
+                Objects.requireNonNull(irLoweringMode, "irLoweringMode");
+        final boolean evaluatorRuntimeEnabled = selectedCodegen == CodegenMode.IR
+                && selectedIrLowering == IrLoweringMode.EVAL;
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -137,6 +152,10 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm.hpp", cppDir);
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
+        if (evaluatorRuntimeEnabled) {
+            Util.copyResource("sources/native_jvm_eval.cpp", cppDir);
+            Util.copyResource("sources/native_jvm_eval.hpp", cppDir);
+        }
 
         String projectName = "native_library";
 
@@ -147,6 +166,10 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("native_jvm_output.cpp");
         cMakeBuilder.addMainFile("string_pool.hpp");
         cMakeBuilder.addMainFile("string_pool.cpp");
+        if (evaluatorRuntimeEnabled) {
+            cMakeBuilder.addMainFile("native_jvm_eval.hpp");
+            cMakeBuilder.addMainFile("native_jvm_eval.cpp");
+        }
 
         if (platform == Platform.HOTSPOT) {
             cMakeBuilder.addFlag("USE_HOTSPOT");
@@ -281,7 +304,7 @@ public class NativeObfuscator {
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
                             if (selectedCodegen == CodegenMode.IR) {
                                 try {
-                                    irMethodCompiler.processMethod(context);
+                                    irMethodCompiler.processMethod(context, selectedIrLowering);
                                 } catch (UnsupportedIrConstructException ex) {
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
                                                     + "falling back to legacy for this method",

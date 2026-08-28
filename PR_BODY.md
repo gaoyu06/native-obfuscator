@@ -1,84 +1,59 @@
-# IR phase 4 — Fable review branch
-
-This branch is the Fable design author's review of the Sol phase-4 exception
-slice (PR #36, `cursor/ir-compiler-phase4-6d81`). It is documentation only; it
-adds `docs/architecture/ir-phase4-fable-review.md` and this PR body. No compiler
-code changed, because the review found no correctness blocker to fix.
-
-本分支是 Fable 设计作者对 Sol phase-4 异常切片（PR #36，
-`cursor/ir-compiler-phase4-6d81`）的审阅，**仅含文档**：新增
-`docs/architecture/ir-phase4-fable-review.md` 与本 PR 说明。未改动任何编译器代码，
-因为审阅未发现需修复的正确性阻塞项。
+# IR shared evaluator lowering / IR 共享求值器 lowering
 
 ## (a) Scope / 改动范围
 
-- Ordinary Java-bytecode-to-JNI-C++ compiler review only: CFG, SSA, exception
-  edges, typed IR, structured C++ emit, and JNI pending-exception lifetime.
-  Packing / analysis-resistance / protection are out of scope and not discussed.
-- Reviewed every changed file under
-  `obfuscator/src/main/java/by/radioegor146/ir/**` plus `IrCompilerTest`, against
-  design of record `docs/architecture/ir-compiler.md` §5 and
-  `docs/architecture/ir-phase4-status.md`.
-- Independently re-ran the focused test suite, confirmed the g++ compile-smoke
-  executed (not skipped), independently recompiled the emitted translation unit,
-  and read the emitted C++ for the four new exception fixtures out of that
-  g++-accepted file.
+- Adds `--ir-lower=direct|eval`; defaults remain `--codegen=legacy` and
+  `--ir-lower=direct`.
+- Implements the §9.3 strategy hook with `DirectCppStrategy` and
+  `InterpreterStreamStrategy`.
+- Serializes the supported integer SSA/CFG slice to documented per-method data,
+  including parallel phi copies on control-flow edges.
+- Emits thin JNI trampolines and one shared `native_jvm_eval.cpp` evaluator in
+  the existing CMake target.
+- Preserves per-method legacy fallback by completing evaluator capability checks
+  and serialization before method mutation.
+- Adds C++/data inspection tests, generated-project integration coverage,
+  evaluator execution for `add` and `sumTo`, and a g++ translation-unit syntax
+  smoke.
 
-仅为常规的 Java 字节码 → JNI C++ 编译器审阅：CFG、SSA、异常边、typed IR、结构化 C++
-发射、JNI pending-exception 生命周期；不涉及加壳/反分析/保护。已按设计基准
-`ir-compiler.md` §5 与 `ir-phase4-status.md` 阅读全部 `ir/**` 改动文件与
-`IrCompilerTest`，并独立重跑测试、确认 g++ 冒烟未跳过、独立重编译翻译单元、直接阅读
-四个异常样例所生成的 C++。
+- 新增 `--ir-lower=direct|eval`；默认值仍是 `--codegen=legacy` 与
+  `--ir-lower=direct`。
+- 通过 `DirectCppStrategy` 和 `InterpreterStreamStrategy` 落实 §9.3 策略接口。
+- 将已支持的整数 SSA/CFG 子集序列化为文档化的逐方法数据，并在控制流边上正确处理
+  phi 并行复制。
+- 生成精简 JNI trampoline，并把唯一的共享 `native_jvm_eval.cpp` 求值器加入现有
+  CMake library target。
+- 求值器能力检查和序列化均在方法改写前完成，因此保留逐方法 legacy fallback。
+- 新增 C++/数据检查、生成工程集成、`add`/`sumTo` 求值器执行及 g++ 翻译单元语法冒烟测试。
 
 ## (b) Ship-ready? / 是否可直接上线
 
-**No.** Phase 4 is an intentionally limited exception slice: handlers with a
-normal predecessor, `monitor`/`finally`/nested-unsupported bodies, switches, wide
-carriers, and most opcodes still fall back per method. It lacks broad opcode
-coverage and full JVM runtime-parity validation. It is safe to carry behind the
-non-default `--codegen=ir` flag while the migration continues.
+**No.** The evaluator is intentionally limited to static integer methods using
+constants, `IADD`/`ISUB`/`IMUL`, integer branches, phi merges, and `IRETURN`.
+Other IR nodes still use the established per-method fallback.
 
-**否。** phase 4 是有意受限的异常切片：带正常前驱的 handler、`monitor`/`finally`/
-嵌套不支持体、switch、wide carrier 及大多数 opcode 仍按方法回退；尚缺完整 opcode 覆盖
-与 JVM 运行时等价性验证。可在非默认的 `--codegen=ir` 开关后随迁移继续推进。
+**否。** 当前求值器仅覆盖静态整数方法中的常量、`IADD`/`ISUB`/`IMUL`、整数分支、
+phi 合并与 `IRETURN`；其他 IR 节点仍使用既有的逐方法 fallback。
 
 ## (c) Review required? / 是否需要 review
 
-**This branch IS the review.** The verdict is **accept-with-nits**; the full
-requirement-by-requirement analysis, the g++ evidence, the deltas from design §5,
-and the non-blocking nits are in `docs/architecture/ir-phase4-fable-review.md`.
+**Yes.** Review the ISA/runtime agreement, edge-copy serialization, the
+fallback-before-mutation boundary, and generated CMake integration.
 
-**本分支即为 review。** 结论为 **accept-with-nits**；逐项分析、g++ 证据、与设计 §5 的
-差异说明及不阻塞的小瑕疵详见 `docs/architecture/ir-phase4-fable-review.md`。
+**是。** 请重点审阅 ISA 与运行时的一致性、控制流边复制的序列化、改写前 fallback 边界，
+以及生成 CMake 工程的集成。
 
-## (d) Preconditions for a human / 人工前置条件
+## (d) Verification / 验证
 
-1. Read this on top of the stack: base is `cursor/ir-phase3-fable-review-6d81`;
-   the subject implementation is PR #36 (`cursor/ir-compiler-phase4-6d81`). This
-   review branch is documentation-only and opens no GitHub PR (403).
-   以本栈为基线阅读：base 为 `cursor/ir-phase3-fable-review-6d81`，被审对象为 PR #36；
-   本审阅分支仅含文档，且不开 GitHub PR（403）。
-2. Reproduce the counts:
-   `./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
-   → `IrCompilerTest` 17/17, `CodegenModeTest` 2/2, 0 skipped / 0 failures / 0
-   errors. Inspect the JUnit XML rather than trusting console output.
-   复现计数并核对 JUnit XML。
-3. With a toolchain present, confirm
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` is not skipped and
-   `g++ -std=c++17 -fsyntax-only` actually compiles the emitted TU; the assertions
-   `Assumptions.assumeTrue(...)` will skip it if g++/jni.h are missing, so a
-   toolchain-less run is not evidence.
-   在有工具链时确认 g++ 冒烟未 skip 且真实编译；缺工具链的运行不构成证据。
-4. Spot-check the emitted C++: a protected `IALOAD` `ExceptionCheck` must jump to
-   a shared `IR_CATCH_n` and the catch must run (no silent `return 0`); unmatched
-   catch rethrows via `env->Throw`; catch-all has no `IsInstanceOf`; no `goto`
-   crosses an initialized automatic; only real JNI types appear.
-   抽查生成的 C++：受保护 `IALOAD` 的 `ExceptionCheck` 须跳到共享 `IR_CATCH_n` 且执行
-   catch（不得静默 `return 0`）；未匹配重抛；catch-all 无 `IsInstanceOf`；`goto` 不跨越
-   已初始化自动变量；仅出现真实 JNI 类型。
-5. Confirm fallback-before-mutation independently: `UnsupportedIrConstructException`
-   only from `AsmToIr.build(...)`, before cache allocation and before `beginIr`
-   mutates `output`/`nativeMethods`/`ACC_NATIVE`; default codegen is still
-   `legacy` and the snippet path is intact.
-   独立确认变更前回退：异常仅来自 `AsmToIr.build(...)`，早于缓存分配与
-   `output`/`nativeMethods`/`ACC_NATIVE` 改动；默认仍为 `legacy`，旧片段路径完好。
+1. Run
+   `./gradlew :obfuscator:test --tests by.radioegor146.CodegenModeTest --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest`.
+   运行上述 focused test。
+2. Confirm the two g++ tests are not skipped when g++ and JNI headers exist.
+   当 g++ 与 JNI headers 存在时，确认两个 g++ 测试未被跳过。
+3. Inspect generated `add` and `sumTo` functions: each must contain
+   `ir_method_data` plus one `evaluate_i32` call and no direct arithmetic body.
+   检查生成的 `add` 与 `sumTo`：每个函数都应包含 `ir_method_data` 和一次
+   `evaluate_i32` 调用，且不包含直接算术函数体。
+4. Confirm `docs/architecture/ir-evaluator-backend.md` matches opcode constants
+   in both Java serialization and C++ evaluation.
+   确认状态文档与 Java 序列化端、C++ 求值端的 opcode 常量一致。
