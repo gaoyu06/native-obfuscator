@@ -44,3 +44,24 @@ the fixture source:
 
 Scores are intentionally deferred until after the direct-artifact pass and
 comparison with the Java source.
+
+## Reader pass 2: direct C++ artifact
+
+This text was fixed after reading generated direct-side `DemoKernel_0.cpp` and
+`DemoKernel_0.hpp`, still before reopening the Java fixture source:
+
+> All three methods are method-specific C++ in this artifact. `add` returns the
+> 32-bit sum of its two arguments.
+>
+> `sumTo` sets an accumulator and counter to zero, loops while the counter is
+> less than the argument, adds the counter to the accumulator, increments the
+> counter, and returns the accumulator: `0 + 1 + ... + (limit - 1)` for a
+> positive limit, and zero when the initial loop condition is false.
+>
+> `mix` sets `acc = seed ^ -1640531527` (`0x9E3779B9`), then runs exactly
+> `rounds` iterations when `rounds` is positive. Each iteration adds
+> `(acc << 6) + (unsigned(acc) >> 2)`, XORs with
+> `acc * -2048144777` (`0x85EBCA77`), and calls
+> `Integer.rotateLeft(acc, 13)`. It returns the final 32-bit `acc`.
+
+Scores remain deferred until the Java-source comparison.
