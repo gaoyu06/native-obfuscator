@@ -12,6 +12,7 @@ public final class IrBlock {
     private final int id;
     private final List<IrPhi> phis = new ArrayList<>();
     private final List<IrInstruction> instructions = new ArrayList<>();
+    private final List<IrExceptionEdge> exceptionEdges = new ArrayList<>();
     private IrTerminator terminator;
 
     IrBlock(int id) {
@@ -38,12 +39,20 @@ public final class IrBlock {
         return terminator;
     }
 
+    public List<IrExceptionEdge> getExceptionEdges() {
+        return Collections.unmodifiableList(exceptionEdges);
+    }
+
     public void addPhi(IrPhi phi) {
         phis.add(Objects.requireNonNull(phi, "phi"));
     }
 
     public void addInstruction(IrInstruction instruction) {
         instructions.add(Objects.requireNonNull(instruction, "instruction"));
+    }
+
+    public void addExceptionEdge(IrExceptionEdge edge) {
+        exceptionEdges.add(Objects.requireNonNull(edge, "edge"));
     }
 
     public void setTerminator(IrTerminator terminator) {

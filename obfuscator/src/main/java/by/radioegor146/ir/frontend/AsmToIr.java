@@ -1,6 +1,7 @@
 package by.radioegor146.ir.frontend;
 
 import by.radioegor146.ir.IrBlock;
+import by.radioegor146.ir.IrExceptionEdge;
 import by.radioegor146.ir.IrMethod;
 import by.radioegor146.ir.IrNodes;
 import by.radioegor146.ir.IrPhi;
@@ -46,10 +47,12 @@ public final class AsmToIr {
 
         Set<CfgBuilder.Block> reachable = graph.reachableBlocks();
         CfgBuilder.Block entry = graph.getBlocks().get(0);
-        if (entry.getPredecessors().stream().anyMatch(reachable::contains)) {
+        if (entry.getPredecessors().stream().anyMatch(reachable::contains)
+                || entry.getExceptionPredecessors().stream().anyMatch(reachable::contains)) {
             throw new UnsupportedIrConstructException(
                     "A backedge to the JVM method entry is outside the phase-two subset");
         }
+        validateHandlerEntries(graph, reachable);
 
         Map<CfgBuilder.Block, List<IrType>> stackTypes =
                 computeStackTypes(graph, reachable, method, shape);
@@ -63,6 +66,18 @@ public final class AsmToIr {
         for (CfgBuilder.Block rawBlock : graph.getBlocks()) {
             if (reachable.contains(rawBlock)) {
                 irBlocks.put(rawBlock, irMethod.addBlock());
+            }
+        }
+        for (CfgBuilder.Block rawBlock : graph.getBlocks()) {
+            if (!reachable.contains(rawBlock)) {
+                continue;
+            }
+            IrBlock irBlock = irBlocks.get(rawBlock);
+            for (CfgBuilder.ExceptionEdge edge : rawBlock.getExceptionEdges()) {
+                if (reachable.contains(edge.getHandler())) {
+                    irBlock.addExceptionEdge(new IrExceptionEdge(edge.getCatchType(),
+                            irBlocks.get(edge.getHandler())));
+                }
             }
         }
 
@@ -92,12 +107,27 @@ public final class AsmToIr {
 
             List<IrType> blockStackTypes = stackTypes.get(rawBlock);
             List<IrValue> stack = new ArrayList<>();
-            IrPhi[] stackPhis = new IrPhi[blockStackTypes.size()];
-            for (int slot = 0; slot < blockStackTypes.size(); slot++) {
-                IrPhi phi = irMethod.addPhi(irBlock, blockStackTypes.get(slot),
-                        IrPhi.SlotKind.STACK, slot);
-                stackPhis[slot] = phi;
-                stack.add(phi.getResult());
+            IrPhi[] stackPhis;
+            if (!rawBlock.getExceptionPredecessors().isEmpty()) {
+                if (!blockStackTypes.equals(
+                        Collections.singletonList(IrType.REFERENCE))) {
+                    throw new UnsupportedIrConstructException(
+                            "Exception handler entry must have one reference on its stack");
+                }
+                IrValue caught = irMethod.newInstructionValue(IrType.REFERENCE);
+                int offset = rawBlock.getInstructions().isEmpty() ? -1
+                        : rawBlock.getInstructions().get(0).getOriginalIndex();
+                irBlock.addInstruction(new IrNodes.CaughtException(caught, offset));
+                stack.add(caught);
+                stackPhis = new IrPhi[0];
+            } else {
+                stackPhis = new IrPhi[blockStackTypes.size()];
+                for (int slot = 0; slot < blockStackTypes.size(); slot++) {
+                    IrPhi phi = irMethod.addPhi(irBlock, blockStackTypes.get(slot),
+                            IrPhi.SlotKind.STACK, slot);
+                    stackPhis[slot] = phi;
+                    stack.add(phi.getResult());
+                }
             }
             inputs.put(rawBlock, new BlockInputs(locals, stack, localPhis, stackPhis));
         }
@@ -115,11 +145,6 @@ public final class AsmToIr {
     }
 
     private MethodShape validateMethodShape(MethodNode method) {
-        if (method.tryCatchBlocks != null && !method.tryCatchBlocks.isEmpty()) {
-            throw new UnsupportedIrConstructException(
-                    "Exception handlers are outside the phase-two IR subset");
-        }
-
         Type returnType = Type.getReturnType(method.desc);
         IrType irReturn;
         if (returnType.getSort() == Type.VOID) {
@@ -156,6 +181,19 @@ public final class AsmToIr {
         return new MethodShape(staticMethod, irReturn, localTypes, requiredLocals);
     }
 
+    private void validateHandlerEntries(CfgBuilder.Graph graph,
+                                        Set<CfgBuilder.Block> reachable) {
+        for (CfgBuilder.Block block : graph.getBlocks()) {
+            if (!reachable.contains(block) || block.getExceptionPredecessors().isEmpty()) {
+                continue;
+            }
+            if (block.getPredecessors().stream().anyMatch(reachable::contains)) {
+                throw new UnsupportedIrConstructException(
+                        "A handler entry with a normal predecessor is outside the phase-four subset");
+            }
+        }
+    }
+
     private void validateInstructions(CfgBuilder.Graph graph) {
         for (CfgBuilder.Block block : graph.getBlocks()) {
             for (CfgBuilder.Instruction instruction : block.getInstructions()) {
@@ -172,6 +210,7 @@ public final class AsmToIr {
                                 || opcode == Opcodes.IALOAD
                                 || opcode == Opcodes.IASTORE
                                 || opcode == Opcodes.ARRAYLENGTH
+                                || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
                                 || opcode == Opcodes.RETURN;
                         break;
@@ -180,7 +219,7 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.VAR_INSN:
                         supported = opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
-                                || opcode == Opcodes.ALOAD;
+                                || opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE;
                         break;
                     case AbstractInsnNode.IINC_INSN:
                         supported = true;
@@ -223,7 +262,7 @@ public final class AsmToIr {
                     int opcode = node.getOpcode();
                     if (opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE) {
                         requiredType = IrType.I32;
-                    } else if (opcode == Opcodes.ALOAD) {
+                    } else if (opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE) {
                         requiredType = IrType.REFERENCE;
                     }
                     local = ((VarInsnNode) node).var;
@@ -265,23 +304,37 @@ public final class AsmToIr {
                 if (!reachable.contains(successor)) {
                     continue;
                 }
-                List<IrType> known = inputTypes.get(successor);
-                if (known == null) {
-                    inputTypes.put(successor,
-                            Collections.unmodifiableList(new ArrayList<>(stack)));
-                    work.add(successor);
-                } else if (!known.equals(stack)) {
-                    CfgBuilder.Instruction last = block.getInstructions().isEmpty() ? null
-                            : block.getInstructions().get(block.getInstructions().size() - 1);
-                    if (last == null) {
-                        throw new UnsupportedIrConstructException(
-                                "Mismatched operand-stack types at CFG merge");
-                    }
-                    throw unsupported("Mismatched operand-stack types at CFG merge", last);
+                mergeStackTypes(inputTypes, work, successor, stack, block);
+            }
+            for (CfgBuilder.ExceptionEdge edge : block.getExceptionEdges()) {
+                if (reachable.contains(edge.getHandler())) {
+                    mergeStackTypes(inputTypes, work, edge.getHandler(),
+                            Collections.singletonList(IrType.REFERENCE), block);
                 }
             }
         }
         return inputTypes;
+    }
+
+    private void mergeStackTypes(Map<CfgBuilder.Block, List<IrType>> inputTypes,
+                                 Queue<CfgBuilder.Block> work,
+                                 CfgBuilder.Block successor, List<IrType> stack,
+                                 CfgBuilder.Block predecessor) {
+        List<IrType> known = inputTypes.get(successor);
+        if (known == null) {
+            inputTypes.put(successor,
+                    Collections.unmodifiableList(new ArrayList<>(stack)));
+            work.add(successor);
+        } else if (!known.equals(stack)) {
+            CfgBuilder.Instruction last = predecessor.getInstructions().isEmpty() ? null
+                    : predecessor.getInstructions().get(
+                            predecessor.getInstructions().size() - 1);
+            if (last == null) {
+                throw new UnsupportedIrConstructException(
+                        "Mismatched operand-stack types at CFG merge");
+            }
+            throw unsupported("Mismatched operand-stack types at CFG merge", last);
+        }
     }
 
     private void transferStackTypes(List<IrType> stack, CfgBuilder.Instruction instruction,
@@ -301,6 +354,8 @@ public final class AsmToIr {
             stack.add(type);
         } else if (opcode == Opcodes.ISTORE) {
             popType(stack, IrType.I32, instruction);
+        } else if (opcode == Opcodes.ASTORE) {
+            popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.DUP) {
             if (stack.isEmpty()) {
                 throw unsupported("Operand stack underflow", instruction);
@@ -324,6 +379,11 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
+        } else if (opcode == Opcodes.ATHROW) {
+            popType(stack, IrType.REFERENCE, instruction);
+            if (!stack.isEmpty()) {
+                throw unsupported("ATHROW requires exactly one operand", instruction);
+            }
         } else if (opcode == Opcodes.GETFIELD) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
@@ -405,6 +465,16 @@ public final class AsmToIr {
                         merged[i] &= predecessorOut[i];
                     }
                 }
+                for (CfgBuilder.Block predecessor : block.getExceptionPredecessors()) {
+                    if (!reachable.contains(predecessor)) {
+                        continue;
+                    }
+                    foundPredecessor = true;
+                    boolean[] predecessorOut = out.get(predecessor);
+                    for (int i = 0; i < merged.length; i++) {
+                        merged[i] &= predecessorOut[i];
+                    }
+                }
                 if (!foundPredecessor) {
                     Arrays.fill(merged, false);
                 }
@@ -432,7 +502,9 @@ public final class AsmToIr {
                         throw unsupported("Read of a local not defined on every incoming edge",
                                 instruction);
                     }
-                } else if (node instanceof VarInsnNode && node.getOpcode() == Opcodes.ISTORE) {
+                } else if (node instanceof VarInsnNode
+                        && (node.getOpcode() == Opcodes.ISTORE
+                        || node.getOpcode() == Opcodes.ASTORE)) {
                     current[checkedLocal(((VarInsnNode) node).var, method, instruction)] = true;
                 } else if (node instanceof IincInsnNode) {
                     int local = checkedLocal(((IincInsnNode) node).var, method, instruction);
@@ -450,7 +522,8 @@ public final class AsmToIr {
         boolean[] result = input.clone();
         for (CfgBuilder.Instruction instruction : block.getInstructions()) {
             if (instruction.getNode() instanceof VarInsnNode
-                    && instruction.getNode().getOpcode() == Opcodes.ISTORE) {
+                    && (instruction.getNode().getOpcode() == Opcodes.ISTORE
+                    || instruction.getNode().getOpcode() == Opcodes.ASTORE)) {
                 int local = ((VarInsnNode) instruction.getNode()).var;
                 if (local >= 0 && local < result.length) {
                     result[local] = true;
@@ -524,6 +597,12 @@ public final class AsmToIr {
                     throw unsupported("ISTORE cannot write a reference-typed local", instruction);
                 }
                 state.locals[local] = pop(state, IrType.I32, instruction);
+            } else if (node instanceof VarInsnNode && opcode == Opcodes.ASTORE) {
+                int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
+                if (shape.localTypes[local] != IrType.REFERENCE) {
+                    throw unsupported("ASTORE cannot write an int-typed local", instruction);
+                }
+                state.locals[local] = pop(state, IrType.REFERENCE, instruction);
             } else if (node instanceof IincInsnNode) {
                 IincInsnNode increment = (IincInsnNode) node;
                 int local = checkedLocal(increment.var, method, instruction);
@@ -625,6 +704,10 @@ public final class AsmToIr {
                     throw unsupported("RETURN does not match the method descriptor", instruction);
                 }
                 block.setTerminator(new IrNodes.Return(null, instruction.getOriginalIndex()));
+            } else if (opcode == Opcodes.ATHROW) {
+                block.setTerminator(new IrNodes.Throw(
+                        pop(state, IrType.REFERENCE, instruction),
+                        instruction.getOriginalIndex()));
             }
         }
 
@@ -680,20 +763,7 @@ public final class AsmToIr {
                     continue;
                 }
                 BlockInputs destination = inputs.get(successor);
-                for (int local = 0; local < destination.localPhis.length; local++) {
-                    IrPhi phi = destination.localPhis[local];
-                    if (phi != null) {
-                        if (output.locals[local] == null) {
-                            throw new IllegalStateException("Missing value for definite local "
-                                    + local);
-                        }
-                        if (output.locals[local].getType() != phi.getResult().getType()) {
-                            throw new UnsupportedIrConstructException(
-                                    "Local changes carrier type across a CFG edge");
-                        }
-                        phi.addIncoming(irBlocks.get(predecessor), output.locals[local]);
-                    }
-                }
+                connectLocalPhis(predecessor, output, destination, irBlocks);
                 if (destination.stackPhis.length != output.stack.size()) {
                     throw new IllegalStateException("Stack shape changed after analysis");
                 }
@@ -707,6 +777,31 @@ public final class AsmToIr {
                             output.stack.get(slot));
                 }
             }
+            for (CfgBuilder.ExceptionEdge edge : predecessor.getExceptionEdges()) {
+                if (reachable.contains(edge.getHandler())) {
+                    connectLocalPhis(predecessor, output, inputs.get(edge.getHandler()),
+                            irBlocks);
+                }
+            }
+        }
+    }
+
+    private void connectLocalPhis(CfgBuilder.Block predecessor, ValueState output,
+                                  BlockInputs destination,
+                                  Map<CfgBuilder.Block, IrBlock> irBlocks) {
+        for (int local = 0; local < destination.localPhis.length; local++) {
+            IrPhi phi = destination.localPhis[local];
+            if (phi == null) {
+                continue;
+            }
+            if (output.locals[local] == null) {
+                throw new IllegalStateException("Missing value for definite local " + local);
+            }
+            if (output.locals[local].getType() != phi.getResult().getType()) {
+                throw new UnsupportedIrConstructException(
+                        "Local changes carrier type across a CFG edge");
+            }
+            phi.addIncoming(irBlocks.get(predecessor), output.locals[local]);
         }
     }
 

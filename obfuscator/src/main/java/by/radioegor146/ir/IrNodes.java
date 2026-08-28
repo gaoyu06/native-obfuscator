@@ -14,6 +14,29 @@ public final class IrNodes {
     private IrNodes() {
     }
 
+    /**
+     * Materializes the exception selected by the shared dispatch for a handler.
+     */
+    public static final class CaughtException implements IrInstruction {
+        private final IrValue result;
+        private final int bytecodeOffset;
+
+        public CaughtException(IrValue result, int bytecodeOffset) {
+            this.result = requireReference(result, "result");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class Const implements IrInstruction {
         private final IrValue result;
         private final int value;
@@ -619,6 +642,30 @@ public final class IrNodes {
 
         public IrValue getValue() {
             return value;
+        }
+
+        @Override
+        public List<IrBlock> getSuccessors() {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class Throw implements IrTerminator {
+        private final IrValue exception;
+        private final int bytecodeOffset;
+
+        public Throw(IrValue exception, int bytecodeOffset) {
+            this.exception = requireReference(exception, "exception");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        public IrValue getException() {
+            return exception;
         }
 
         @Override
