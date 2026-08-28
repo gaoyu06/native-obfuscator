@@ -66,7 +66,7 @@ jar {
     manifest.attributes("Main-Class": getProperty('mainClass'))
 }
 
-tasks.register('benchmarkJar', Jar) {
+def benchmarkJarTask = tasks.register('benchmarkJar', Jar) {
     dependsOn compileBenchmarkJava
     archiveFileName = 'transpiler-benchmarks.jar'
     destinationDirectory = layout.buildDirectory.dir('benchmarks')
@@ -81,7 +81,7 @@ tasks.register('bench', Exec) {
     workingDir rootProject.projectDir
     commandLine 'python3', rootProject.file('benchmarks/run.py')
     environment 'BENCH_OBFUSCATOR_JAR', shadowJar.archiveFile.get().asFile.absolutePath
-    environment 'BENCH_INPUT_JAR', benchmarkJar.get().archiveFile.get().asFile.absolutePath
+    environment 'BENCH_INPUT_JAR', benchmarkJarTask.get().archiveFile.get().asFile.absolutePath
 }
 
 ConcurrentHashMap<String, StringBuilder> testOutputs = new ConcurrentHashMap<>();
