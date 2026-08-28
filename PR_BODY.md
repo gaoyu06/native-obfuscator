@@ -1,14 +1,17 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Updates the documentation-only maintainer brief through draft PR #48, using
-only the records committed on the named draft branches. It preserves #37's
-conclusion that requirement 7 is not met and keeps option A as a v1 product
-recommendation only, without shrinking the written engineering goal.
+Updates the documentation-only maintainer brief through draft PR #50, using
+only the records committed on the named draft branches. It records recovery
+of all four methods from both valid live direct-IR and shared-evaluator
+stripped `.so` subjects, preserves the conclusion that requirement 7 is not
+met, and keeps option A as a v1 product recommendation only without shrinking
+the written engineering goal.
 
-将仅文档的维护者简报更新至草稿 PR #48，仅采用指定草稿分支已提交的记录。保留
-#37 对 requirement 7 未满足的结论，并仅将 A 保留为 v1 产品建议，不缩小书面
-工程目标。
+将仅文档的维护者简报更新至草稿 PR #50，仅采用指定草稿分支已提交的记录。记录
+有效 live direct-IR 与 shared-evaluator stripped `.so` 的四个方法均被完整恢复，
+保留 requirement 7 未满足的结论，并仅将 A 保留为 v1 产品建议，不缩小书面工程
+目标。
 
 ## (a) 本次改动范围 / Change scope
 
@@ -18,10 +21,11 @@ recommendation only, without shrinking the written engineering goal.
   harness duplication, and the local remeasurement was slower than Java.
 - Record #47's still-opt-in switches plus object `ANEWARRAY`; its status
   document claims 26 `IrCompilerTest` plus 2 `CodegenModeTest`.
-- Record #48's live stripped `--ir-lower=eval` `.so`; it has no reader/recovery
-  pass and is not requirement-7 evidence.
+- Record #48's live stripped `--ir-lower=eval` `.so` and #50's recovery-first
+  blinded reader: `add`, `sumTo`, `subMul`, and `mix` all scored **full** on
+  the valid live evaluator subject.
 - Update only `docs/architecture/goal-status-and-options.md` and this bilingual
-  PR body. All PRs through #48 remain drafts; `master` remains `e7ca4c8`.
+  PR body. All PRs through #50 remain drafts; `master` remains `e7ca4c8`.
 
 - 记录 #44 对 evaluator #42 的 accept-with-nits 审阅，以及 #45 对 phase 5
   #40 的 Fable accept-with-nits 审阅。
@@ -29,10 +33,11 @@ recommendation only, without shrinking the written engineering goal.
   harness，且本地复测慢于 Java。
 - 记录 #47 仍为 opt-in 的 switches 与对象 `ANEWARRAY`；其状态文档声称
   26 个 `IrCompilerTest` 加 2 个 `CodegenModeTest`。
-- 记录 #48 的 live stripped `--ir-lower=eval` `.so`；它没有 reader/recovery
-  pass，不能作为 requirement 7 证据。
+- 记录 #48 的 live stripped `--ir-lower=eval` `.so` 与 #50 先恢复、后评分的
+  blinded reader：有效 live evaluator 样本中的 `add`、`sumTo`、`subMul`、
+  `mix` 均为 **full**。
 - 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
-  截至 #48 的 PR 均为草稿；`master` 仍为 `e7ca4c8`。
+  截至 #50 的 PR 均为草稿；`master` 仍为 `e7ca4c8`。
 
 ## (b) 是否可直接上线 / Can this ship to production as-is?
 
@@ -40,13 +45,13 @@ No. / 否。
 
 All referenced work remains in draft PRs and `master` contains none of it.
 #47 remains partial and opt-in; #46's local result was slower than Java and is
-not portable; and #48 is an artifact without a reader. #37 fully recovered all
-four methods from #35's valid live direct-IR stripped `.so`, so requirement 7
+not portable. #37 and #50 respectively recovered all four methods from valid
+live direct-IR and shared-evaluator stripped `.so` subjects, so requirement 7
 is not met.
 
 所有相关工作仍在草稿 PR 中，`master` 未包含这些内容。#47 仍为不完整的 opt-in
-切片；#46 的本地结果慢于 Java 且不可外推；#48 只是没有 reader 的 artifact。
-#37 从 #35 的有效 live direct-IR stripped `.so` 完整恢复四个方法，因此
+切片；#46 的本地结果慢于 Java 且不可外推。#37 与 #50 分别从有效 live
+direct-IR 与 shared-evaluator stripped `.so` 完整恢复四个方法，因此
 requirement 7 未满足。
 
 ## (c) 上线前是否需要 review / Is review required?
@@ -72,12 +77,15 @@ rebase 后复测及适用的产品/发布审批。
 4. Use #47's `docs/architecture/ir-phase6-status.md`: switches and general
    object `ANEWARRAY`; 26 `IrCompilerTest` plus 2 `CodegenModeTest`; opt-in IR,
    per-method fallback, and default legacy.
-5. Use #48's `docs/eval/ir-eval-lower/run.md` and `liveness.md`: the evaluator
-   artifact is live and stripped, but no reader/recovery pass occurred.
-6. Preserve #37 and the complete written goal. Option A remains only the v1
-   product recommendation.
+5. Use #48's `docs/eval/ir-eval-lower/run.md` and `liveness.md`, then #50's
+   `recovery.md` and `scores.md`: recovery was committed before source/oracle
+   scoring, all four methods scored full, and the subject was valid live
+   evaluator code rather than DCE.
+6. Preserve both #37 and #50 as evidence that requirement 7 is not met, and
+   preserve the complete written goal. Option A remains only the v1 product
+   recommendation.
 7. Preserve the lanes: direct IR through #45 then #47; evaluator
-   #42 → #44 → #48 as a sibling; SDK #12 → #15 → #46; compatibility
+   #42 → #44 → #48 → #50 as a sibling; SDK #12 → #15 → #46; compatibility
    #6 → #9 → #14 → #41.
 
 中文核对项：
@@ -92,11 +100,13 @@ rebase 后复测及适用的产品/发布审批。
 4. 以 #47 的 `docs/architecture/ir-phase6-status.md` 为准：switches 与
    通用对象 `ANEWARRAY`；26 个 `IrCompilerTest` 加 2 个
    `CodegenModeTest`；IR 仍为 opt-in，逐方法 fallback，默认 legacy。
-5. 以 #48 的 `docs/eval/ir-eval-lower/run.md` 与 `liveness.md` 为准：
-   evaluator artifact 有效且已 strip，但没有 reader/recovery pass。
-6. 保留 #37 与完整书面目标；A 仅作为 v1 产品建议。
+5. 先以 #48 的 `docs/eval/ir-eval-lower/run.md` 与 `liveness.md` 为准，再以
+   #50 的 `recovery.md` 与 `scores.md` 为准：先提交恢复、后查看 source/oracle
+   评分，四个方法均为 full，且样本是有效 live evaluator code，不是 DCE。
+6. 保留 #37 与 #50 作为 requirement 7 未满足的证据，并保留完整书面目标；
+   A 仅作为 v1 产品建议。
 7. 保持各线：direct IR 依序至 #45，再到 #47；evaluator sibling
-   #42 → #44 → #48；SDK #12 → #15 → #46；compatibility
+   #42 → #44 → #48 → #50；SDK #12 → #15 → #46；compatibility
    #6 → #9 → #14 → #41。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->

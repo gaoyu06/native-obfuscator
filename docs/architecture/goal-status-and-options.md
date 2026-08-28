@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-28. PRs
-#1–#48 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#50 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -25,30 +25,34 @@ Fable “accept with nits” 审阅、[#46](https://github.com/gaoyu06/native-ob
 干净叠在 SDK v1 #12 上的 `NativeStrings`、[#47](https://github.com/gaoyu06/native-obfuscator/pull/47)
 仍为 opt-in 的 switch 与 `ANEWARRAY` phase 6，以及
 [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) 的 live
-`--ir-lower=eval` stripped `.so` artifact。#48 尚无 reader。保留
-[#37](https://github.com/gaoyu06/native-obfuscator/pull/37) 对有效 live
-direct-IR stripped `.so` 的完整恢复结论；本文不合并或实现任何草稿。
+`--ir-lower=eval` stripped `.so` artifact，以及
+[#50](https://github.com/gaoyu06/native-obfuscator/pull/50) 对该 artifact
+先恢复、后评分的 blinded reader：`add`、`sumTo`、`subMul`、`mix` 均为
+**full**。保留 [#37](https://github.com/gaoyu06/native-obfuscator/pull/37)
+对有效 live direct-IR stripped `.so` 的相同四方法完整恢复结论；本文不合并或
+实现任何草稿。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
 of phase 5 #40, #46's clean `NativeStrings` stack on SDK v1 #12, #47's still
 opt-in switch and `ANEWARRAY` phase 6, and #48's live
-`--ir-lower=eval` stripped-`.so` artifact. #48 has no reader. It retains #37's
-full recovery of a valid live direct-IR stripped `.so`. It neither merges nor
-implements any draft.
+`--ir-lower=eval` stripped-`.so` artifact. #50 is the recovery-first blinded
+reader on that artifact; `add`, `sumTo`, `subMul`, and `mix` all scored
+**full**. It retains #37's full recovery of the same four methods from a valid
+live direct-IR stripped `.so`. It neither merges nor implements any draft.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#48 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#50 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#47 的 phase 6 仍为不完整的 opt-in IR 切片；#46 的本地复测慢于
-Java，且不是可移植性能结论；#48 只是受控 evaluator artifact，尚无 reader。
-#37 在一个有效存活样本上完整恢复了四个方法，因此 requirement 7 并未满足。
+Java，且不是可移植性能结论。#37 与 #50 分别从有效 live direct-IR 与
+shared-evaluator stripped `.so` 完整恢复了四个方法，因此 requirement 7 并未满足。
 
-**No.** PRs #1–#48 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#50 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #47's phase 6 is still an incomplete,
 opt-in IR slice; #46's local remeasurement was slower than Java and is not a
-portable performance claim; and #48 is only a controlled evaluator artifact,
-with no reader. #37 fully recovered four methods from one valid live subject,
+portable performance claim. #37 and #50 respectively recovered all four
+methods from valid live direct-IR and shared-evaluator stripped `.so` subjects,
 so requirement 7 is not met.
 
 ### (c) 上线前是否需要 review / Is review required?
@@ -68,38 +72,39 @@ boundaries rather than generalized.
    `docs/architecture/ir-evaluator-review.md`、#45 的
    `docs/architecture/ir-phase5-fable-review.md`、#46 的
    `docs/sdk/v1-status.md`、#47 的
-   `docs/architecture/ir-phase6-status.md`，以及 #48 的
-   `docs/eval/ir-eval-lower/run.md` 与 `liveness.md`。 Continue to use the
+   `docs/architecture/ir-phase6-status.md`、#48 的
+   `docs/eval/ir-eval-lower/run.md` 与 `liveness.md`，以及 #50 的
+   `docs/eval/ir-eval-lower/recovery.md` 与 `scores.md`。 Continue to use the
    #34–#42 records for their claims, and use only those named branch documents
-   for the new #44–#48 claims.
+   for the new #44–#50 claims.
 2. 只有 `IrFriendlyIntKernel.run(I)I` 可作 #34 的 IR 对比；不得把本地中位数
    当作可移植性能结论。 Only that method is a valid IR comparison in #34;
    do not treat its local medians as portable.
-3. #31 的 `mix` 被 DCE，仍不能计入 reader bar；#37 则是 #35 的有效存活
-   artifact reader，并报告四个方法均为 full，因此 requirement 7 未满足。
-   #48 虽发布 live evaluator artifact，但没有 reader/recovery pass，不能作为
-   requirement 7 证据。 #31 remains invalid, while #37 reports all four
-   methods as full on #35's valid live artifact; #48 publishes a live
-   evaluator artifact but has no reader/recovery pass and is not
-   requirement-7 evidence.
+3. #31 的 `mix` 被 DCE，仍不能计入 reader bar；#37 与 #50 分别读取有效存活的
+   direct-IR 与 shared-evaluator artifact，均先提交恢复、再对 oracle 评分，并均
+   报告四个方法为 full，因此 requirement 7 未满足。 #31 remains invalid;
+   #37 and #50 respectively read valid live direct-IR and shared-evaluator
+   artifacts, committed recovery before oracle scoring, and report all four
+   methods as full. Requirement 7 is not met.
 4. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
-   native code 的 lowering；#47 的 direct-IR coverage、#42 → #44 → #48 的
-   独立 evaluator 实验与 JDK/SDK stacks 分别继续。
+   native code 或可解码 evaluator blob 的 lowering；#47 的 direct-IR
+   coverage、#42 → #44 → #48 → #50 的独立 evaluator 实验与 JDK/SDK stacks
+   分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
-   readable native output of the source algorithm. #47's direct IR coverage,
-   the separate #42 → #44 → #48 evaluator experiment, and the JDK/SDK stacks
-   continue as separate lanes.
+   readable native output of the source algorithm and decodable evaluator
+   blobs. #47's direct IR coverage, the separate #42 → #44 → #48 → #50
+   evaluator experiment, and the JDK/SDK stacks continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
-| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), stacked on #45, adds `TABLESWITCH`/`LOOKUPSWITCH` and general object `ANEWARRAY`. Its status document records 26 `IrCompilerTest` plus 2 `CodegenModeTest`, all passing with 0 skipped/failures/errors; it remains opt-in, with per-method fallback and default legacy. The separate evaluator lane #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) publishes a live stripped `--ir-lower=eval` `.so`, but #48 has no reader/recovery pass. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #48 is not requirement-7 evidence. |
+| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), stacked on #45, adds `TABLESWITCH`/`LOOKUPSWITCH` and general object `ANEWARRAY`. Its status document records 26 `IrCompilerTest` plus 2 `CodegenModeTest`, all passing with 0 skipped/failures/errors; it remains opt-in, with per-method fallback and default legacy. The separate evaluator lane #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) publishes a valid live stripped `--ir-lower=eval` `.so`, then records recovery-first blinded reading in which all four methods scored full. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | [#41](https://github.com/gaoyu06/native-obfuscator/pull/41), stacked on #14, adds four ClassicTest fixtures compiled independently with `javac --release 25` (class-file major 69). Its status document records 24 total: 23 passed, 1 pre-existing `krak2` skip, 0 failed; each new fixture reached `OK` on `HOTSPOT`, `STD_JAVA`, and `ANDROID`. The full #6 → #9 → #14 → #41 stack remains draft. | #41 is not a blanket full-JDK-25 claim: it does not cover every language feature, library API, runtime mode, generated class shape, preview feature, or separate JDK 22–24 class file. `ConstantDynamic`, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence remain gaps. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) runs JVM, legacy, and IR tasks through the same harness. | All original #34 kernels fell back from IR. Only `IrFriendlyIntKernel.run(I)I` is a valid IR comparison: its recorded local medians are 10,023,918 ns for IR, 182,135,075 ns for legacy, and 10,092,919 ns for the primary JVM run (10,026,099 ns in the IR-task JVM repeat). Thus IR was approximately equal to JVM and much faster than legacy for that one local kernel; the result is not portable and the fallback rows are not IR timings. | JMH/forked baselines, confidence intervals, native-only isolation, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) cleanly stacks `NativeStrings` length/hash/concat on #12 without copying the general benchmark harness. Its local diagnostic remeasurement was slower than Java; the status document explicitly says this is not portable and not a speedup claim. The #12 → #15 → #46 lane remains draft. | The product surface, embedding and provider/update policy, target matrix, Zig execution, broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and release security sign-off remain unresolved. |
 | Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs; and [#28](https://github.com/gaoyu06/native-obfuscator/pull/28) adds opt-in link-only publication of the transformed JAR and shared library without the generated C++ tree. | The implementation remains an open draft stack, default off, and integer-only. The three source-tree reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) recovered both compared trees fully; the shared-library-only run in [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) then recovered `add`, `sumTo`, and `mix` fully from the published `.so` without the C++ tree. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
-| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 uses the valid live subject and supersedes the wait for a live-kernel reader, but its full recovery means requirement 7 is not met. [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) publishes a live evaluator artifact but explicitly has no reader/recovery pass, so it adds no requirement-7 evidence. | A materially different lowering is needed: not another encoding tweak, and not straight-line readable native output of the source algorithm. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
+| Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. [#50](https://github.com/gaoyu06/native-obfuscator/pull/50), stacked on evaluator artifact [#48](https://github.com/gaoyu06/native-obfuscator/pull/48), records the same four full scores after recovery was committed before source/oracle scoring. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 and #50 use valid live direct-IR and shared-evaluator subjects; both full recoveries mean requirement 7 is not met. | A materially different lowering is needed: not another encoding tweak, not straight-line readable native output of the source algorithm, and not a decodable evaluator blob shipped with its evaluator. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
 
 ### Reader-eval evidence
 
@@ -117,7 +122,10 @@ recorded six distinct `mix` outputs and live multiply, shift, bitwise, and add
 instructions in the stripped direct-IR `.so`.
 
 PR [#37](https://github.com/gaoyu06/native-obfuscator/pull/37) is the blinded reader evaluation stacked on #35: the recovery was committed first, then `add`, `sumTo`, `subMul`, and `mix` all scored **full**.
-Requirement 7 is **not met**: in this `N=1`, an unaided reader fully recovered the valid live IR/direct stripped-`.so` subject rather than a DCE'd kernel.
+PR [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) is the blinded reader evaluation stacked on #48: recovery was committed before source/oracle scoring, then `add`, `sumTo`, `subMul`, and `mix` all scored **full** on the valid live shared-evaluator stripped-`.so` subject.
+Requirement 7 is **not met**: unaided readers fully recovered both the valid
+live IR/direct subject in #37 and the valid live shared-evaluator subject in
+#50, rather than DCE'd kernels.
 
 | Run | What was controlled | What failed or limited the run | Measured outcome |
 |---|---|---|---|
@@ -127,14 +135,17 @@ Requirement 7 is **not met**: in this `N=1`, an unaided reader fully recovered t
 | [#30: published-`.so`-only reader](https://github.com/gaoyu06/native-obfuscator/pull/30) | GPT-5.6 Sol received only the Linux x86-64 shared library published by #28. The directory contained the transformed JAR and `.so`, no `.cpp`; no generated C++ or private compiler tree was used. Recovery was written before Java source inspection, and published output matched the oracle. | The reader knew the names and signatures of `add`, `sumTo`, and `mix`; recorded oracle input/output examples were available as a consistency check. This is still one tool-assisted reader on one fixture and target. | `add`, `sumTo`, and `mix` all scored **full**. `mix` was recovered exactly, including constants, operation order, loop condition, shifts, multiply, xor, and rotate distance. The run rejected its “cannot recover critical logic from the published shared library alone” H0 for this fixture. |
 | [#31: stripped direct-IR attempt](https://github.com/gaoyu06/native-obfuscator/pull/31) | A stripped IR/direct-C++ `.so` was read without an opcode machine. | Optimization left only constant-zero behavior for `mix`; the live algorithm was absent. | **Excluded from the reader bar.** “`mix` not recovered” cannot count as success when DCE removed the kernel. |
 | [#35 artifact](https://github.com/gaoyu06/native-obfuscator/pull/35) → [#37 reader](https://github.com/gaoyu06/native-obfuscator/pull/37) | #35's builder evidence records diverse `mix` outputs and live integer operations in the stripped direct-IR `.so`. #37 committed reconstruction before opening the jar, run record, or source. | One unaided reader on one x86-64 artifact (`N=1`). | `add`, `sumTo`, `subMul`, and `mix` all scored **full**. The subject was valid and input-dependent, not a constant-return stub; requirement 7 was not met. |
-| [#48: live evaluator artifact](https://github.com/gaoyu06/native-obfuscator/pull/48) | The recorded liveness gate confirms a stripped `--ir-lower=eval` `.so`, matching oracle/native output, an evaluator trampoline, and live operations in the evaluator/blob. | No reader or recovery pass was performed. | **Not a reader result and not requirement-7 evidence.** |
+| [#48 artifact](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50 reader](https://github.com/gaoyu06/native-obfuscator/pull/50) | #48's liveness gate confirms a stripped `--ir-lower=eval` `.so`, matching oracle/native output, evaluator trampolines, and live operations in the evaluator/blobs. #50 committed recovery before opening source/oracle material for scoring. | One unaided reader on one x86-64 artifact (`N=1`). | `add`, `sumTo`, `subMul`, and `mix` all scored **full**. The subject was valid live evaluator code, not DCE; requirement 7 was not met. |
 
 These runs do not establish a population effect or equal reading effort. The
 interpreter runs establish that **removing the C++ sources is not sufficient
 while a decodable opcode stream and its opcode machine remain in the shipped
 binary.** #37 separately establishes that this direct-IR lowering also misses
 the reader bar: its live source algorithm remained readable in straight-line
-native code in the stripped `.so`.
+native code in the stripped `.so`. #50 establishes that the shared-evaluator
+lowering also misses the bar on its valid live stripped `.so`: the reader
+recovered all four method formulas/control flow from the trampolines, blobs,
+and evaluator semantics.
 
 ## Decisions
 
@@ -152,7 +163,7 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 | Build a project-owned typed CFG over ASM and emit structured C++ before a second backend. | Independent Sol #3 and Fable #5 designs converge on this migration shape. It addresses the audited string-template limitations while keeping backend semantics shared. Whether and when IR becomes the public default remains a human decision. |
 | Validate an entire IR method before mutating output, and keep legacy as the migration default. | #13/#16 verify clean per-method fallback and compileability for their narrow slices. This contains experimental risk; it does not establish parity or authorize an eventual default flip. |
 | Require checksums, raw samples, environment metadata, and scoped wording for performance evidence. | #10 demonstrates both modes actually ran and agreed. #11's mixed result shows why a single local run cannot become a global speed or non-regression claim. |
-| Keep reader outcomes scoped to the measured fixture and recorded limitations. | The five usable runs are `N=1`, tool-assisted case studies with different artifact boundaries and recorded limitations. Their full recoveries support the kernel-specific conclusions above, but not a population effect or broader claim. |
+| Keep reader outcomes scoped to the measured fixture and recorded limitations. | The usable runs are `N=1`, tool-assisted case studies with different artifact boundaries and recorded limitations. Their full recoveries support the kernel-specific conclusions above, but not a population effect or broader claim. |
 
 ### Human decisions still required
 
@@ -167,8 +178,10 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
   and [#30](https://github.com/gaoyu06/native-obfuscator/pull/30): removing the
   C++ tree still leaves a decodable opcode stream and its machine in the
   shipped library. #37 now also shows that direct IR lowering to straight-line
-  readable native code exposes the live source algorithm. The remaining B is a
-  lowering that avoids both forms. If that design is not funded, drop the
+  readable native code exposes the live source algorithm. #50 shows that
+  shared-evaluator trampolines plus live decodable blobs also expose all four
+  methods on this subject. The remaining B is a lowering that avoids all three
+  evidenced forms. If that design is not funded, drop the
   reader bar from the v1 product gate under A.
 - **C. Keep iterating encodings.** This is likely wasted effort while the
   opcode machine and stream remain together in the generated tree or shipped
@@ -178,10 +191,11 @@ Sol/Fable cross-check. It does **not** waive normal code review for draft PRs.
 unless a materially different lowering is explicitly funded. This does **not**
 recommend rewriting or shrinking the written goal to A. #37 supersedes the
 wait for a live-kernel reader. The next reader-bar design must not leave the
-source algorithm as straight-line readable native code; encoding tweaks alone
-are not that design. Wider opt-in direct-IR coverage in #47, the separate
-#42 → #44 → #48 evaluator experiment, and the JDK/SDK stacks continue as
-separate engineering lanes.
+source algorithm as straight-line readable native code or a decodable
+evaluator blob shipped with its evaluator; encoding tweaks alone are not that
+design. Wider opt-in direct-IR coverage in #47, the separate
+#42 → #44 → #48 → #50 evaluator experiment, and the JDK/SDK stacks continue
+as separate engineering lanes.
 
 #### Other product decisions
 
@@ -239,8 +253,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
    retain [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) as its
-   artifact-only successor: #42 → #44 → #48. Retain `direct` as the default
-   lowering, and do not treat #48 as reader evidence.
+   artifact-only successor and [#50](https://github.com/gaoyu06/native-obfuscator/pull/50)
+   as the recovery-first reader record: #42 → #44 → #48 → #50. Retain
+   `direct` as the default lowering. #50 is evaluation evidence, not an
+   implementation merge prerequisite.
    [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) is benchmark
    evidence stacked on #33, and
    [#35](https://github.com/gaoyu06/native-obfuscator/pull/35) is an eval-only
@@ -281,21 +297,22 @@ parallel, but their order within each arrowed stack must be preserved.
   skip, and 0 failed. This is evidence only for class-file major 69 and the
   four listed surfaces on that VM, not full JDK 25 support, preview coverage,
   or separate JDK 22–24 class-file coverage.
-- Five usable automated-reader evaluations have run, but each is an `N=1`,
-  tool-assisted case study with recorded limitations. The first three produced
+- The usable automated-reader evaluations are `N=1`, tool-assisted case
+  studies with recorded limitations. The first three produced
   full/full source-tree outcomes and did not reject H0; the fourth fully
   recovered all three methods from the published `.so` and rejected its
   shared-library-only H0. They support only the kernel-and-artifact conclusion
   in the reader-eval subsection. The fifth, #37, fully recovered all four
-  methods from #35's valid live direct-IR stripped `.so`. #31 remains invalid
-  for the reader bar because its `mix` kernel was DCE'd.
+  methods from #35's valid live direct-IR stripped `.so`; #50 fully recovered
+  the same four methods from #48's valid live shared-evaluator stripped `.so`.
+  #31 remains invalid for the reader bar because its `mix` kernel was DCE'd.
 - IR is opt-in and incomplete. #47 adds the recorded switch and object
   `ANEWARRAY` phase-6 slice, whose status document claims 26
   `IrCompilerTest` plus 2 `CodegenModeTest`, and keeps legacy as the codegen
   default. The #42 evaluator supports a narrower integer subset, is selected
   only with `--ir-lower=eval`, and keeps `direct` as the lowering default.
-  #44 accepts it with nits; #48 publishes a live stripped artifact but has no
-  reader/recovery pass.
+  #44 accepts it with nits; #48 publishes a live stripped artifact, and #50's
+  recovery-first reader scores all four methods full.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -308,7 +325,7 @@ parallel, but their order within each arrowed stack must be preserved.
   `IrFriendlyIntKernel.run(I)I`. Its local median is approximately equal to
   both recorded JVM medians and 18.170x lower than the legacy median. The other
   kernels fell back and are not IR timings; none of these numbers is portable.
-- PRs #1–#48 are still open drafts. `master` contains none of their work.
+- PRs #1–#50 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -346,14 +363,15 @@ not the union of claims from draft branches:
 7. Do not claim that the reader bar has been met. #30 recovered `mix` from the
    interpreter `.so` without the C++ tree, and #37 recovered `add`, `sumTo`,
    `subMul`, and `mix` from #35's valid live IR/direct stripped `.so`. #31
-   remains invalid because its `mix` was DCE'd; it does not offset #37. #48
-   has no reader/recovery pass and therefore does not offset #37 either. The
-   written goal therefore needs a lowering that is not a straight-line readable
-   native form of the source algorithm, not another encoding tweak. Any broader
-   reader claim needs raw reproducible results whose scope and limitations
-   support its exact wording, plus privacy and methodology approval. The reader
-   claim is not a v1 product prerequisite if option A is selected, but selecting
-   A does not shrink the written engineering goal.
+   remains invalid because its `mix` was DCE'd; it does not offset #37. #50
+   also recovered all four methods from #48's valid live shared-evaluator
+   stripped `.so`. The written goal therefore needs a lowering that is neither
+   a straight-line readable native form of the source algorithm nor a
+   decodable evaluator blob shipped with its evaluator, not another encoding
+   tweak. Any broader reader claim needs raw reproducible results whose scope
+   and limitations support its exact wording, plus privacy and methodology
+   approval. The reader claim is not a v1 product prerequisite if option A is
+   selected, but selecting A does not shrink the written engineering goal.
 8. Produce reproducible signed/provenanced artifacts, an SBOM and symbol
    allowlist, package/native-access documentation, crash/support and
    incident-response ownership, upgrade/rollback instructions, and final
