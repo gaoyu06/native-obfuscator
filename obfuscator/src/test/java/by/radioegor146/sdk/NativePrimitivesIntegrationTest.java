@@ -8,6 +8,7 @@ import by.radioegor146.Platform;
 import by.radioegor146.helpers.ProcessHelper;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -63,7 +64,11 @@ public class NativePrimitivesIntegrationTest {
         ProcessHelper.run(
                         cppDirectory,
                         120_000,
-                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                        Arrays.asList(
+                                "cmake",
+                                "-DCMAKE_BUILD_TYPE=Release",
+                                "-DCMAKE_CXX_COMPILER=" + cxxCompiler(),
+                                "."))
                 .check("SDK CMake configure");
         ProcessHelper.run(
                         cppDirectory,
@@ -146,6 +151,29 @@ public class NativePrimitivesIntegrationTest {
             return platformName + "-macos.dylib";
         }
         return platformName + "-raw" + osName;
+    }
+
+    private static String cxxCompiler() {
+        String configured = System.getenv("CXX");
+        if (configured != null && !configured.isEmpty()) {
+            return configured;
+        }
+
+        String path = System.getenv("PATH");
+        if (path != null) {
+            String[] names = System.getProperty("os.name").toLowerCase().contains("windows")
+                    ? new String[]{"g++.exe", "clang++.exe", "c++.exe"}
+                    : new String[]{"g++", "clang++", "c++"};
+            for (String name : names) {
+                for (String directory : path.split(File.pathSeparator)) {
+                    Path candidate = java.nio.file.Paths.get(directory, name);
+                    if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                        return candidate.toAbsolutePath().toString();
+                    }
+                }
+            }
+        }
+        return "c++";
     }
 
     private static void createInputJar(Path jarPath) throws IOException {
