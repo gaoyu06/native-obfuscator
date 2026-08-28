@@ -15,10 +15,10 @@ The dynamic symbol table exposes four generated integer entry points and one
 shared function:
 
 ```text
-native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_add(...)
-native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_sumTo(...)
-native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_subMul(...)
-native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_mix(...)
+native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_add1(...)
+native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_sumTo2(...)
+native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_subMul3(...)
+native_jvm::classes::__ngen_fixture_IrKernel_0::__ngen_native_mix4(...)
 native_jvm::ir_eval::evaluate_i32(unsigned char const *, unsigned long,
                                   int const *, unsigned long)
 ```
