@@ -257,13 +257,15 @@ public final class CfgBuilder {
     private static boolean mayThrow(AbstractInsnNode node) {
         int opcode = node.getOpcode();
         return opcode == Opcodes.IDIV || opcode == Opcodes.IREM
-                || opcode == Opcodes.NEWARRAY || opcode == Opcodes.ANEWARRAY
+                || opcode == Opcodes.NEW || opcode == Opcodes.NEWARRAY
+                || opcode == Opcodes.ANEWARRAY
                 || opcode == Opcodes.CHECKCAST || opcode == Opcodes.INSTANCEOF
                 || opcode == Opcodes.ARRAYLENGTH || opcode == Opcodes.IALOAD
                 || opcode == Opcodes.IASTORE || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.GETSTATIC
                 || opcode == Opcodes.PUTSTATIC || opcode == Opcodes.INVOKESTATIC
-                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.ATHROW;
+                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKESPECIAL
+                || opcode == Opcodes.ATHROW;
     }
 
     private static UnsupportedIrConstructException unsupported(String message,

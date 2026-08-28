@@ -195,6 +195,83 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersNewAndConstructorInvoke() {
+        MethodNode method = constructObjectMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        String pretty = ir.toString();
+        assertTrue(pretty.contains(" = new java/lang/Object"));
+        assertTrue(pretty.contains(
+                "invokespecial java/lang/Object.<init>()V"));
+        IrNodes.Invoke constructor = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.Invoke.class::isInstance)
+                .map(IrNodes.Invoke.class::cast)
+                .filter(invoke -> invoke.getKind() == IrNodes.Invoke.Kind.SPECIAL)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(null, constructor.getResult());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->AllocObject(cclasses["));
+        assertTrue(cpp.contains("env->GetMethodID"));
+        assertTrue(cpp.contains("env->CallNonvirtualVoidMethod"));
+        assertTrue(cpp.contains("env->CallIntMethod"));
+        assertTrue(cpp.contains("env->ExceptionCheck()"));
+    }
+
+    @Test
+    public void lowersExpandedInvokeFamilies() {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+
+        MethodContext longContext = new MethodContext(obfuscator,
+                staticLongInvokeMethod(), 0, owner(), 0);
+        compiler.processMethod(longContext);
+        assertTrue(longContext.output.toString().contains("env->CallStaticLongMethod"));
+
+        MethodContext virtualStringContext = new MethodContext(obfuscator,
+                virtualStringInvokeMethod(), 1, owner(), 0);
+        compiler.processMethod(virtualStringContext);
+        assertTrue(virtualStringContext.output.toString().contains("env->CallObjectMethod"));
+        assertTrue(virtualStringContext.output.toString().contains("env->GetStringLength"));
+
+        MethodContext staticStringContext = new MethodContext(obfuscator,
+                staticStringInvokeMethod(), 2, owner(), 0);
+        compiler.processMethod(staticStringContext);
+        assertTrue(staticStringContext.output.toString()
+                .contains("env->CallStaticObjectMethod"));
+
+        MethodContext staticVoidContext = new MethodContext(obfuscator,
+                staticVoidLongInvokeMethod(), 3, owner(), 0);
+        compiler.processMethod(staticVoidContext);
+        assertTrue(staticVoidContext.output.toString().contains("env->CallStaticVoidMethod"));
+    }
+
+    @Test
+    public void rejectsUnsupportedInstructionAfterNewBeforeMutation() {
+        MethodNode method = unsupportedAfterNewMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.POP, error.getOpcode());
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
     public void lowersStaticIntFieldsThroughExistingCacheShape() {
         MethodNode method = staticIntFieldMethod();
         IrMethod ir = frontend.build("example/Math", method);
@@ -724,7 +801,9 @@ public class IrCompilerTest {
                 checkCastInstanceOfMethod("typeTest", "java/lang/String"),
                 checkCastInstanceOfMethod("arrayTypeTest", "[Ljava/lang/String;"),
                 checkCastCatchMethod(), longArithmeticMethod(), longConversionMethod(),
-                wideStackPhiMethod()
+                wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
+                virtualStringInvokeMethod(), staticStringInvokeMethod(),
+                staticVoidLongInvokeMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -795,6 +874,13 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.longArithmetic(JJ)J"));
         assertTrue(source.contains("IR codegen: example/Math.longConversion(I)I"));
         assertTrue(source.contains("IR codegen: example/Math.widePhi(JI)J"));
+        assertTrue(source.contains("IR codegen: example/Math.constructObject()I"));
+        assertTrue(source.contains("env->AllocObject(cclasses["));
+        assertTrue(source.contains("env->CallNonvirtualVoidMethod"));
+        assertTrue(source.contains("env->CallStaticLongMethod"));
+        assertTrue(source.contains("env->CallObjectMethod"));
+        assertTrue(source.contains("env->CallStaticObjectMethod"));
+        assertTrue(source.contains("env->CallStaticVoidMethod"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
         assertTrue(source.contains("uint64_t"));
         assertTrue(source.contains("(jlong)"));
@@ -902,6 +988,87 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constructObjectMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "constructObject", "()I", null, null);
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/Object", "hashCode", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode staticLongInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "callLong", "(J)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/Math", "identityLong", "(J)J", false));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode virtualStringInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "virtualStringLength", "(Ljava/lang/Object;)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/Object", "toString", "()Ljava/lang/String;", false));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode staticStringInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "staticStringLength", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "java/lang/String", "valueOf", "(I)Ljava/lang/String;", false));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode staticVoidLongInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "consumeLong", "(J)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/Math", "acceptLong", "(J)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterNewMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterNew", "()V", null, null);
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
         return method;
     }
 

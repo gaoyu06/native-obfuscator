@@ -294,7 +294,8 @@ public final class IrNodes {
     public static final class Invoke implements IrInstruction {
         public enum Kind {
             STATIC("invokestatic"),
-            VIRTUAL("invokevirtual");
+            VIRTUAL("invokevirtual"),
+            SPECIAL("invokespecial");
 
             private final String mnemonic;
 
@@ -320,11 +321,22 @@ public final class IrNodes {
         public Invoke(IrValue result, Kind kind, String owner, String name, String descriptor,
                       IrValue receiver, List<IrValue> arguments, int bytecodeOffset,
                       int sourceLine) {
-            this.result = requireI32(result, "result");
             this.kind = Objects.requireNonNull(kind, "kind");
             this.owner = Objects.requireNonNull(owner, "owner");
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            if (result != null && result.getType() != IrType.I32
+                    && result.getType() != IrType.I64
+                    && result.getType() != IrType.REFERENCE) {
+                throw new IllegalArgumentException(
+                        "Invoke result must be i32, i64, or a reference value");
+            }
+            if (kind == Kind.SPECIAL
+                    && (!"<init>".equals(name) || result != null)) {
+                throw new IllegalArgumentException(
+                        "Special invokes must be void constructor calls");
+            }
+            this.result = result;
             if (kind == Kind.STATIC) {
                 if (receiver != null) {
                     throw new IllegalArgumentException("Static invoke cannot have a receiver");
@@ -337,9 +349,10 @@ public final class IrNodes {
             for (IrValue argument : Objects.requireNonNull(arguments, "arguments")) {
                 IrValue checked = Objects.requireNonNull(argument, "argument");
                 if (checked.getType() != IrType.I32
+                        && checked.getType() != IrType.I64
                         && checked.getType() != IrType.REFERENCE) {
                     throw new IllegalArgumentException(
-                            "Invoke arguments must be i32 or reference values");
+                            "Invoke arguments must be i32, i64, or reference values");
                 }
                 checkedArguments.add(checked);
             }
@@ -384,6 +397,32 @@ public final class IrNodes {
 
         public int getSourceLine() {
             return sourceLine;
+        }
+    }
+
+    public static final class NewObject implements IrInstruction {
+        private final IrValue result;
+        private final String className;
+        private final int bytecodeOffset;
+
+        public NewObject(IrValue result, String className, int bytecodeOffset) {
+            this.result = requireReference(result, "result");
+            this.className = requireClassName(className);
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
         }
     }
 

@@ -120,6 +120,9 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.IntDivRem) {
             return emitIntDivRem(method, block, (IrNodes.IntDivRem) instruction, context);
         }
+        if (instruction instanceof IrNodes.NewObject) {
+            return emitNewObject(method, block, (IrNodes.NewObject) instruction, context);
+        }
         if (instruction instanceof IrNodes.NewArray) {
             return emitNewArray(method, block, (IrNodes.NewArray) instruction, context);
         }
@@ -322,6 +325,28 @@ public final class IrCppEmitter {
         statements.add(new CppAst.If(overflow,
                 new CppAst.Block(Collections.<CppAst.Statement>singletonList(overflowResult)),
                 new CppAst.Block(Collections.<CppAst.Statement>singletonList(ordinaryResult))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitNewObject(IrMethod method, IrBlock block,
+                                                 IrNodes.NewObject object,
+                                                 MethodContext context) {
+        int classId = context.getCachedClasses().getId(object.getClassName());
+        List<CppAst.Statement> statements = emitClassCache(method, block, classId, context,
+                object.getClassName());
+        statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        statements.add(new CppAst.Assignment(variable(object.getResult()),
+                new CppAst.Cast("jobject",
+                        memberCall("env", "AllocObject", array("cclasses", classId)))));
+        CppAst.Expression failed = new CppAst.Binary(
+                new CppAst.Binary(expression(object.getResult()), "==",
+                        new CppAst.NullLiteral()),
+                "||",
+                new CppAst.Binary(memberCall("env", "ExceptionCheck"), "!=",
+                        new CppAst.IntLiteral(0)));
+        statements.add(new CppAst.If(failed,
+                new CppAst.Block(exceptionalExit(method, block)), null));
         return statements;
     }
 
@@ -565,6 +590,7 @@ public final class IrCppEmitter {
                                               IrNodes.Invoke invoke,
                                               MethodContext context) {
         boolean staticInvoke = invoke.getKind() == IrNodes.Invoke.Kind.STATIC;
+        boolean specialInvoke = invoke.getKind() == IrNodes.Invoke.Kind.SPECIAL;
         CachedMethodInfo info = new CachedMethodInfo(invoke.getOwner(), invoke.getName(),
                 invoke.getDescriptor(), staticInvoke);
         CacheSlots slots = cacheMember(method, invoke.getOwner(),
@@ -575,22 +601,55 @@ public final class IrCppEmitter {
 
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         if (!staticInvoke) {
-            statements.add(nullCheck(method, invoke.getReceiver(), "INVOKEVIRTUAL Int npe",
+            statements.add(nullCheck(method, invoke.getReceiver(),
+                    invoke.getKind().getMnemonic() + " npe",
                     invoke.getSourceLine(), context, block));
         }
 
         List<CppAst.Expression> arguments = new ArrayList<>();
         arguments.add(staticInvoke
                 ? array("cclasses", slots.classId) : expression(invoke.getReceiver()));
+        if (specialInvoke) {
+            arguments.add(array("cclasses", slots.classId));
+        }
         arguments.add(array("cmethods", slots.memberId));
         for (IrValue argument : invoke.getArguments()) {
             arguments.add(expression(argument));
         }
-        statements.add(new CppAst.Assignment(variable(invoke.getResult()),
-                new CppAst.MemberCall(variable("env"), true,
-                        staticInvoke ? "CallStaticIntMethod" : "CallIntMethod", arguments)));
+        CppAst.Expression call = new CppAst.MemberCall(variable("env"), true,
+                invokeCallMethod(invoke), arguments);
+        if (invoke.getResult() == null) {
+            statements.add(new CppAst.ExpressionStatement(call));
+        } else {
+            statements.add(new CppAst.Assignment(variable(invoke.getResult()), call));
+        }
         statements.add(exceptionCheck(method, block));
         return statements;
+    }
+
+    private String invokeCallMethod(IrNodes.Invoke invoke) {
+        String prefix;
+        if (invoke.getKind() == IrNodes.Invoke.Kind.STATIC) {
+            prefix = "CallStatic";
+        } else if (invoke.getKind() == IrNodes.Invoke.Kind.SPECIAL) {
+            prefix = "CallNonvirtual";
+        } else {
+            prefix = "Call";
+        }
+        String carrier;
+        if (invoke.getResult() == null) {
+            carrier = "Void";
+        } else if (invoke.getResult().getType() == IrType.I32) {
+            carrier = "Int";
+        } else if (invoke.getResult().getType() == IrType.I64) {
+            carrier = "Long";
+        } else if (invoke.getResult().getType() == IrType.REFERENCE) {
+            carrier = "Object";
+        } else {
+            throw new IllegalStateException("Unsupported invoke result type "
+                    + invoke.getResult().getType());
+        }
+        return prefix + carrier + "Method";
     }
 
     private CacheSlots cacheField(IrMethod method, String owner, String name,

@@ -166,6 +166,11 @@ public final class IrMethod {
                     + conversion.getOperation().getMnemonic() + " "
                     + conversion.getOperand();
         }
+        if (instruction instanceof IrNodes.NewObject) {
+            IrNodes.NewObject object = (IrNodes.NewObject) instruction;
+            return object.getResult() + ":" + object.getResult().getType()
+                    + " = new " + object.getClassName();
+        }
         if (instruction instanceof IrNodes.NewArray) {
             IrNodes.NewArray array = (IrNodes.NewArray) instruction;
             return array.getResult() + ":" + array.getResult().getType()
@@ -240,10 +245,12 @@ public final class IrMethod {
                 operands = invoke.getReceiver()
                         + (operands.isEmpty() ? "" : ", " + operands);
             }
-            return invoke.getResult() + ":" + invoke.getResult().getType() + " = "
-                    + invoke.getKind().getMnemonic() + " " + invoke.getOwner() + "."
+            String operation = invoke.getKind().getMnemonic() + " " + invoke.getOwner() + "."
                     + invoke.getName() + invoke.getDescriptor()
                     + (operands.isEmpty() ? "" : " " + operands);
+            return invoke.getResult() == null ? operation
+                    : invoke.getResult() + ":" + invoke.getResult().getType()
+                    + " = " + operation;
         }
         throw new IllegalStateException("Unknown IR instruction " + instruction.getClass());
     }

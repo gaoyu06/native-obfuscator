@@ -262,11 +262,15 @@ public final class AsmToIr {
                         supported = true;
                         break;
                     case AbstractInsnNode.TYPE_INSN:
-                        supported = (opcode == Opcodes.ANEWARRAY
+                        TypeInsnNode typeInsn = (TypeInsnNode) node;
+                        supported = (opcode == Opcodes.NEW
+                                || opcode == Opcodes.ANEWARRAY
                                 || opcode == Opcodes.CHECKCAST
                                 || opcode == Opcodes.INSTANCEOF)
-                                && ((TypeInsnNode) node).desc != null
-                                && !((TypeInsnNode) node).desc.isEmpty();
+                                && typeInsn.desc != null
+                                && !typeInsn.desc.isEmpty()
+                                && (opcode != Opcodes.NEW
+                                || !typeInsn.desc.startsWith("["));
                         break;
                     case AbstractInsnNode.FIELD_INSN:
                         FieldInsnNode field = (FieldInsnNode) node;
@@ -276,9 +280,7 @@ public final class AsmToIr {
                                 && "I".equals(field.desc);
                         break;
                     case AbstractInsnNode.METHOD_INSN:
-                        supported = (opcode == Opcodes.INVOKESTATIC
-                                || opcode == Opcodes.INVOKEVIRTUAL)
-                                && isSimpleInvoke(((MethodInsnNode) node).desc);
+                        supported = isSupportedInvoke((MethodInsnNode) node);
                         break;
                     default:
                         supported = false;
@@ -446,6 +448,8 @@ public final class AsmToIr {
         } else if (opcode == Opcodes.L2I) {
             popType(stack, IrType.I64, instruction);
             stack.add(IrType.I32);
+        } else if (opcode == Opcodes.NEW) {
+            stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.NEWARRAY) {
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.REFERENCE);
@@ -490,10 +494,13 @@ public final class AsmToIr {
             for (int i = arguments.length - 1; i >= 0; i--) {
                 popType(stack, irType(arguments[i]), instruction);
             }
-            if (opcode == Opcodes.INVOKEVIRTUAL) {
+            if (opcode != Opcodes.INVOKESTATIC) {
                 popType(stack, IrType.REFERENCE, instruction);
             }
-            stack.add(IrType.I32);
+            Type returnType = Type.getReturnType(invoke.desc);
+            if (returnType.getSort() != Type.VOID) {
+                stack.add(irType(returnType));
+            }
         } else if (isUnaryIntJump(opcode)) {
             popType(stack, IrType.I32, instruction);
         } else if (isBinaryIntJump(opcode)) {
@@ -794,6 +801,11 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.Conversion(result, operation, operand,
                         instruction.getOriginalIndex()));
                 state.stack.add(result);
+            } else if (node instanceof TypeInsnNode && opcode == Opcodes.NEW) {
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                block.addInstruction(new IrNodes.NewObject(result,
+                        ((TypeInsnNode) node).desc, instruction.getOriginalIndex()));
+                state.stack.add(result);
             } else if (opcode == Opcodes.NEWARRAY) {
                 IrValue length = pop(state, IrType.I32, instruction);
                 IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
@@ -884,15 +896,17 @@ public final class AsmToIr {
                 for (int i = argumentTypes.length - 1; i >= 0; i--) {
                     arguments.set(i, pop(state, irType(argumentTypes[i]), instruction));
                 }
-                IrValue receiver = opcode == Opcodes.INVOKEVIRTUAL
+                IrValue receiver = opcode != Opcodes.INVOKESTATIC
                         ? pop(state, IrType.REFERENCE, instruction) : null;
-                IrValue result = irMethod.newInstructionValue(IrType.I32);
-                block.addInstruction(new IrNodes.Invoke(result,
-                        opcode == Opcodes.INVOKESTATIC
-                                ? IrNodes.Invoke.Kind.STATIC : IrNodes.Invoke.Kind.VIRTUAL,
+                Type returnType = Type.getReturnType(invoke.desc);
+                IrValue result = returnType.getSort() == Type.VOID ? null
+                        : irMethod.newInstructionValue(irType(returnType));
+                block.addInstruction(new IrNodes.Invoke(result, invokeKind(opcode),
                         invoke.owner, invoke.name, invoke.desc, receiver, arguments,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
-                state.stack.add(result);
+                if (result != null) {
+                    state.stack.add(result);
+                }
             } else if (node instanceof JumpInsnNode) {
                 lowerJump(instruction, (JumpInsnNode) node, graph, rawBlock, block, state,
                         irBlocks);
@@ -1140,16 +1154,57 @@ public final class AsmToIr {
         throw new IllegalArgumentException("Unsupported JVM carrier type " + type);
     }
 
-    private static boolean isSimpleInvoke(String descriptor) {
-        if (Type.getReturnType(descriptor).getSort() != Type.INT) {
+    private static boolean isSupportedInvoke(MethodInsnNode invoke) {
+        int opcode = invoke.getOpcode();
+        if (opcode != Opcodes.INVOKESTATIC && opcode != Opcodes.INVOKEVIRTUAL
+                && opcode != Opcodes.INVOKESPECIAL) {
             return false;
         }
-        for (Type argument : Type.getArgumentTypes(descriptor)) {
-            if (argument.getSort() != Type.INT && !isReference(argument)) {
+        if (invoke.owner == null || invoke.owner.isEmpty()
+                || invoke.name == null || invoke.name.isEmpty()
+                || invoke.desc == null || invoke.desc.isEmpty()) {
+            return false;
+        }
+        try {
+            Type returnType = Type.getReturnType(invoke.desc);
+            if (opcode == Opcodes.INVOKESPECIAL) {
+                if (!"<init>".equals(invoke.name)
+                        || returnType.getSort() != Type.VOID) {
+                    return false;
+                }
+            } else if (!isSupportedInvokeReturn(returnType)) {
                 return false;
             }
+            for (Type argument : Type.getArgumentTypes(invoke.desc)) {
+                if (argument.getSort() != Type.INT
+                        && argument.getSort() != Type.LONG
+                        && !isReference(argument)) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (IllegalArgumentException malformedDescriptor) {
+            return false;
         }
-        return true;
+    }
+
+    private static boolean isSupportedInvokeReturn(Type type) {
+        int sort = type.getSort();
+        return sort == Type.VOID || sort == Type.INT || sort == Type.LONG
+                || isReference(type);
+    }
+
+    private static IrNodes.Invoke.Kind invokeKind(int opcode) {
+        switch (opcode) {
+            case Opcodes.INVOKESTATIC:
+                return IrNodes.Invoke.Kind.STATIC;
+            case Opcodes.INVOKEVIRTUAL:
+                return IrNodes.Invoke.Kind.VIRTUAL;
+            case Opcodes.INVOKESPECIAL:
+                return IrNodes.Invoke.Kind.SPECIAL;
+            default:
+                throw new IllegalArgumentException("Not a supported invoke opcode: " + opcode);
+        }
     }
 
     private static boolean isIntBinaryOp(int opcode) {
