@@ -54,6 +54,10 @@ public class Main {
                 description = "Target platform: hotspot - standard standalone HotSpot JRE, std_java - java standard, android - for Android builds (w/o DefineClass)")
         private Platform platform;
 
+        @CommandLine.Option(names = {"--codegen"}, defaultValue = "legacy",
+                description = "Method code generator: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private CodegenMode codegenMode;
+
         @CommandLine.Option(names = {"-a", "--annotations"}, description = "Use annotations to ignore/include native obfuscation")
         private boolean useAnnotations;
 
@@ -107,7 +111,7 @@ public class Main {
             Path outputDir = Paths.get(outputDirectory);
             String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
-                    platform, useAnnotations, generateDebugJar);
+                    platform, useAnnotations, generateDebugJar, codegenMode);
 
             if (useZig) {
                 runZigBuild(outputDir, nativeDir);

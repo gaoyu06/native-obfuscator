@@ -1,6 +1,9 @@
 package by.radioegor146;
 
 import by.radioegor146.bytecode.PreprocessorRunner;
+import by.radioegor146.ir.IrMethodCompiler;
+import by.radioegor146.ir.UnsupportedIrConstructException;
+import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.source.CMakeFilesBuilder;
 import by.radioegor146.source.ClassSourceBuilder;
 import by.radioegor146.source.MainSourceBuilder;
@@ -41,6 +44,7 @@ public class NativeObfuscator {
     private final Snippets snippets;
     private final StringPool stringPool;
     private final MethodProcessor methodProcessor;
+    private final IrMethodCompiler irMethodCompiler;
 
     private final NodeCache<String> cachedStrings;
     private final NodeCache<String> cachedClasses;
@@ -90,13 +94,26 @@ public class NativeObfuscator {
         cachedClasses = new NodeCache<>("(cclasses[%d])");
         cachedMethods = new NodeCache<>("(cmethods[%d])");
         cachedFields = new NodeCache<>("(cfields[%d])");
-        methodProcessor = new MethodProcessor(this);
+        MethodShellEmitter shellEmitter = new MethodShellEmitter(this);
+        methodProcessor = new MethodProcessor(this, shellEmitter);
+        irMethodCompiler = new IrMethodCompiler(shellEmitter);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
                           List<String> blackList, List<String> whiteList, String plainLibName,
                           String customLibraryDirectory,
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                CodegenMode.LEGACY);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode) throws IOException {
+        final CodegenMode selectedCodegen = Objects.requireNonNull(codegenMode, "codegenMode");
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -262,7 +279,19 @@ public class NativeObfuscator {
                             }
 
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
-                            methodProcessor.processMethod(context);
+                            if (selectedCodegen == CodegenMode.IR) {
+                                try {
+                                    irMethodCompiler.processMethod(context);
+                                } catch (UnsupportedIrConstructException ex) {
+                                    logger.info("IR codegen unsupported for {}#{}{}: {}; "
+                                                    + "falling back to legacy for this method",
+                                            classNode.name, method.name, method.desc,
+                                            ex.getMessage());
+                                    methodProcessor.processMethod(context);
+                                }
+                            } else {
+                                methodProcessor.processMethod(context);
+                            }
                             instructions.append(context.output.toString().replace("\n", "\n    "));
 
                             nativeMethods.append(context.nativeMethods);
