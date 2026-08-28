@@ -1,8 +1,7 @@
-# Reproducible JVM versus transpiled-JNI benchmark
+# Reproducible JVM versus legacy/IR transpiled-JNI benchmark
 
-This harness measures the current generator against plain Java. It does not
-claim that the transpiler is faster, and it does not benchmark a future IR,
-interpreter, or C++ crypto SDK.
+This harness measures the legacy and IR code generators against plain Java.
+It does not claim that either transpiled mode is faster.
 
 ## Run
 
@@ -16,22 +15,33 @@ Prerequisites:
 From the repository root:
 
 ```sh
-./gradlew :obfuscator:bench
+CC=gcc CXX=g++ ./gradlew :obfuscator:bench
+CC=gcc CXX=g++ ./gradlew :obfuscator:benchIr
 ```
 
-`./gradlew bench` is also a Gradle task selector for the same task in this
-repository. The task is intentionally not a dependency of `check` or `test`.
+`bench` selects `--codegen=legacy`; `benchIr` selects `--codegen=ir`.
+Both tasks run the plain JVM reference before the selected native mode.
+They are intentionally not dependencies of `check` or `test`. GCC is
+recommended because the generated native project must link libstdc++.
 
 The harness prints JSON and writes the identical report to:
 
 ```text
-build/benchmarks/results.json
+build/benchmarks/results-legacy.json
+build/benchmarks/results-ir.json
 ```
+
+`build/benchmarks/results.json` is also updated with the most recent mode.
+Transpiler stdout/stderr is retained in
+`build/benchmarks/logs/transpile-{legacy,ir}.log`.
 
 Warmup and measurement counts may be increased through environment variables:
 
 ```sh
-BENCH_WARMUP=10 BENCH_ITERATIONS=20 ./gradlew :obfuscator:bench
+BENCH_WARMUP=10 BENCH_ITERATIONS=20 CC=gcc CXX=g++ \
+  ./gradlew :obfuscator:bench
+BENCH_WARMUP=10 BENCH_ITERATIONS=20 CC=gcc CXX=g++ \
+  ./gradlew :obfuscator:benchIr
 ```
 
 At least one warmup and two measurement iterations are enforced.
@@ -42,10 +52,13 @@ Gradle builds one Java 8 benchmark JAR and the transpiler fat JAR. The Python
 driver then:
 
 1. runs the unmodified benchmark JAR on the JVM;
-2. transpiles only `benchmarks/kernels/**` from that same JAR;
-3. configures and compiles the generated C++ shared library with CMake;
-4. runs the transformed JAR with that shared library;
-5. rejects mismatched kernel sets or checksums.
+2. transpiles only `benchmarks/kernels/**` from that same JAR with the
+   task-selected code generator;
+3. verifies every kernel method against generated `// IR codegen:` markers or
+   the transpiler's per-method legacy-fallback logs;
+4. configures and compiles the generated C++ shared library with CMake;
+5. runs the transformed JAR with that shared library;
+6. rejects unclassified methods, mismatched kernel sets, or checksums.
 
 Every measured sample uses `System.nanoTime()`. An untimed checksum preflight
 and warmup iterations precede the recorded samples. A volatile sink consumes
@@ -54,6 +67,8 @@ only those recorded samples.
 
 The kernels are:
 
+- `ir-friendly-int-loop`: 5,000,000 iterations of deterministic, `int`-only
+  arithmetic supported by the current IR subset;
 - `integer-loop`: 5,000,000 iterations of deterministic integer arithmetic;
 - `string-concat-hash`: 200 calls of 96 concatenations plus `String.hashCode`;
 - `recursion`: 2,000 recursive traversals at depth 32.
@@ -69,7 +84,8 @@ Native work is never silently skipped. A missing tool, transpilation error,
 CMake error, compiler error, native execution error, timeout, invalid JSON, or
 checksum mismatch produces a top-level `FAIL`, records the stage and command,
 marks the native result `FAIL`, writes the partial report, and makes the Gradle
-task fail. No native timings are emitted unless the transformed JAR actually
+task fail. In IR mode, a missing IR marker/fallback record fails before native
+compilation. No native timings are emitted unless the transformed JAR actually
 runs successfully.
 
 ## Interpreting results
@@ -81,5 +97,5 @@ intervals. Treat a single run as local diagnostic evidence, not a release
 threshold or a general performance claim. Compare repeated runs on controlled
 hardware before drawing conclusions.
 
-The checked-in local run is in
-[`results-local.md`](results-local.md).
+The checked-in IR-versus-legacy run is in
+[`results-ir-vs-legacy.md`](results-ir-vs-legacy.md).
