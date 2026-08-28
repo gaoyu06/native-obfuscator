@@ -4,6 +4,7 @@ import by.radioegor146.CachedFieldInfo;
 import by.radioegor146.CachedMethodInfo;
 import by.radioegor146.MethodContext;
 import by.radioegor146.ir.IrBlock;
+import by.radioegor146.ir.IrExceptionEdge;
 import by.radioegor146.ir.IrInstruction;
 import by.radioegor146.ir.IrMethod;
 import by.radioegor146.ir.IrNodes;
@@ -15,7 +16,12 @@ import by.radioegor146.ir.IrValue;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Emits the typed IR directly through {@link CppAst}; it has no dependency on
@@ -24,6 +30,7 @@ import java.util.List;
 public final class IrCppEmitter {
     private int edgeTemporaryId;
     private int arrayTemporaryId;
+    private Map<HandlerSet, String> dispatchLabels;
 
     public String emitBody(IrMethod method) {
         return emitBody(method, null);
@@ -32,12 +39,16 @@ public final class IrCppEmitter {
     public String emitBody(IrMethod method, MethodContext context) {
         edgeTemporaryId = 0;
         arrayTemporaryId = 0;
+        dispatchLabels = collectDispatchLabels(method);
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(new CppAst.Comment("IR codegen: " + method.getOwner() + "."
                 + method.getName() + method.getDescriptor()));
 
         // Declare all SSA carriers before labels so C++ gotos never cross an
         // initialized automatic variable.
+        if (!dispatchLabels.isEmpty()) {
+            statements.add(new CppAst.Declaration("jthrowable", "caught_exception"));
+        }
         for (IrBlock block : method.getBlocks()) {
             for (IrPhi phi : block.getPhis()) {
                 statements.add(declaration(phi.getResult()));
@@ -52,9 +63,16 @@ public final class IrCppEmitter {
         for (IrBlock block : method.getBlocks()) {
             statements.add(new CppAst.Label(label(block)));
             for (IrInstruction instruction : block.getInstructions()) {
-                statements.addAll(emitInstruction(method, instruction, context));
+                statements.addAll(emitInstruction(method, block, instruction, context));
             }
-            emitTerminator(statements, block, block.getTerminator());
+            emitTerminator(method, context, statements, block, block.getTerminator());
+        }
+        if (!dispatchLabels.isEmpty()) {
+            if (context == null) {
+                throw new IllegalStateException(
+                        "Exception dispatch requires a method emission context");
+            }
+            emitDispatches(method, context, statements);
         }
         return CppAst.render(statements, 1);
     }
@@ -63,8 +81,14 @@ public final class IrCppEmitter {
         return new CppAst.Declaration(value.getType().getCppType(), variableName(value));
     }
 
-    private List<CppAst.Statement> emitInstruction(IrMethod method, IrInstruction instruction,
+    private List<CppAst.Statement> emitInstruction(IrMethod method, IrBlock block,
+                                                   IrInstruction instruction,
                                                    MethodContext context) {
+        if (instruction instanceof IrNodes.CaughtException) {
+            return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                    variable(instruction.getResult()),
+                    new CppAst.Cast("jobject", variable("caught_exception"))));
+        }
         if (instruction instanceof IrNodes.Const) {
             IrNodes.Const constant = (IrNodes.Const) instruction;
             return Collections.<CppAst.Statement>singletonList(
@@ -82,25 +106,25 @@ public final class IrCppEmitter {
                     "JNI IR instructions require a method emission context");
         }
         if (instruction instanceof IrNodes.ArrayLength) {
-            return emitArrayLength(method, (IrNodes.ArrayLength) instruction, context);
+            return emitArrayLength(method, block, (IrNodes.ArrayLength) instruction, context);
         }
         if (instruction instanceof IrNodes.ArrayLoad) {
-            return emitArrayLoad(method, (IrNodes.ArrayLoad) instruction, context);
+            return emitArrayLoad(method, block, (IrNodes.ArrayLoad) instruction, context);
         }
         if (instruction instanceof IrNodes.ArrayStore) {
-            return emitArrayStore(method, (IrNodes.ArrayStore) instruction, context);
+            return emitArrayStore(method, block, (IrNodes.ArrayStore) instruction, context);
         }
         if (instruction instanceof IrNodes.StringLength) {
-            return emitStringLength(method, (IrNodes.StringLength) instruction, context);
+            return emitStringLength(method, block, (IrNodes.StringLength) instruction, context);
         }
         if (instruction instanceof IrNodes.GetField) {
-            return emitGetField(method, (IrNodes.GetField) instruction, context);
+            return emitGetField(method, block, (IrNodes.GetField) instruction, context);
         }
         if (instruction instanceof IrNodes.PutField) {
-            return emitPutField(method, (IrNodes.PutField) instruction, context);
+            return emitPutField(method, block, (IrNodes.PutField) instruction, context);
         }
         if (instruction instanceof IrNodes.Invoke) {
-            return emitInvoke(method, (IrNodes.Invoke) instruction, context);
+            return emitInvoke(method, block, (IrNodes.Invoke) instruction, context);
         }
         throw new IllegalStateException("Unknown IR instruction " + instruction.getClass());
     }
@@ -185,22 +209,24 @@ public final class IrCppEmitter {
                 new CppAst.Assignment(variable(unary.getResult()), value));
     }
 
-    private List<CppAst.Statement> emitArrayLength(IrMethod method, IrNodes.ArrayLength length,
+    private List<CppAst.Statement> emitArrayLength(IrMethod method, IrBlock block,
+                                                   IrNodes.ArrayLength length,
                                                    MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(nullCheck(method, length.getArray(), "ARRAYLENGTH npe",
-                length.getSourceLine(), context));
+                length.getSourceLine(), context, block));
         statements.add(new CppAst.Assignment(variable(length.getResult()),
                 memberCall("env", "GetArrayLength",
                         new CppAst.Cast("jarray", expression(length.getArray())))));
         return statements;
     }
 
-    private List<CppAst.Statement> emitArrayLoad(IrMethod method, IrNodes.ArrayLoad load,
+    private List<CppAst.Statement> emitArrayLoad(IrMethod method, IrBlock block,
+                                                 IrNodes.ArrayLoad load,
                                                  MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(nullCheck(method, load.getArray(), "IALOAD npe",
-                load.getSourceLine(), context));
+                load.getSourceLine(), context, block));
         String temporary = "iaload" + arrayTemporaryId++;
         List<CppAst.Statement> scoped = new ArrayList<>();
         scoped.add(new CppAst.Declaration("jint", temporary, new CppAst.IntLiteral(0)));
@@ -209,17 +235,18 @@ public final class IrCppEmitter {
                         new CppAst.Cast("jintArray", expression(load.getArray())),
                         expression(load.getIndex()), new CppAst.IntLiteral(1),
                         new CppAst.Unary("&", variable(temporary))))));
-        scoped.add(exceptionCheck(method));
+        scoped.add(exceptionCheck(method, block));
         scoped.add(new CppAst.Assignment(variable(load.getResult()), variable(temporary)));
         statements.add(new CppAst.Block(scoped));
         return statements;
     }
 
-    private List<CppAst.Statement> emitArrayStore(IrMethod method, IrNodes.ArrayStore store,
+    private List<CppAst.Statement> emitArrayStore(IrMethod method, IrBlock block,
+                                                  IrNodes.ArrayStore store,
                                                   MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(nullCheck(method, store.getArray(), "IASTORE npe",
-                store.getSourceLine(), context));
+                store.getSourceLine(), context, block));
         String temporary = "iastore" + arrayTemporaryId++;
         List<CppAst.Statement> scoped = new ArrayList<>();
         scoped.add(new CppAst.Declaration("jint", temporary, expression(store.getValue())));
@@ -228,51 +255,55 @@ public final class IrCppEmitter {
                         new CppAst.Cast("jintArray", expression(store.getArray())),
                         expression(store.getIndex()), new CppAst.IntLiteral(1),
                         new CppAst.Unary("&", variable(temporary))))));
-        scoped.add(exceptionCheck(method));
+        scoped.add(exceptionCheck(method, block));
         statements.add(new CppAst.Block(scoped));
         return statements;
     }
 
-    private List<CppAst.Statement> emitStringLength(IrMethod method, IrNodes.StringLength length,
+    private List<CppAst.Statement> emitStringLength(IrMethod method, IrBlock block,
+                                                    IrNodes.StringLength length,
                                                     MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(nullCheck(method, length.getReceiver(), "String.length npe",
-                length.getSourceLine(), context));
+                length.getSourceLine(), context, block));
         statements.add(new CppAst.Assignment(variable(length.getResult()),
                 memberCall("env", "GetStringLength",
                         new CppAst.Cast("jstring", expression(length.getReceiver())))));
         return statements;
     }
 
-    private List<CppAst.Statement> emitGetField(IrMethod method, IrNodes.GetField field,
+    private List<CppAst.Statement> emitGetField(IrMethod method, IrBlock block,
+                                                IrNodes.GetField field,
                                                 MethodContext context) {
         CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
-                field.getDescriptor(), context);
+                field.getDescriptor(), context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         statements.add(nullCheck(method, field.getReceiver(), "GETFIELD Int npe",
-                field.getSourceLine(), context));
+                field.getSourceLine(), context, block));
         statements.add(new CppAst.Assignment(variable(field.getResult()),
                 memberCall("env", "GetIntField", expression(field.getReceiver()),
                         array("cfields", slots.memberId))));
-        statements.add(exceptionCheck(method));
+        statements.add(exceptionCheck(method, block));
         return statements;
     }
 
-    private List<CppAst.Statement> emitPutField(IrMethod method, IrNodes.PutField field,
+    private List<CppAst.Statement> emitPutField(IrMethod method, IrBlock block,
+                                                IrNodes.PutField field,
                                                 MethodContext context) {
         CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
-                field.getDescriptor(), context);
+                field.getDescriptor(), context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         statements.add(nullCheck(method, field.getReceiver(), "PUTFIELD Int npe",
-                field.getSourceLine(), context));
+                field.getSourceLine(), context, block));
         statements.add(new CppAst.ExpressionStatement(
                 memberCall("env", "SetIntField", expression(field.getReceiver()),
                         array("cfields", slots.memberId), expression(field.getValue()))));
-        statements.add(exceptionCheck(method));
+        statements.add(exceptionCheck(method, block));
         return statements;
     }
 
-    private List<CppAst.Statement> emitInvoke(IrMethod method, IrNodes.Invoke invoke,
+    private List<CppAst.Statement> emitInvoke(IrMethod method, IrBlock block,
+                                              IrNodes.Invoke invoke,
                                               MethodContext context) {
         boolean staticInvoke = invoke.getKind() == IrNodes.Invoke.Kind.STATIC;
         CachedMethodInfo info = new CachedMethodInfo(invoke.getOwner(), invoke.getName(),
@@ -281,12 +312,12 @@ public final class IrCppEmitter {
                 context.getCachedMethods().getId(info), "cmethods",
                 staticInvoke ? "GetStaticMethodID" : "GetMethodID",
                 context.getStringPool().getOffset(invoke.getName()),
-                context.getStringPool().getOffset(invoke.getDescriptor()), context);
+                context.getStringPool().getOffset(invoke.getDescriptor()), context, block);
 
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         if (!staticInvoke) {
             statements.add(nullCheck(method, invoke.getReceiver(), "INVOKEVIRTUAL Int npe",
-                    invoke.getSourceLine(), context));
+                    invoke.getSourceLine(), context, block));
         }
 
         List<CppAst.Expression> arguments = new ArrayList<>();
@@ -299,38 +330,41 @@ public final class IrCppEmitter {
         statements.add(new CppAst.Assignment(variable(invoke.getResult()),
                 new CppAst.MemberCall(variable("env"), true,
                         staticInvoke ? "CallStaticIntMethod" : "CallIntMethod", arguments)));
-        statements.add(exceptionCheck(method));
+        statements.add(exceptionCheck(method, block));
         return statements;
     }
 
     private CacheSlots cacheField(IrMethod method, String owner, String name,
-                                  String descriptor, MethodContext context) {
+                                  String descriptor, MethodContext context,
+                                  IrBlock block) {
         CachedFieldInfo info = new CachedFieldInfo(owner, name, descriptor, false);
         return cacheMember(method, owner, context.getCachedFields().getId(info), "cfields",
                 "GetFieldID", context.getStringPool().getOffset(name),
-                context.getStringPool().getOffset(descriptor), context);
+                context.getStringPool().getOffset(descriptor), context, block);
     }
 
     private CacheSlots cacheMember(IrMethod method, String owner, int memberId,
                                    String memberArray, String lookupMethod, long nameOffset,
-                                   long descriptorOffset, MethodContext context) {
+                                   long descriptorOffset, MethodContext context,
+                                   IrBlock block) {
         int classId = context.getCachedClasses().getId(owner);
         int classStringId = context.getCachedStrings().getId(owner.replace('/', '.'));
-        List<CppAst.Statement> statements = emitClassCache(method, classId, classStringId);
+        List<CppAst.Statement> statements = emitClassCache(method, block, classId,
+                classStringId);
 
         CppAst.Expression memberSlot = array(memberArray, memberId);
         CppAst.Expression lookup = memberCall("env", lookupMethod,
                 array("cclasses", classId), pool(nameOffset), pool(descriptorOffset));
         List<CppAst.Statement> initializeMember = Arrays.<CppAst.Statement>asList(
                 new CppAst.Assignment(memberSlot, lookup),
-                exceptionCheck(method));
+                exceptionCheck(method, block));
         statements.add(new CppAst.If(new CppAst.Unary("!", memberSlot),
                 new CppAst.Block(initializeMember), null));
         return new CacheSlots(classId, memberId, statements);
     }
 
-    private List<CppAst.Statement> emitClassCache(IrMethod method, int classId,
-                                                   int classStringId) {
+    private List<CppAst.Statement> emitClassCache(IrMethod method, IrBlock block,
+                                                  int classId, int classStringId) {
         CppAst.Expression classSlot = array("cclasses", classId);
         CppAst.Expression cacheMissing = new CppAst.Binary(
                 new CppAst.Unary("!", classSlot), "||",
@@ -360,29 +394,51 @@ public final class IrCppEmitter {
                 new CppAst.ExpressionStatement(
                         new CppAst.MemberCall(mutex, false, "unlock",
                                 Collections.<CppAst.Expression>emptyList())),
-                exceptionCheck(method));
+                exceptionCheck(method, block));
         return new ArrayList<>(Collections.<CppAst.Statement>singletonList(
                 new CppAst.If(cacheMissing, new CppAst.Block(initializeClass), null)));
     }
 
     private CppAst.Statement nullCheck(IrMethod method, IrValue receiver, String error,
-                                       int sourceLine, MethodContext context) {
+                                       int sourceLine, MethodContext context,
+                                       IrBlock block) {
         CppAst.Expression throwCall = new CppAst.Call("utils::throw_re", Arrays.asList(
                 variable("env"),
                 pool(context.getStringPool().getOffset("java/lang/NullPointerException")),
                 pool(context.getStringPool().getOffset(error)),
                 new CppAst.IntLiteral(sourceLine)));
+        List<CppAst.Statement> failed = new ArrayList<>();
+        failed.add(new CppAst.ExpressionStatement(throwCall));
+        failed.addAll(exceptionalExit(method, block));
         return new CppAst.If(
                 new CppAst.Binary(expression(receiver), "==", new CppAst.NullLiteral()),
-                new CppAst.Block(Arrays.<CppAst.Statement>asList(
-                        new CppAst.ExpressionStatement(throwCall), earlyReturn(method))),
+                new CppAst.Block(failed),
                 null);
     }
 
-    private CppAst.Statement exceptionCheck(IrMethod method) {
+    private CppAst.Statement exceptionCheck(IrMethod method, IrBlock block) {
         return new CppAst.If(new CppAst.Binary(
                 memberCall("env", "ExceptionCheck"), "!=", new CppAst.IntLiteral(0)),
-                new CppAst.Block(Collections.singletonList(earlyReturn(method))), null);
+                new CppAst.Block(exceptionalExit(method, block)), null);
+    }
+
+    private List<CppAst.Statement> exceptionalExit(IrMethod method, IrBlock block) {
+        if (block.getExceptionEdges().isEmpty()) {
+            return Collections.<CppAst.Statement>singletonList(earlyReturn(method));
+        }
+        List<CppAst.Statement> statements = new ArrayList<>();
+        Set<IrBlock> transferredHandlers = new LinkedHashSet<>();
+        for (IrExceptionEdge edge : block.getExceptionEdges()) {
+            if (transferredHandlers.add(edge.getHandler())) {
+                statements.addAll(phiCopies(block, edge.getHandler()));
+            }
+        }
+        String dispatch = dispatchLabels.get(new HandlerSet(block.getExceptionEdges()));
+        if (dispatch == null) {
+            throw new IllegalStateException("Missing shared exception dispatch");
+        }
+        statements.add(new CppAst.Goto(dispatch));
+        return statements;
     }
 
     private CppAst.Return earlyReturn(IrMethod method) {
@@ -404,7 +460,8 @@ public final class IrCppEmitter {
         return new CppAst.StringPoolPointer(offset);
     }
 
-    private void emitTerminator(List<CppAst.Statement> statements, IrBlock predecessor,
+    private void emitTerminator(IrMethod method, MethodContext context,
+                                List<CppAst.Statement> statements, IrBlock predecessor,
                                 IrTerminator terminator) {
         if (terminator instanceof IrNodes.Goto) {
             IrBlock target = ((IrNodes.Goto) terminator).getTarget();
@@ -427,10 +484,39 @@ public final class IrCppEmitter {
             statements.add(new CppAst.Return(value == null ? null : expression(value)));
             return;
         }
+        if (terminator instanceof IrNodes.Throw) {
+            if (context == null) {
+                throw new IllegalStateException("ATHROW requires a method emission context");
+            }
+            IrValue exception = ((IrNodes.Throw) terminator).getException();
+            CppAst.Expression throwNull = new CppAst.Call("utils::throw_re", Arrays.asList(
+                    variable("env"),
+                    pool(context.getStringPool().getOffset(
+                            "java/lang/NullPointerException")),
+                    pool(context.getStringPool().getOffset("ATHROW npe")),
+                    new CppAst.IntLiteral(-1)));
+            CppAst.Expression throwExisting = memberCall("env", "Throw",
+                    new CppAst.Cast("jthrowable", expression(exception)));
+            statements.add(new CppAst.If(new CppAst.Binary(expression(exception), "==",
+                    new CppAst.NullLiteral()), new CppAst.Block(
+                    Collections.<CppAst.Statement>singletonList(
+                            new CppAst.ExpressionStatement(throwNull))),
+                    new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                            new CppAst.ExpressionStatement(throwExisting)))));
+            statements.add(exceptionCheck(method, predecessor));
+            statements.add(earlyReturn(method));
+            return;
+        }
         throw new IllegalStateException("Unknown IR terminator " + terminator.getClass());
     }
 
     private List<CppAst.Statement> edgeTransfer(IrBlock predecessor, IrBlock target) {
+        List<CppAst.Statement> statements = phiCopies(predecessor, target);
+        statements.add(new CppAst.Goto(label(target)));
+        return statements;
+    }
+
+    private List<CppAst.Statement> phiCopies(IrBlock predecessor, IrBlock target) {
         List<CppAst.Statement> statements = new ArrayList<>();
         List<String> temporaryNames = new ArrayList<>();
         for (IrPhi phi : target.getPhis()) {
@@ -448,8 +534,53 @@ public final class IrCppEmitter {
             statements.add(new CppAst.Assignment(variable(target.getPhis().get(i).getResult()),
                     new CppAst.Variable(temporaryNames.get(i))));
         }
-        statements.add(new CppAst.Goto(label(target)));
         return statements;
+    }
+
+    private Map<HandlerSet, String> collectDispatchLabels(IrMethod method) {
+        Map<HandlerSet, String> labels = new LinkedHashMap<>();
+        for (IrBlock block : method.getBlocks()) {
+            if (block.getExceptionEdges().isEmpty()) {
+                continue;
+            }
+            HandlerSet handlers = new HandlerSet(block.getExceptionEdges());
+            if (!labels.containsKey(handlers)) {
+                labels.put(handlers, "IR_CATCH_" + labels.size());
+            }
+        }
+        return labels;
+    }
+
+    private void emitDispatches(IrMethod method, MethodContext context,
+                                List<CppAst.Statement> statements) {
+        for (Map.Entry<HandlerSet, String> dispatch : dispatchLabels.entrySet()) {
+            statements.add(new CppAst.Label(dispatch.getValue()));
+            statements.add(new CppAst.Assignment(variable("caught_exception"),
+                    memberCall("env", "ExceptionOccurred")));
+            statements.add(new CppAst.ExpressionStatement(
+                    memberCall("env", "ExceptionClear")));
+
+            boolean catchAll = false;
+            for (IrExceptionEdge edge : dispatch.getKey().getEdges()) {
+                if (edge.getCatchType() == null) {
+                    statements.add(new CppAst.Goto(label(edge.getHandler())));
+                    catchAll = true;
+                    break;
+                }
+                int classId = context.getCachedClasses().getId(edge.getCatchType());
+                CppAst.Expression matches = memberCall("env", "IsInstanceOf",
+                        new CppAst.Cast("jobject", variable("caught_exception")),
+                        array("cclasses", classId));
+                statements.add(new CppAst.If(matches,
+                        new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                                new CppAst.Goto(label(edge.getHandler())))), null));
+            }
+            if (!catchAll) {
+                statements.add(new CppAst.ExpressionStatement(memberCall("env", "Throw",
+                        variable("caught_exception"))));
+                statements.add(earlyReturn(method));
+            }
+        }
     }
 
     private CppAst.Expression expression(IrValue value) {
@@ -485,6 +616,45 @@ public final class IrCppEmitter {
             this.classId = classId;
             this.memberId = memberId;
             this.initialization = initialization;
+        }
+    }
+
+    private static final class HandlerSet {
+        private final List<IrExceptionEdge> edges;
+        private final List<String> catchTypes;
+        private final List<Integer> handlerIds;
+
+        private HandlerSet(List<IrExceptionEdge> edges) {
+            this.edges = Collections.unmodifiableList(new ArrayList<>(edges));
+            List<String> types = new ArrayList<>();
+            List<Integer> ids = new ArrayList<>();
+            for (IrExceptionEdge edge : edges) {
+                types.add(edge.getCatchType());
+                ids.add(edge.getHandler().getId());
+            }
+            this.catchTypes = Collections.unmodifiableList(types);
+            this.handlerIds = Collections.unmodifiableList(ids);
+        }
+
+        private List<IrExceptionEdge> getEdges() {
+            return edges;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof HandlerSet)) {
+                return false;
+            }
+            HandlerSet that = (HandlerSet) other;
+            return catchTypes.equals(that.catchTypes) && handlerIds.equals(that.handlerIds);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(catchTypes, handlerIds);
         }
     }
 }

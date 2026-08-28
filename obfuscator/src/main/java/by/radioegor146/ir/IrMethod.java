@@ -103,6 +103,15 @@ public final class IrMethod {
                         .collect(Collectors.joining(", ")));
                 out.append(')');
             }
+            if (!block.getExceptionEdges().isEmpty()) {
+                out.append(" catches [");
+                out.append(block.getExceptionEdges().stream()
+                        .map(edge -> (edge.getCatchType() == null
+                                ? "any" : edge.getCatchType())
+                                + " -> " + edge.getHandler().getName())
+                        .collect(Collectors.joining(", ")));
+                out.append(']');
+            }
             out.append(":\n");
             for (IrInstruction instruction : block.getInstructions()) {
                 out.append("  ").append(formatInstruction(instruction)).append("\n");
@@ -113,6 +122,11 @@ public final class IrMethod {
     }
 
     private String formatInstruction(IrInstruction instruction) {
+        if (instruction instanceof IrNodes.CaughtException) {
+            IrNodes.CaughtException caught = (IrNodes.CaughtException) instruction;
+            return caught.getResult() + ":" + caught.getResult().getType()
+                    + " = caught_exception";
+        }
         if (instruction instanceof IrNodes.Const) {
             IrNodes.Const constant = (IrNodes.Const) instruction;
             return constant.getResult() + ":" + constant.getResult().getType()
@@ -192,6 +206,9 @@ public final class IrMethod {
         if (terminator instanceof IrNodes.Return) {
             IrValue value = ((IrNodes.Return) terminator).getValue();
             return value == null ? "return" : "return " + value;
+        }
+        if (terminator instanceof IrNodes.Throw) {
+            return "throw " + ((IrNodes.Throw) terminator).getException();
         }
         throw new IllegalStateException("Unknown IR terminator " + terminator.getClass());
     }

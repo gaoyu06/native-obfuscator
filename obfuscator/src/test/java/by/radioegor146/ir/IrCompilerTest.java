@@ -11,10 +11,12 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
@@ -198,6 +200,108 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void catchesArrayBoundsExceptionOnIrPath() {
+        MethodNode method = arrayBoundsCatchMethod("catchBounds",
+                "java/lang/ArrayIndexOutOfBoundsException");
+        IrMethod ir = frontend.build("example/Math", method);
+
+        IrBlock protectedBlock = ir.getBlocks().stream()
+                .filter(block -> !block.getExceptionEdges().isEmpty())
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/ArrayIndexOutOfBoundsException",
+                protectedBlock.getExceptionEdges().get(0).getCatchType());
+        IrBlock handler = protectedBlock.getExceptionEdges().get(0).getHandler();
+        assertTrue(handler.getInstructions().get(0) instanceof IrNodes.CaughtException);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.catchBounds([I)I"));
+        assertFalse(cpp.contains("cstack"));
+        assertTrue(cpp.contains("env->GetIntArrayRegion"));
+        assertTrue(cpp.contains("= -1;"));
+        assertTrue(cpp.contains("goto IR_CATCH_0;"));
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->ExceptionClear();"));
+        assertTrue(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
+        assertTrue(cpp.contains("env->Throw(caught_exception);"));
+        assertTrue(cpp.contains("= -7;"));
+        assertEquals(cpp.indexOf("IR_CATCH_0:"), cpp.lastIndexOf("IR_CATCH_0:"));
+        int arrayCall = cpp.indexOf("env->GetIntArrayRegion");
+        int dispatchGoto = cpp.indexOf("goto IR_CATCH_0;", arrayCall);
+        int successfulLoad = cpp.indexOf(" = iaload", arrayCall);
+        int swallowedReturn = cpp.indexOf("return 0;", arrayCall);
+        assertTrue(arrayCall >= 0 && dispatchGoto > arrayCall
+                && successfulLoad > dispatchGoto);
+        assertTrue(swallowedReturn < 0 || swallowedReturn > successfulLoad);
+    }
+
+    @Test
+    public void unmatchedCatchRethrowsPendingException() {
+        MethodNode method = arrayBoundsCatchMethod("rethrowBounds",
+                "java/lang/NullPointerException");
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.rethrowBounds([I)I"));
+        int typeTest = cpp.indexOf("env->IsInstanceOf((jobject) caught_exception");
+        int rethrow = cpp.indexOf("env->Throw(caught_exception);");
+        assertTrue(typeTest >= 0 && rethrow > typeTest);
+    }
+
+    @Test
+    public void catchesExplicitAthrowOnIrPath() {
+        MethodNode method = explicitThrowCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.getBlocks().stream()
+                .anyMatch(block -> block.getTerminator() instanceof IrNodes.Throw));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.catchThrown"));
+        assertTrue(cpp.contains("env->Throw((jthrowable) arg0);"));
+        assertTrue(cpp.contains("goto IR_CATCH_0;"));
+    }
+
+    @Test
+    public void representsCatchAllWithoutATypeTest() {
+        MethodNode method = arrayBoundsCatchMethod("catchAny", null);
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.getBlocks().stream()
+                .flatMap(block -> block.getExceptionEdges().stream())
+                .anyMatch(edge -> edge.getCatchType() == null));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertFalse(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
+    }
+
+    @Test
+    public void emptyExceptionTableStillBuildsNormally() {
+        MethodNode method = addMethod();
+        assertTrue(method.tryCatchBlocks.isEmpty());
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertTrue(ir.getBlocks().stream()
+                .allMatch(block -> block.getExceptionEdges().isEmpty()));
+        assertTrue(emitter.emitBody(ir).contains("return v2;"));
+    }
+
+    @Test
     public void rejectsIntStoreIntoInstanceReceiverLocal() {
         MethodNode method = new MethodNode(Opcodes.ASM9, 0,
                 "badStore", "()V", null, null);
@@ -240,7 +344,10 @@ public class IrCompilerTest {
         MethodNode[] methods = {
                 addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
                 staticInvokeMethod(), virtualInvokeMethod(), bitwiseShiftMethod(),
-                unaryMethod(), intArrayMethod(), stringLengthMethod()
+                unaryMethod(), intArrayMethod(), stringLengthMethod(),
+                arrayBoundsCatchMethod("catchBounds", "java/lang/ArrayIndexOutOfBoundsException"),
+                arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
+                explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null)
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -284,6 +391,10 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->GetIntArrayRegion"));
         assertTrue(source.contains("env->SetIntArrayRegion"));
         assertTrue(source.contains("env->GetStringLength"));
+        assertTrue(source.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(source.contains("env->ExceptionClear();"));
+        assertTrue(source.contains("env->IsInstanceOf"));
+        assertTrue(source.contains("env->Throw(caught_exception);"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
         Path sourceFile = directory.resolve("ir-smoke.cpp");
@@ -428,6 +539,51 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
         method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode arrayBoundsCatchMethod(String name, String catchType) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "([I)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
+        method.instructions.add(new InsnNode(Opcodes.IALOAD));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -7));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler, catchType));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode explicitThrowCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchThrown", "(Ljava/lang/Throwable;)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -9));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/Throwable"));
+        method.maxLocals = 2;
+        method.maxStack = 1;
         return method;
     }
 

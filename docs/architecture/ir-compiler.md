@@ -463,12 +463,11 @@ C++ on typed temporaries. The IR makes this a property of the node, so as passes
 prove more values are pure primitives (constant folding, copy prop), more of a
 method body becomes JNI-free automatically.
 
-### 9.3 (ii) Compact opcode stream + tiny interpreter — **hook only**
+### 9.3 (ii) Compact opcode stream + shared evaluator
 
 For selected methods it can be preferable to emit a compact bytecode-like stream
-plus a shared interpreter loop instead of straight-line C++ (smaller code, uniform
-shape). This document specifies only the **extension point**, not an
-implementation, and explicitly not a protector:
+plus a shared evaluator loop instead of straight-line C++. Lowering strategies
+implement this extension point:
 
 ```
 interface MethodLoweringStrategy {
@@ -477,13 +476,17 @@ interface MethodLoweringStrategy {
 }
 ```
 
-- `DirectCppStrategy` (the default, = §9.2 + high-level nodes) is the only strategy
-  implemented in the migration.
-- An `InterpreterStreamStrategy` would implement the same interface, serializing the
-  IR to a compact stream and emitting a call into a shared interpreter. The
-  interface, the selection point in the pipeline (after pass 10, before emit), and
-  the `LoweredMethod` contract are the deliverable; the strategy body is left for a
-  future PR and is out of scope here.
+- `DirectCppStrategy` remains the default (`--ir-lower=direct`) and implements
+  §9.2 plus the currently supported high-level nodes.
+- `InterpreterStreamStrategy` is selected by `--ir-lower=eval`. It serializes the
+  supported pure-integer IR subset to method data and emits a thin call to the
+  shared native evaluator. Unsupported nodes throw
+  `UnsupportedIrConstructException` before method mutation and use the existing
+  per-method legacy fallback.
+- The selection point is after the frontend and before the shared method shell.
+  `LoweredMethod` records both the generated body and the shell kind. The current
+  ISA and fallback boundary are documented in
+  [`ir-evaluator-backend.md`](./ir-evaluator-backend.md).
 
 No anti-analysis, encryption, or tamper-resistance is designed or endorsed here.
 

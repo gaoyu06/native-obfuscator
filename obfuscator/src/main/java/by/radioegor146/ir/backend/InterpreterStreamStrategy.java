@@ -1,0 +1,475 @@
+package by.radioegor146.ir.backend;
+
+import by.radioegor146.ir.IrBlock;
+import by.radioegor146.ir.IrInstruction;
+import by.radioegor146.ir.IrMethod;
+import by.radioegor146.ir.IrNodes;
+import by.radioegor146.ir.IrPhi;
+import by.radioegor146.ir.IrTerminator;
+import by.radioegor146.ir.IrType;
+import by.radioegor146.ir.IrValue;
+import by.radioegor146.ir.UnsupportedIrConstructException;
+
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Serializes the pure integer IR slice to the shared native evaluator ISA.
+ */
+public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
+    private static final int MAGIC_N = 0x4e;
+    private static final int MAGIC_J = 0x4a;
+    private static final int MAGIC_E = 0x45;
+    private static final int FORMAT_VERSION = 1;
+
+    private static final int OP_CONST_I32 = 0x01;
+    private static final int OP_MOVE = 0x02;
+    private static final int OP_IADD = 0x10;
+    private static final int OP_ISUB = 0x11;
+    private static final int OP_IMUL = 0x12;
+    private static final int OP_JUMP = 0x20;
+    private static final int OP_BRANCH = 0x21;
+    private static final int OP_RETURN_I32 = 0x22;
+
+    private static final int ZERO_REGISTER = 0xffff;
+    private static final int MAX_REGISTER_COUNT = 0xffff;
+
+    @Override
+    public boolean supports(IrMethod method) {
+        if (method == null) {
+            return false;
+        }
+        try {
+            validate(method);
+            return true;
+        } catch (UnsupportedIrConstructException ignored) {
+            return false;
+        }
+    }
+
+    @Override
+    public LoweredMethod lower(IrMethod method, LoweringContext context) {
+        Objects.requireNonNull(method, "method");
+        Objects.requireNonNull(context, "context");
+        validate(method);
+        byte[] data = new Serializer(method).serialize();
+        return LoweredMethod.evaluator(emitTrampoline(method, data), data);
+    }
+
+    private void validate(IrMethod method) {
+        if (!method.isStaticMethod()) {
+            throw unsupported("Evaluator lowering currently supports static methods only", -1);
+        }
+        if (method.getReturnType() != IrType.I32) {
+            throw unsupported("Evaluator lowering requires an i32 method return", -1);
+        }
+        for (int i = 0; i < method.getParameters().size(); i++) {
+            IrValue parameter = method.getParameters().get(i);
+            if (parameter.getType() != IrType.I32 || parameter.getId() != i) {
+                throw unsupported(
+                        "Evaluator arguments must be contiguous i32 IR parameters", -1);
+            }
+        }
+
+        int maximumRegister = -1;
+        for (IrValue parameter : method.getParameters()) {
+            maximumRegister = Math.max(maximumRegister, checkedI32(parameter, -1));
+        }
+        for (IrBlock block : method.getBlocks()) {
+            if (!block.getExceptionEdges().isEmpty()) {
+                throw unsupported(
+                        "Evaluator lowering does not yet support exception edges", -1);
+            }
+            for (IrPhi phi : block.getPhis()) {
+                maximumRegister = Math.max(maximumRegister,
+                        checkedI32(phi.getResult(), -1));
+                for (IrValue incoming : phi.getIncoming().values()) {
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(incoming, -1));
+                }
+            }
+            for (IrInstruction instruction : block.getInstructions()) {
+                int offset = instruction.getBytecodeOffset();
+                if (instruction instanceof IrNodes.Const) {
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(instruction.getResult(), offset));
+                } else if (instruction instanceof IrNodes.Binary) {
+                    IrNodes.Binary binary = (IrNodes.Binary) instruction;
+                    if (binary.getOperation() != IrNodes.Binary.Operation.ADD
+                            && binary.getOperation() != IrNodes.Binary.Operation.SUBTRACT
+                            && binary.getOperation() != IrNodes.Binary.Operation.MULTIPLY) {
+                        throw unsupported("Unsupported evaluator binary operation "
+                                + binary.getOperation(), offset);
+                    }
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(binary.getResult(), offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(binary.getLeft(), offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(binary.getRight(), offset));
+                } else {
+                    throw unsupported("Unsupported evaluator instruction "
+                            + instruction.getClass().getSimpleName(), offset);
+                }
+            }
+            IrTerminator terminator = block.getTerminator();
+            if (terminator == null) {
+                throw unsupported("IR block has no terminator", -1);
+            }
+            int offset = terminator.getBytecodeOffset();
+            if (terminator instanceof IrNodes.Goto) {
+                // No value operands.
+            } else if (terminator instanceof IrNodes.Branch) {
+                IrNodes.Branch branch = (IrNodes.Branch) terminator;
+                maximumRegister = Math.max(maximumRegister,
+                        checkedI32(branch.getLeft(), offset));
+                if (branch.getRight() != null) {
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedI32(branch.getRight(), offset));
+                }
+            } else if (terminator instanceof IrNodes.Return) {
+                IrValue value = ((IrNodes.Return) terminator).getValue();
+                if (value == null) {
+                    throw unsupported("Evaluator lowering requires IRETURN", offset);
+                }
+                maximumRegister = Math.max(maximumRegister, checkedI32(value, offset));
+            } else {
+                throw unsupported("Unsupported evaluator terminator "
+                        + terminator.getClass().getSimpleName(), offset);
+            }
+        }
+
+        int temporaryCount = 0;
+        for (IrBlock block : method.getBlocks()) {
+            temporaryCount = Math.max(temporaryCount, block.getPhis().size());
+        }
+        long registerCount = (long) maximumRegister + 1L + temporaryCount;
+        if (registerCount <= 0 || registerCount > MAX_REGISTER_COUNT) {
+            throw unsupported("Evaluator register count exceeds the u16 ISA limit", -1);
+        }
+        if (method.getParameters().size() > MAX_REGISTER_COUNT) {
+            throw unsupported("Evaluator argument count exceeds the u16 ISA limit", -1);
+        }
+    }
+
+    private int checkedI32(IrValue value, int offset) {
+        if (value == null || value.getType() != IrType.I32) {
+            throw unsupported("Evaluator operands must be i32 values", offset);
+        }
+        if (value.getId() < 0 || value.getId() >= ZERO_REGISTER) {
+            throw unsupported("Evaluator register id exceeds the u16 ISA limit", offset);
+        }
+        return value.getId();
+    }
+
+    private String emitTrampoline(IrMethod method, byte[] data) {
+        StringBuilder out = new StringBuilder();
+        out.append("    // IR evaluator data: ")
+                .append(method.getOwner()).append('.').append(method.getName())
+                .append(method.getDescriptor()).append("\n");
+        out.append("    static const std::uint8_t ir_method_data[] = {\n");
+        for (int i = 0; i < data.length; i++) {
+            if (i % 16 == 0) {
+                out.append("        ");
+            }
+            out.append(data[i] & 0xff);
+            if (i + 1 != data.length) {
+                out.append(", ");
+            }
+            if (i % 16 == 15 || i + 1 == data.length) {
+                out.append("\n");
+            }
+        }
+        out.append("    };\n");
+        if (method.getParameters().isEmpty()) {
+            out.append("    return native_jvm::ir_eval::evaluate_i32(ir_method_data, ")
+                    .append("sizeof(ir_method_data), nullptr, 0);\n");
+        } else {
+            out.append("    const jint ir_method_args[] = { ");
+            for (int i = 0; i < method.getParameters().size(); i++) {
+                if (i != 0) {
+                    out.append(", ");
+                }
+                out.append(method.getParameters().get(i).getCppParameterName());
+            }
+            out.append(" };\n");
+            out.append("    return native_jvm::ir_eval::evaluate_i32(ir_method_data, ")
+                    .append("sizeof(ir_method_data), ir_method_args, ")
+                    .append(method.getParameters().size()).append(");\n");
+        }
+        return out.toString();
+    }
+
+    private static UnsupportedIrConstructException unsupported(String message, int offset) {
+        return new UnsupportedIrConstructException(message, offset, -1);
+    }
+
+    private static final class Serializer {
+        private final IrMethod method;
+        private final ByteWriter writer = new ByteWriter();
+        private final Map<IrBlock, Label> blockLabels = new IdentityHashMap<>();
+        private final List<Patch> patches = new ArrayList<>();
+        private final List<Edge> conditionalEdges = new ArrayList<>();
+        private final int baseRegisterCount;
+        private final int registerCount;
+
+        private Serializer(IrMethod method) {
+            this.method = method;
+            for (IrBlock block : method.getBlocks()) {
+                blockLabels.put(block, new Label());
+            }
+            int maximumRegister = -1;
+            int maximumPhiCount = 0;
+            for (IrValue parameter : method.getParameters()) {
+                maximumRegister = Math.max(maximumRegister, parameter.getId());
+            }
+            for (IrBlock block : method.getBlocks()) {
+                maximumPhiCount = Math.max(maximumPhiCount, block.getPhis().size());
+                for (IrPhi phi : block.getPhis()) {
+                    maximumRegister = Math.max(maximumRegister, phi.getResult().getId());
+                }
+                for (IrInstruction instruction : block.getInstructions()) {
+                    if (instruction.getResult() != null) {
+                        maximumRegister = Math.max(maximumRegister,
+                                instruction.getResult().getId());
+                    }
+                }
+            }
+            baseRegisterCount = maximumRegister + 1;
+            registerCount = baseRegisterCount + maximumPhiCount;
+        }
+
+        private byte[] serialize() {
+            writer.u8(MAGIC_N);
+            writer.u8(MAGIC_J);
+            writer.u8(MAGIC_E);
+            writer.u8(FORMAT_VERSION);
+            writer.u16(registerCount);
+            writer.u16(method.getParameters().size());
+
+            for (IrBlock block : method.getBlocks()) {
+                mark(blockLabels.get(block));
+                for (IrInstruction instruction : block.getInstructions()) {
+                    emitInstruction(instruction);
+                }
+                emitTerminator(block, block.getTerminator());
+            }
+            for (Edge edge : conditionalEdges) {
+                mark(edge.label);
+                emitPhiCopies(edge.predecessor, edge.target);
+                emitJump(requiredBlockLabel(edge.target));
+            }
+            resolvePatches();
+            return writer.toByteArray();
+        }
+
+        private void emitInstruction(IrInstruction instruction) {
+            if (instruction instanceof IrNodes.Const) {
+                IrNodes.Const constant = (IrNodes.Const) instruction;
+                writer.u8(OP_CONST_I32);
+                writer.u16(constant.getResult().getId());
+                writer.i32(constant.getValue());
+                return;
+            }
+            IrNodes.Binary binary = (IrNodes.Binary) instruction;
+            switch (binary.getOperation()) {
+                case ADD:
+                    writer.u8(OP_IADD);
+                    break;
+                case SUBTRACT:
+                    writer.u8(OP_ISUB);
+                    break;
+                case MULTIPLY:
+                    writer.u8(OP_IMUL);
+                    break;
+                default:
+                    throw new IllegalStateException("Validated binary operation changed");
+            }
+            writer.u16(binary.getResult().getId());
+            writer.u16(binary.getLeft().getId());
+            writer.u16(binary.getRight().getId());
+        }
+
+        private void emitTerminator(IrBlock predecessor, IrTerminator terminator) {
+            if (terminator instanceof IrNodes.Goto) {
+                IrBlock target = ((IrNodes.Goto) terminator).getTarget();
+                emitPhiCopies(predecessor, target);
+                emitJump(requiredBlockLabel(target));
+                return;
+            }
+            if (terminator instanceof IrNodes.Branch) {
+                IrNodes.Branch branch = (IrNodes.Branch) terminator;
+                Edge trueEdge = new Edge(predecessor, branch.getTrueTarget());
+                Edge falseEdge = new Edge(predecessor, branch.getFalseTarget());
+                conditionalEdges.add(trueEdge);
+                conditionalEdges.add(falseEdge);
+
+                writer.u8(OP_BRANCH);
+                writer.u8(conditionCode(branch.getCondition()));
+                writer.u16(branch.getLeft().getId());
+                writer.u16(branch.getRight() == null
+                        ? ZERO_REGISTER : branch.getRight().getId());
+                emitTarget(trueEdge.label);
+                emitTarget(falseEdge.label);
+                return;
+            }
+            IrValue value = ((IrNodes.Return) terminator).getValue();
+            writer.u8(OP_RETURN_I32);
+            writer.u16(value.getId());
+        }
+
+        private void emitPhiCopies(IrBlock predecessor, IrBlock target) {
+            for (int i = 0; i < target.getPhis().size(); i++) {
+                IrPhi phi = target.getPhis().get(i);
+                IrValue incoming = phi.getIncoming().get(predecessor);
+                if (incoming == null) {
+                    throw new UnsupportedIrConstructException(
+                            "Missing phi input from " + predecessor.getName() + " to "
+                                    + target.getName());
+                }
+                emitMove(baseRegisterCount + i, incoming.getId());
+            }
+            for (int i = 0; i < target.getPhis().size(); i++) {
+                emitMove(target.getPhis().get(i).getResult().getId(),
+                        baseRegisterCount + i);
+            }
+        }
+
+        private void emitMove(int destination, int source) {
+            writer.u8(OP_MOVE);
+            writer.u16(destination);
+            writer.u16(source);
+        }
+
+        private void emitJump(Label target) {
+            writer.u8(OP_JUMP);
+            emitTarget(target);
+        }
+
+        private void emitTarget(Label target) {
+            int position = writer.reserveU32();
+            patches.add(new Patch(position, target));
+        }
+
+        private Label requiredBlockLabel(IrBlock block) {
+            Label label = blockLabels.get(block);
+            if (label == null) {
+                throw new UnsupportedIrConstructException(
+                        "Evaluator CFG target is not part of the IR method");
+            }
+            return label;
+        }
+
+        private void mark(Label label) {
+            if (label.position >= 0) {
+                throw new IllegalStateException("Evaluator label emitted twice");
+            }
+            label.position = writer.size();
+        }
+
+        private void resolvePatches() {
+            for (Patch patch : patches) {
+                if (patch.target.position < 0) {
+                    throw new UnsupportedIrConstructException(
+                            "Evaluator CFG contains an unresolved target");
+                }
+                writer.patchU32(patch.position, patch.target.position);
+            }
+        }
+
+        private int conditionCode(IrNodes.Branch.Condition condition) {
+            switch (condition) {
+                case EQ:
+                    return 0;
+                case NE:
+                    return 1;
+                case LT:
+                    return 2;
+                case GE:
+                    return 3;
+                case GT:
+                    return 4;
+                case LE:
+                    return 5;
+                default:
+                    throw new IllegalStateException("Unknown branch condition " + condition);
+            }
+        }
+    }
+
+    private static final class Label {
+        private int position = -1;
+    }
+
+    private static final class Patch {
+        private final int position;
+        private final Label target;
+
+        private Patch(int position, Label target) {
+            this.position = position;
+            this.target = target;
+        }
+    }
+
+    private static final class Edge {
+        private final IrBlock predecessor;
+        private final IrBlock target;
+        private final Label label = new Label();
+
+        private Edge(IrBlock predecessor, IrBlock target) {
+            this.predecessor = predecessor;
+            this.target = target;
+        }
+    }
+
+    private static final class ByteWriter {
+        private final List<Byte> bytes = new ArrayList<>();
+
+        private int size() {
+            return bytes.size();
+        }
+
+        private void u8(int value) {
+            bytes.add((byte) (value & 0xff));
+        }
+
+        private void u16(int value) {
+            u8(value);
+            u8(value >>> 8);
+        }
+
+        private void i32(int value) {
+            u32(value);
+        }
+
+        private void u32(int value) {
+            u8(value);
+            u8(value >>> 8);
+            u8(value >>> 16);
+            u8(value >>> 24);
+        }
+
+        private int reserveU32() {
+            int position = size();
+            u32(0);
+            return position;
+        }
+
+        private void patchU32(int position, int value) {
+            for (int i = 0; i < 4; i++) {
+                bytes.set(position + i, (byte) ((value >>> (i * 8)) & 0xff));
+            }
+        }
+
+        private byte[] toByteArray() {
+            byte[] result = new byte[bytes.size()];
+            for (int i = 0; i < bytes.size(); i++) {
+                result[i] = bytes.get(i);
+            }
+            return result;
+        }
+    }
+}
