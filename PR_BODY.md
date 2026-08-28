@@ -47,8 +47,8 @@ fallback-before-mutation boundary, and generated CMake integration.
 
 1. Run
    `./gradlew :obfuscator:test --tests by.radioegor146.CodegenModeTest --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest`.
-   Current result: 26/26 passed (`4 + 17 + 5`), 0 skipped, 0 failed,
-   0 errors. 运行上述 focused test；当前结果为 26/26 通过、0 跳过、0 失败、
+   Current result: 27/27 passed (`4 + 17 + 6`), 0 skipped, 0 failed,
+   0 errors. 运行上述 focused test；当前结果为 27/27 通过、0 跳过、0 失败、
    0 error。
 2. Confirm the two g++ tests are not skipped when g++ and JNI headers exist.
    Both executed in the recorded run. 当 g++ 与 JNI headers 存在时，确认两个
