@@ -77,15 +77,17 @@ category-one `POP` validation, and fallback-before-mutation.
    必须基于 `cursor/ir-compiler-phase8-6d81` 的 `95eb5ffd…` 比较与落地，不得改用
    `master` 或仅审查分支，并保持编译器堆叠顺序。
 2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. The implementation checkpoint has not
-   yet recorded final counts.
+   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 42
+   plus `CodegenModeTest` 2, total 44; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。当前 implementation checkpoint 尚未记录最终计数。
+   XML 计数。记录结果为 42 + 2，共 44 个测试；跳过、失败、错误均为零。
 3. When g++ and JNI headers are present, require the g++ testcase to remain
    unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit.
+   retained generated translation unit. Recorded result: the unskipped
+   39-method smoke and independent syntax check both exited zero.
    当 g++ 与 JNI headers 存在时，必须确认 g++ 测试未跳过，并对保留的同一份生成
-   translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。
+   translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录结果：未跳过的
+   39-method 烟测及独立语法检查均以零退出。
 4. Require supported-platform/JDK CI and native runtime-parity checks before
    any production decision.
    任何生产决策前都必须通过受支持平台/JDK 的 CI 及 native 运行时等价性检查。

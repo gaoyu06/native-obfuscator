@@ -56,10 +56,63 @@ class/string/field/method caches unchanged.
 
 ## Tests and recorded results
 
-Pre-verification implementation checkpoint: the required focused Gradle command
-and independent retained-translation-unit g++ command have not yet been run on
-this branch. This section will be replaced with actual command output and JUnit
-XML counts after that verification.
+Command run on 2026-08-28:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest \
+  --rerun-tasks
+```
+
+Result: `BUILD SUCCESSFUL`.
+
+Recorded directly from Gradle's JUnit XML:
+
+```text
+IrCompilerTest: tests=42, skipped=0, failures=0, errors=0 (time=0.529 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.114 s)
+Total: 44 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The focused Phase 9 cases cover allocated-object return, typed null return,
+structured `IFNULL`/`IFNONNULL` conditions and both target/fallthrough paths,
+category-one invoke-result discard, rejection of category-two `POP`, and
+fallback-before-mutation after newly admitted operations. All retained Phase
+1–8 cases also pass.
+
+### Real g++ smoke evidence
+
+Environment:
+
+```text
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+openjdk version "21.0.10" 2026-01-20
+JNI headers: present
+```
+
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.160 s
+and has no `<skipped>` child in the JUnit XML. Its 39-method generated
+translation unit includes `returnAllocatedObject`, `returnNull`, `ifNull`,
+`ifNonNull`, and `discardInvokeResult`.
+
+The exact retained translation unit
+`/tmp/ir-compile-smoke18110346054595069834/ir-smoke.cpp` was also independently
+checked with:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I${java.home}/include -I${java.home}/include/linux ir-smoke.cpp
+```
+
+g++ exited zero with empty diagnostics.
+
+### Default mode evidence
+
+`CodegenModeTest.cliDefaultsToLegacy` passed in the recorded XML. Source
+inspection also confirms the CLI option retains `defaultValue = "legacy"` and
+the public API overload without a `CodegenMode` argument still delegates with
+`CodegenMode.LEGACY`.
 
 ## What still falls back per method
 
