@@ -176,13 +176,14 @@ public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
         props.put("objectstackindex", String.valueOf(stackOffset - objectOffset));
         props.put("returnstackindex", String.valueOf(stackOffset - objectOffset));
 
-        if (isStatic || node.getOpcode() == Opcodes.INVOKESPECIAL) {
+        boolean needsClassForCall = isStatic || node.getOpcode() == Opcodes.INVOKESPECIAL;
+        if (needsClassForCall) {
             props.put("class_ptr", context.getCachedClasses().getPointer(node.owner));
         }
 
         int classId = context.getCachedClasses().getId(node.owner);
 
-        context.output.append(String.format("if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } cclasses_mtx[%d].unlock(); %s } ",
+        String classCache = String.format("if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } cclasses_mtx[%d].unlock(); %s } ",
                 classId,
                 classId,
                 classId,
@@ -191,15 +192,26 @@ public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
                 MethodProcessor.getClassGetter(context, node.owner),
                 classId,
                 classId,
-                trimmedTryCatchBlock));
+                trimmedTryCatchBlock);
+
+        if (needsClassForCall) {
+            context.output.append(classCache);
+        }
 
         CachedMethodInfo methodInfo = new CachedMethodInfo(node.owner, node.name, node.desc, isStatic);
         int methodId = context.getCachedMethods().getId(methodInfo);
         props.put("methodid", context.getCachedMethods().getPointer(methodInfo));
 
+        context.output.append(String.format(
+                "if (!cmethods[%d].load(std::memory_order_acquire)) { std::lock_guard<std::mutex> lock(cmethods_mtx[%d]); if (!cmethods[%d].load(std::memory_order_relaxed)) { ",
+                methodId,
+                methodId,
+                methodId));
+        if (!needsClassForCall) {
+            context.output.append(classCache);
+        }
         context.output.append(
-                String.format("if (!cmethods[%d]) { cmethods[%d] = env->Get%sMethodID(%s, %s, %s); %s  } ",
-                        methodId,
+                String.format("cmethods[%d].store(env->Get%sMethodID(%s, %s, %s), std::memory_order_release); %s } } ",
                         methodId,
                         isStatic ? "Static" : "",
                         context.getCachedClasses().getPointer(node.owner),

@@ -88,8 +88,8 @@ public class NativeObfuscator {
         snippets = new Snippets(stringPool);
         cachedStrings = new NodeCache<>("(cstrings[%d])");
         cachedClasses = new NodeCache<>("(cclasses[%d])");
-        cachedMethods = new NodeCache<>("(cmethods[%d])");
-        cachedFields = new NodeCache<>("(cfields[%d])");
+        cachedMethods = new NodeCache<>("(cmethods[%d].load(std::memory_order_acquire))");
+        cachedFields = new NodeCache<>("(cfields[%d].load(std::memory_order_acquire))");
         methodProcessor = new MethodProcessor(this);
     }
 
