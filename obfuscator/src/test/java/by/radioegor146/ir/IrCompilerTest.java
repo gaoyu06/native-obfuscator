@@ -219,9 +219,10 @@ public class IrCompilerTest {
 
         String cpp = context.output.toString();
         assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
-        assertTrue(cpp.contains("// IR codegen: example/Math.catchBounds([II)I"));
+        assertTrue(cpp.contains("// IR codegen: example/Math.catchBounds([I)I"));
         assertFalse(cpp.contains("cstack"));
         assertTrue(cpp.contains("env->GetIntArrayRegion"));
+        assertTrue(cpp.contains("= -1;"));
         assertTrue(cpp.contains("goto IR_CATCH_0;"));
         assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
         assertTrue(cpp.contains("env->ExceptionClear();"));
@@ -249,7 +250,7 @@ public class IrCompilerTest {
 
         String cpp = context.output.toString();
         assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
-        assertTrue(cpp.contains("// IR codegen: example/Math.rethrowBounds([II)I"));
+        assertTrue(cpp.contains("// IR codegen: example/Math.rethrowBounds([I)I"));
         int typeTest = cpp.indexOf("env->IsInstanceOf((jobject) caught_exception");
         int rethrow = cpp.indexOf("env->Throw(caught_exception);");
         assertTrue(typeTest >= 0 && rethrow > typeTest);
@@ -543,22 +544,22 @@ public class IrCompilerTest {
 
     private MethodNode arrayBoundsCatchMethod(String name, String catchType) {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                name, "([II)I", null, null);
+                name, "([I)I", null, null);
         LabelNode start = new LabelNode();
         LabelNode end = new LabelNode();
         LabelNode handler = new LabelNode();
         method.instructions.add(start);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
         method.instructions.add(new InsnNode(Opcodes.IALOAD));
         method.instructions.add(end);
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.instructions.add(handler);
-        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
         method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -7));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler, catchType));
-        method.maxLocals = 3;
+        method.maxLocals = 2;
         method.maxStack = 2;
         return method;
     }
