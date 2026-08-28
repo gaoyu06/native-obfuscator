@@ -4,6 +4,75 @@
 
 namespace native_jvm::interp {
     namespace {
+        enum class opcode : std::uint8_t {
+            ipush,
+            iload,
+            istore,
+            iadd,
+            isub,
+            ifeq,
+            ifne,
+            iflt,
+            ifge,
+            ifgt,
+            ifle,
+            if_icmpeq,
+            if_icmpne,
+            if_icmplt,
+            if_icmpge,
+            if_icmpgt,
+            if_icmple,
+            goto_,
+            ireturn,
+            imul,
+            ixor,
+            ishl,
+            iushr,
+            irotl
+        };
+
+        struct opcode_decode_entry {
+            std::uint8_t encoded;
+            opcode decoded;
+        };
+
+        constexpr opcode_decode_entry opcode_decode_table[] = {
+                {0xa7u, opcode::ipush},
+                {0x31u, opcode::iload},
+                {0xd4u, opcode::istore},
+                {0x6bu, opcode::iadd},
+                {0xe2u, opcode::isub},
+                {0x19u, opcode::ifeq},
+                {0xc8u, opcode::ifne},
+                {0x45u, opcode::iflt},
+                {0x9au, opcode::ifge},
+                {0xf1u, opcode::ifgt},
+                {0x2du, opcode::ifle},
+                {0x74u, opcode::if_icmpeq},
+                {0xb6u, opcode::if_icmpne},
+                {0x0fu, opcode::if_icmplt},
+                {0x83u, opcode::if_icmpge},
+                {0xdcu, opcode::if_icmpgt},
+                {0x52u, opcode::if_icmple},
+                {0xaeu, opcode::goto_},
+                {0x67u, opcode::ireturn},
+                {0x3cu, opcode::imul},
+                {0xf8u, opcode::ixor},
+                {0x21u, opcode::ishl},
+                {0x95u, opcode::iushr},
+                {0xcau, opcode::irotl}
+        };
+
+        bool decode_opcode(std::uint8_t encoded, opcode &decoded) noexcept {
+            for (const opcode_decode_entry &entry : opcode_decode_table) {
+                if (entry.encoded == encoded) {
+                    decoded = entry.decoded;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         bool read_u16(const method_desc &method, std::uint32_t &pc,
                       std::uint16_t &value) noexcept {
             if (pc > method.code_len || method.code_len - pc < 2) {
@@ -62,7 +131,10 @@ namespace native_jvm::interp {
         std::uint16_t sp = 0;
 
         while (pc < method.code_len) {
-            opcode current = static_cast<opcode>(method.code[pc++]);
+            opcode current;
+            if (!decode_opcode(method.code[pc++], current)) {
+                return false;
+            }
             switch (current) {
                 case opcode::ipush: {
                     std::int32_t value;

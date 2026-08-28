@@ -57,21 +57,41 @@ public class InterpreterBackendIntegrationTest {
                 .contains("native_jvm_interp.cpp"));
 
         String generated = read(interpreterOutput.resolve("cpp/output/DemoKernel_0.cpp"));
-        assertEquals(3, occurrences(generated, "_interp_code[]"));
+        assertEquals(3, occurrences(generated, "static const std::uint8_t __ngen_b_"));
         assertEquals(3, occurrences(generated, "native_jvm::interp::execute_i("));
-        assertTrue(generated.contains("__ngen_native_add1_interp_code[]"));
-        assertTrue(generated.contains("__ngen_native_sumTo2_interp_code[]"));
-        assertTrue(generated.contains("__ngen_native_mix3_interp_code[]"));
+        assertTrue(generated.contains("__ngen_b_0_1[]"));
+        assertTrue(generated.contains("__ngen_b_0_2[]"));
+        assertTrue(generated.contains("__ngen_b_0_3[]"));
         assertTrue(generated.contains(
-                "execute_i(__ngen_native_mix3_interp_method, interp_frame, &interp_result)"));
-        int mixStart = generated.indexOf("// mix(II)I");
+                "execute_i(__ngen_d_0_3, interp_frame, &interp_result)"));
+        assertFalse(generated.contains("// add(II)I"));
+        assertFalse(generated.contains("// sumTo(I)I"));
+        assertFalse(generated.contains("// mix(II)I"));
+        assertFalse(generated.contains("IADD"));
+        assertFalse(generated.contains("ILOAD"));
+        assertFalse(generated.contains("opcode_decode_table"));
+
+        int mixStart = generated.indexOf("static const std::uint8_t __ngen_b_0_3[]");
         int divideStart = generated.indexOf("// divide(II)I");
         assertTrue(mixStart >= 0 && divideStart > mixStart);
         String mixOutput = generated.substring(mixStart, divideStart);
+        assertFalse(mixOutput.contains("mix"));
         assertFalse(mixOutput.contains("jvalue cstack"),
                 "mix must not contain a method-specific direct C++ body");
-        assertFalse(generated.contains("__ngen_native_divide4_interp_code[]"),
+        assertTrue(mixOutput.contains("0xb9, 0x79, 0x37, 0x9e"),
+                "32-bit immediates must be emitted as little-endian blob bytes");
+        assertTrue(mixOutput.contains("0x77, 0xca, 0xeb, 0x85"),
+                "32-bit immediates must be emitted as little-endian blob bytes");
+        assertFalse(mixOutput.contains("0x9e3779b9"));
+        assertFalse(mixOutput.contains("0x85ebca77"));
+        assertFalse(generated.contains("__ngen_b_0_4[]"),
                 "unsupported division must remain on the direct C++ backend");
+
+        String runtimeHeader = read(interpreterOutput.resolve("cpp/native_jvm_interp.hpp"));
+        String runtimeSource = read(interpreterOutput.resolve("cpp/native_jvm_interp.cpp"));
+        assertFalse(runtimeHeader.contains("enum class opcode"));
+        assertFalse(runtimeHeader.contains("opcode_decode_table"));
+        assertTrue(runtimeSource.contains("opcode_decode_table"));
     }
 
     private static void writeFixtureJar(Path destination) throws IOException {

@@ -2,23 +2,22 @@ package by.radioegor146.interpreter;
 
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
-import by.radioegor146.Util;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.stream.Collectors;
 
 public final class InterpreterMethodProcessor {
 
     public void processMethod(MethodContext context, InterpreterMethodEmitter.CompiledMethod compiled) {
         MethodNode method = context.method;
         Type[] arguments = Type.getArgumentTypes(method.desc);
-        String methodName = "__ngen_" + Util.escapeCppNameString(
-                ("native_" + method.name + context.methodIndex).replace('/', '_'));
-        String dataName = methodName + "_interp";
+        String suffix = context.classIndex + "_" + context.methodIndex;
+        String methodName = "__ngen_i_" + suffix;
+        String dataName = "__ngen_b_" + suffix;
+        String descriptorName = "__ngen_d_" + suffix;
 
         context.cppNativeMethodName = methodName;
         context.ret = Type.getReturnType(method.desc);
@@ -29,15 +28,13 @@ public final class InterpreterMethodProcessor {
                 context.getStringPool().get(method.name),
                 context.getStringPool().get(method.desc), methodName));
 
-        context.output.append("// ").append(Util.escapeCommentString(method.name))
-                .append(Util.escapeCommentString(method.desc)).append("\n");
         appendCodeArray(context, dataName, compiled.getCode());
-        context.output.append("static const native_jvm::interp::method_desc ").append(dataName)
-                .append("_method = { native_jvm::interp::ISA_VERSION, ")
+        context.output.append("static const native_jvm::interp::method_desc ").append(descriptorName)
+                .append(" = { native_jvm::interp::ISA_VERSION, ")
                 .append(String.valueOf(compiled.getMaxStack())).append(", ")
                 .append(String.valueOf(compiled.getMaxLocals())).append(", ")
-                .append(dataName).append("_code, static_cast<std::uint32_t>(sizeof(")
-                .append(dataName).append("_code)) };\n\n");
+                .append(dataName).append(", static_cast<std::uint32_t>(sizeof(")
+                .append(dataName).append(")) };\n\n");
 
         context.output.append(MethodProcessor.CPP_TYPES[context.ret.getSort()])
                 .append(" JNICALL ").append(methodName).append("(JNIEnv *env, jclass clazz");
@@ -58,8 +55,8 @@ public final class InterpreterMethodProcessor {
         }
         context.output.append("    native_jvm::interp::frame interp_frame = { interp_locals, interp_stack };\n");
         context.output.append("    std::int32_t interp_result = 0;\n");
-        context.output.append("    if (!native_jvm::interp::execute_i(").append(dataName)
-                .append("_method, interp_frame, &interp_result)) {\n");
+        context.output.append("    if (!native_jvm::interp::execute_i(").append(descriptorName)
+                .append(", interp_frame, &interp_result)) {\n");
         context.output.append("        env->FatalError(\"invalid native_jvm interpreter stream\");\n");
         context.output.append("        return (jint) 0;\n");
         context.output.append("    }\n");
@@ -76,18 +73,15 @@ public final class InterpreterMethodProcessor {
     }
 
     private static void appendCodeArray(MethodContext context, String dataName, byte[] code) {
-        context.output.append("static const std::uint8_t ").append(dataName).append("_code[] = { ");
-        context.output.append(Arrays.stream(toUnsignedInts(code))
-                .mapToObj(String::valueOf)
-                .collect(Collectors.joining(", ")));
-        context.output.append(" };\n");
-    }
-
-    private static int[] toUnsignedInts(byte[] code) {
-        int[] values = new int[code.length];
+        final char[] hex = "0123456789abcdef".toCharArray();
+        context.output.append("static const std::uint8_t ").append(dataName).append("[] = {\n    ");
         for (int i = 0; i < code.length; i++) {
-            values[i] = code[i] & 0xff;
+            if (i > 0) {
+                context.output.append(i % 16 == 0 ? ",\n    " : ", ");
+            }
+            int value = code[i] & 0xff;
+            context.output.append("0x").append(hex[value >>> 4]).append(hex[value & 0x0f]);
         }
-        return values;
+        context.output.append("\n};\n");
     }
 }

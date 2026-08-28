@@ -38,10 +38,10 @@ public class InterpreterMethodEmitterTest {
         assertEquals(2, compiled.getMaxStack());
         assertEquals(2, compiled.getMaxLocals());
         assertArrayEquals(bytes(
-                2, 0, 0,
-                2, 1, 0,
-                4,
-                19), compiled.getCode());
+                0x31, 0, 0,
+                0x31, 1, 0,
+                0x6b,
+                0x67), compiled.getCode());
     }
 
     @Test
@@ -60,10 +60,10 @@ public class InterpreterMethodEmitterTest {
 
         assertNotNull(compiled);
         assertArrayEquals(bytes(
-                2, 0, 0,
-                2, 1, 0,
-                5,
-                19), compiled.getCode());
+                0x31, 0, 0,
+                0x31, 1, 0,
+                0xe2,
+                0x67), compiled.getCode());
     }
 
     @Test
@@ -100,13 +100,13 @@ public class InterpreterMethodEmitterTest {
         assertEquals(4, compiled.getMaxStack());
         assertEquals(3, compiled.getMaxLocals());
         assertArrayEquals(bytes(
-                1, 0, 0, 0, 0, 3, 1, 0,
-                1, 0, 0, 0, 0, 3, 2, 0,
-                2, 2, 0, 2, 0, 0, 15, 54, 0, 0, 0,
-                2, 1, 0, 2, 2, 0, 4, 3, 1, 0,
-                2, 2, 0, 1, 1, 0, 0, 0, 4, 3, 2, 0,
-                18, 16, 0, 0, 0,
-                2, 1, 0, 19), compiled.getCode());
+                0xa7, 0, 0, 0, 0, 0xd4, 1, 0,
+                0xa7, 0, 0, 0, 0, 0xd4, 2, 0,
+                0x31, 2, 0, 0x31, 0, 0, 0x83, 54, 0, 0, 0,
+                0x31, 1, 0, 0x31, 2, 0, 0x6b, 0xd4, 1, 0,
+                0x31, 2, 0, 0xa7, 1, 0, 0, 0, 0x6b, 0xd4, 2, 0,
+                0xae, 16, 0, 0, 0,
+                0x31, 1, 0, 0x67), compiled.getCode());
     }
 
     @Test
@@ -120,17 +120,18 @@ public class InterpreterMethodEmitterTest {
         assertEquals(6, compiled.getMaxStack());
         assertEquals(4, compiled.getMaxLocals());
         assertArrayEquals(bytes(
-                2, 0, 0,
-                1, 185, 121, 55, 158, 21, 3, 2, 0,
-                1, 0, 0, 0, 0, 3, 3, 0,
-                2, 3, 0, 2, 1, 0, 15, 102, 0, 0, 0,
-                2, 2, 0, 2, 2, 0, 1, 6, 0, 0, 0, 22,
-                2, 2, 0, 1, 2, 0, 0, 0, 23, 4, 4, 3, 2, 0,
-                2, 2, 0, 2, 2, 0, 1, 119, 202, 235, 133, 20, 21, 3, 2, 0,
-                2, 2, 0, 1, 13, 0, 0, 0, 24, 3, 2, 0,
-                2, 3, 0, 1, 1, 0, 0, 0, 4, 3, 3, 0,
-                18, 20, 0, 0, 0,
-                2, 2, 0, 19), compiled.getCode());
+                0x31, 0, 0,
+                0xa7, 0xb9, 0x79, 0x37, 0x9e, 0xf8, 0xd4, 2, 0,
+                0xa7, 0, 0, 0, 0, 0xd4, 3, 0,
+                0x31, 3, 0, 0x31, 1, 0, 0x83, 102, 0, 0, 0,
+                0x31, 2, 0, 0x31, 2, 0, 0xa7, 6, 0, 0, 0, 0x21,
+                0x31, 2, 0, 0xa7, 2, 0, 0, 0, 0x95, 0x6b, 0x6b, 0xd4, 2, 0,
+                0x31, 2, 0, 0x31, 2, 0, 0xa7, 0x77, 0xca, 0xeb, 0x85,
+                0x3c, 0xf8, 0xd4, 2, 0,
+                0x31, 2, 0, 0xa7, 13, 0, 0, 0, 0xca, 0xd4, 2, 0,
+                0x31, 3, 0, 0xa7, 1, 0, 0, 0, 0x6b, 0xd4, 3, 0,
+                0xae, 20, 0, 0, 0,
+                0x31, 2, 0, 0x67), compiled.getCode());
     }
 
     @Test

@@ -74,18 +74,24 @@ public class InterpreterRuntimeTest {
                 "using native_jvm::interp::frame;\n" +
                 "using native_jvm::interp::method_desc;\n" +
                 "\n" +
-                "static const std::uint8_t add_code[] = { 2,0,0, 2,1,0, 4, 19 };\n" +
-                "static const method_desc add_method = { 1, 2, 2, add_code, sizeof(add_code) };\n" +
-                "static const std::uint8_t sub_code[] = { 2,0,0, 2,1,0, 5, 19 };\n" +
-                "static const method_desc sub_method = { 1, 2, 2, sub_code, sizeof(sub_code) };\n" +
-                "static const std::uint8_t sum_code[] = {\n" +
-                "    1,0,0,0,0, 3,1,0, 1,0,0,0,0, 3,2,0,\n" +
-                "    2,2,0, 2,0,0, 15,54,0,0,0,\n" +
-                "    2,1,0, 2,2,0, 4, 3,1,0,\n" +
-                "    2,2,0, 1,1,0,0,0, 4, 3,2,0,\n" +
-                "    18,16,0,0,0, 2,1,0, 19\n" +
+                "static const std::uint8_t add_code[] = { 0x31,0,0, 0x31,1,0, 0x6b, 0x67 };\n" +
+                "static const method_desc add_method = {\n" +
+                "    native_jvm::interp::ISA_VERSION, 2, 2, add_code, sizeof(add_code)\n" +
                 "};\n" +
-                "static const method_desc sum_method = { 1, 4, 3, sum_code, sizeof(sum_code) };\n" +
+                "static const std::uint8_t sub_code[] = { 0x31,0,0, 0x31,1,0, 0xe2, 0x67 };\n" +
+                "static const method_desc sub_method = {\n" +
+                "    native_jvm::interp::ISA_VERSION, 2, 2, sub_code, sizeof(sub_code)\n" +
+                "};\n" +
+                "static const std::uint8_t sum_code[] = {\n" +
+                "    0xa7,0,0,0,0, 0xd4,1,0, 0xa7,0,0,0,0, 0xd4,2,0,\n" +
+                "    0x31,2,0, 0x31,0,0, 0x83,54,0,0,0,\n" +
+                "    0x31,1,0, 0x31,2,0, 0x6b, 0xd4,1,0,\n" +
+                "    0x31,2,0, 0xa7,1,0,0,0, 0x6b, 0xd4,2,0,\n" +
+                "    0xae,16,0,0,0, 0x31,1,0, 0x67\n" +
+                "};\n" +
+                "static const method_desc sum_method = {\n" +
+                "    native_jvm::interp::ISA_VERSION, 4, 3, sum_code, sizeof(sum_code)\n" +
+                "};\n" +
                 "\n" +
                 "static bool run_add(std::int32_t a, std::int32_t b, std::int32_t expected) {\n" +
                 "    std::int32_t locals[2] = { a, b };\n" +
@@ -121,11 +127,14 @@ public class InterpreterRuntimeTest {
                 "\n" +
                 "static bool run_unary_branch(std::uint8_t opcode, std::int32_t value, bool expected) {\n" +
                 "    std::uint8_t code[] = {\n" +
-                "        1,0,0,0,0, 0,16,0,0,0, 1,0,0,0,0,19, 1,1,0,0,0,19\n" +
+                "        0xa7,0,0,0,0, 0,16,0,0,0,\n" +
+                "        0xa7,0,0,0,0,0x67, 0xa7,1,0,0,0,0x67\n" +
                 "    };\n" +
                 "    write_i32(code + 1, value);\n" +
                 "    code[5] = opcode;\n" +
-                "    method_desc method = { 1, 1, 1, code, sizeof(code) };\n" +
+                "    method_desc method = {\n" +
+                "        native_jvm::interp::ISA_VERSION, 1, 1, code, sizeof(code)\n" +
+                "    };\n" +
                 "    std::int32_t locals[1] = {};\n" +
                 "    std::int32_t stack[1] = {};\n" +
                 "    std::int32_t result = 0;\n" +
@@ -137,13 +146,15 @@ public class InterpreterRuntimeTest {
                 "static bool run_binary_branch(std::uint8_t opcode, std::int32_t left,\n" +
                 "                              std::int32_t right, bool expected) {\n" +
                 "    std::uint8_t code[] = {\n" +
-                "        1,0,0,0,0, 1,0,0,0,0, 0,21,0,0,0,\n" +
-                "        1,0,0,0,0,19, 1,1,0,0,0,19\n" +
+                "        0xa7,0,0,0,0, 0xa7,0,0,0,0, 0,21,0,0,0,\n" +
+                "        0xa7,0,0,0,0,0x67, 0xa7,1,0,0,0,0x67\n" +
                 "    };\n" +
                 "    write_i32(code + 1, left);\n" +
                 "    write_i32(code + 6, right);\n" +
                 "    code[10] = opcode;\n" +
-                "    method_desc method = { 1, 2, 1, code, sizeof(code) };\n" +
+                "    method_desc method = {\n" +
+                "        native_jvm::interp::ISA_VERSION, 2, 1, code, sizeof(code)\n" +
+                "    };\n" +
                 "    std::int32_t locals[1] = {};\n" +
                 "    std::int32_t stack[2] = {};\n" +
                 "    std::int32_t result = 0;\n" +
@@ -153,43 +164,45 @@ public class InterpreterRuntimeTest {
                 "}\n" +
                 "\n" +
                 "static bool checks_all_branches() {\n" +
-                "    return run_unary_branch(6, 0, true) && run_unary_branch(6, 1, false) &&\n" +
-                "           run_unary_branch(7, 1, true) && run_unary_branch(7, 0, false) &&\n" +
-                "           run_unary_branch(8, -1, true) && run_unary_branch(8, 0, false) &&\n" +
-                "           run_unary_branch(9, 0, true) && run_unary_branch(9, -1, false) &&\n" +
-                "           run_unary_branch(10, 1, true) && run_unary_branch(10, 0, false) &&\n" +
-                "           run_unary_branch(11, 0, true) && run_unary_branch(11, 1, false) &&\n" +
-                "           run_binary_branch(12, 2, 2, true) && run_binary_branch(12, 2, 3, false) &&\n" +
-                "           run_binary_branch(13, 2, 3, true) && run_binary_branch(13, 2, 2, false) &&\n" +
-                "           run_binary_branch(14, 2, 3, true) && run_binary_branch(14, 3, 2, false) &&\n" +
-                "           run_binary_branch(15, 3, 2, true) && run_binary_branch(15, 2, 3, false) &&\n" +
-                "           run_binary_branch(16, 3, 2, true) && run_binary_branch(16, 2, 3, false) &&\n" +
-                "           run_binary_branch(17, 2, 3, true) && run_binary_branch(17, 3, 2, false);\n" +
+                "    return run_unary_branch(0x19, 0, true) && run_unary_branch(0x19, 1, false) &&\n" +
+                "           run_unary_branch(0xc8, 1, true) && run_unary_branch(0xc8, 0, false) &&\n" +
+                "           run_unary_branch(0x45, -1, true) && run_unary_branch(0x45, 0, false) &&\n" +
+                "           run_unary_branch(0x9a, 0, true) && run_unary_branch(0x9a, -1, false) &&\n" +
+                "           run_unary_branch(0xf1, 1, true) && run_unary_branch(0xf1, 0, false) &&\n" +
+                "           run_unary_branch(0x2d, 0, true) && run_unary_branch(0x2d, 1, false) &&\n" +
+                "           run_binary_branch(0x74, 2, 2, true) && run_binary_branch(0x74, 2, 3, false) &&\n" +
+                "           run_binary_branch(0xb6, 2, 3, true) && run_binary_branch(0xb6, 2, 2, false) &&\n" +
+                "           run_binary_branch(0x0f, 2, 3, true) && run_binary_branch(0x0f, 3, 2, false) &&\n" +
+                "           run_binary_branch(0x83, 3, 2, true) && run_binary_branch(0x83, 2, 3, false) &&\n" +
+                "           run_binary_branch(0xdc, 3, 2, true) && run_binary_branch(0xdc, 2, 3, false) &&\n" +
+                "           run_binary_branch(0x52, 2, 3, true) && run_binary_branch(0x52, 3, 2, false);\n" +
                 "}\n" +
                 "\n" +
                 "static bool rejects_invalid_streams() {\n" +
-                "    static const std::uint8_t unknown_code[] = { 255 };\n" +
-                "    static const method_desc unknown_method = { 1, 1, 1, unknown_code, sizeof(unknown_code) };\n" +
-                "    static const std::uint8_t truncated_code[] = { 1, 0 };\n" +
-                "    static const method_desc truncated_method = { 1, 1, 1, truncated_code, sizeof(truncated_code) };\n" +
-                "    static const std::uint8_t bad_goto_code[] = { 18, 5, 0, 0, 0 };\n" +
-                "    static const method_desc bad_goto_method = { 1, 1, 1, bad_goto_code, sizeof(bad_goto_code) };\n" +
+                "    constexpr std::uint16_t version = native_jvm::interp::ISA_VERSION;\n" +
+                "    static const std::uint8_t unknown_code[] = { 0xff };\n" +
+                "    static const method_desc unknown_method = { version, 1, 1, unknown_code, sizeof(unknown_code) };\n" +
+                "    static const std::uint8_t truncated_code[] = { 0xa7, 0 };\n" +
+                "    static const method_desc truncated_method = { version, 1, 1, truncated_code, sizeof(truncated_code) };\n" +
+                "    static const std::uint8_t bad_goto_code[] = { 0xae, 5, 0, 0, 0 };\n" +
+                "    static const method_desc bad_goto_method = { version, 1, 1, bad_goto_code, sizeof(bad_goto_code) };\n" +
                 "    static const std::uint8_t bad_ifeq_code[] = {\n" +
-                "        1,1,0,0,0, 6,255,0,0,0, 1,7,0,0,0, 19\n" +
+                "        0xa7,1,0,0,0, 0x19,255,0,0,0, 0xa7,7,0,0,0, 0x67\n" +
                 "    };\n" +
-                "    static const method_desc bad_ifeq_method = { 1, 1, 1, bad_ifeq_code, sizeof(bad_ifeq_code) };\n" +
+                "    static const method_desc bad_ifeq_method = { version, 1, 1, bad_ifeq_code, sizeof(bad_ifeq_code) };\n" +
                 "    static const std::uint8_t bad_if_icmpeq_code[] = {\n" +
-                "        1,1,0,0,0, 1,2,0,0,0, 12,255,0,0,0, 1,7,0,0,0, 19\n" +
+                "        0xa7,1,0,0,0, 0xa7,2,0,0,0, 0x74,255,0,0,0,\n" +
+                "        0xa7,7,0,0,0, 0x67\n" +
                 "    };\n" +
                 "    static const method_desc bad_if_icmpeq_method = {\n" +
-                "        1, 2, 1, bad_if_icmpeq_code, sizeof(bad_if_icmpeq_code)\n" +
+                "        version, 2, 1, bad_if_icmpeq_code, sizeof(bad_if_icmpeq_code)\n" +
                 "    };\n" +
-                "    static const std::uint8_t bad_local_code[] = { 2, 1, 0 };\n" +
-                "    static const method_desc bad_local_method = { 1, 1, 1, bad_local_code, sizeof(bad_local_code) };\n" +
-                "    static const std::uint8_t underflow_code[] = { 4, 19 };\n" +
-                "    static const method_desc underflow_method = { 1, 2, 1, underflow_code, sizeof(underflow_code) };\n" +
-                "    static const std::uint8_t overflow_code[] = { 1, 0, 0, 0, 0, 19 };\n" +
-                "    static const method_desc overflow_method = { 1, 0, 1, overflow_code, sizeof(overflow_code) };\n" +
+                "    static const std::uint8_t bad_local_code[] = { 0x31, 1, 0 };\n" +
+                "    static const method_desc bad_local_method = { version, 1, 1, bad_local_code, sizeof(bad_local_code) };\n" +
+                "    static const std::uint8_t underflow_code[] = { 0x6b, 0x67 };\n" +
+                "    static const method_desc underflow_method = { version, 2, 1, underflow_code, sizeof(underflow_code) };\n" +
+                "    static const std::uint8_t overflow_code[] = { 0xa7, 0, 0, 0, 0, 0x67 };\n" +
+                "    static const method_desc overflow_method = { version, 0, 1, overflow_code, sizeof(overflow_code) };\n" +
                 "    std::int32_t locals[1] = {};\n" +
                 "    std::int32_t stack[2] = {};\n" +
                 "    std::int32_t result = 0;\n" +
@@ -248,7 +261,7 @@ public class InterpreterRuntimeTest {
                 "\n" +
                 "static const std::uint8_t mix_code[] = { " +
                 unsignedBytes(compiled.getCode()) + " };\n" +
-                "static const method_desc mix_method = { 1, " +
+                "static const method_desc mix_method = { native_jvm::interp::ISA_VERSION, " +
                 compiled.getMaxStack() + ", " + compiled.getMaxLocals() +
                 ", mix_code, sizeof(mix_code) };\n" +
                 "\n" +
@@ -275,7 +288,7 @@ public class InterpreterRuntimeTest {
             if (i > 0) {
                 result.append(", ");
             }
-            result.append(code[i] & 0xff);
+            result.append(String.format("0x%02x", code[i] & 0xff));
         }
         return result.toString();
     }

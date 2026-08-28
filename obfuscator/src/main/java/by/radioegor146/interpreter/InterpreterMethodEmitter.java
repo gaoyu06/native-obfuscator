@@ -23,32 +23,32 @@ import java.util.Map;
  */
 public final class InterpreterMethodEmitter {
 
-    public static final int ISA_VERSION = 1;
+    public static final int ISA_VERSION = 2;
 
-    public static final int IPUSH = 1;
-    public static final int ILOAD = 2;
-    public static final int ISTORE = 3;
-    public static final int IADD = 4;
-    public static final int ISUB = 5;
-    public static final int IFEQ = 6;
-    public static final int IFNE = 7;
-    public static final int IFLT = 8;
-    public static final int IFGE = 9;
-    public static final int IFGT = 10;
-    public static final int IFLE = 11;
-    public static final int IF_ICMPEQ = 12;
-    public static final int IF_ICMPNE = 13;
-    public static final int IF_ICMPLT = 14;
-    public static final int IF_ICMPGE = 15;
-    public static final int IF_ICMPGT = 16;
-    public static final int IF_ICMPLE = 17;
-    public static final int GOTO = 18;
-    public static final int IRETURN = 19;
-    public static final int IMUL = 20;
-    public static final int IXOR = 21;
-    public static final int ISHL = 22;
-    public static final int IUSHR = 23;
-    public static final int IROTL = 24;
+    private static final int IPUSH = 0xa7;
+    private static final int ILOAD = 0x31;
+    private static final int ISTORE = 0xd4;
+    private static final int IADD = 0x6b;
+    private static final int ISUB = 0xe2;
+    private static final int IFEQ = 0x19;
+    private static final int IFNE = 0xc8;
+    private static final int IFLT = 0x45;
+    private static final int IFGE = 0x9a;
+    private static final int IFGT = 0xf1;
+    private static final int IFLE = 0x2d;
+    private static final int IF_ICMPEQ = 0x74;
+    private static final int IF_ICMPNE = 0xb6;
+    private static final int IF_ICMPLT = 0x0f;
+    private static final int IF_ICMPGE = 0x83;
+    private static final int IF_ICMPGT = 0xdc;
+    private static final int IF_ICMPLE = 0x52;
+    private static final int GOTO = 0xae;
+    private static final int IRETURN = 0x67;
+    private static final int IMUL = 0x3c;
+    private static final int IXOR = 0xf8;
+    private static final int ISHL = 0x21;
+    private static final int IUSHR = 0x95;
+    private static final int IROTL = 0xca;
 
     private InterpreterMethodEmitter() {
     }
