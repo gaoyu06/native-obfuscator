@@ -63,6 +63,14 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void emitsWrappingSubtractAndMultiply() {
+        String cpp = emitter.emitBody(frontend.build("example/Math", subMulMethod()));
+
+        assertTrue(cpp.contains("(uint32_t) arg0 - (uint32_t) arg1"));
+        assertTrue(cpp.contains("(uint32_t) v2 * (uint32_t) arg1"));
+    }
+
+    @Test
     public void integratedEmitterUsesExistingJniSignatureStyleWithoutLegacySlots() {
         MethodNode method = addMethod();
         ClassNode owner = new ClassNode(Opcodes.ASM9);
@@ -173,7 +181,7 @@ public class IrCompilerTest {
         ClassNode owner = owner();
         IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
         MethodNode[] methods = {
-                addMethod(), sumToMethod(), incrementFieldMethod(),
+                addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
                 staticInvokeMethod(), virtualInvokeMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
@@ -316,6 +324,20 @@ public class IrCompilerTest {
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode subMulMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "subMul", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISUB));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IMUL));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
         method.maxStack = 2;
         return method;
     }

@@ -295,7 +295,11 @@ public final class CppAst {
 
         @Override
         public void write(Printer printer) {
-            printer.line("if " + condition.render() + " {");
+            String renderedCondition = condition.render();
+            if (!renderedCondition.startsWith("(") || !renderedCondition.endsWith(")")) {
+                renderedCondition = "(" + renderedCondition + ")";
+            }
+            printer.line("if " + renderedCondition + " {");
             printer.indent++;
             printer.write(trueBlock.statements);
             printer.indent--;
