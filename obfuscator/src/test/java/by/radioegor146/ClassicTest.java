@@ -231,6 +231,9 @@ public class ClassicTest implements Executable {
 
     private int requiredJavaRelease() {
         for (Path part : testData) {
+            if (part.toString().equals("jdk21")) {
+                return 21;
+            }
             if (part.toString().equals("jdk17")) {
                 return 17;
             }
