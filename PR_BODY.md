@@ -1,94 +1,106 @@
-# IR phase 5 — Fable review branch
+# IR compiler phase 6 / IR 编译器第六阶段
 
-This branch is the Fable design author's review of the Sol phase-5 slice (PR #40,
-`cursor/ir-compiler-phase5-6d81`): integer divide/remainder, `int` array
-allocation, and static `int` field access. It is documentation only; it adds
-`docs/architecture/ir-phase5-fable-review.md` and this PR body. No compiler code
-changed, because the review found no correctness blocker to fix.
-
-本分支是 Fable 设计作者对 Sol phase-5 切片（PR #40，
-`cursor/ir-compiler-phase5-6d81`：整数除/余、`int` 数组分配、静态 `int` 字段访问）的
-审阅，**仅含文档**：新增 `docs/architecture/ir-phase5-fable-review.md` 与本 PR 说明。
-未改动任何编译器代码，因为审阅未发现需修复的正确性阻塞项。
+Preferred base / 首选基线:
+`cursor/ir-phase5-fable-review-6d81`
+(`b72e3cf0d1cbf128a7f98508d98cbf1f63de1217`).
 
 ## (a) Scope / 改动范围
 
-- Ordinary Java-bytecode-to-JNI-C++ compiler review only: typed IR, CFG and
-  exception edges, structured C++ emit, and JNI pending-exception lifetime.
-  Packing / analysis-resistance / protection are out of scope and not discussed.
-- Reviewed every changed file under
-  `obfuscator/src/main/java/by/radioegor146/ir/**` plus `IrCompilerTest`, against
-  design of record `docs/architecture/ir-compiler.md` (§4 types, §5 exceptions,
-  §6 JNI object model) and `docs/architecture/ir-phase5-status.md`.
-- Independently re-ran the focused test suite and inspected the JUnit XML,
-  confirmed the g++ compile-smoke executed (not skipped), independently
-  recompiled the emitted translation unit, and read the emitted C++ for
-  `divRem`, `catchDivide`, `allocate`, and `setAndGetCounter` out of that
-  g++-accepted file.
+- Add typed `TABLESWITCH` and `LOOKUPSWITCH` terminators. Every case and the
+  required default are explicit CFG successors; stack/local carrier analysis
+  and phi connection cover all of them. Structured C++ emission performs
+  parallel phi copies and a `goto` in every arm.
+- Add general object `ANEWARRAY` lowering through the existing class cache and
+  `JNIEnv::NewObjectArray`. Negative lengths raise
+  `NegativeArraySizeException`; class-resolution, null-allocation, and pending
+  exception failures use the phase-5 exceptional routing.
+- Add switch-default carrier validation, String/Object array coverage,
+  fallback-before-mutation regression coverage, and a real 22-method
+  `g++ -std=c++17 -fsyntax-only` smoke.
+- Add `docs/architecture/ir-phase6-status.md` with results copied from the
+  generated JUnit XML. The default remains `legacy`; constructor policy and
+  snippet resources are unchanged.
 
-仅为常规的 Java 字节码 → JNI C++ 编译器审阅：typed IR、CFG 与异常边、结构化 C++ 发射、
-JNI pending-exception 生命周期；不涉及加壳/反分析/保护。已按设计基准 `ir-compiler.md`
-（§4/§5/§6）与 `ir-phase5-status.md` 阅读全部 `ir/**` 改动文件与 `IrCompilerTest`，并
-独立重跑测试、核对 JUnit XML、确认 g++ 冒烟未跳过、独立重编译翻译单元、直接阅读四个新增
-方法所生成的 C++。
+- 新增 typed `TABLESWITCH` / `LOOKUPSWITCH` 终结器。每个 case 与必需的 default
+  都是显式 CFG 后继；栈/局部变量 carrier 分析及 phi 连接覆盖全部后继。结构化 C++
+  发射会在每个分支执行并行 phi copy 后 `goto`。
+- 新增通用对象 `ANEWARRAY` lowering，复用现有 class cache 并调用
+  `JNIEnv::NewObjectArray`。负长度抛出 `NegativeArraySizeException`；类解析失败、
+  allocation 返回空值及 pending exception 都沿用 phase-5 异常路由。
+- 新增 switch default carrier 校验、String/Object 数组覆盖、mutation 前 fallback
+  回归，以及真实的 22-method `g++ -std=c++17 -fsyntax-only` 冒烟测试。
+- 新增 `docs/architecture/ir-phase6-status.md`，其中计数直接来自 JUnit XML。
+  默认仍为 `legacy`；未改变构造器策略，也未删除 snippet 资源。
 
 ## (b) Ship-ready? / 是否可直接上线
 
-**No.** Phase 5 is an intentionally limited slice: only `T_INT` `NEWARRAY`, only
-descriptor-`I` static fields, and per-method fallback for switches, object and
-other array creation, constructors, wide carriers, broader invoke/field/array
-shapes, and many stack/control opcodes. It lacks broad opcode coverage and full
-JVM runtime-parity validation. It is safe to carry behind the non-default
-`--codegen=ir` flag while the migration continues.
+**No.**
 
-**否。** phase 5 是有意受限的切片：仅 `T_INT` `NEWARRAY`、仅描述符 `I` 的静态字段，其余
-（switch、对象与其他数组创建、构造器、wide carrier、更广的调用/字段/数组形态及许多栈与
-控制 opcode）仍按方法回退；尚缺完整 opcode 覆盖与 JVM 运行时等价性验证。可在非默认的
-`--codegen=ir` 开关后随迁移继续推进。
+Phase 6 is still an opt-in staged subset. Wide carriers, constructors and object
+creation, reference fields/returns/stores, broader invokes and arrays,
+`CHECKCAST`/`INSTANCEOF`, and many stack/control opcodes still fall back per
+method. Keep `legacy` as the default while coverage and runtime-parity testing
+continue.
+
+**否。**
+
+Phase 6 仍是 opt-in 的阶段性子集。wide carrier、构造器与对象创建、引用字段/返回/写入、
+更广的调用与数组形态、`CHECKCAST`/`INSTANCEOF` 及许多栈/控制 opcode 仍按方法回退。
+在继续扩大覆盖及运行时等价性验证期间，应保持 `legacy` 为默认值。
 
 ## (c) Review required? / 是否需要 review
 
-**This branch IS the review.** The verdict is **accept-with-nits**; the full
-requirement-by-requirement analysis, the g++ evidence, the deltas from the
-design, and the non-blocking nits are in
-`docs/architecture/ir-phase5-fable-review.md`.
+**Yes.**
 
-**本分支即为 review。** 结论为 **accept-with-nits**；逐项分析、g++ 证据、与设计的差异
-说明及不阻塞的小瑕疵详见 `docs/architecture/ir-phase5-fable-review.md`。
+Please review switch CFG construction (especially default and duplicate
+destinations), phi edge transfers, object-component class-cache lifetime, and
+pending-exception routing. The new default-only carrier mismatch regression and
+the emitted C++ excerpts in the status document are the main evidence.
+
+**是。**
+
+请重点 review switch CFG 构建（尤其 default 与重复目标）、phi 边传递、对象 component
+class cache 生命周期及 pending-exception 路由。新增的“仅经 default 到达”的 carrier
+不匹配回归，以及状态文档中的生成 C++ 证据，是主要核验点。
 
 ## (d) Preconditions for a human / 人工前置条件
 
-1. Read this on top of the stack: base is `cursor/ir-phase4-fable-review-6d81`
-   (`564589c…`); the subject implementation is PR #40
-   (`cursor/ir-compiler-phase5-6d81`). This review branch is documentation-only
-   and opens no GitHub PR.
-   以本栈为基线阅读：base 为 `cursor/ir-phase4-fable-review-6d81`（`564589c…`），被审
-   对象为 PR #40（`cursor/ir-compiler-phase5-6d81`）；本审阅分支仅含文档，且不开 GitHub PR。
-2. Reproduce the counts:
-   `./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
-   → `IrCompilerTest` 22/22, `CodegenModeTest` 2/2, 24 total, 0 skipped / 0
-   failures / 0 errors. Inspect the JUnit XML rather than trusting console output.
-   复现计数并核对 JUnit XML：两组分别为 22/22 与 2/2，共 24 个，0 跳过 / 0 失败 / 0 错误。
-3. With a toolchain present, confirm
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` is not skipped and
-   `g++ -std=c++17 -fsyntax-only` actually compiles the emitted 18-method TU;
-   `Assumptions.assumeTrue(...)` will skip it if g++/jni.h are missing, so a
-   toolchain-less run is not evidence.
-   在有工具链时确认 g++ 冒烟未 skip 且真实编译 18-method 翻译单元；缺工具链的运行不构成证据。
-4. Spot-check the emitted C++: `IDIV`/`IREM` check the divisor before `/`/`%`,
-   raise `ArithmeticException` into the shared `IR_CATCH_n` when protected (no
-   silent `return 0`), and guard `Integer.MIN_VALUE / -1` and `% -1` (rendered
-   `((jint) 0x80000000U)`, no `juint`); `NEWARRAY T_INT` checks negative length,
-   null result, and `ExceptionCheck`; static `I` fields use `GetStaticFieldID`
-   and `GetStatic`/`SetStaticIntField` on the existing `cclasses`/`cfields`.
-   抽查生成的 C++：`IDIV`/`IREM` 先查除数再求值、受保护时抛 `ArithmeticException` 到
-   共享 `IR_CATCH_n`（不静默 `return 0`）、并特判 `MIN/-1`（发射为 `((jint) 0x80000000U)`，
-   无 `juint`）；`NEWARRAY T_INT` 检查负长度/空返回/`ExceptionCheck`；静态 `I` 字段使用
-   `GetStaticFieldID` 与 `GetStatic`/`SetStaticIntField` 并复用现有 `cclasses`/`cfields`。
-5. Confirm fallback-before-mutation independently: a non-`I` static field is
-   rejected in `AsmToIr.build(...)` before cache allocation and before `beginIr`
-   mutates `output`/`nativeMethods`/`ACC_NATIVE`
-   (`rejectsNonIntStaticFieldBeforeMutation`); default codegen is still `legacy`
-   and the snippet path is intact.
-   独立确认变更前回退：非 `I` 静态字段在 `AsmToIr.build(...)` 被拒，早于缓存分配与
-   `output`/`nativeMethods`/`ACC_NATIVE` 改动；默认仍为 `legacy`，旧片段路径完好。
+1. Review this branch on top of
+   `cursor/ir-phase5-fable-review-6d81` at `b72e3cf0…`; do not use `master` as
+   the comparison base.
+   请基于 `cursor/ir-phase5-fable-review-6d81`（`b72e3cf0…`）审阅，不要以
+   `master` 作为比较基线。
+2. Reproduce the focused command and inspect XML rather than relying only on
+   console output:
+   请复现指定命令并直接核对 XML，而不只依赖控制台输出：
+
+   ```text
+   ./gradlew :obfuscator:test \
+     --tests by.radioegor146.ir.IrCompilerTest \
+     --tests by.radioegor146.CodegenModeTest
+   ```
+
+   Recorded result / 已记录结果:
+   `IrCompilerTest` 26, `CodegenModeTest` 2, total 28; 0 skipped, 0 failures,
+   0 errors.
+3. Confirm
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` has no `<skipped>`
+   child and that the emitted 22-method TU contains `tableSelect`,
+   `lookupSelect`, `allocateStrings`, and `allocateObjects`. Re-run the real
+   C++17 syntax command with JNI include paths.
+   确认该测试没有 `<skipped>`，22-method 翻译单元包含上述四个新增方法，并使用 JNI
+   include 路径真实重跑 C++17 syntax-only 命令。
+4. Inspect generated switch arms: cases and default must each copy incoming
+   phi carriers then jump to the selected block. Inspect object-array emission:
+   `< 0` raises `NegativeArraySizeException`; class resolution, null result,
+   and `ExceptionCheck()` all take the correct exceptional exit.
+   检查生成的 switch：每个 case/default 都必须复制 phi carrier 后跳转；检查对象数组：
+   `< 0` 抛 `NegativeArraySizeException`，类解析、空结果及 `ExceptionCheck()` 均走正确
+   的异常出口。
+5. Reconfirm fallback atomicity with
+   `rejectsUnsupportedInstructionAfterAnewarrayBeforeMutation`,
+   `rejectsNonIntStaticFieldBeforeMutation`, and
+   `rejectsIntStoreIntoInstanceReceiverLocal`; confirm CLI default `legacy`,
+   `<init>` policy, and snippet resources are unchanged.
+   用上述三个测试复核 mutation 前 fallback；同时确认 CLI 默认 `legacy`、`<init>` 策略
+   及 snippet 资源均未变化。
