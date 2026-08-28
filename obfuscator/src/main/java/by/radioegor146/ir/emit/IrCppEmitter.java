@@ -12,6 +12,7 @@ import by.radioegor146.ir.IrPhi;
 import by.radioegor146.ir.IrTerminator;
 import by.radioegor146.ir.IrType;
 import by.radioegor146.ir.IrValue;
+import org.objectweb.asm.Type;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -849,7 +850,12 @@ public final class IrCppEmitter {
         }
         if (terminator instanceof IrNodes.Return) {
             IrValue value = ((IrNodes.Return) terminator).getValue();
-            statements.add(new CppAst.Return(value == null ? null : expression(value)));
+            CppAst.Expression returned = value == null ? null : expression(value);
+            if (value != null && value.getType() == IrType.REFERENCE
+                    && Type.getReturnType(method.getDescriptor()).getSort() == Type.ARRAY) {
+                returned = new CppAst.Cast("jarray", returned);
+            }
+            statements.add(new CppAst.Return(returned));
             return;
         }
         if (terminator instanceof IrNodes.Throw) {

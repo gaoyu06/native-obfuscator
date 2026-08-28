@@ -279,6 +279,30 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void returnsAllocatedArrayWithJniDescriptorCarrier() {
+        MethodNode method = returnAllocatedObjectArrayMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertEquals(IrType.REFERENCE, ir.getReturnType());
+        IrNodes.Return returnTerminator = ir.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.Return.class::isInstance)
+                .map(IrNodes.Return.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrType.REFERENCE, returnTerminator.getValue().getType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("jarray JNICALL __ngen_native_returnAllocatedObjectArray0"));
+        assertTrue(cpp.contains("return nullptr;"));
+        assertTrue(cpp.contains("return (jarray) v"
+                + returnTerminator.getValue().getId() + ";"));
+    }
+
+    @Test
     public void returnsTypedNullReference() {
         MethodNode method = returnNullMethod();
         IrMethod ir = frontend.build("example/Math", method);
@@ -925,7 +949,7 @@ public class IrCompilerTest {
                 staticVoidLongInvokeMethod(), returnAllocatedObjectMethod(),
                 returnNullMethod(), referenceNullBranchMethod("ifNull", Opcodes.IFNULL),
                 referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL),
-                popUnusedCategoryOneInvokeResultMethod()
+                popUnusedCategoryOneInvokeResultMethod(), returnAllocatedObjectArrayMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -1011,6 +1035,9 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.ifNonNull"));
         assertTrue(source.contains("if (arg0 != nullptr) {"));
         assertTrue(source.contains("IR codegen: example/Math.discardInvokeResult()V"));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.returnAllocatedObjectArray(I)[Ljava/lang/Object;"));
+        assertTrue(source.contains("return (jarray) v"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
         assertTrue(source.contains("uint64_t"));
         assertTrue(source.contains("(jlong)"));
@@ -1146,6 +1173,17 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxLocals = 0;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode returnAllocatedObjectArrayMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "returnAllocatedObjectArray", "(I)[Ljava/lang/Object;", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
         return method;
     }
 
