@@ -1,62 +1,63 @@
-# IR shared-evaluator compiler artifact / IR 共享 evaluator 编译器产物
+# Independent IR shared-evaluator reading / IR 共享 evaluator 独立读取
 
-This branch prepares only a live, stripped compiler artifact from
-`--codegen=ir --ir-lower=eval` on top of
-[`cursor/ir-evaluator-review-6d81` (PR #44)](https://github.com/gaoyu06/native-obfuscator/pull/44).
-It contains no packing and no reader, recovery, or scoring pass.
+This branch independently reconstructs the four JNI integer methods in the
+stripped `published.so`, then scores the reconstruction against the published
+jar and run record.  It implements neither packing nor a new backend.
 
-本分支基于
-[`cursor/ir-evaluator-review-6d81`（PR #44）](https://github.com/gaoyu06/native-obfuscator/pull/44)，
-仅准备由 `--codegen=ir --ir-lower=eval` 生成的活跃、全剥离编译器产物；不含 packing，
-也不含 reader、recovery 或评分工作。
+本分支先从全剥离的 `published.so` 独立还原四个 JNI 整数方法，再用已发布 jar 与运行记录
+评分。不实现 packing，也不实现新后端。
 
 ## (a) Change scope / 改动范围
 
-- Publish `published.so`, `published.jar`, `run.md`, and `liveness.md` under
-  `docs/eval/ir-eval-lower/`.
-- Keep `mix(II)I` on the shared evaluator with serialized method data and an
-  `evaluate_i32` trampoline.
-- Build the ordinary generated JNI/C++ project as GCC Release and run
-  `strip --strip-all`.
-- Do not change compiler code, pack the artifact, or write a recovery report.
+- Add `recovery.md` with the evaluator format, per-method formulas/control
+  flow, confidence, and binary evidence.
+- Add `scores.md` with N=1, per-method full/partial/none scores, and the live
+  evaluator validity finding.
+- Recover `add`, `sumTo`, `subMul`, and both branches of `mix`; all four score
+  **full**.
+- Change documentation only; do not alter compiler/runtime code or artifacts.
 
-- 在 `docs/eval/ir-eval-lower/` 下发布 `published.so`、`published.jar`、
-  `run.md` 与 `liveness.md`。
-- 保证 `mix(II)I` 以序列化 method data 与 `evaluate_i32` trampoline 的形式留在
-  shared evaluator 上。
-- 用 GCC Release 构建普通生成的 JNI/C++ 工程，并执行 `strip --strip-all`。
-- 不修改编译器、不打包产物，也不撰写 recovery 报告。
+- 新增 `recovery.md`，记录 evaluator 格式、逐方法公式/控制流、置信度及二进制证据。
+- 新增 `scores.md`，记录 N=1、逐方法 full/partial/none 评分及 live evaluator
+  有效性结论。
+- 完整还原 `add`、`sumTo`、`subMul` 及 `mix` 的两层分支；四项均为 **full**。
+- 仅修改文档，不改编译器/运行时代码及产物。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线
 
-**No.** This is a controlled evaluation subject, not a production release.
+**No.** This is an evaluation report, not a production compiler change.
 
-**否。** 这是受控评估样本，不是生产发布版本。
+**否。** 这是评估报告，不是生产编译器改动。
 
 ## (c) Is review required? / 是否需要 review
 
-**Yes.** A later independent reader must first confirm the published bytes pass
-the documented stdout and liveness gates before drawing recovery conclusions.
+**Yes. Recovery-first ordering is confirmed.**  `recovery.md` was written,
+committed, and pushed as commit `8bab3fb` before `published.jar` or `run.md`
+was opened.  No prohibited source/oracle material was viewed before that
+commit.
 
-**是。** 后续独立 reader 必须先确认已发布字节通过文档中的 stdout 与存活性门槛，再得出
-任何 recovery 结论。
+**是，并确认 recovery-first 顺序。** `recovery.md` 已先以提交 `8bab3fb` 写入、
+提交并推送，之后才打开 `published.jar` 或 `run.md`；该提交前未查看任何禁止的
+source/oracle 材料。
 
 ## (d) Review preconditions and evidence / Review 前置条件与证据
 
-1. **PASS:** Java-oracle and native-jar stdout are byte-identical (`cmp` exit
-   0).
-2. **PASS:** six `mix` cases produced six distinct, nonzero outputs.
-3. **PASS:** the stripped dynamic symbol table retains native `mix` and
-   `evaluate_i32`; disassembly shows a single evaluator trampoline call.
-4. **PASS:** the 497-byte blob decodes to live IADD/ISUB/IMUL, branch, and
-   return opcodes; evaluator disassembly retains the matching handlers.
-5. Treat this branch only as compiler-artifact preparation; it supplies no
-   reader or recovery result.
+1. **PASS:** only `published.so` was examined for recovery, with `nm`,
+   `readelf`, `objdump`, and `strings`.
+2. **PASS:** all four JNI entries are evaluator trampolines with distinct blobs;
+   the shared evaluator contains the matching live opcode handlers.
+3. **PASS:** scores are `add=full`, `sumTo=full`, `subMul=full`, and
+   `mix=full`; the published cases match each formula/control-flow result.
+4. **PASS:** the subject is live (trampoline + executed blob), not DCE.
+5. Review the exact IR decoding and Java `int` overflow/signed-comparison
+   statements in `recovery.md`; no GitHub PR is created by this task.
 
-1. **通过：** Java oracle 与 native jar 的 stdout 逐字节一致（`cmp` 退出码 0）。
-2. **通过：** 六组 `mix` 输入得到六个不同且非零的输出。
-3. **通过：** 全剥离动态符号表仍含 native `mix` 与 `evaluate_i32`；反汇编显示 `mix`
-   仅通过一个 evaluator trampoline 调用执行。
-4. **通过：** 497 字节 blob 可解码出活跃 IADD/ISUB/IMUL、分支与返回 opcode；
-   evaluator 反汇编保留对应 handler。
-5. 本分支只能视为编译器产物准备，不提供 reader 或 recovery 结论。
+1. **通过：** recovery 阶段仅用 `nm`、`readelf`、`objdump` 与 `strings`
+   检查 `published.so`。
+2. **通过：** 四个 JNI 入口均为带独立 blob 的 evaluator trampoline；共享 evaluator
+   保留对应活跃 opcode handler。
+3. **通过：** 评分为 `add=full`、`sumTo=full`、`subMul=full`、`mix=full`；
+   已发布样例均与还原公式/控制流一致。
+4. **通过：** 样本是活跃的 trampoline + 执行中 blob，而非 DCE。
+5. 请重点 review `recovery.md` 的 IR 解码以及 Java `int` 溢出/有符号比较说明；
+   本任务不创建 GitHub PR。
