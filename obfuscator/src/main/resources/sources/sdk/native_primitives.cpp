@@ -1,0 +1,255 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ */
+#include "native_primitives.hpp"
+#include "c_api.h"
+#include "third_party/sha-2/sha-256.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <new>
+
+namespace {
+
+constexpr uint32_t SDK_ABI_VERSION = 1;
+constexpr uint64_t SHA256_SIZE = 32;
+const uint8_t EMPTY_INPUT = 0;
+
+bool valid_bytes(no_sdk_bytes_v1 bytes) {
+    return bytes.size == 0 || bytes.data != nullptr;
+}
+
+bool representable_size(uint64_t size) {
+    return size <= static_cast<uint64_t>(std::numeric_limits<std::size_t>::max());
+}
+
+void throw_new(JNIEnv *env, const char *class_name, const char *message) {
+    jclass exception_class = env->FindClass(class_name);
+    if (exception_class == nullptr) {
+        return;
+    }
+    env->ThrowNew(exception_class, message);
+    env->DeleteLocalRef(exception_class);
+}
+
+struct byte_array_copy {
+    std::unique_ptr<uint8_t[]> data;
+    std::size_t size = 0;
+};
+
+bool copy_byte_array(JNIEnv *env, jbyteArray input, const char *argument_name,
+                     byte_array_copy &output) {
+    if (input == nullptr) {
+        throw_new(env, "java/lang/NullPointerException", argument_name);
+        return false;
+    }
+
+    const jsize length = env->GetArrayLength(input);
+    if (env->ExceptionCheck()) {
+        return false;
+    }
+
+    output.size = static_cast<std::size_t>(length);
+    if (length == 0) {
+        return true;
+    }
+
+    output.data.reset(new (std::nothrow) uint8_t[output.size]);
+    if (!output.data) {
+        throw_new(env, "java/lang/OutOfMemoryError",
+                  "Unable to copy native primitive input");
+        return false;
+    }
+
+    env->GetByteArrayRegion(
+            input,
+            0,
+            length,
+            reinterpret_cast<jbyte *>(output.data.get()));
+    return !env->ExceptionCheck();
+}
+
+no_sdk_bytes_v1 as_bytes(const byte_array_copy &input) {
+    return {
+            input.size == 0 ? nullptr : input.data.get(),
+            static_cast<uint64_t>(input.size)
+    };
+}
+
+void throw_status(JNIEnv *env, no_sdk_status_v1 status) {
+    if (status == NO_SDK_NULL_V1 || status == NO_SDK_INVALID_ARGUMENT_V1) {
+        throw_new(env, "java/lang/IllegalArgumentException",
+                  "Invalid native primitive arguments");
+        return;
+    }
+    if (status == NO_SDK_SIZE_OVERFLOW_V1) {
+        throw_new(env, "java/lang/IllegalArgumentException",
+                  "Native primitive input is too large");
+        return;
+    }
+    throw_new(env, "java/lang/InternalError", "Native primitive operation failed");
+}
+
+jint JNICALL jni_abi_version(JNIEnv *, jclass) {
+    return static_cast<jint>(no_sdk_abi_version_v1());
+}
+
+jbyteArray JNICALL jni_sha256(JNIEnv *env, jclass, jbyteArray input) {
+    byte_array_copy copied_input;
+    if (!copy_byte_array(env, input, "input", copied_input)) {
+        return nullptr;
+    }
+
+    uint8_t digest[SHA256_SIZE];
+    no_sdk_mut_bytes_v1 output = {digest, SHA256_SIZE};
+    const no_sdk_status_v1 status =
+            no_sdk_sha256_v1(as_bytes(copied_input), output);
+    if (status != NO_SDK_OK_V1) {
+        throw_status(env, status);
+        return nullptr;
+    }
+
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(SHA256_SIZE));
+    if (result == nullptr || env->ExceptionCheck()) {
+        return nullptr;
+    }
+    env->SetByteArrayRegion(
+            result,
+            0,
+            static_cast<jsize>(SHA256_SIZE),
+            reinterpret_cast<const jbyte *>(digest));
+    if (env->ExceptionCheck()) {
+        env->DeleteLocalRef(result);
+        return nullptr;
+    }
+    return result;
+}
+
+jboolean JNICALL jni_constant_time_equals(
+        JNIEnv *env, jclass, jbyteArray left, jbyteArray right) {
+    if (left == nullptr) {
+        throw_new(env, "java/lang/NullPointerException", "left");
+        return JNI_FALSE;
+    }
+    if (right == nullptr) {
+        throw_new(env, "java/lang/NullPointerException", "right");
+        return JNI_FALSE;
+    }
+
+    const jsize left_length = env->GetArrayLength(left);
+    if (env->ExceptionCheck()) {
+        return JNI_FALSE;
+    }
+    const jsize right_length = env->GetArrayLength(right);
+    if (env->ExceptionCheck()) {
+        return JNI_FALSE;
+    }
+    if (left_length != right_length) {
+        return JNI_FALSE;
+    }
+
+    byte_array_copy copied_left;
+    byte_array_copy copied_right;
+    if (!copy_byte_array(env, left, "left", copied_left) ||
+        !copy_byte_array(env, right, "right", copied_right)) {
+        return JNI_FALSE;
+    }
+
+    uint8_t equal = 0;
+    const no_sdk_status_v1 status = no_sdk_equal_constant_time_v1(
+            as_bytes(copied_left), as_bytes(copied_right), &equal);
+    if (status != NO_SDK_OK_V1) {
+        throw_status(env, status);
+        return JNI_FALSE;
+    }
+    return equal == 0 ? JNI_FALSE : JNI_TRUE;
+}
+
+}
+
+extern "C" uint32_t no_sdk_abi_version_v1(void) {
+    return SDK_ABI_VERSION;
+}
+
+extern "C" no_sdk_status_v1 no_sdk_sha256_v1(
+        no_sdk_bytes_v1 input,
+        no_sdk_mut_bytes_v1 output_32) {
+    if (!valid_bytes(input) || output_32.data == nullptr) {
+        return NO_SDK_NULL_V1;
+    }
+    if (output_32.capacity < SHA256_SIZE) {
+        return NO_SDK_BUFFER_TOO_SMALL_V1;
+    }
+    if (!representable_size(input.size)) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
+
+    const uint8_t *data = input.size == 0 ? &EMPTY_INPUT : input.data;
+    calc_sha_256(
+            output_32.data,
+            data,
+            static_cast<std::size_t>(input.size));
+    return NO_SDK_OK_V1;
+}
+
+extern "C" no_sdk_status_v1 no_sdk_equal_constant_time_v1(
+        no_sdk_bytes_v1 left,
+        no_sdk_bytes_v1 right,
+        uint8_t *equal) {
+    if (!valid_bytes(left) || !valid_bytes(right) || equal == nullptr) {
+        return NO_SDK_NULL_V1;
+    }
+    if (!representable_size(left.size) || !representable_size(right.size)) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
+
+    *equal = 0;
+    if (left.size != right.size) {
+        return NO_SDK_OK_V1;
+    }
+
+    volatile uint8_t different = 0;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(left.size); ++i) {
+        different = static_cast<uint8_t>(different | (left.data[i] ^ right.data[i]));
+    }
+    *equal = different == 0 ? 1 : 0;
+    return NO_SDK_OK_V1;
+}
+
+namespace native_obfuscator::sdk {
+
+bool register_natives(JNIEnv *env) {
+    jclass primitives_class =
+            env->FindClass("by/radioegor146/sdk/NativePrimitives");
+    if (primitives_class == nullptr || env->ExceptionCheck()) {
+        return false;
+    }
+
+    JNINativeMethod methods[] = {
+            {
+                    const_cast<char *>("nativeAbiVersion"),
+                    const_cast<char *>("()I"),
+                    reinterpret_cast<void *>(&jni_abi_version)
+            },
+            {
+                    const_cast<char *>("nativeSha256"),
+                    const_cast<char *>("([B)[B"),
+                    reinterpret_cast<void *>(&jni_sha256)
+            },
+            {
+                    const_cast<char *>("nativeConstantTimeEquals"),
+                    const_cast<char *>("([B[B)Z"),
+                    reinterpret_cast<void *>(&jni_constant_time_equals)
+            }
+    };
+    const jint result = env->RegisterNatives(
+            primitives_class,
+            methods,
+            static_cast<jint>(sizeof(methods) / sizeof(methods[0])));
+    env->DeleteLocalRef(primitives_class);
+    return result == JNI_OK && !env->ExceptionCheck();
+}
+
+}
