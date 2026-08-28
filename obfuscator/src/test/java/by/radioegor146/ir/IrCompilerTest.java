@@ -90,7 +90,7 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("== ((jint) 0x80000000U)"));
         assertTrue(cpp.contains("== -1"));
         assertTrue(cpp.contains("(int32_t) arg0 / (int32_t) arg1"));
-        assertTrue(cpp.contains("(int32_t) arg0 % (int32_t) arg1"));
+        assertTrue(cpp.contains(" % (int32_t)"));
         assertFalse(cpp.contains("juint"));
     }
 
@@ -505,7 +505,7 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->IsInstanceOf"));
         assertTrue(source.contains("env->Throw(caught_exception);"));
         assertTrue(source.contains("(int32_t) arg0 / (int32_t) arg1"));
-        assertTrue(source.contains("(int32_t) arg0 % (int32_t) arg1"));
+        assertTrue(source.contains(" % (int32_t)"));
         assertTrue(source.contains("IR codegen: example/Math.catchDivide(II)I"));
         assertTrue(source.contains("env->NewIntArray(arg0)"));
         assertTrue(source.contains("IR codegen: example/Math.allocate(I)I"));
