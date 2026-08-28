@@ -28,7 +28,7 @@ public final class IrMethodCompiler {
 
     public void processMethod(MethodContext context) {
         IrMethod method = frontend.build(context.clazz.name, context.method);
-        String body = emitter.emitBody(method);
+        String body = emitter.emitBody(method, context);
 
         MethodShellEmitter.Shell shell = shellEmitter.beginIr(context);
         context.output.append(body);

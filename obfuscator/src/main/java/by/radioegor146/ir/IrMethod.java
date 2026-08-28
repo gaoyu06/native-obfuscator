@@ -124,6 +124,32 @@ public final class IrMethod {
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
         }
+        if (instruction instanceof IrNodes.GetField) {
+            IrNodes.GetField field = (IrNodes.GetField) instruction;
+            return field.getResult() + ":" + field.getResult().getType() + " = getfield "
+                    + field.getOwner() + "." + field.getName() + ":" + field.getDescriptor()
+                    + " " + field.getReceiver();
+        }
+        if (instruction instanceof IrNodes.PutField) {
+            IrNodes.PutField field = (IrNodes.PutField) instruction;
+            return "putfield " + field.getOwner() + "." + field.getName() + ":"
+                    + field.getDescriptor() + " " + field.getReceiver() + ", "
+                    + field.getValue();
+        }
+        if (instruction instanceof IrNodes.Invoke) {
+            IrNodes.Invoke invoke = (IrNodes.Invoke) instruction;
+            String operands = invoke.getArguments().stream()
+                    .map(Object::toString)
+                    .collect(Collectors.joining(", "));
+            if (invoke.getReceiver() != null) {
+                operands = invoke.getReceiver()
+                        + (operands.isEmpty() ? "" : ", " + operands);
+            }
+            return invoke.getResult() + ":" + invoke.getResult().getType() + " = "
+                    + invoke.getKind().getMnemonic() + " " + invoke.getOwner() + "."
+                    + invoke.getName() + invoke.getDescriptor()
+                    + (operands.isEmpty() ? "" : " " + operands);
+        }
         throw new IllegalStateException("Unknown IR instruction " + instruction.getClass());
     }
 

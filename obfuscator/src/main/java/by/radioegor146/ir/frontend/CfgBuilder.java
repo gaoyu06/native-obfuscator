@@ -5,6 +5,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
@@ -26,13 +27,17 @@ public final class CfgBuilder {
         Map<LabelNode, Integer> labelPositions = new IdentityHashMap<>();
 
         int originalIndex = 0;
+        int sourceLine = -1;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null;
              node = node.getNext(), originalIndex++) {
             if (node instanceof LabelNode) {
                 labelPositions.put((LabelNode) node, instructions.size());
             }
+            if (node instanceof LineNumberNode) {
+                sourceLine = ((LineNumberNode) node).line;
+            }
             if (node.getOpcode() >= 0) {
-                instructions.add(new Instruction(instructions.size(), originalIndex, node));
+                instructions.add(new Instruction(instructions.size(), originalIndex, sourceLine, node));
             }
         }
 
@@ -183,11 +188,13 @@ public final class CfgBuilder {
     public static final class Instruction {
         private final int position;
         private final int originalIndex;
+        private final int sourceLine;
         private final AbstractInsnNode node;
 
-        private Instruction(int position, int originalIndex, AbstractInsnNode node) {
+        private Instruction(int position, int originalIndex, int sourceLine, AbstractInsnNode node) {
             this.position = position;
             this.originalIndex = originalIndex;
+            this.sourceLine = sourceLine;
             this.node = node;
         }
 
@@ -197,6 +204,10 @@ public final class CfgBuilder {
 
         public int getOriginalIndex() {
             return originalIndex;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
         }
 
         public AbstractInsnNode getNode() {

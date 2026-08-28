@@ -50,6 +50,65 @@ public final class CppAst {
         }
     }
 
+    public static final class NullLiteral implements Expression {
+        @Override
+        public String render() {
+            return "nullptr";
+        }
+    }
+
+    public static final class ArrayAccess implements Expression {
+        private final String array;
+        private final int index;
+
+        public ArrayAccess(String array, int index) {
+            this.array = identifier(array);
+            if (index < 0) {
+                throw new IllegalArgumentException("Negative C++ array index");
+            }
+            this.index = index;
+        }
+
+        @Override
+        public String render() {
+            return array + "[" + index + "]";
+        }
+    }
+
+    public static final class StringPoolPointer implements Expression {
+        private final long offset;
+
+        public StringPoolPointer(long offset) {
+            if (offset < 0) {
+                throw new IllegalArgumentException("Negative string-pool offset");
+            }
+            this.offset = offset;
+        }
+
+        @Override
+        public String render() {
+            return "((char *)(string_pool + " + offset + "LL))";
+        }
+    }
+
+    public static final class Unary implements Expression {
+        private final String operator;
+        private final Expression operand;
+
+        public Unary(String operator, Expression operand) {
+            if (!"!".equals(operator)) {
+                throw new IllegalArgumentException("Unsupported C++ unary operator: " + operator);
+            }
+            this.operator = operator;
+            this.operand = Objects.requireNonNull(operand, "operand");
+        }
+
+        @Override
+        public String render() {
+            return "(" + operator + operand.render() + ")";
+        }
+    }
+
     public static final class Binary implements Expression {
         private final Expression left;
         private final String operator;
@@ -82,6 +141,41 @@ public final class CppAst {
         }
     }
 
+    public static final class Call implements Expression {
+        private final String function;
+        private final List<Expression> arguments;
+
+        public Call(String function, List<Expression> arguments) {
+            this.function = qualifiedIdentifier(function);
+            this.arguments = immutableExpressions(arguments);
+        }
+
+        @Override
+        public String render() {
+            return function + "(" + renderArguments(arguments) + ")";
+        }
+    }
+
+    public static final class MemberCall implements Expression {
+        private final Expression receiver;
+        private final String access;
+        private final String method;
+        private final List<Expression> arguments;
+
+        public MemberCall(Expression receiver, boolean pointerAccess, String method,
+                          List<Expression> arguments) {
+            this.receiver = Objects.requireNonNull(receiver, "receiver");
+            this.access = pointerAccess ? "->" : ".";
+            this.method = identifier(method);
+            this.arguments = immutableExpressions(arguments);
+        }
+
+        @Override
+        public String render() {
+            return receiver.render() + access + method + "(" + renderArguments(arguments) + ")";
+        }
+    }
+
     public static final class Declaration implements Statement {
         private final String type;
         private final String name;
@@ -105,10 +199,10 @@ public final class CppAst {
     }
 
     public static final class Assignment implements Statement {
-        private final Variable target;
+        private final Expression target;
         private final Expression value;
 
-        public Assignment(Variable target, Expression value) {
+        public Assignment(Expression target, Expression value) {
             this.target = Objects.requireNonNull(target, "target");
             this.value = Objects.requireNonNull(value, "value");
         }
@@ -116,6 +210,19 @@ public final class CppAst {
         @Override
         public void write(Printer printer) {
             printer.line(target.render() + " = " + value.render() + ";");
+        }
+    }
+
+    public static final class ExpressionStatement implements Statement {
+        private final Expression expression;
+
+        public ExpressionStatement(Expression expression) {
+            this.expression = Objects.requireNonNull(expression, "expression");
+        }
+
+        @Override
+        public void write(Printer printer) {
+            printer.line(expression.render() + ";");
         }
     }
 
@@ -183,7 +290,7 @@ public final class CppAst {
         public If(Expression condition, Block trueBlock, Block falseBlock) {
             this.condition = Objects.requireNonNull(condition, "condition");
             this.trueBlock = Objects.requireNonNull(trueBlock, "trueBlock");
-            this.falseBlock = Objects.requireNonNull(falseBlock, "falseBlock");
+            this.falseBlock = falseBlock;
         }
 
         @Override
@@ -192,11 +299,15 @@ public final class CppAst {
             printer.indent++;
             printer.write(trueBlock.statements);
             printer.indent--;
-            printer.line("} else {");
-            printer.indent++;
-            printer.write(falseBlock.statements);
-            printer.indent--;
-            printer.line("}");
+            if (falseBlock == null) {
+                printer.line("}");
+            } else {
+                printer.line("} else {");
+                printer.indent++;
+                printer.write(falseBlock.statements);
+                printer.indent--;
+                printer.line("}");
+            }
         }
     }
 
@@ -227,13 +338,42 @@ public final class CppAst {
         return value;
     }
 
+    private static String qualifiedIdentifier(String value) {
+        Objects.requireNonNull(value, "qualifiedIdentifier");
+        if (!value.matches("[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*")) {
+            throw new IllegalArgumentException("Invalid qualified C++ identifier: " + value);
+        }
+        return value;
+    }
+
     private static String allowedOperator(String value) {
         if ("+".equals(value) || "-".equals(value) || "*".equals(value)
                 || "==".equals(value) || "!=".equals(value) || "<".equals(value)
-                || ">=".equals(value) || ">".equals(value) || "<=".equals(value)) {
+                || ">=".equals(value) || ">".equals(value) || "<=".equals(value)
+                || "||".equals(value)) {
             return value;
         }
         throw new IllegalArgumentException("Unsupported C++ operator: " + value);
+    }
+
+    private static List<Expression> immutableExpressions(List<Expression> expressions) {
+        Objects.requireNonNull(expressions, "expressions");
+        List<Expression> copy = new ArrayList<>();
+        for (Expression expression : expressions) {
+            copy.add(Objects.requireNonNull(expression, "expression"));
+        }
+        return Collections.unmodifiableList(copy);
+    }
+
+    private static String renderArguments(List<Expression> arguments) {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < arguments.size(); i++) {
+            if (i > 0) {
+                result.append(", ");
+            }
+            result.append(arguments.get(i).render());
+        }
+        return result.toString();
     }
 
     private static final class Printer {

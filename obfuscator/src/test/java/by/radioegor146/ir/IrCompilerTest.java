@@ -5,15 +5,25 @@ import by.radioegor146.NativeObfuscator;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -98,6 +108,128 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersIntFieldsAndSimpleInvokes() {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode owner = owner();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+
+        MethodContext increment = new MethodContext(obfuscator, incrementFieldMethod(),
+                0, owner, 0);
+        compiler.processMethod(increment);
+        String fieldCpp = increment.output.toString();
+        assertTrue(fieldCpp.contains("env->GetFieldID"));
+        assertTrue(fieldCpp.contains("env->GetIntField"));
+        assertTrue(fieldCpp.contains("env->SetIntField"));
+
+        MethodContext staticInvoke = new MethodContext(obfuscator, staticInvokeMethod(),
+                1, owner, 0);
+        compiler.processMethod(staticInvoke);
+        assertTrue(staticInvoke.output.toString().contains("env->CallStaticIntMethod"));
+
+        MethodContext virtualInvoke = new MethodContext(obfuscator, virtualInvokeMethod(),
+                2, owner, 0);
+        compiler.processMethod(virtualInvoke);
+        assertTrue(virtualInvoke.output.toString().contains("env->CallIntMethod"));
+    }
+
+    @Test
+    public void rejectsIntStoreIntoInstanceReceiverLocal() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, 0,
+                "badStore", "()V", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+        assertTrue(error.getMessage().contains("Local 0 is ref"));
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
+    public void generatedCppPassesGppSyntaxCheckWhenToolchainAvailable() throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        Assumptions.assumeTrue(gpp != null, "g++ is not available");
+        Assumptions.assumeTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are not available");
+        Assumptions.assumeTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are not available");
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode owner = owner();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+        MethodNode[] methods = {
+                addMethod(), sumToMethod(), incrementFieldMethod(),
+                staticInvokeMethod(), virtualInvokeMethod()
+        };
+        StringBuilder generatedFunctions = new StringBuilder();
+        for (int i = 0; i < methods.length; i++) {
+            MethodContext context = new MethodContext(obfuscator, methods[i], i, owner, 0);
+            compiler.processMethod(context);
+            generatedFunctions.append(context.output);
+        }
+
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "#include <mutex>\n"
+                + "#include <unordered_set>\n"
+                + "namespace native_jvm {\n"
+                + "namespace utils {\n"
+                + "void throw_re(JNIEnv *, const char *, const char *, int);\n"
+                + "jclass find_class_wo_static(JNIEnv *, jobject, jstring);\n"
+                + "jclass get_class_from_object(JNIEnv *, jobject);\n"
+                + "jobject get_classloader_from_class(JNIEnv *, jclass);\n"
+                + "}\n"
+                + "namespace classes { namespace smoke {\n"
+                + "char *string_pool;\n"
+                + "jstring cstrings[" + Math.max(1, obfuscator.getCachedStrings().size())
+                + "];\n"
+                + "std::mutex cclasses_mtx["
+                + Math.max(1, obfuscator.getCachedClasses().size()) + "];\n"
+                + "jclass cclasses[" + Math.max(1, obfuscator.getCachedClasses().size())
+                + "];\n"
+                + "jmethodID cmethods[" + Math.max(1, obfuscator.getCachedMethods().size())
+                + "];\n"
+                + "jfieldID cfields[" + Math.max(1, obfuscator.getCachedFields().size())
+                + "];\n"
+                + generatedFunctions
+                + "} }\n"
+                + "}\n";
+        assertTrue(source.contains("IR codegen: example/Math.add(II)I"));
+        assertTrue(source.contains("IR codegen: example/Math.sumTo(I)I"));
+        assertTrue(source.contains("env->GetIntField"));
+        assertTrue(source.contains("env->CallStaticIntMethod"));
+        assertTrue(source.contains("env->CallIntMethod"));
+
+        Path directory = Files.createTempDirectory("ir-compile-smoke");
+        Path sourceFile = directory.resolve("ir-smoke.cpp");
+        Path compilerOutput = directory.resolve("gpp-output.txt");
+        Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
+        Process process = new ProcessBuilder(gpp.toString(), "-std=c++17", "-fsyntax-only",
+                "-I" + jniInclude, "-I" + platformInclude, sourceFile.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(compilerOutput.toFile())
+                .start();
+        int exitCode = process.waitFor();
+        String output = new String(Files.readAllBytes(compilerOutput), StandardCharsets.UTF_8);
+        assertEquals(0, exitCode, "g++ failed:\n" + output + "\nSource:\n" + source);
+    }
+
+    @Test
     public void rejectsUnsupportedInstructionsBeforeEmission() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "unsupported", "(Ljava/lang/Object;)I", null, null);
@@ -109,6 +241,55 @@ public class IrCompilerTest {
 
         assertThrows(UnsupportedIrConstructException.class,
                 () -> frontend.build("example/Math", method));
+    }
+
+    private ClassNode owner() {
+        ClassNode owner = new ClassNode(Opcodes.ASM9);
+        owner.name = "example/Math";
+        owner.access = Opcodes.ACC_PUBLIC;
+        return owner;
+    }
+
+    private MethodNode incrementFieldMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, 0,
+                "increment", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "value", "I"));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "value", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode staticInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "twice", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/Math", "add", "(II)I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode virtualInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "length", "(Ljava/lang/String;)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
     }
 
     private MethodNode sumToMethod() {
@@ -137,6 +318,34 @@ public class IrCompilerTest {
         method.maxLocals = 3;
         method.maxStack = 2;
         return method;
+    }
+
+    private Path executableOnPath(String name) {
+        String path = System.getenv("PATH");
+        if (path == null) {
+            return null;
+        }
+        for (String entry : path.split(File.pathSeparator)) {
+            Path candidate = Paths.get(entry).resolve(name);
+            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private String jniPlatformDirectory() {
+        String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        if (os.contains("linux")) {
+            return "linux";
+        }
+        if (os.contains("mac") || os.contains("darwin")) {
+            return "darwin";
+        }
+        if (os.contains("win")) {
+            return "win32";
+        }
+        return os;
     }
 
     private MethodNode addMethod() {

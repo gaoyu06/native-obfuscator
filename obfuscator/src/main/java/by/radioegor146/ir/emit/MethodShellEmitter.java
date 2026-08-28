@@ -44,7 +44,7 @@ public final class MethodShellEmitter {
 
     public void finishIr(MethodContext context, Shell shell) {
         if (!context.catches.isEmpty()) {
-            throw new IllegalStateException("IR phase one cannot emit exception dispatch");
+            throw new IllegalStateException("IR phase two cannot emit exception dispatch");
         }
         finish(context, shell, false);
     }

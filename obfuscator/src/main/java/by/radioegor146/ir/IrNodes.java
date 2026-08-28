@@ -1,12 +1,13 @@
 package by.radioegor146.ir;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Phase-one node set. The nested classes keep the deliberately small initial
+ * Phase-two node set. The nested classes keep the deliberately small current
  * opcode surface visible in one place.
  */
 public final class IrNodes {
@@ -36,6 +37,208 @@ public final class IrNodes {
         @Override
         public int getBytecodeOffset() {
             return bytecodeOffset;
+        }
+    }
+
+    public static final class GetField implements IrInstruction {
+        private final IrValue result;
+        private final String owner;
+        private final String name;
+        private final String descriptor;
+        private final IrValue receiver;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public GetField(IrValue result, String owner, String name, String descriptor,
+                        IrValue receiver, int bytecodeOffset, int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.name = Objects.requireNonNull(name, "name");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.receiver = requireReference(receiver, "receiver");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getOwner() {
+            return owner;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public IrValue getReceiver() {
+            return receiver;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class PutField implements IrInstruction {
+        private final String owner;
+        private final String name;
+        private final String descriptor;
+        private final IrValue receiver;
+        private final IrValue value;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public PutField(String owner, String name, String descriptor, IrValue receiver,
+                        IrValue value, int bytecodeOffset, int sourceLine) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.name = Objects.requireNonNull(name, "name");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.receiver = requireReference(receiver, "receiver");
+            this.value = requireI32(value, "value");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        public String getOwner() {
+            return owner;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public IrValue getReceiver() {
+            return receiver;
+        }
+
+        public IrValue getValue() {
+            return value;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class Invoke implements IrInstruction {
+        public enum Kind {
+            STATIC("invokestatic"),
+            VIRTUAL("invokevirtual");
+
+            private final String mnemonic;
+
+            Kind(String mnemonic) {
+                this.mnemonic = mnemonic;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Kind kind;
+        private final String owner;
+        private final String name;
+        private final String descriptor;
+        private final IrValue receiver;
+        private final List<IrValue> arguments;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public Invoke(IrValue result, Kind kind, String owner, String name, String descriptor,
+                      IrValue receiver, List<IrValue> arguments, int bytecodeOffset,
+                      int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.kind = Objects.requireNonNull(kind, "kind");
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.name = Objects.requireNonNull(name, "name");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            if (kind == Kind.STATIC) {
+                if (receiver != null) {
+                    throw new IllegalArgumentException("Static invoke cannot have a receiver");
+                }
+                this.receiver = null;
+            } else {
+                this.receiver = requireReference(receiver, "receiver");
+            }
+            List<IrValue> checkedArguments = new ArrayList<>();
+            for (IrValue argument : Objects.requireNonNull(arguments, "arguments")) {
+                IrValue checked = Objects.requireNonNull(argument, "argument");
+                if (checked.getType() != IrType.I32
+                        && checked.getType() != IrType.REFERENCE) {
+                    throw new IllegalArgumentException(
+                            "Invoke arguments must be i32 or reference values");
+                }
+                checkedArguments.add(checked);
+            }
+            this.arguments = Collections.unmodifiableList(checkedArguments);
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Kind getKind() {
+            return kind;
+        }
+
+        public String getOwner() {
+            return owner;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public IrValue getReceiver() {
+            return receiver;
+        }
+
+        public List<IrValue> getArguments() {
+            return arguments;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
         }
     }
 
@@ -226,6 +429,15 @@ public final class IrNodes {
         IrValue result = Objects.requireNonNull(value, name);
         if (result.getType() != IrType.I32) {
             throw new IllegalArgumentException(name + " must be i32, got " + result.getType());
+        }
+        return result;
+    }
+
+    private static IrValue requireReference(IrValue value, String name) {
+        IrValue result = Objects.requireNonNull(value, name);
+        if (result.getType() != IrType.REFERENCE) {
+            throw new IllegalArgumentException(name + " must be a reference, got "
+                    + result.getType());
         }
         return result;
     }
