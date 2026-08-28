@@ -43,15 +43,20 @@ the documented stdout and liveness gates before drawing recovery conclusions.
 
 ## (d) Review preconditions and evidence / Review 前置条件与证据
 
-1. Require byte-identical Java-oracle and native-jar stdout (`cmp` exit 0).
-2. Require six `mix` cases, at least four distinct outputs, and a nonzero output.
-3. Confirm the native `mix` symbol is a trampoline and that the evaluator plus
-   serialized blob retain live integer arithmetic and branches.
-4. Treat this branch only as compiler-artifact preparation; it supplies no
+1. **PASS:** Java-oracle and native-jar stdout are byte-identical (`cmp` exit
+   0).
+2. **PASS:** six `mix` cases produced six distinct, nonzero outputs.
+3. **PASS:** the stripped dynamic symbol table retains native `mix` and
+   `evaluate_i32`; disassembly shows a single evaluator trampoline call.
+4. **PASS:** the 497-byte blob decodes to live IADD/ISUB/IMUL, branch, and
+   return opcodes; evaluator disassembly retains the matching handlers.
+5. Treat this branch only as compiler-artifact preparation; it supplies no
    reader or recovery result.
 
-1. Java oracle 与 native jar 的 stdout 必须逐字节一致（`cmp` 退出码 0）。
-2. 必须有六组 `mix` 输入、至少四个不同输出，且输出不能全为零。
-3. 必须确认 native `mix` 符号是 trampoline，且 evaluator 与序列化 blob 中保留活跃整数
-   算术和分支。
-4. 本分支只能视为编译器产物准备，不提供 reader 或 recovery 结论。
+1. **通过：** Java oracle 与 native jar 的 stdout 逐字节一致（`cmp` 退出码 0）。
+2. **通过：** 六组 `mix` 输入得到六个不同且非零的输出。
+3. **通过：** 全剥离动态符号表仍含 native `mix` 与 `evaluate_i32`；反汇编显示 `mix`
+   仅通过一个 evaluator trampoline 调用执行。
+4. **通过：** 497 字节 blob 可解码出活跃 IADD/ISUB/IMUL、分支与返回 opcode；
+   evaluator 反汇编保留对应 handler。
+5. 本分支只能视为编译器产物准备，不提供 reader 或 recovery 结论。

@@ -60,10 +60,53 @@ generated function had an `ir_method_data` array followed by a call to
 `native_jvm::ir_eval::evaluate_i32`, with neither a legacy `cstack` body nor a
 direct-IR straight-line body.
 
-## Candidate output
+## Published output
 
 The stripped library and transformed plain-loader jar were copied byte-for-byte
 to `published.so` and `published.jar`. The committed bytes are validated in
 `liveness.md`; `published.so` is temporarily named `libirkernel.so` only while
 running the jar because `--plain-lib-name irkernel` uses
 `System.loadLibrary("irkernel")`.
+
+```text
+35ae8ebf14bd843d17b19140d788117e3ce6c254a8fe09711af6ddebdf6e2791  published.so
+5bbce6ef87944adea74a2e9490a407d7756ae6582a4b37798f9d3ddbec3b63e6  published.jar
+```
+
+`jar tf published.jar` listed only the manifest, the two fixture classes, and
+`native0/Loader.class`; it contained no `.so`, confirming that no packing was
+performed.
+
+## Runtime comparison
+
+The gate was run against the published files:
+
+```bash
+mkdir -p /tmp/ir-eval-lower-6d81/runlib
+cp docs/eval/ir-eval-lower/published.so \
+  /tmp/ir-eval-lower-6d81/runlib/libirkernel.so
+
+LD_LIBRARY_PATH=/tmp/ir-eval-lower-6d81/runlib \
+  java -jar docs/eval/ir-eval-lower/published.jar
+
+cmp \
+  <(java -jar /tmp/ir-eval-lower-6d81/input/irkernel.jar) \
+  <(LD_LIBRARY_PATH=/tmp/ir-eval-lower-6d81/runlib \
+    java -jar docs/eval/ir-eval-lower/published.jar)
+```
+
+`cmp` exited **0**. Both runs printed:
+
+```text
+add=42
+sumTo=45
+subMul=39
+mix(0,0)=-385
+mix(1,2)=2028
+mix(2,1)=1500
+mix(-3,5)=-593
+mix(7,-4)=3060
+mix(123,456)=409744
+```
+
+The six `mix` cases have six distinct outputs and include nonzero values.
