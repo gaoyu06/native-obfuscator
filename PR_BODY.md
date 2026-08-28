@@ -1,65 +1,66 @@
-# Extend the IR evaluator integer ISA / 扩展 IR evaluator 整数 ISA
+# Re-measure evaluator lowering after `IUSHR` / `IUSHR` 后重新测量 evaluator lowering
 
 ## (a) Change scope / 改动范围
 
-Extend the opt-in shared evaluator with `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
-and `IUSHR`. Java serialization and the C++ evaluator use the same contiguous
-opcodes (`0x13`–`0x18`). Shifts mask their distance with `& 31`; arithmetic
-right shift uses explicit sign extension, and all results retain JVM 32-bit
-bit/wrap semantics.
+Integrate the classified benchmark harness onto the evaluator-`IUSHR` tip and
+measure `IrFriendlyIntKernel.run(I)I` on plain JVM, legacy JNI, direct IR JNI,
+and evaluator IR JNI. Add the complete raw samples, medians, means,
+environment, checksums, and path/fallback evidence in
+`docs/benchmarks/results-ir-eval-ushr.md`.
 
-扩展可选的共享 evaluator，新增 `IAND`、`IOR`、`IXOR`、`ISHL`、`ISHR` 和
-`IUSHR`。Java 序列化与 C++ evaluator 使用完全一致的连续 opcode
-（`0x13`–`0x18`）。移位距离均以 `& 31` 掩码；算术右移显式补符号位；所有结果保持
-JVM 32 位比特与回绕语义。
-
-The exact integer-op shape of `IrFriendlyIntKernel.run(I)I` is included in
-generation and linked native evaluator tests. No benchmark timings are added.
-
-测试覆盖 `IrFriendlyIntKernel.run(I)I` 的完整整数操作形态，包括生成路径与链接后的
-原生 evaluator 执行；本改动不新增任何性能数字。
+在 evaluator-`IUSHR` 最新版本上集成带路径分类的基准框架，并测量
+`IrFriendlyIntKernel.run(I)I` 的 plain JVM、legacy JNI、direct IR JNI 与
+evaluator IR JNI 路径。`docs/benchmarks/results-ir-eval-ushr.md` 记录全部原始
+样本、中位数、均值、环境、校验和以及路径/回退证据。
 
 ## (b) Ship-ready? / 是否可直接上线
 
-**No.** The evaluator remains an opt-in, deliberately narrow lowering with
-per-method legacy fallback for unsupported IR.
+**No.** This is one local diagnostic measurement on one VM. It is not a
+portable performance result, and the evaluator remains opt-in.
 
-**否。** evaluator 仍是可选且有意收窄的 lowering；不支持的 IR 继续逐方法回退到
-legacy。
+**否。** 这是单台 VM 上的一次本地诊断测量，不是可移植的性能结论；evaluator 仍为
+可选路径。
 
 ## (c) Review required? / 是否需要 review
 
-**Yes.** Review the cross-language opcode agreement, JVM shift semantics,
-fallback-before-mutation invariant, and native runtime coverage.
+**Yes.** Review the harness integration, identical native warmup/iteration
+counts, method-path evidence, raw sample transcription, and the absence of a
+target-method `IUSHR` fallback.
 
-**是。** 需要审阅跨语言 opcode 一致性、JVM 移位语义、改写前回退不变量，以及原生
-运行覆盖。
+**是。** 需要审阅基准框架集成、所有原生模式一致的 warmup/iteration 次数、方法路径
+证据、原始样本抄录，以及目标方法不存在 `IUSHR` 回退。
 
 ## (d) Verification / 验证
 
-The focused Gradle suite passed **28/28**, with 0 skipped, failures, or errors:
-`CodegenModeTest` 4/4, `IrCompilerTest` 17/17, and
-`InterpreterStreamStrategyTest` 7/7.
+With `BENCH_WARMUP=5 BENCH_ITERATIONS=10 CC=gcc CXX=g++`, all native
+pipelines passed transpilation, CMake/g++ compilation, JNI execution, and
+checksum comparison. Every JVM/native run returned checksum `2,038,221,507`.
+Recorded medians were:
 
-聚焦 Gradle 测试共 **28/28** 通过，0 skipped、0 failures、0 errors：
-`CodegenModeTest` 4/4、`IrCompilerTest` 17/17、
-`InterpreterStreamStrategyTest` 7/7。
+使用 `BENCH_WARMUP=5 BENCH_ITERATIONS=10 CC=gcc CXX=g++` 时，所有原生路径均
+通过 transpile、CMake/g++ 编译、JNI 执行与校验和比对。全部 JVM/原生运行的校验和
+均为 `2,038,221,507`。实测中位数如下：
 
-- Serializer assertions cover all six new opcode numbers. The g++ evaluator
-  translation-unit syntax smoke and linked runtime harness both executed.
-- The native harness evaluated each new operation, including masked shift
-  distances and negative `ISHR`/`IUSHR` inputs.
-- An equivalent `IrFriendlyIntKernel.run(I)I` stream ran natively for 10 rounds
-  and returned `802611040`, matching the Java reference. Generated-source
-  inspection found its evaluator data/trampoline and no legacy body/fallback.
-- The unsupported-unary test still proves rejection before method/output/cache
-  mutation. CLI tests still prove the `legacy` and `direct` defaults.
+- JVM: `10,017,146.0 ns`
+- legacy JNI: `167,870,311.5 ns`
+- direct IR JNI: `10,021,957.0 ns`
+- evaluator IR JNI: `411,875,537.5 ns`
 
-- 序列化断言覆盖全部六个新增 opcode 数值；g++ evaluator 翻译单元语法检查与链接后的
-  运行 harness 均实际执行。
-- 原生 harness 执行了每个新增操作，包括移位距离掩码以及负数 `ISHR`/`IUSHR`。
-- 等价的 `IrFriendlyIntKernel.run(I)I` 数据流原生执行 10 轮，结果
-  `802611040` 与 Java 参考一致；生成源码确认其使用 evaluator 数据/trampoline，
-  没有 legacy 函数体或回退。
-- 不支持的一元操作测试继续证明方法、输出与缓存改写前即拒绝；CLI 测试继续证明
-  `legacy` 与 `direct` 默认值不变。
+The generated evaluator source contains
+`// IR evaluator data: benchmarks/kernels/IrFriendlyIntKernel.run(I)I`.
+The eval transpile log has no fallback for that target method and no
+`Unsupported evaluator binary operation USHR` record. No speedup or
+portability claim is made.
+
+生成的 evaluator 源码包含
+`// IR evaluator data: benchmarks/kernels/IrFriendlyIntKernel.run(I)I`。
+eval transpile 日志对该目标方法没有回退，也没有
+`Unsupported evaluator binary operation USHR` 记录。本次结果不作加速或可移植性
+声明。
+
+`python3 -m py_compile benchmarks/run.py` passed. The focused
+`CodegenModeTest`, `IrCompilerTest`, and `InterpreterStreamStrategyTest`
+selection passed 28/28 with no failure or skip.
+
+`python3 -m py_compile benchmarks/run.py` 通过。聚焦的 `CodegenModeTest`、
+`IrCompilerTest` 与 `InterpreterStreamStrategyTest` 共 28/28 通过，无失败或跳过。
