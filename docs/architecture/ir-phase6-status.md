@@ -43,6 +43,11 @@ merge, proving that default participates in carrier validation.
 required `java/lang/String` and `java/lang/Object` cases and uses the existing
 class cache for other reference component classes.
 
+Array-typed components use the JVM array descriptor with `JNIEnv::FindClass`;
+ordinary internal names continue through the classloader-based resolver. The
+review branch corrected the original implementation, which incorrectly sent
+array descriptors through the ordinary-name resolver.
+
 The emitter:
 
 - checks `< 0` first and raises `java/lang/NegativeArraySizeException`;
@@ -86,15 +91,16 @@ Result: `BUILD SUCCESSFUL`.
 Recorded directly from Gradle's JUnit XML:
 
 ```text
-IrCompilerTest: tests=26, skipped=0, failures=0, errors=0 (time=0.591 s)
-CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.094 s)
-Total: 28 tests, 0 skipped, 0 failures, 0 errors
+IrCompilerTest: tests=27, skipped=0, failures=0, errors=0 (time=0.472 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.132 s)
+Total: 29 tests, 0 skipped, 0 failures, 0 errors
 ```
 
 The phase-6 tests cover typed switch and object-array IR shape, structured C++
 emission, case/default phi transfers, default-edge carrier validation, negative
 length and allocation failure routing, String/Object component class caching,
-fallback atomicity, and all retained phase-1 through phase-5 cases.
+array-component descriptor resolution, fallback atomicity, and all retained
+phase-1 through phase-5 cases.
 
 ### Real g++ smoke evidence
 
@@ -106,10 +112,11 @@ openjdk version "21.0.10" 2026-01-20
 JNI headers: present
 ```
 
-`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.261 s
-and has no `<skipped>` child in the JUnit XML. Its 22-method translation unit
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` completed in 0.134 s
+and has no `<skipped>` child in the JUnit XML. Its 23-method translation unit
 includes `tableSelect`, `lookupSelect`, `allocateStrings`, and
-`allocateObjects`, and runs:
+`allocateObjects`; it also includes the array-component regression
+`allocateStringRows`. The test runs:
 
 ```text
 g++ -std=c++17 -fsyntax-only \
@@ -120,7 +127,8 @@ The exact generated translation unit retained by that test run was also
 compiled independently with the same C++17 syntax-only command; g++ exited
 zero. Inspection of that file confirms each switch arm, including default,
 contains phi copies followed by `goto`, and both object-array methods call
-`NewObjectArray` with null/pending-exception checks. No `juint` carrier appears.
+`NewObjectArray` with null/pending-exception checks. The nested-array case uses
+`FindClass` with its array descriptor. No `juint` carrier appears.
 
 ## What still falls back per method
 
