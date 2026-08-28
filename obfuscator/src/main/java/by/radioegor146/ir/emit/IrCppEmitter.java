@@ -105,6 +105,12 @@ public final class IrCppEmitter {
             throw new IllegalStateException(
                     "JNI IR instructions require a method emission context");
         }
+        if (instruction instanceof IrNodes.IntDivRem) {
+            return emitIntDivRem(method, block, (IrNodes.IntDivRem) instruction, context);
+        }
+        if (instruction instanceof IrNodes.NewArray) {
+            return emitNewArray(method, block, (IrNodes.NewArray) instruction, context);
+        }
         if (instruction instanceof IrNodes.ArrayLength) {
             return emitArrayLength(method, block, (IrNodes.ArrayLength) instruction, context);
         }
@@ -122,6 +128,14 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.PutField) {
             return emitPutField(method, block, (IrNodes.PutField) instruction, context);
+        }
+        if (instruction instanceof IrNodes.GetStaticField) {
+            return emitGetStaticField(method, block, (IrNodes.GetStaticField) instruction,
+                    context);
+        }
+        if (instruction instanceof IrNodes.PutStaticField) {
+            return emitPutStaticField(method, block, (IrNodes.PutStaticField) instruction,
+                    context);
         }
         if (instruction instanceof IrNodes.Invoke) {
             return emitInvoke(method, block, (IrNodes.Invoke) instruction, context);
@@ -207,6 +221,74 @@ public final class IrCppEmitter {
         }
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(unary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitIntDivRem(IrMethod method, IrBlock block,
+                                                 IrNodes.IntDivRem binary,
+                                                 MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        List<CppAst.Statement> divideByZero = new ArrayList<>();
+        divideByZero.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                Arrays.asList(variable("env"),
+                        pool(context.getStringPool().getOffset(
+                                "java/lang/ArithmeticException")),
+                        pool(context.getStringPool().getOffset(
+                                binary.getOperation() == IrNodes.IntDivRem.Operation.DIVIDE
+                                        ? "IDIV / by 0" : "IREM % by 0")),
+                        new CppAst.IntLiteral(binary.getSourceLine())))));
+        divideByZero.addAll(exceptionalExit(method, block));
+        statements.add(new CppAst.If(new CppAst.Binary(expression(binary.getRight()), "==",
+                new CppAst.IntLiteral(0)), new CppAst.Block(divideByZero), null));
+
+        CppAst.Expression overflow = new CppAst.Binary(
+                new CppAst.Binary(expression(binary.getLeft()), "==",
+                        new CppAst.IntLiteral(Integer.MIN_VALUE)),
+                "&&",
+                new CppAst.Binary(expression(binary.getRight()), "==",
+                        new CppAst.IntLiteral(-1)));
+        CppAst.Assignment overflowResult = new CppAst.Assignment(variable(binary.getResult()),
+                new CppAst.IntLiteral(
+                        binary.getOperation() == IrNodes.IntDivRem.Operation.DIVIDE
+                                ? Integer.MIN_VALUE : 0));
+        CppAst.Expression quotient = new CppAst.Cast("jint", new CppAst.Binary(
+                new CppAst.Cast("int32_t", expression(binary.getLeft())),
+                binary.getOperation().getCppOperator(),
+                new CppAst.Cast("int32_t", expression(binary.getRight()))));
+        CppAst.Assignment ordinaryResult = new CppAst.Assignment(
+                variable(binary.getResult()), quotient);
+        statements.add(new CppAst.If(overflow,
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(overflowResult)),
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(ordinaryResult))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitNewArray(IrMethod method, IrBlock block,
+                                                IrNodes.NewArray array,
+                                                MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        List<CppAst.Statement> negativeLength = new ArrayList<>();
+        negativeLength.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                Arrays.asList(variable("env"),
+                        pool(context.getStringPool().getOffset(
+                                "java/lang/NegativeArraySizeException")),
+                        pool(context.getStringPool().getOffset(
+                                "NEWARRAY Int array size < 0")),
+                        new CppAst.IntLiteral(array.getSourceLine())))));
+        negativeLength.addAll(exceptionalExit(method, block));
+        statements.add(new CppAst.If(new CppAst.Binary(expression(array.getLength()), "<",
+                new CppAst.IntLiteral(0)), new CppAst.Block(negativeLength), null));
+        statements.add(new CppAst.Assignment(variable(array.getResult()),
+                new CppAst.Cast("jobject",
+                        memberCall("env", "NewIntArray", expression(array.getLength())))));
+        CppAst.Expression failed = new CppAst.Binary(
+                new CppAst.Binary(expression(array.getResult()), "==",
+                        new CppAst.NullLiteral()),
+                "||",
+                new CppAst.Binary(memberCall("env", "ExceptionCheck"), "!=",
+                        new CppAst.IntLiteral(0)));
+        statements.add(new CppAst.If(failed,
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        return statements;
     }
 
     private List<CppAst.Statement> emitArrayLength(IrMethod method, IrBlock block,
@@ -302,6 +384,32 @@ public final class IrCppEmitter {
         return statements;
     }
 
+    private List<CppAst.Statement> emitGetStaticField(IrMethod method, IrBlock block,
+                                                      IrNodes.GetStaticField field,
+                                                      MethodContext context) {
+        CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
+                field.getDescriptor(), true, context, block);
+        List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
+        statements.add(new CppAst.Assignment(variable(field.getResult()),
+                memberCall("env", "GetStaticIntField", array("cclasses", slots.classId),
+                        array("cfields", slots.memberId))));
+        statements.add(exceptionCheck(method, block));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitPutStaticField(IrMethod method, IrBlock block,
+                                                      IrNodes.PutStaticField field,
+                                                      MethodContext context) {
+        CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
+                field.getDescriptor(), true, context, block);
+        List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
+        statements.add(new CppAst.ExpressionStatement(memberCall("env",
+                "SetStaticIntField", array("cclasses", slots.classId),
+                array("cfields", slots.memberId), expression(field.getValue()))));
+        statements.add(exceptionCheck(method, block));
+        return statements;
+    }
+
     private List<CppAst.Statement> emitInvoke(IrMethod method, IrBlock block,
                                               IrNodes.Invoke invoke,
                                               MethodContext context) {
@@ -337,9 +445,16 @@ public final class IrCppEmitter {
     private CacheSlots cacheField(IrMethod method, String owner, String name,
                                   String descriptor, MethodContext context,
                                   IrBlock block) {
-        CachedFieldInfo info = new CachedFieldInfo(owner, name, descriptor, false);
+        return cacheField(method, owner, name, descriptor, false, context, block);
+    }
+
+    private CacheSlots cacheField(IrMethod method, String owner, String name,
+                                  String descriptor, boolean staticField,
+                                  MethodContext context, IrBlock block) {
+        CachedFieldInfo info = new CachedFieldInfo(owner, name, descriptor, staticField);
         return cacheMember(method, owner, context.getCachedFields().getId(info), "cfields",
-                "GetFieldID", context.getStringPool().getOffset(name),
+                staticField ? "GetStaticFieldID" : "GetFieldID",
+                context.getStringPool().getOffset(name),
                 context.getStringPool().getOffset(descriptor), context, block);
     }
 

@@ -169,6 +169,100 @@ public final class IrNodes {
         }
     }
 
+    public static final class GetStaticField implements IrInstruction {
+        private final IrValue result;
+        private final String owner;
+        private final String name;
+        private final String descriptor;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public GetStaticField(IrValue result, String owner, String name, String descriptor,
+                              int bytecodeOffset, int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.name = Objects.requireNonNull(name, "name");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getOwner() {
+            return owner;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class PutStaticField implements IrInstruction {
+        private final String owner;
+        private final String name;
+        private final String descriptor;
+        private final IrValue value;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public PutStaticField(String owner, String name, String descriptor, IrValue value,
+                              int bytecodeOffset, int sourceLine) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.name = Objects.requireNonNull(name, "name");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.value = requireI32(value, "value");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        public String getOwner() {
+            return owner;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public IrValue getValue() {
+            return value;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
     public static final class Invoke implements IrInstruction {
         public enum Kind {
             STATIC("invokestatic"),
@@ -311,6 +405,38 @@ public final class IrNodes {
         @Override
         public int getBytecodeOffset() {
             return bytecodeOffset;
+        }
+    }
+
+    public static final class NewArray implements IrInstruction {
+        private final IrValue result;
+        private final IrValue length;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public NewArray(IrValue result, IrValue length, int bytecodeOffset, int sourceLine) {
+            this.result = requireReference(result, "result");
+            this.length = requireI32(length, "length");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getLength() {
+            return length;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
         }
     }
 
@@ -524,6 +650,72 @@ public final class IrNodes {
         @Override
         public int getBytecodeOffset() {
             return bytecodeOffset;
+        }
+    }
+
+    public static final class IntDivRem implements IrInstruction {
+        public enum Operation {
+            DIVIDE("idiv", "/"),
+            REMAINDER("irem", "%");
+
+            private final String mnemonic;
+            private final String cppOperator;
+
+            Operation(String mnemonic, String cppOperator) {
+                this.mnemonic = mnemonic;
+                this.cppOperator = cppOperator;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+
+            public String getCppOperator() {
+                return cppOperator;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue left;
+        private final IrValue right;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public IntDivRem(IrValue result, Operation operation, IrValue left, IrValue right,
+                         int bytecodeOffset, int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.left = requireI32(left, "left");
+            this.right = requireI32(right, "right");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
         }
     }
 

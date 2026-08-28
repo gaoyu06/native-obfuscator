@@ -138,10 +138,21 @@ public final class IrMethod {
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
         }
+        if (instruction instanceof IrNodes.IntDivRem) {
+            IrNodes.IntDivRem binary = (IrNodes.IntDivRem) instruction;
+            return binary.getResult() + ":" + binary.getResult().getType() + " = "
+                    + binary.getOperation().getMnemonic() + " " + binary.getLeft()
+                    + ", " + binary.getRight();
+        }
         if (instruction instanceof IrNodes.Unary) {
             IrNodes.Unary unary = (IrNodes.Unary) instruction;
             return unary.getResult() + ":" + unary.getResult().getType() + " = "
                     + unary.getOperation().getMnemonic() + " " + unary.getOperand();
+        }
+        if (instruction instanceof IrNodes.NewArray) {
+            IrNodes.NewArray array = (IrNodes.NewArray) instruction;
+            return array.getResult() + ":" + array.getResult().getType()
+                    + " = newarray int " + array.getLength();
         }
         if (instruction instanceof IrNodes.ArrayLength) {
             IrNodes.ArrayLength length = (IrNodes.ArrayLength) instruction;
@@ -174,6 +185,17 @@ public final class IrMethod {
             return "putfield " + field.getOwner() + "." + field.getName() + ":"
                     + field.getDescriptor() + " " + field.getReceiver() + ", "
                     + field.getValue();
+        }
+        if (instruction instanceof IrNodes.GetStaticField) {
+            IrNodes.GetStaticField field = (IrNodes.GetStaticField) instruction;
+            return field.getResult() + ":" + field.getResult().getType() + " = getstatic "
+                    + field.getOwner() + "." + field.getName() + ":"
+                    + field.getDescriptor();
+        }
+        if (instruction instanceof IrNodes.PutStaticField) {
+            IrNodes.PutStaticField field = (IrNodes.PutStaticField) instruction;
+            return "putstatic " + field.getOwner() + "." + field.getName() + ":"
+                    + field.getDescriptor() + " " + field.getValue();
         }
         if (instruction instanceof IrNodes.Invoke) {
             IrNodes.Invoke invoke = (IrNodes.Invoke) instruction;

@@ -73,6 +73,54 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersIntDivideAndRemainderWithoutCppUndefinedBehavior() {
+        MethodNode method = divRemMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        String pretty = ir.toString();
+        assertTrue(pretty.contains(" = idiv "));
+        assertTrue(pretty.contains(" = irem "));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("utils::throw_re"));
+        assertTrue(cpp.contains("== 0"));
+        assertTrue(cpp.contains("== ((jint) 0x80000000U)"));
+        assertTrue(cpp.contains("== -1"));
+        assertTrue(cpp.contains("(int32_t) arg0 / (int32_t) arg1"));
+        assertTrue(cpp.contains("(int32_t) arg0 % (int32_t) arg1"));
+        assertFalse(cpp.contains("juint"));
+    }
+
+    @Test
+    public void divideByZeroInsideTryUsesSharedCatchDispatch() {
+        MethodNode method = divideCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock divideBlock = ir.getBlocks().stream()
+                .filter(block -> block.getInstructions().stream()
+                        .anyMatch(instruction -> instruction instanceof IrNodes.IntDivRem))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/ArithmeticException",
+                divideBlock.getExceptionEdges().get(0).getCatchType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        int zeroGuard = cpp.indexOf("== 0");
+        int dispatch = cpp.indexOf("goto IR_CATCH_0;", zeroGuard);
+        int ordinaryDivide = cpp.indexOf("(int32_t) arg0 / (int32_t) arg1", zeroGuard);
+        int swallowedReturn = cpp.indexOf("return 0;", zeroGuard);
+        assertTrue(zeroGuard >= 0 && dispatch > zeroGuard && ordinaryDivide > dispatch);
+        assertTrue(swallowedReturn < 0 || swallowedReturn > ordinaryDivide);
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
+    }
+
+    @Test
     public void integratedEmitterUsesExistingJniSignatureStyleWithoutLegacySlots() {
         MethodNode method = addMethod();
         ClassNode owner = new ClassNode(Opcodes.ASM9);
@@ -143,6 +191,44 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersStaticIntFieldsThroughExistingCacheShape() {
+        MethodNode method = staticIntFieldMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.toString().contains("putstatic example/Math.counter:I"));
+        assertTrue(ir.toString().contains("getstatic example/Math.counter:I"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->GetStaticFieldID"));
+        assertTrue(cpp.contains("env->SetStaticIntField"));
+        assertTrue(cpp.contains("env->GetStaticIntField"));
+        assertEquals(1, obfuscator.getCachedFields().size());
+    }
+
+    @Test
+    public void rejectsNonIntStaticFieldBeforeMutation() {
+        MethodNode method = unsupportedStaticReferenceFieldMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.GETSTATIC, error.getOpcode());
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
     public void emitsBitwiseAndShiftOps() {
         String cpp = emitter.emitBody(frontend.build("example/Math", bitwiseShiftMethod()));
 
@@ -181,6 +267,27 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->GetIntArrayRegion"));
         assertTrue(cpp.contains("env->SetIntArrayRegion"));
         assertTrue(cpp.contains("utils::throw_re"));
+    }
+
+    @Test
+    public void lowersIntNewArrayAndRoutesFailuresToCatchDispatch() {
+        MethodNode method = newIntArrayCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.toString().contains("newarray int"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        int allocation = cpp.indexOf("env->NewIntArray(arg0)");
+        int nullCheck = cpp.indexOf("== nullptr", allocation);
+        int exceptionCheck = cpp.indexOf("env->ExceptionCheck()", allocation);
+        int dispatch = cpp.indexOf("goto IR_CATCH_0;", allocation);
+        assertTrue(allocation >= 0 && nullCheck > allocation && exceptionCheck > allocation
+                && dispatch > exceptionCheck);
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->Throw(caught_exception);"));
     }
 
     @Test
@@ -347,7 +454,9 @@ public class IrCompilerTest {
                 unaryMethod(), intArrayMethod(), stringLengthMethod(),
                 arrayBoundsCatchMethod("catchBounds", "java/lang/ArrayIndexOutOfBoundsException"),
                 arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
-                explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null)
+                explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null),
+                divRemMethod(), divideCatchMethod(), newIntArrayCatchMethod(),
+                staticIntFieldMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -395,6 +504,15 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->ExceptionClear();"));
         assertTrue(source.contains("env->IsInstanceOf"));
         assertTrue(source.contains("env->Throw(caught_exception);"));
+        assertTrue(source.contains("(int32_t) arg0 / (int32_t) arg1"));
+        assertTrue(source.contains("(int32_t) arg0 % (int32_t) arg1"));
+        assertTrue(source.contains("IR codegen: example/Math.catchDivide(II)I"));
+        assertTrue(source.contains("env->NewIntArray(arg0)"));
+        assertTrue(source.contains("IR codegen: example/Math.allocate(I)I"));
+        assertTrue(source.contains("env->GetStaticFieldID"));
+        assertTrue(source.contains("env->GetStaticIntField"));
+        assertTrue(source.contains("env->SetStaticIntField"));
+        assertFalse(source.contains("juint"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
         Path sourceFile = directory.resolve("ir-smoke.cpp");
@@ -445,6 +563,33 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode staticIntFieldMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "setAndGetCounter", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", "counter", "I"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "counter", "I"));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unsupportedStaticReferenceFieldMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedStaticReference", "()I", null, null);
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "object", "Ljava/lang/Object;"));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
         return method;
     }
 
@@ -542,6 +687,31 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode newIntArrayCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "allocate", "(I)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_INT));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -12));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NegativeArraySizeException"));
+        method.maxLocals = 3;
+        method.maxStack = 1;
+        return method;
+    }
+
     private MethodNode arrayBoundsCatchMethod(String name, String catchType) {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 name, "([I)I", null, null);
@@ -625,6 +795,47 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IMUL));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode divRemMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "divRem", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IREM));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode divideCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchDivide", "(II)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -11));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ArithmeticException"));
+        method.maxLocals = 3;
         method.maxStack = 2;
         return method;
     }

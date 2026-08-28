@@ -206,6 +206,7 @@ public final class AsmToIr {
                                 || opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                                 || opcode == Opcodes.DUP
                                 || isIntBinaryOp(opcode)
+                                || isIntDivRem(opcode)
                                 || isIntUnaryOp(opcode)
                                 || opcode == Opcodes.IALOAD
                                 || opcode == Opcodes.IASTORE
@@ -215,7 +216,9 @@ public final class AsmToIr {
                                 || opcode == Opcodes.RETURN;
                         break;
                     case AbstractInsnNode.INT_INSN:
-                        supported = opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH;
+                        supported = opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH
+                                || opcode == Opcodes.NEWARRAY
+                                && ((IntInsnNode) node).operand == Opcodes.T_INT;
                         break;
                     case AbstractInsnNode.VAR_INSN:
                         supported = opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
@@ -233,7 +236,9 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.FIELD_INSN:
                         FieldInsnNode field = (FieldInsnNode) node;
-                        supported = (opcode == Opcodes.GETFIELD || opcode == Opcodes.PUTFIELD)
+                        supported = (opcode == Opcodes.GETFIELD || opcode == Opcodes.PUTFIELD
+                                || opcode == Opcodes.GETSTATIC
+                                || opcode == Opcodes.PUTSTATIC)
                                 && "I".equals(field.desc);
                         break;
                     case AbstractInsnNode.METHOD_INSN:
@@ -361,13 +366,16 @@ public final class AsmToIr {
                 throw unsupported("Operand stack underflow", instruction);
             }
             stack.add(stack.get(stack.size() - 1));
-        } else if (isIntBinaryOp(opcode)) {
+        } else if (isIntBinaryOp(opcode) || isIntDivRem(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
         } else if (isIntUnaryOp(opcode)) {
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
+        } else if (opcode == Opcodes.NEWARRAY) {
+            popType(stack, IrType.I32, instruction);
+            stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.ARRAYLENGTH) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
@@ -390,6 +398,10 @@ public final class AsmToIr {
         } else if (opcode == Opcodes.PUTFIELD) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
+        } else if (opcode == Opcodes.GETSTATIC) {
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.PUTSTATIC) {
+            popType(stack, IrType.I32, instruction);
         } else if (node instanceof MethodInsnNode) {
             MethodInsnNode invoke = (MethodInsnNode) node;
             Type[] arguments = Type.getArgumentTypes(invoke.desc);
@@ -574,7 +586,8 @@ public final class AsmToIr {
             if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
                 pushConstant(irMethod, block, state, opcode - Opcodes.ICONST_0,
                         instruction.getOriginalIndex());
-            } else if (node instanceof IntInsnNode) {
+            } else if (node instanceof IntInsnNode
+                    && (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH)) {
                 pushConstant(irMethod, block, state, ((IntInsnNode) node).operand,
                         instruction.getOriginalIndex());
             } else if (node instanceof LdcInsnNode) {
@@ -624,11 +637,28 @@ public final class AsmToIr {
                 IrValue left = pop(state, IrType.I32, instruction);
                 state.stack.add(blockBinary(irMethod, block, binaryOperation(opcode), left,
                         right, instruction.getOriginalIndex()));
+            } else if (isIntDivRem(opcode)) {
+                IrValue right = pop(state, IrType.I32, instruction);
+                IrValue left = pop(state, IrType.I32, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                block.addInstruction(new IrNodes.IntDivRem(result,
+                        opcode == Opcodes.IDIV
+                                ? IrNodes.IntDivRem.Operation.DIVIDE
+                                : IrNodes.IntDivRem.Operation.REMAINDER,
+                        left, right, instruction.getOriginalIndex(),
+                        instruction.getSourceLine()));
+                state.stack.add(result);
             } else if (isIntUnaryOp(opcode)) {
                 IrValue operand = pop(state, IrType.I32, instruction);
                 IrValue result = irMethod.newInstructionValue(IrType.I32);
                 block.addInstruction(new IrNodes.Unary(result, unaryOperation(opcode), operand,
                         instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.NEWARRAY) {
+                IrValue length = pop(state, IrType.I32, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                block.addInstruction(new IrNodes.NewArray(result, length,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
             } else if (opcode == Opcodes.ARRAYLENGTH) {
                 IrValue array = pop(state, IrType.REFERENCE, instruction);
@@ -658,12 +688,25 @@ public final class AsmToIr {
                             field.desc, receiver, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
                     state.stack.add(result);
-                } else {
+                } else if (opcode == Opcodes.PUTFIELD) {
                     IrValue value = pop(state, IrType.I32, instruction);
                     IrValue receiver = pop(state, IrType.REFERENCE, instruction);
                     block.addInstruction(new IrNodes.PutField(field.owner, field.name,
                             field.desc, receiver, value, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
+                } else if (opcode == Opcodes.GETSTATIC) {
+                    IrValue result = irMethod.newInstructionValue(IrType.I32);
+                    block.addInstruction(new IrNodes.GetStaticField(result, field.owner,
+                            field.name, field.desc, instruction.getOriginalIndex(),
+                            instruction.getSourceLine()));
+                    state.stack.add(result);
+                } else if (opcode == Opcodes.PUTSTATIC) {
+                    IrValue value = pop(state, IrType.I32, instruction);
+                    block.addInstruction(new IrNodes.PutStaticField(field.owner, field.name,
+                            field.desc, value, instruction.getOriginalIndex(),
+                            instruction.getSourceLine()));
+                } else {
+                    throw unsupported("Unsupported field instruction", instruction);
                 }
             } else if (node instanceof MethodInsnNode) {
                 MethodInsnNode invoke = (MethodInsnNode) node;
@@ -883,6 +926,10 @@ public final class AsmToIr {
                 || opcode == Opcodes.IAND || opcode == Opcodes.IOR || opcode == Opcodes.IXOR
                 || opcode == Opcodes.ISHL || opcode == Opcodes.ISHR
                 || opcode == Opcodes.IUSHR;
+    }
+
+    private static boolean isIntDivRem(int opcode) {
+        return opcode == Opcodes.IDIV || opcode == Opcodes.IREM;
     }
 
     private static boolean isIntUnaryOp(int opcode) {
