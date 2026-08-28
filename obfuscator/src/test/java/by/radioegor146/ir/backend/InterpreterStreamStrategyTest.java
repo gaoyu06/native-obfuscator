@@ -94,6 +94,17 @@ public class InterpreterStreamStrategyTest {
     }
 
     @Test
+    public void serializesSubtractAndMultiplyOpcodes() {
+        byte[] data = lower(subtractMultiplyMethod()).getMethodData();
+
+        assertNotNull(data);
+        assertEquals(25, data.length);
+        assertEquals(0x11, data[8] & 0xff);
+        assertEquals(0x12, data[15] & 0xff);
+        assertEquals(0x22, data[22] & 0xff);
+    }
+
+    @Test
     public void evalSelectionCopiesRuntimeAndKeepsFixtureMethodsOnEvaluatorPath()
             throws Exception {
         Path directory = Files.createTempDirectory("ir-eval-generation");
@@ -155,18 +166,24 @@ public class InterpreterStreamStrategyTest {
 
         byte[] addData = lower(addMethod()).getMethodData();
         byte[] sumData = lower(sumToMethod()).getMethodData();
+        byte[] subtractMultiplyData = lower(subtractMultiplyMethod()).getMethodData();
         Path harness = directory.resolve("harness.cpp");
         String source = "#include \"native_jvm_eval.hpp\"\n"
                 + "#include <iostream>\n"
                 + "static const std::uint8_t add_data[] = { " + bytes(addData) + " };\n"
                 + "static const std::uint8_t sum_data[] = { " + bytes(sumData) + " };\n"
+                + "static const std::uint8_t sub_mul_data[] = { "
+                + bytes(subtractMultiplyData) + " };\n"
                 + "int main() {\n"
                 + "    const jint add_args[] = { 3, 4 };\n"
                 + "    const jint sum_args[] = { 6 };\n"
+                + "    const jint sub_mul_args[] = { 8, 3 };\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(add_data, "
                 + "sizeof(add_data), add_args, 2) << '\\n';\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(sum_data, "
                 + "sizeof(sum_data), sum_args, 1) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(sub_mul_data, "
+                + "sizeof(sub_mul_data), sub_mul_args, 2) << '\\n';\n"
                 + "}\n";
         Files.write(harness, source.getBytes(StandardCharsets.UTF_8));
 
@@ -182,7 +199,7 @@ public class InterpreterStreamStrategyTest {
         Path runtimeOutput = directory.resolve("runtime-output.txt");
         int runtimeExit = run(runtimeOutput, executable.toString());
         assertEquals(0, runtimeExit, "evaluator harness failed:\n" + read(runtimeOutput));
-        assertEquals("7\n15\n", normalizeNewlines(read(runtimeOutput)));
+        assertEquals("7\n15\n15\n", normalizeNewlines(read(runtimeOutput)));
     }
 
     private LoweredMethod lower(MethodNode method) {
@@ -219,6 +236,21 @@ public class InterpreterStreamStrategyTest {
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new InsnNode(Opcodes.IAND));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode subtractMultiplyMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "subtractMultiply", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISUB));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IMUL));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
