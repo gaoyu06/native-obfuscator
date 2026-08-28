@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 
 public class ClassicTest implements Executable {
 
+    private static final String USE_ANNOTATIONS_MARKER = ".use-annotations";
+
     private final Path testData;
     private Path temp;
     private final String testName;
@@ -68,7 +70,9 @@ public class ClassicTest implements Executable {
             Files.find(testData, 10, (path, attr) -> true)
                     .filter(p -> Files.isRegularFile(p) && p.toString().endsWith(".j"))
                     .forEach(krakatauFiles::add);
-            Files.find(testData, 10, (path, attr) -> attr.isDirectory() || (!path.toString().endsWith(".java") && !path.toString().endsWith(".j")))
+            Files.find(testData, 10, (path, attr) -> attr.isDirectory() ||
+                            (!path.toString().endsWith(".java") && !path.toString().endsWith(".j") &&
+                                    !path.getFileName().toString().equals(USE_ANNOTATIONS_MARKER)))
                     .filter(Files::isRegularFile)
                     .forEach(resourceFiles::add);
 
@@ -161,6 +165,7 @@ public class ClassicTest implements Executable {
             System.out.println(String.format("Took %dms", idealRunResult.execTime));
             idealRunResult.check("Ideal run");
 
+            boolean useAnnotations = Files.exists(testData.resolve(USE_ANNOTATIONS_MARKER));
             for (Platform platform : Platform.values()) {
                 System.out.println(String.format("Processing platform %s...", platform.toString()));
 
@@ -171,7 +176,7 @@ public class ClassicTest implements Executable {
                 Path resultJar = tempOutput.resolve("test.jar");
 
                 new NativeObfuscator().process(idealJar, tempOutput, Collections.emptyList(), Collections.emptyList(),
-                        null, "native_library", null, platform, true, true);
+                        null, "native_library", null, platform, useAnnotations, true);
 
                 System.out.println("Compiling CPP code...");
                 if (System.getProperty("os.name").toLowerCase().contains("windows")) {
