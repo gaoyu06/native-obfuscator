@@ -109,7 +109,9 @@ def cxx_compiler():
     ]
     for candidate in candidates:
         if candidate:
-            return str(Path(candidate).resolve())
+            resolved = shutil.which(candidate)
+            if resolved:
+                return str(Path(resolved).resolve())
     return "c++"
 
 
@@ -121,7 +123,9 @@ def c_compiler():
     ]
     for candidate in candidates:
         if candidate:
-            return str(Path(candidate).resolve())
+            resolved = shutil.which(candidate)
+            if resolved:
+                return str(Path(resolved).resolve())
     return "cc"
 
 
