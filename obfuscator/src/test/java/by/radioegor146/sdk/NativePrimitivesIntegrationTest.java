@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -33,13 +36,13 @@ public class NativePrimitivesIntegrationTest {
         Files.createDirectories(outputDirectory);
         createInputJar(inputJar);
 
-        new NativeObfuscator().process(
+        String nativeDirectory = new NativeObfuscator().process(
                 inputJar,
                 outputDirectory,
                 Collections.emptyList(),
                 null,
                 Collections.emptyList(),
-                "native_library",
+                null,
                 null,
                 Platform.STD_JAVA,
                 false,
@@ -73,10 +76,8 @@ public class NativePrimitivesIntegrationTest {
                     .findFirst()
                     .orElseThrow(() -> new AssertionError("Native library was not produced"));
         }
-        Files.copy(
-                library,
-                outputDirectory.resolve(library.getFileName()),
-                StandardCopyOption.REPLACE_EXISTING);
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        injectLibrary(outputJar, nativeDirectory, library);
 
         Path javaExecutable = java.nio.file.Paths.get(
                 System.getProperty("java.home"),
@@ -90,13 +91,59 @@ public class NativePrimitivesIntegrationTest {
                 Arrays.asList(
                         javaExecutable.toString(),
                         "-Xcheck:jni",
-                        "-Djava.library.path=" + outputDirectory,
                         "-jar",
-                        outputDirectory.resolve(inputJar.getFileName()).toString()));
+                        outputJar.toString()));
         result.check("SDK Java verification");
+        System.out.print(result.stdout);
         assertTrue(
                 result.stdout.contains("NativePrimitivesVerifier: PASS"),
                 "Verifier output was: " + result.stdout);
+    }
+
+    private static void injectLibrary(
+            Path outputJar, String nativeDirectory, Path library) throws IOException {
+        URI jarUri = URI.create("jar:" + outputJar.toUri());
+        try (FileSystem jar = FileSystems.newFileSystem(
+                jarUri, Collections.singletonMap("create", "false"))) {
+            Path destination = jar.getPath(nativeDirectory, loaderFileName());
+            Files.createDirectories(destination.getParent());
+            Files.copy(library, destination, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static String loaderFileName() {
+        String architecture = System.getProperty("os.arch").toLowerCase();
+        String platformName;
+        switch (architecture) {
+            case "x86_64":
+            case "amd64":
+                platformName = "x64";
+                break;
+            case "aarch64":
+                platformName = "arm64";
+                break;
+            case "arm":
+                platformName = "arm32";
+                break;
+            case "x86":
+                platformName = "x86";
+                break;
+            default:
+                platformName = "raw" + architecture;
+                break;
+        }
+
+        String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("nix") || osName.contains("nux") || osName.contains("aix")) {
+            return platformName + "-linux.so";
+        }
+        if (osName.contains("win")) {
+            return platformName + "-windows.dll";
+        }
+        if (osName.contains("mac")) {
+            return platformName + "-macos.dylib";
+        }
+        return platformName + "-raw" + osName;
     }
 
     private static void createInputJar(Path jarPath) throws IOException {
