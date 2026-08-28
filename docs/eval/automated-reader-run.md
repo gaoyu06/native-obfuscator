@@ -65,3 +65,130 @@ This text was fixed after reading generated direct-side `DemoKernel_0.cpp` and
 > `Integer.rotateLeft(acc, 13)`. It returns the final 32-bit `acc`.
 
 Scores remain deferred until the Java-source comparison.
+
+## Source comparison and scores
+
+After both recovery texts were fixed, the reader opened
+`obfuscator/test_data/eval/automated-reader/DemoKernel.java`. The fixture confirms
+the recovered `add`, `sumTo`, and `mix` algorithms, including both integer
+constants, both shifts, multiply/XOR/add operations, the rotate distance, and
+the `r < rounds` loop bound.
+
+| Artifact | `add` | `sumTo` | `mix` | Overall |
+|---|---|---|---|---|
+| Interpreter-backend output | full | full | full | **full** |
+| Direct-C++ output | full | full | full | **full** |
+
+These are exact recovery classifications, not invented numeric scores. `mix`
+is full in the interpreter-backend row because that method was visibly emitted
+as direct C++ fallback: the slice cannot interpret its XOR, shift, multiply,
+or invocation instructions. It is therefore not evidence about recovering an
+interpreter-lowered `mix`. The genuinely paired interpreter-vs-direct methods
+in this fixture are `add` and `sumTo`.
+
+For this reader, the interpreter artifact was **harder** to read: recovering
+`add` and `sumTo` required cross-referencing an opcode enum and executor, then
+manually stepping byte arrays and little-endian operands. The direct artifact
+expressed their data flow and branches as method-local statements. That
+subjective effort difference did not produce an accuracy difference in this
+run.
+
+H0 is **not rejected**: both artifact recoveries scored full. N=1 supplies no
+effect estimate, confidence interval, or statistical validity, and the prior
+exposure described above is an additional confound. This run does not satisfy
+a GPT-5.6-class unaided bar as a scientific result and makes no
+"resistance" claim.
+
+## Reproduction
+
+Source revisions:
+
+- interpreter compiler branch:
+  `df83421fc33c8b3a315e325aafcc877b7a72c086`
+- protocol branch:
+  `0a6fc694451f07bd236d9bd4451a01e41ae90cab`
+- executable fixture/whitelist revision:
+  `23f8eb7`
+
+Toolchain: OpenJDK/javac 21.0.10 targeting Java 8, Gradle 9.3.1, CMake
+3.28.3, and GCC/G++ 13.3.0.
+
+Commands used for the final successful generation and execution:
+
+```bash
+./gradlew :obfuscator:shadowJar
+
+EVAL_ROOT=$(mktemp -d "/tmp/automated-reader-eval.XXXXXX")
+mkdir -p "$EVAL_ROOT/classes"
+javac --release 8 -d "$EVAL_ROOT/classes" \
+  obfuscator/test_data/eval/automated-reader/DemoKernel.java \
+  obfuscator/test_data/eval/automated-reader/Runner.java
+jar --create --file "$EVAL_ROOT/input.jar" --main-class Runner \
+  -C "$EVAL_ROOT/classes" .
+
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --backend=cpp --plain-lib-name=native_library \
+  -w obfuscator/test_data/eval/automated-reader/whitelist.txt \
+  "$EVAL_ROOT/input.jar" "$EVAL_ROOT/direct"
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --backend=interpreter --plain-lib-name=native_library \
+  -w obfuscator/test_data/eval/automated-reader/whitelist.txt \
+  "$EVAL_ROOT/input.jar" "$EVAL_ROOT/interpreter"
+
+CC=gcc CXX=g++ cmake -S "$EVAL_ROOT/direct/cpp" \
+  -B "$EVAL_ROOT/direct/cpp/build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$EVAL_ROOT/direct/cpp/build" --config Release
+CC=gcc CXX=g++ cmake -S "$EVAL_ROOT/interpreter/cpp" \
+  -B "$EVAL_ROOT/interpreter/cpp/build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$EVAL_ROOT/interpreter/cpp/build" --config Release
+
+reference=$(java -cp "$EVAL_ROOT/classes" Runner)
+direct=$(java \
+  -Djava.library.path="$EVAL_ROOT/direct/cpp/build/build/lib" \
+  -jar "$EVAL_ROOT/direct/input.jar")
+interpreter=$(java \
+  -Djava.library.path="$EVAL_ROOT/interpreter/cpp/build/build/lib" \
+  -jar "$EVAL_ROOT/interpreter/input.jar")
+test "$reference" = "$direct"
+test "$reference" = "$interpreter"
+```
+
+The equality checks both exited zero and produced:
+
+```text
+reference == direct == interpreter
+add(7,5)=12
+sumTo(0)=0
+sumTo(1)=0
+sumTo(10)=45
+sumTo(100)=4950
+mix(0,0)=-1640531527
+mix(0,1)=389078419
+mix(1,4)=-1363050107
+mix(MIN,3)=-2129079926
+mix(0x12345678,16)=567676480
+```
+
+The final generated sources used by that successful run are committed at:
+
+- `docs/eval/artifacts/direct/DemoKernel_0.cpp`
+- `docs/eval/artifacts/interpreter/DemoKernel_0.cpp`
+- `docs/eval/artifacts/interpreter/native_jvm_interp.cpp`
+- `docs/eval/artifacts/interpreter/native_jvm_interp.hpp`
+
+The two committed `DemoKernel_0.cpp` copies normalize only the generated files'
+missing final newline; their content otherwise matches the executable build
+inputs. The runtime files match byte-for-byte.
+
+## Preflight corrections
+
+An initial whitelist listed methods without the class entry, so the compiler
+reported `Skipping DemoKernel`; those empty outputs were discarded. A later
+preflight linked both libraries but exposed a fixture whitelist problem:
+the compiler synthesized `<clinit>` after class filtering, while the exact
+method whitelist omitted it, yielding a transformed class with an empty
+non-native method. Adding the class and `<clinit>` entries produced the final
+successful artifacts above. Regeneration added only the synthetic empty
+`<clinit>` and registration scaffolding to each previously read translation
+unit; the `add`, `sumTo`, and `mix` regions used for the recovery text did not
+change.
