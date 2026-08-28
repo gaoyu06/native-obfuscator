@@ -6,7 +6,9 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LineNumberNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 
 import java.util.ArrayList;
@@ -74,6 +76,30 @@ public final class CfgBuilder {
                 if (instruction.getPosition() + 1 < instructions.size()) {
                     leaders.add(instruction.getPosition() + 1);
                 }
+            } else if (node instanceof TableSwitchInsnNode) {
+                TableSwitchInsnNode tableSwitch = (TableSwitchInsnNode) node;
+                validateTableSwitch(tableSwitch, instruction);
+                addExecutableLeader(labelPositions, instructions, leaders, tableSwitch.dflt,
+                        "TABLESWITCH default", instruction);
+                for (LabelNode label : tableSwitch.labels) {
+                    addExecutableLeader(labelPositions, instructions, leaders, label,
+                            "TABLESWITCH case", instruction);
+                }
+                if (instruction.getPosition() + 1 < instructions.size()) {
+                    leaders.add(instruction.getPosition() + 1);
+                }
+            } else if (node instanceof LookupSwitchInsnNode) {
+                LookupSwitchInsnNode lookupSwitch = (LookupSwitchInsnNode) node;
+                validateLookupSwitch(lookupSwitch, instruction);
+                addExecutableLeader(labelPositions, instructions, leaders, lookupSwitch.dflt,
+                        "LOOKUPSWITCH default", instruction);
+                for (LabelNode label : lookupSwitch.labels) {
+                    addExecutableLeader(labelPositions, instructions, leaders, label,
+                            "LOOKUPSWITCH case", instruction);
+                }
+                if (instruction.getPosition() + 1 < instructions.size()) {
+                    leaders.add(instruction.getPosition() + 1);
+                }
             } else if ((isTerminator(node.getOpcode()) || mayThrow(node))
                     && instruction.getPosition() + 1 < instructions.size()) {
                 leaders.add(instruction.getPosition() + 1);
@@ -116,6 +142,22 @@ public final class CfgBuilder {
                     }
                     block.addSuccessor(blocks.get(i + 1));
                 }
+            } else if (node instanceof TableSwitchInsnNode) {
+                TableSwitchInsnNode tableSwitch = (TableSwitchInsnNode) node;
+                for (LabelNode label : tableSwitch.labels) {
+                    block.addSuccessor(switchTarget(blockByLabel, label, last,
+                            "TABLESWITCH case"));
+                }
+                block.addSuccessor(switchTarget(blockByLabel, tableSwitch.dflt, last,
+                        "TABLESWITCH default"));
+            } else if (node instanceof LookupSwitchInsnNode) {
+                LookupSwitchInsnNode lookupSwitch = (LookupSwitchInsnNode) node;
+                for (LabelNode label : lookupSwitch.labels) {
+                    block.addSuccessor(switchTarget(blockByLabel, label, last,
+                            "LOOKUPSWITCH case"));
+                }
+                block.addSuccessor(switchTarget(blockByLabel, lookupSwitch.dflt, last,
+                        "LOOKUPSWITCH default"));
             } else if (!isTerminator(node.getOpcode()) && i + 1 < blocks.size()) {
                 block.addSuccessor(blocks.get(i + 1));
             }
@@ -159,18 +201,63 @@ public final class CfgBuilder {
         }
     }
 
+    private static void addExecutableLeader(Map<LabelNode, Integer> labelPositions,
+                                            List<Instruction> instructions,
+                                            Set<Integer> leaders, LabelNode label,
+                                            String description, Instruction instruction) {
+        Integer position = labelPositions.get(label);
+        if (position == null || position >= instructions.size()) {
+            throw unsupported(description + " target has no executable instruction",
+                    instruction);
+        }
+        leaders.add(position);
+    }
+
+    private static Block switchTarget(Map<LabelNode, Block> blockByLabel, LabelNode label,
+                                      Instruction instruction, String description) {
+        Block target = blockByLabel.get(label);
+        if (target == null) {
+            throw unsupported(description + " target is not a basic-block leader", instruction);
+        }
+        return target;
+    }
+
+    private static void validateTableSwitch(TableSwitchInsnNode tableSwitch,
+                                            Instruction instruction) {
+        long expectedLabels = (long) tableSwitch.max - tableSwitch.min + 1L;
+        if (tableSwitch.dflt == null || expectedLabels <= 0L
+                || expectedLabels != tableSwitch.labels.size()) {
+            throw unsupported("Malformed TABLESWITCH", instruction);
+        }
+    }
+
+    private static void validateLookupSwitch(LookupSwitchInsnNode lookupSwitch,
+                                             Instruction instruction) {
+        if (lookupSwitch.dflt == null
+                || lookupSwitch.keys.size() != lookupSwitch.labels.size()) {
+            throw unsupported("Malformed LOOKUPSWITCH", instruction);
+        }
+        Set<Integer> keys = new LinkedHashSet<>();
+        for (Integer key : lookupSwitch.keys) {
+            if (key == null || !keys.add(key)) {
+                throw unsupported("Malformed LOOKUPSWITCH keys", instruction);
+            }
+        }
+    }
+
     private static boolean isReturn(int opcode) {
         return opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN;
     }
 
     private static boolean isTerminator(int opcode) {
-        return isReturn(opcode) || opcode == Opcodes.ATHROW;
+        return isReturn(opcode) || opcode == Opcodes.ATHROW
+                || opcode == Opcodes.TABLESWITCH || opcode == Opcodes.LOOKUPSWITCH;
     }
 
     private static boolean mayThrow(AbstractInsnNode node) {
         int opcode = node.getOpcode();
         return opcode == Opcodes.IDIV || opcode == Opcodes.IREM
-                || opcode == Opcodes.NEWARRAY
+                || opcode == Opcodes.NEWARRAY || opcode == Opcodes.ANEWARRAY
                 || opcode == Opcodes.ARRAYLENGTH || opcode == Opcodes.IALOAD
                 || opcode == Opcodes.IASTORE || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.GETSTATIC
@@ -258,8 +345,10 @@ public final class CfgBuilder {
         }
 
         private void addSuccessor(Block successor) {
-            successors.add(successor);
-            successor.predecessors.add(this);
+            if (!successors.contains(successor)) {
+                successors.add(successor);
+                successor.predecessors.add(this);
+            }
         }
 
         private void addExceptionEdge(ExceptionEdge edge) {

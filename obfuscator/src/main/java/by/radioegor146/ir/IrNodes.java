@@ -3,8 +3,10 @@ package by.radioegor146.ir;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Phase-two node set. The nested classes keep the deliberately small current
@@ -440,6 +442,48 @@ public final class IrNodes {
         }
     }
 
+    public static final class NewObjectArray implements IrInstruction {
+        private final IrValue result;
+        private final IrValue length;
+        private final String componentType;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public NewObjectArray(IrValue result, IrValue length, String componentType,
+                              int bytecodeOffset, int sourceLine) {
+            this.result = requireReference(result, "result");
+            this.length = requireI32(length, "length");
+            this.componentType = Objects.requireNonNull(componentType, "componentType");
+            if (componentType.isEmpty()) {
+                throw new IllegalArgumentException("componentType must not be empty");
+            }
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getLength() {
+            return length;
+        }
+
+        public String getComponentType() {
+            return componentType;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
     public static final class ArrayLength implements IrInstruction {
         private final IrValue result;
         private final IrValue array;
@@ -812,6 +856,68 @@ public final class IrNodes {
         @Override
         public List<IrBlock> getSuccessors() {
             return Arrays.asList(trueTarget, falseTarget);
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class Switch implements IrTerminator {
+        private final IrValue selector;
+        private final List<Integer> keys;
+        private final List<IrBlock> targets;
+        private final IrBlock defaultTarget;
+        private final int bytecodeOffset;
+
+        public Switch(IrValue selector, List<Integer> keys, List<IrBlock> targets,
+                      IrBlock defaultTarget, int bytecodeOffset) {
+            this.selector = requireI32(selector, "selector");
+            Objects.requireNonNull(keys, "keys");
+            Objects.requireNonNull(targets, "targets");
+            if (keys.size() != targets.size()) {
+                throw new IllegalArgumentException(
+                        "Switch keys and targets must have the same size");
+            }
+            List<Integer> checkedKeys = new ArrayList<>();
+            List<IrBlock> checkedTargets = new ArrayList<>();
+            Set<Integer> uniqueKeys = new LinkedHashSet<>();
+            for (int i = 0; i < keys.size(); i++) {
+                Integer key = Objects.requireNonNull(keys.get(i), "key");
+                if (!uniqueKeys.add(key)) {
+                    throw new IllegalArgumentException("Duplicate switch key " + key);
+                }
+                checkedKeys.add(key);
+                checkedTargets.add(Objects.requireNonNull(targets.get(i), "target"));
+            }
+            this.keys = Collections.unmodifiableList(checkedKeys);
+            this.targets = Collections.unmodifiableList(checkedTargets);
+            this.defaultTarget = Objects.requireNonNull(defaultTarget, "defaultTarget");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        public IrValue getSelector() {
+            return selector;
+        }
+
+        public List<Integer> getKeys() {
+            return keys;
+        }
+
+        public List<IrBlock> getTargets() {
+            return targets;
+        }
+
+        public IrBlock getDefaultTarget() {
+            return defaultTarget;
+        }
+
+        @Override
+        public List<IrBlock> getSuccessors() {
+            Set<IrBlock> successors = new LinkedHashSet<>(targets);
+            successors.add(defaultTarget);
+            return Collections.unmodifiableList(new ArrayList<>(successors));
         }
 
         @Override

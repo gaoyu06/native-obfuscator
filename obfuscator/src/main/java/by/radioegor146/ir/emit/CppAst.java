@@ -316,6 +316,57 @@ public final class CppAst {
         }
     }
 
+    public static final class Switch implements Statement {
+        private final Expression selector;
+        private final List<Integer> keys;
+        private final List<Block> caseBlocks;
+        private final Block defaultBlock;
+
+        public Switch(Expression selector, List<Integer> keys, List<Block> caseBlocks,
+                      Block defaultBlock) {
+            this.selector = Objects.requireNonNull(selector, "selector");
+            Objects.requireNonNull(keys, "keys");
+            Objects.requireNonNull(caseBlocks, "caseBlocks");
+            if (keys.size() != caseBlocks.size()) {
+                throw new IllegalArgumentException(
+                        "Switch keys and case blocks must have the same size");
+            }
+            List<Integer> checkedKeys = new ArrayList<>();
+            List<Block> checkedBlocks = new ArrayList<>();
+            for (int i = 0; i < keys.size(); i++) {
+                Integer key = Objects.requireNonNull(keys.get(i), "key");
+                if (checkedKeys.contains(key)) {
+                    throw new IllegalArgumentException("Duplicate switch key " + key);
+                }
+                checkedKeys.add(key);
+                checkedBlocks.add(Objects.requireNonNull(caseBlocks.get(i), "caseBlock"));
+            }
+            this.keys = Collections.unmodifiableList(checkedKeys);
+            this.caseBlocks = Collections.unmodifiableList(checkedBlocks);
+            this.defaultBlock = Objects.requireNonNull(defaultBlock, "defaultBlock");
+        }
+
+        @Override
+        public void write(Printer printer) {
+            printer.line("switch (" + selector.render() + ") {");
+            printer.indent++;
+            for (int i = 0; i < keys.size(); i++) {
+                printer.line("case " + new IntLiteral(keys.get(i)).render() + ": {");
+                printer.indent++;
+                printer.write(caseBlocks.get(i).statements);
+                printer.indent--;
+                printer.line("}");
+            }
+            printer.line("default: {");
+            printer.indent++;
+            printer.write(defaultBlock.statements);
+            printer.indent--;
+            printer.line("}");
+            printer.indent--;
+            printer.line("}");
+        }
+    }
+
     public static final class Comment implements Statement {
         private final String text;
 

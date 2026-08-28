@@ -15,9 +15,13 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.util.ArrayDeque;
@@ -234,6 +238,15 @@ public final class AsmToIr {
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
                                 || isBinaryIntJump(opcode);
                         break;
+                    case AbstractInsnNode.TABLESWITCH_INSN:
+                    case AbstractInsnNode.LOOKUPSWITCH_INSN:
+                        supported = true;
+                        break;
+                    case AbstractInsnNode.TYPE_INSN:
+                        supported = opcode == Opcodes.ANEWARRAY
+                                && ((TypeInsnNode) node).desc != null
+                                && !((TypeInsnNode) node).desc.isEmpty();
+                        break;
                     case AbstractInsnNode.FIELD_INSN:
                         FieldInsnNode field = (FieldInsnNode) node;
                         supported = (opcode == Opcodes.GETFIELD || opcode == Opcodes.PUTFIELD
@@ -376,6 +389,9 @@ public final class AsmToIr {
         } else if (opcode == Opcodes.NEWARRAY) {
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.REFERENCE);
+        } else if (opcode == Opcodes.ANEWARRAY) {
+            popType(stack, IrType.I32, instruction);
+            stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.ARRAYLENGTH) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
@@ -416,6 +432,8 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
         } else if (isBinaryIntJump(opcode)) {
             popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.I32, instruction);
+        } else if (opcode == Opcodes.TABLESWITCH || opcode == Opcodes.LOOKUPSWITCH) {
             popType(stack, IrType.I32, instruction);
         } else if (opcode == Opcodes.IRETURN) {
             popType(stack, IrType.I32, instruction);
@@ -660,6 +678,13 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.NewArray(result, length,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
+            } else if (node instanceof TypeInsnNode && opcode == Opcodes.ANEWARRAY) {
+                IrValue length = pop(state, IrType.I32, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                block.addInstruction(new IrNodes.NewObjectArray(result, length,
+                        ((TypeInsnNode) node).desc, instruction.getOriginalIndex(),
+                        instruction.getSourceLine()));
+                state.stack.add(result);
             } else if (opcode == Opcodes.ARRAYLENGTH) {
                 IrValue array = pop(state, IrType.REFERENCE, instruction);
                 IrValue result = irMethod.newInstructionValue(IrType.I32);
@@ -736,6 +761,9 @@ public final class AsmToIr {
             } else if (node instanceof JumpInsnNode) {
                 lowerJump(instruction, (JumpInsnNode) node, graph, rawBlock, block, state,
                         irBlocks);
+            } else if (node instanceof TableSwitchInsnNode
+                    || node instanceof LookupSwitchInsnNode) {
+                lowerSwitch(instruction, graph, block, state, irBlocks);
             } else if (opcode == Opcodes.IRETURN) {
                 if (shape.returnType != IrType.I32) {
                     throw unsupported("IRETURN does not match the method descriptor", instruction);
@@ -789,6 +817,39 @@ public final class AsmToIr {
         }
         block.setTerminator(new IrNodes.Branch(condition(jump.getOpcode()), left, right,
                 irBlocks.get(target), irBlocks.get(rawBlock.getSuccessors().get(1)),
+                instruction.getOriginalIndex()));
+    }
+
+    private void lowerSwitch(CfgBuilder.Instruction instruction, CfgBuilder.Graph graph,
+                             IrBlock block, ValueState state,
+                             Map<CfgBuilder.Block, IrBlock> irBlocks) {
+        IrValue selector = pop(state, IrType.I32, instruction);
+        List<Integer> keys = new ArrayList<>();
+        List<IrBlock> targets = new ArrayList<>();
+        LabelNode defaultLabel;
+
+        if (instruction.getNode() instanceof TableSwitchInsnNode) {
+            TableSwitchInsnNode tableSwitch = (TableSwitchInsnNode) instruction.getNode();
+            for (int i = 0; i < tableSwitch.labels.size(); i++) {
+                keys.add((int) ((long) tableSwitch.min + i));
+                targets.add(irBlocks.get(graph.getBlock(tableSwitch.labels.get(i))));
+            }
+            defaultLabel = tableSwitch.dflt;
+        } else {
+            LookupSwitchInsnNode lookupSwitch =
+                    (LookupSwitchInsnNode) instruction.getNode();
+            keys.addAll(lookupSwitch.keys);
+            for (LabelNode label : lookupSwitch.labels) {
+                targets.add(irBlocks.get(graph.getBlock(label)));
+            }
+            defaultLabel = lookupSwitch.dflt;
+        }
+
+        IrBlock defaultTarget = irBlocks.get(graph.getBlock(defaultLabel));
+        if (targets.contains(null) || defaultTarget == null) {
+            throw unsupported("Switch target is unreachable or missing", instruction);
+        }
+        block.setTerminator(new IrNodes.Switch(selector, keys, targets, defaultTarget,
                 instruction.getOriginalIndex()));
     }
 

@@ -14,9 +14,12 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
@@ -25,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -291,6 +295,103 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersTableAndLookupSwitchesWithDefaultPhiTransfers() {
+        IrMethod table = frontend.build("example/Math", tableSwitchMethod());
+        IrBlock tableEntry = table.getBlocks().stream()
+                .filter(block -> block.getTerminator() instanceof IrNodes.Switch)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrNodes.Switch tableTerminator = (IrNodes.Switch) tableEntry.getTerminator();
+        assertEquals(3, tableTerminator.getKeys().size());
+        assertEquals(4, tableTerminator.getSuccessors().size());
+        for (IrBlock successor : tableTerminator.getSuccessors()) {
+            IrPhi stackPhi = successor.getPhis().stream()
+                    .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertTrue(stackPhi.getIncoming().containsKey(tableEntry));
+        }
+        String tableCpp = emitter.emitBody(table);
+        assertTrue(tableCpp.contains("switch (arg0) {"));
+        assertTrue(tableCpp.contains("case -1: {"));
+        assertTrue(tableCpp.contains("case 1: {"));
+        assertTrue(tableCpp.contains("default: {"));
+
+        IrMethod lookup = frontend.build("example/Math", lookupSwitchMethod());
+        IrBlock lookupEntry = lookup.getBlocks().stream()
+                .filter(block -> block.getTerminator() instanceof IrNodes.Switch)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrNodes.Switch lookupTerminator = (IrNodes.Switch) lookupEntry.getTerminator();
+        assertEquals(Arrays.asList(-7, 42), lookupTerminator.getKeys());
+        assertEquals(3, lookupTerminator.getSuccessors().size());
+        IrPhi defaultStackPhi = lookupTerminator.getDefaultTarget().getPhis().stream()
+                .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(defaultStackPhi.getIncoming().containsKey(lookupEntry));
+        String lookupCpp = emitter.emitBody(lookup);
+        assertTrue(lookupCpp.contains("case -7: {"));
+        assertTrue(lookupCpp.contains("case 42: {"));
+        assertTrue(lookupCpp.contains("default: {"));
+    }
+
+    @Test
+    public void switchDefaultParticipatesInCarrierValidation() {
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> frontend.build("example/Math", switchDefaultCarrierMismatchMethod()));
+
+        assertTrue(error.getMessage().contains("Mismatched operand-stack types at CFG merge"));
+    }
+
+    @Test
+    public void lowersStringAndObjectAnewarrayWithFailureRouting() {
+        MethodNode stringArray = newObjectArrayCatchMethod();
+        IrMethod ir = frontend.build("example/Math", stringArray);
+        assertTrue(ir.toString().contains("anewarray java/lang/String"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+        MethodContext stringContext = new MethodContext(obfuscator, stringArray, 0, owner(), 0);
+        compiler.processMethod(stringContext);
+        String stringCpp = stringContext.output.toString();
+        int allocation = stringCpp.indexOf("env->NewObjectArray(arg0");
+        int nullCheck = stringCpp.indexOf("== nullptr", allocation);
+        int exceptionCheck = stringCpp.indexOf("env->ExceptionCheck()", allocation);
+        int dispatch = stringCpp.indexOf("goto IR_CATCH_0;", allocation);
+        assertTrue(allocation >= 0 && nullCheck > allocation && exceptionCheck > allocation
+                && dispatch > exceptionCheck);
+        assertTrue(stringCpp.contains("utils::throw_re"));
+
+        MethodNode objectArray = newObjectArrayMethod();
+        MethodContext objectContext = new MethodContext(obfuscator, objectArray, 1, owner(), 0);
+        compiler.processMethod(objectContext);
+        String objectCpp = objectContext.output.toString();
+        assertTrue(objectCpp.contains("env->NewObjectArray(arg0"));
+        assertTrue(objectCpp.contains("env->GetArrayLength"));
+        assertTrue(obfuscator.getCachedClasses().getCache().containsKey("java/lang/String"));
+        assertTrue(obfuscator.getCachedClasses().getCache().containsKey("java/lang/Object"));
+    }
+
+    @Test
+    public void rejectsUnsupportedInstructionAfterAnewarrayBeforeMutation() {
+        MethodNode method = unsupportedAfterObjectArrayMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.POP, error.getOpcode());
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
     public void lowersStringLengthAsDedicatedIntrinsic() {
         IrMethod ir = frontend.build("example/Math", stringLengthMethod());
         assertTrue(ir.toString().contains("stringlength"));
@@ -456,7 +557,8 @@ public class IrCompilerTest {
                 arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
                 explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null),
                 divRemMethod(), divideCatchMethod(), newIntArrayCatchMethod(),
-                staticIntFieldMethod()
+                staticIntFieldMethod(), tableSwitchMethod(), lookupSwitchMethod(),
+                newObjectArrayCatchMethod(), newObjectArrayMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -512,6 +614,13 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->GetStaticFieldID"));
         assertTrue(source.contains("env->GetStaticIntField"));
         assertTrue(source.contains("env->SetStaticIntField"));
+        assertTrue(source.contains("IR codegen: example/Math.tableSelect(II)I"));
+        assertTrue(source.contains("IR codegen: example/Math.lookupSelect(II)I"));
+        assertTrue(source.contains("switch (arg0) {"));
+        assertTrue(source.contains("default: {"));
+        assertTrue(source.contains("IR codegen: example/Math.allocateStrings(I)I"));
+        assertTrue(source.contains("IR codegen: example/Math.allocateObjects(I)I"));
+        assertTrue(source.contains("env->NewObjectArray(arg0"));
         assertFalse(source.contains("juint"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
@@ -708,6 +817,123 @@ public class IrCompilerTest {
         method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
                 "java/lang/NegativeArraySizeException"));
         method.maxLocals = 3;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode tableSwitchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "tableSelect", "(II)I", null, null);
+        LabelNode minusOne = new LabelNode();
+        LabelNode zero = new LabelNode();
+        LabelNode one = new LabelNode();
+        LabelNode fallback = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TableSwitchInsnNode(-1, 1, fallback,
+                minusOne, zero, one));
+        method.instructions.add(minusOne);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(zero);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(one);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(fallback);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode lookupSwitchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "lookupSelect", "(II)I", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode positive = new LabelNode();
+        LabelNode fallback = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new LookupSwitchInsnNode(fallback,
+                new int[]{-7, 42}, new LabelNode[]{negative, positive}));
+        method.instructions.add(negative);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(positive);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(fallback);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode switchDefaultCarrierMismatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "badSwitchDefault", "(Ljava/lang/Object;I)V", null, null);
+        LabelNode alternate = new LabelNode();
+        LabelNode intCase = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, alternate));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new TableSwitchInsnNode(0, 0, join, intCase));
+        method.instructions.add(alternate);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(intCase);
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode newObjectArrayCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "allocateStrings", "(I)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -13));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NegativeArraySizeException"));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode newObjectArrayMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "allocateObjects", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterObjectArrayMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterObjectArray", "(I)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/String"));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
         method.maxStack = 1;
         return method;
     }

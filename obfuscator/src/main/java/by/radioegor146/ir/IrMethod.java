@@ -154,6 +154,11 @@ public final class IrMethod {
             return array.getResult() + ":" + array.getResult().getType()
                     + " = newarray int " + array.getLength();
         }
+        if (instruction instanceof IrNodes.NewObjectArray) {
+            IrNodes.NewObjectArray array = (IrNodes.NewObjectArray) instruction;
+            return array.getResult() + ":" + array.getResult().getType()
+                    + " = anewarray " + array.getComponentType() + " " + array.getLength();
+        }
         if (instruction instanceof IrNodes.ArrayLength) {
             IrNodes.ArrayLength length = (IrNodes.ArrayLength) instruction;
             return length.getResult() + ":" + length.getResult().getType()
@@ -224,6 +229,20 @@ public final class IrMethod {
                     + ", " + (branch.getRight() == null ? "0" : branch.getRight())
                     + " -> " + branch.getTrueTarget().getName() + ", "
                     + branch.getFalseTarget().getName();
+        }
+        if (terminator instanceof IrNodes.Switch) {
+            IrNodes.Switch switchTerminator = (IrNodes.Switch) terminator;
+            String cases = "";
+            for (int i = 0; i < switchTerminator.getKeys().size(); i++) {
+                if (i > 0) {
+                    cases += ", ";
+                }
+                cases += switchTerminator.getKeys().get(i) + " -> "
+                        + switchTerminator.getTargets().get(i).getName();
+            }
+            return "switch " + switchTerminator.getSelector() + " ["
+                    + cases + (cases.isEmpty() ? "" : ", ")
+                    + "default -> " + switchTerminator.getDefaultTarget().getName() + "]";
         }
         if (terminator instanceof IrNodes.Return) {
             IrValue value = ((IrNodes.Return) terminator).getValue();

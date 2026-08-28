@@ -111,6 +111,10 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.NewArray) {
             return emitNewArray(method, block, (IrNodes.NewArray) instruction, context);
         }
+        if (instruction instanceof IrNodes.NewObjectArray) {
+            return emitNewObjectArray(method, block,
+                    (IrNodes.NewObjectArray) instruction, context);
+        }
         if (instruction instanceof IrNodes.ArrayLength) {
             return emitArrayLength(method, block, (IrNodes.ArrayLength) instruction, context);
         }
@@ -280,6 +284,44 @@ public final class IrCppEmitter {
         statements.add(new CppAst.Assignment(variable(array.getResult()),
                 new CppAst.Cast("jobject",
                         memberCall("env", "NewIntArray", expression(array.getLength())))));
+        CppAst.Expression failed = new CppAst.Binary(
+                new CppAst.Binary(expression(array.getResult()), "==",
+                        new CppAst.NullLiteral()),
+                "||",
+                new CppAst.Binary(memberCall("env", "ExceptionCheck"), "!=",
+                        new CppAst.IntLiteral(0)));
+        statements.add(new CppAst.If(failed,
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitNewObjectArray(IrMethod method, IrBlock block,
+                                                      IrNodes.NewObjectArray array,
+                                                      MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        List<CppAst.Statement> negativeLength = new ArrayList<>();
+        negativeLength.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                Arrays.asList(variable("env"),
+                        pool(context.getStringPool().getOffset(
+                                "java/lang/NegativeArraySizeException")),
+                        pool(context.getStringPool().getOffset(
+                                "ANEWARRAY object array size < 0")),
+                        new CppAst.IntLiteral(array.getSourceLine())))));
+        negativeLength.addAll(exceptionalExit(method, block));
+        statements.add(new CppAst.If(new CppAst.Binary(expression(array.getLength()), "<",
+                new CppAst.IntLiteral(0)), new CppAst.Block(negativeLength), null));
+
+        int classId = context.getCachedClasses().getId(array.getComponentType());
+        int classStringId = context.getCachedStrings().getId(
+                array.getComponentType().replace('/', '.'));
+        statements.addAll(emitClassCache(method, block, classId, classStringId));
+        statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+
+        statements.add(new CppAst.Assignment(variable(array.getResult()),
+                new CppAst.Cast("jobject", memberCall("env", "NewObjectArray",
+                        expression(array.getLength()), array("cclasses", classId),
+                        new CppAst.NullLiteral()))));
         CppAst.Expression failed = new CppAst.Binary(
                 new CppAst.Binary(expression(array.getResult()), "==",
                         new CppAst.NullLiteral()),
@@ -592,6 +634,18 @@ public final class IrCppEmitter {
             statements.add(new CppAst.If(condition,
                     new CppAst.Block(edgeTransfer(predecessor, branch.getTrueTarget())),
                     new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));
+            return;
+        }
+        if (terminator instanceof IrNodes.Switch) {
+            IrNodes.Switch switchTerminator = (IrNodes.Switch) terminator;
+            List<CppAst.Block> cases = new ArrayList<>();
+            for (IrBlock target : switchTerminator.getTargets()) {
+                cases.add(new CppAst.Block(edgeTransfer(predecessor, target)));
+            }
+            statements.add(new CppAst.Switch(expression(switchTerminator.getSelector()),
+                    switchTerminator.getKeys(), cases,
+                    new CppAst.Block(edgeTransfer(predecessor,
+                            switchTerminator.getDefaultTarget()))));
             return;
         }
         if (terminator instanceof IrNodes.Return) {
