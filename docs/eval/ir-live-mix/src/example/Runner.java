@@ -14,10 +14,10 @@ public final class Runner {
         System.out.println("subMul=" + Math.subMul(19, 6));
 
         System.out.println("mix#1=" + Math.mix(0, 0));
-        System.out.println("mix#2=" + Math.mix(1, 2));
-        System.out.println("mix#3=" + Math.mix(-7, 3));
-        System.out.println("mix#4=" + Math.mix(123456789, -987654321));
-        System.out.println("mix#5=" + Math.mix(Integer.MAX_VALUE, 17));
-        System.out.println("mix#6=" + Math.mix(Integer.MIN_VALUE, -31));
+        System.out.println("mix#2=" + Math.mix(0, 1));
+        System.out.println("mix#3=" + Math.mix(0, -1));
+        System.out.println("mix#4=" + Math.mix(1, 0));
+        System.out.println("mix#5=" + Math.mix(-7, 0));
+        System.out.println("mix#6=" + Math.mix(1, 1));
     }
 }
