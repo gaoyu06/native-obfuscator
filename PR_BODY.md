@@ -2,12 +2,12 @@
 ## Summary / 摘要
 
 Updates the maintainer goal-status and human-options brief through draft PR
-#36. The document now records #34's narrowly scoped local IR benchmark, #35's
-live direct-IR artifact without a reader pass, #36's opt-in exception-edge
-compiler slice, and why #31 remains invalid reader-bar evidence.
+#37. The document now records #34's narrowly scoped local IR benchmark, #35's
+live direct-IR artifact and #37 reader, #36's opt-in exception-edge compiler
+slice, and why #31 remains invalid reader-bar evidence.
 
-更新维护者的目标状态与人工选项简报至草稿 PR #36：记录 #34 的窄范围本地 IR
-基准、#35 尚未 reader pass 的 live direct-IR artifact、#36 的 opt-in 异常边
+更新维护者的目标状态与人工选项简报至草稿 PR #37：记录 #34 的窄范围本地 IR
+基准、#35 的 live direct-IR artifact 及其 #37 reader、#36 的 opt-in 异常边
 编译器切片，以及 #31 仍不能作为 reader bar 证据的原因。
 
 ## (a) 本次改动范围 / Change scope
@@ -26,11 +26,13 @@ compiler slice, and why #31 remains invalid reader-bar evidence.
 No. / 否。
 
 All referenced work remains in draft PRs, `master` is unchanged, IR remains
-opt-in, and legacy remains the default. #34 is local diagnostic evidence, #35
-has no reader pass, and #36 is not ship-ready.
+opt-in, and legacy remains the default. #37 fully recovered all four methods
+from #35's valid live subject in one blinded run, so requirement 7 is not met;
+#36 is also not ship-ready.
 
 所有相关工作仍在草稿 PR 中，`master` 未变；IR 仍需显式选择，默认仍为 legacy。
-#34 仅是本地诊断，#35 没有 reader pass，#36 尚不可上线。
+#37 在一次盲读中完整恢复了 #35 有效存活样本的四个方法，因此 requirement 7
+未满足；#36 同样尚不可上线。
 
 ## (c) 上线前是否需要 review / Is review required?
 
@@ -46,26 +48,29 @@ still requires its own code review and post-rebase verification.
 1. Read #34's `docs/benchmarks/results-ir-vs-legacy.md`; only
    `IrFriendlyIntKernel.run(I)I` is a valid IR comparison, and its local
    medians are not portable.
-2. Do not count #31 or #35 as requirement-7 reader evidence: #31's `mix` was
-   dead-code-eliminated, while #35 explicitly performed no reader pass.
+2. Keep #31 excluded because its `mix` was dead-code-eliminated. Record #37 as
+   #35's recovery-first reader: all four methods scored full on a valid live
+   subject, so requirement 7 is not met.
 3. Confirm #36 remains opt-in, default legacy, and not ship-ready; its status
    document records 17/17 `IrCompilerTest` and 2/2 `CodegenModeTest`.
 4. Keep option A as the prior v1 product recommendation, not a recommendation
-   to shrink the written goal. Continue toward a live-kernel reader using #35
-   and wider IR coverage through #36.
+   to shrink the written goal. The next reader-bar engineering needs a lowering
+   that is not straight-line readable native output, not encoding tweaks.
 5. Confirm #34 and #36 are sibling branches stacked on #33, while #35 is an
-   eval-only sibling and not an implementation prerequisite.
+   eval-only sibling and #37 is its reader. Continue #36 IR coverage and the
+   JDK/SDK stacks as separate lanes.
 
 中文核对项：
 
 1. 阅读 #34 的 `docs/benchmarks/results-ir-vs-legacy.md`；只有
    `IrFriendlyIntKernel.run(I)I` 是有效 IR 对比，本地中位数不可移植。
-2. 不得把 #31 或 #35 计入 requirement-7 reader 证据：#31 的 `mix` 被 DCE，
-   #35 则明确没有 reader pass。
+2. #31 的 `mix` 被 DCE，仍须排除；#37 是 #35 的 recovery-first reader，
+   有效存活样本上的四个方法均为 full，因此 requirement 7 未满足。
 3. 确认 #36 仍为 opt-in、默认 legacy、尚不可上线；其状态文档记录
    17/17 `IrCompilerTest` 与 2/2 `CodegenModeTest`。
-4. A 仍是先前对 v1 产品范围的建议，不是缩小书面目标的建议；工程继续以
-   #35 的 live kernel 推进 reader，并通过 #36 扩大 IR coverage。
-5. 确认 #34 与 #36 都基于 #33；#35 是 eval-only sibling，不是实现前置。
+4. A 仍是先前对 v1 产品范围的建议，不是缩小书面目标的建议；下一步需要不会
+   产生直线可读 native 源算法的 lowering，而不是继续调整 encoding。
+5. 确认 #34 与 #36 都基于 #33；#35 是 eval-only sibling，#37 是其 reader。
+   #36 的 IR coverage 与 JDK/SDK stacks 作为独立工程线继续。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
