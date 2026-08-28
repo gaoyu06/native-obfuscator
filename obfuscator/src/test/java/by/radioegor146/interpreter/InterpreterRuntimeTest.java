@@ -2,6 +2,17 @@ package by.radioegor146.interpreter;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.IincInsnNode;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -12,6 +23,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class InterpreterRuntimeTest {
 
@@ -29,6 +41,28 @@ public class InterpreterRuntimeTest {
         assertEquals(0, compile.exitCode, compile.output);
 
         ProcessResult execute = run(directory, Arrays.asList(directory.resolve("runtime_test").toString()));
+        assertEquals(0, execute.exitCode, execute.output);
+    }
+
+    @Test
+    public void executesEmittedMixAgainstJavaResultsWithGpp() throws Exception {
+        Assumptions.assumeTrue(hasGpp(), "g++ is not available");
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), mixMethod());
+        assertNotNull(compiled);
+
+        Path directory = Files.createTempDirectory("native-jvm-interpreter-mix-");
+        copyResource("sources/native_jvm_interp.hpp", directory.resolve("native_jvm_interp.hpp"));
+        copyResource("sources/native_jvm_interp.cpp", directory.resolve("native_jvm_interp.cpp"));
+        Files.write(directory.resolve("mix_test.cpp"),
+                mixHarness(compiled).getBytes(StandardCharsets.UTF_8));
+
+        ProcessResult compile = run(directory, Arrays.asList(
+                "g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                "native_jvm_interp.cpp", "mix_test.cpp", "-o", "mix_test"));
+        assertEquals(0, compile.exitCode, compile.output);
+
+        ProcessResult execute = run(directory, Arrays.asList(directory.resolve("mix_test").toString()));
         assertEquals(0, execute.exitCode, execute.output);
     }
 
@@ -184,6 +218,136 @@ public class InterpreterRuntimeTest {
                 "    if (!rejects_invalid_streams()) return 9;\n" +
                 "    return 0;\n" +
                 "}\n";
+    }
+
+    private static String mixHarness(InterpreterMethodEmitter.CompiledMethod compiled) {
+        int[][] pairs = {
+                {0, 0},
+                {0, 1},
+                {1, 4},
+                {Integer.MIN_VALUE, 3},
+                {0x12345678, 16}
+        };
+        StringBuilder main = new StringBuilder();
+        for (int i = 0; i < pairs.length; i++) {
+            int seed = pairs[i][0];
+            int rounds = pairs[i][1];
+            main.append("    if (!run_mix(")
+                    .append(cppInt(seed)).append(", ")
+                    .append(cppInt(rounds)).append(", ")
+                    .append(cppInt(javaMix(seed, rounds))).append(")) return ")
+                    .append(i + 1).append(";\n");
+        }
+
+        return "#include \"native_jvm_interp.hpp\"\n" +
+                "#include <cstdint>\n" +
+                "#include <limits>\n" +
+                "\n" +
+                "using native_jvm::interp::frame;\n" +
+                "using native_jvm::interp::method_desc;\n" +
+                "\n" +
+                "static const std::uint8_t mix_code[] = { " +
+                unsignedBytes(compiled.getCode()) + " };\n" +
+                "static const method_desc mix_method = { 1, " +
+                compiled.getMaxStack() + ", " + compiled.getMaxLocals() +
+                ", mix_code, sizeof(mix_code) };\n" +
+                "\n" +
+                "static bool run_mix(std::int32_t seed, std::int32_t rounds,\n" +
+                "                    std::int32_t expected) {\n" +
+                "    std::int32_t locals[" + compiled.getMaxLocals() +
+                "] = { seed, rounds, 0, 0 };\n" +
+                "    std::int32_t stack[" + compiled.getMaxStack() + "] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack };\n" +
+                "    return native_jvm::interp::execute_i(mix_method, f, &result) &&\n" +
+                "           result == expected;\n" +
+                "}\n" +
+                "\n" +
+                "int main() {\n" +
+                main +
+                "    return 0;\n" +
+                "}\n";
+    }
+
+    private static String unsignedBytes(byte[] code) {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < code.length; i++) {
+            if (i > 0) {
+                result.append(", ");
+            }
+            result.append(code[i] & 0xff);
+        }
+        return result.toString();
+    }
+
+    private static String cppInt(int value) {
+        return value == Integer.MIN_VALUE
+                ? "std::numeric_limits<std::int32_t>::min()"
+                : Integer.toString(value);
+    }
+
+    private static int javaMix(int seed, int rounds) {
+        int acc = seed ^ 0x9E3779B9;
+        for (int r = 0; r < rounds; r++) {
+            acc += (acc << 6) + (acc >>> 2);
+            acc ^= acc * 0x85EBCA77;
+            acc = Integer.rotateLeft(acc, 13);
+        }
+        return acc;
+    }
+
+    private static ClassNode owner() {
+        ClassNode owner = new ClassNode();
+        owner.access = Opcodes.ACC_PUBLIC;
+        owner.name = "DemoKernel";
+        return owner;
+    }
+
+    private static MethodNode mixMethod() {
+        MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "mix", "(II)I", null, null);
+        LabelNode loop = new LabelNode();
+        LabelNode exit = new LabelNode();
+
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new LdcInsnNode(0x9E3779B9));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
+        method.instructions.add(loop);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPGE, exit));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 6));
+        method.instructions.add(new InsnNode(Opcodes.ISHL));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new LdcInsnNode(0x85EBCA77));
+        method.instructions.add(new InsnNode(Opcodes.IMUL));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 13));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "java/lang/Integer", "rotateLeft", "(II)I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new IincInsnNode(3, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, loop));
+        method.instructions.add(exit);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 4;
+        method.maxLocals = 4;
+        return method;
     }
 
     private static void copyResource(String name, Path destination) throws IOException {

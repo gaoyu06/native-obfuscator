@@ -91,7 +91,12 @@ namespace native_jvm::interp {
                     break;
                 }
                 case opcode::iadd:
-                case opcode::isub: {
+                case opcode::isub:
+                case opcode::imul:
+                case opcode::ixor:
+                case opcode::ishl:
+                case opcode::iushr:
+                case opcode::irotl: {
                     if (sp < 2) {
                         return false;
                     }
@@ -99,9 +104,35 @@ namespace native_jvm::interp {
                             static_cast<std::uint32_t>(current_frame.stack[sp - 2]);
                     std::uint32_t right =
                             static_cast<std::uint32_t>(current_frame.stack[sp - 1]);
-                    std::uint32_t value = current == opcode::iadd
-                            ? left + right
-                            : left - right;
+                    std::uint32_t value;
+                    switch (current) {
+                        case opcode::iadd:
+                            value = left + right;
+                            break;
+                        case opcode::isub:
+                            value = left - right;
+                            break;
+                        case opcode::imul:
+                            value = left * right;
+                            break;
+                        case opcode::ixor:
+                            value = left ^ right;
+                            break;
+                        case opcode::ishl:
+                            value = left << (right & 31u);
+                            break;
+                        case opcode::iushr:
+                            value = left >> (right & 31u);
+                            break;
+                        case opcode::irotl: {
+                            std::uint32_t distance = right & 31u;
+                            value = (left << distance) |
+                                    (left >> ((32u - distance) & 31u));
+                            break;
+                        }
+                        default:
+                            return false;
+                    }
                     current_frame.stack[sp - 2] = from_unsigned(value);
                     --sp;
                     break;

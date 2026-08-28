@@ -56,17 +56,38 @@ public class InterpreterBackendIntegrationTest {
         assertTrue(read(interpreterOutput.resolve("cpp/CMakeLists.txt"))
                 .contains("native_jvm_interp.cpp"));
 
-        String generated = read(interpreterOutput.resolve("cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(2, occurrences(generated, "_interp_code[]"));
-        assertEquals(2, occurrences(generated, "native_jvm::interp::execute_i("));
-        assertTrue(generated.contains("cstack0.i = cstack0.i * cstack1.i;"),
-                "unsupported multiply method must remain on the direct C++ backend");
+        String generated = read(interpreterOutput.resolve("cpp/output/DemoKernel_0.cpp"));
+        assertEquals(3, occurrences(generated, "_interp_code[]"));
+        assertEquals(3, occurrences(generated, "native_jvm::interp::execute_i("));
+        assertTrue(generated.contains("__ngen_native_add1_interp_code[]"));
+        assertTrue(generated.contains("__ngen_native_sumTo2_interp_code[]"));
+        assertTrue(generated.contains("__ngen_native_mix3_interp_code[]"));
+        assertTrue(generated.contains(
+                "execute_i(__ngen_native_mix3_interp_method, interp_frame, &interp_result)"));
+        int mixStart = generated.indexOf("// mix(II)I");
+        int divideStart = generated.indexOf("// divide(II)I");
+        assertTrue(mixStart >= 0 && divideStart > mixStart);
+        String mixOutput = generated.substring(mixStart, divideStart);
+        assertFalse(mixOutput.contains("jvalue cstack"),
+                "mix must not contain a method-specific direct C++ body");
+        assertFalse(generated.contains("__ngen_native_divide4_interp_code[]"),
+                "unsupported division must remain on the direct C++ backend");
     }
 
     private static void writeFixtureJar(Path destination) throws IOException {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
-                "InterpreterFixture", null, "java/lang/Object", null);
+                "DemoKernel", null, "java/lang/Object", null);
+
+        MethodVisitor constructor = writer.visitMethod(Opcodes.ACC_PRIVATE,
+                "<init>", "()V", null, null);
+        constructor.visitCode();
+        constructor.visitVarInsn(Opcodes.ALOAD, 0);
+        constructor.visitMethodInsn(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false);
+        constructor.visitInsn(Opcodes.RETURN);
+        constructor.visitMaxs(0, 0);
+        constructor.visitEnd();
 
         MethodVisitor add = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "add", "(II)I", null, null);
@@ -103,19 +124,63 @@ public class InterpreterBackendIntegrationTest {
         sumTo.visitMaxs(0, 0);
         sumTo.visitEnd();
 
-        MethodVisitor multiply = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
-                "multiply", "(II)I", null, null);
-        multiply.visitCode();
-        multiply.visitVarInsn(Opcodes.ILOAD, 0);
-        multiply.visitVarInsn(Opcodes.ILOAD, 1);
-        multiply.visitInsn(Opcodes.IMUL);
-        multiply.visitInsn(Opcodes.IRETURN);
-        multiply.visitMaxs(0, 0);
-        multiply.visitEnd();
+        MethodVisitor mix = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "mix", "(II)I", null, null);
+        Label mixLoop = new Label();
+        Label mixExit = new Label();
+        mix.visitCode();
+        mix.visitVarInsn(Opcodes.ILOAD, 0);
+        mix.visitLdcInsn(0x9E3779B9);
+        mix.visitInsn(Opcodes.IXOR);
+        mix.visitVarInsn(Opcodes.ISTORE, 2);
+        mix.visitInsn(Opcodes.ICONST_0);
+        mix.visitVarInsn(Opcodes.ISTORE, 3);
+        mix.visitLabel(mixLoop);
+        mix.visitVarInsn(Opcodes.ILOAD, 3);
+        mix.visitVarInsn(Opcodes.ILOAD, 1);
+        mix.visitJumpInsn(Opcodes.IF_ICMPGE, mixExit);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitIntInsn(Opcodes.BIPUSH, 6);
+        mix.visitInsn(Opcodes.ISHL);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitInsn(Opcodes.ICONST_2);
+        mix.visitInsn(Opcodes.IUSHR);
+        mix.visitInsn(Opcodes.IADD);
+        mix.visitInsn(Opcodes.IADD);
+        mix.visitVarInsn(Opcodes.ISTORE, 2);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitLdcInsn(0x85EBCA77);
+        mix.visitInsn(Opcodes.IMUL);
+        mix.visitInsn(Opcodes.IXOR);
+        mix.visitVarInsn(Opcodes.ISTORE, 2);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitIntInsn(Opcodes.BIPUSH, 13);
+        mix.visitMethodInsn(Opcodes.INVOKESTATIC,
+                "java/lang/Integer", "rotateLeft", "(II)I", false);
+        mix.visitVarInsn(Opcodes.ISTORE, 2);
+        mix.visitIincInsn(3, 1);
+        mix.visitJumpInsn(Opcodes.GOTO, mixLoop);
+        mix.visitLabel(mixExit);
+        mix.visitVarInsn(Opcodes.ILOAD, 2);
+        mix.visitInsn(Opcodes.IRETURN);
+        mix.visitMaxs(0, 0);
+        mix.visitEnd();
+
+        MethodVisitor divide = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "divide", "(II)I", null, null);
+        divide.visitCode();
+        divide.visitVarInsn(Opcodes.ILOAD, 0);
+        divide.visitVarInsn(Opcodes.ILOAD, 1);
+        divide.visitInsn(Opcodes.IDIV);
+        divide.visitInsn(Opcodes.IRETURN);
+        divide.visitMaxs(0, 0);
+        divide.visitEnd();
 
         writer.visitEnd();
         try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(destination))) {
-            jar.putNextEntry(new JarEntry("InterpreterFixture.class"));
+            jar.putNextEntry(new JarEntry("DemoKernel.class"));
             jar.write(writer.toByteArray());
             jar.closeEntry();
         }

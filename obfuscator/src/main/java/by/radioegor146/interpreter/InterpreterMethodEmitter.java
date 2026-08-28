@@ -10,6 +10,7 @@ import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -43,6 +44,11 @@ public final class InterpreterMethodEmitter {
     public static final int IF_ICMPLE = 17;
     public static final int GOTO = 18;
     public static final int IRETURN = 19;
+    public static final int IMUL = 20;
+    public static final int IXOR = 21;
+    public static final int ISHL = 22;
+    public static final int IUSHR = 23;
+    public static final int IROTL = 24;
 
     private InterpreterMethodEmitter() {
     }
@@ -115,6 +121,10 @@ public final class InterpreterMethodEmitter {
                     return 5;
                 case Opcodes.IADD:
                 case Opcodes.ISUB:
+                case Opcodes.IMUL:
+                case Opcodes.IXOR:
+                case Opcodes.ISHL:
+                case Opcodes.IUSHR:
                 case Opcodes.IRETURN:
                     return 1;
                 default:
@@ -138,6 +148,9 @@ public final class InterpreterMethodEmitter {
         }
         if (instruction instanceof JumpInsnNode) {
             return branchOpcode(opcode) >= 0 ? 5 : -1;
+        }
+        if (instruction instanceof MethodInsnNode) {
+            return isIntegerRotateLeft((MethodInsnNode) instruction) ? 1 : -1;
         }
         return -1;
     }
@@ -164,6 +177,18 @@ public final class InterpreterMethodEmitter {
                     return true;
                 case Opcodes.ISUB:
                     code.write(ISUB);
+                    return true;
+                case Opcodes.IMUL:
+                    code.write(IMUL);
+                    return true;
+                case Opcodes.IXOR:
+                    code.write(IXOR);
+                    return true;
+                case Opcodes.ISHL:
+                    code.write(ISHL);
+                    return true;
+                case Opcodes.IUSHR:
+                    code.write(IUSHR);
                     return true;
                 case Opcodes.IRETURN:
                     code.write(IRETURN);
@@ -206,6 +231,13 @@ public final class InterpreterMethodEmitter {
             writeI32(code, target);
             return true;
         }
+        if (instruction instanceof MethodInsnNode) {
+            if (!isIntegerRotateLeft((MethodInsnNode) instruction)) {
+                return false;
+            }
+            code.write(IROTL);
+            return true;
+        }
         return false;
     }
 
@@ -245,6 +277,14 @@ public final class InterpreterMethodEmitter {
             default:
                 return -1;
         }
+    }
+
+    private static boolean isIntegerRotateLeft(MethodInsnNode instruction) {
+        return instruction.getOpcode() == Opcodes.INVOKESTATIC &&
+                "java/lang/Integer".equals(instruction.owner) &&
+                "rotateLeft".equals(instruction.name) &&
+                "(II)I".equals(instruction.desc) &&
+                !instruction.itf;
     }
 
     private static void writeU16(ByteArrayOutputStream output, int value) {
