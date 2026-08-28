@@ -16,13 +16,13 @@ public final class JavaStringKernel {
             value = value.concat(PARTS[i & 7]);
             int length = value.length();
             int hash = value.hashCode();
-            checksum ^= ((long) length << 32) ^ (hash & 0xffffffffL) ^ i;
+            checksum = (checksum + (hash & 0xffffffffL) + length + i)
+                    % 1_000_000_007L;
             if (length >= 96) {
                 value = "";
             }
         }
-        return checksum
-                ^ ((long) value.length() << 32)
-                ^ (value.hashCode() & 0xffffffffL);
+        return (checksum + (value.hashCode() & 0xffffffffL) + value.length())
+                % 1_000_000_007L;
     }
 }

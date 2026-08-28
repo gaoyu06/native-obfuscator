@@ -18,13 +18,15 @@ public final class NativeStringKernel {
             value = NativeStrings.concat(value, PARTS[i & 7]);
             int length = NativeStrings.length(value);
             int hash = NativeStrings.hashCode(value);
-            checksum ^= ((long) length << 32) ^ (hash & 0xffffffffL) ^ i;
+            checksum = (checksum + (hash & 0xffffffffL) + length + i)
+                    % 1_000_000_007L;
             if (length >= 96) {
                 value = "";
             }
         }
-        return checksum
-                ^ ((long) NativeStrings.length(value) << 32)
-                ^ (NativeStrings.hashCode(value) & 0xffffffffL);
+        return (checksum
+                + (NativeStrings.hashCode(value) & 0xffffffffL)
+                + NativeStrings.length(value))
+                % 1_000_000_007L;
     }
 }
