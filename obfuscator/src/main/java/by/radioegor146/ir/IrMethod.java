@@ -124,6 +124,31 @@ public final class IrMethod {
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
         }
+        if (instruction instanceof IrNodes.Unary) {
+            IrNodes.Unary unary = (IrNodes.Unary) instruction;
+            return unary.getResult() + ":" + unary.getResult().getType() + " = "
+                    + unary.getOperation().getMnemonic() + " " + unary.getOperand();
+        }
+        if (instruction instanceof IrNodes.ArrayLength) {
+            IrNodes.ArrayLength length = (IrNodes.ArrayLength) instruction;
+            return length.getResult() + ":" + length.getResult().getType()
+                    + " = arraylength " + length.getArray();
+        }
+        if (instruction instanceof IrNodes.ArrayLoad) {
+            IrNodes.ArrayLoad load = (IrNodes.ArrayLoad) instruction;
+            return load.getResult() + ":" + load.getResult().getType() + " = iaload "
+                    + load.getArray() + ", " + load.getIndex();
+        }
+        if (instruction instanceof IrNodes.ArrayStore) {
+            IrNodes.ArrayStore store = (IrNodes.ArrayStore) instruction;
+            return "iastore " + store.getArray() + ", " + store.getIndex() + ", "
+                    + store.getValue();
+        }
+        if (instruction instanceof IrNodes.StringLength) {
+            IrNodes.StringLength length = (IrNodes.StringLength) instruction;
+            return length.getResult() + ":" + length.getResult().getType()
+                    + " = stringlength " + length.getReceiver();
+        }
         if (instruction instanceof IrNodes.GetField) {
             IrNodes.GetField field = (IrNodes.GetField) instruction;
             return field.getResult() + ":" + field.getResult().getType() + " = getfield "

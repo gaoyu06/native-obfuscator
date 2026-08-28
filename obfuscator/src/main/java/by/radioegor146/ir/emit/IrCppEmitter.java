@@ -23,6 +23,7 @@ import java.util.List;
  */
 public final class IrCppEmitter {
     private int edgeTemporaryId;
+    private int arrayTemporaryId;
 
     public String emitBody(IrMethod method) {
         return emitBody(method, null);
@@ -30,6 +31,7 @@ public final class IrCppEmitter {
 
     public String emitBody(IrMethod method, MethodContext context) {
         edgeTemporaryId = 0;
+        arrayTemporaryId = 0;
         List<CppAst.Statement> statements = new ArrayList<>();
         statements.add(new CppAst.Comment("IR codegen: " + method.getOwner() + "."
                 + method.getName() + method.getDescriptor()));
@@ -70,33 +72,26 @@ public final class IrCppEmitter {
                             new CppAst.IntLiteral(constant.getValue())));
         }
         if (instruction instanceof IrNodes.Binary) {
-            IrNodes.Binary binary = (IrNodes.Binary) instruction;
-            String operator;
-            switch (binary.getOperation()) {
-                case ADD:
-                    operator = "+";
-                    break;
-                case SUBTRACT:
-                    operator = "-";
-                    break;
-                case MULTIPLY:
-                    operator = "*";
-                    break;
-                default:
-                    throw new IllegalStateException("Unknown binary operation "
-                            + binary.getOperation());
-            }
-            CppAst.Expression wrapped = new CppAst.Binary(
-                    new CppAst.Cast("uint32_t", expression(binary.getLeft())),
-                    operator,
-                    new CppAst.Cast("uint32_t", expression(binary.getRight())));
-            return Collections.<CppAst.Statement>singletonList(
-                    new CppAst.Assignment(variable(binary.getResult()),
-                            new CppAst.Cast("jint", wrapped)));
+            return emitBinary((IrNodes.Binary) instruction);
+        }
+        if (instruction instanceof IrNodes.Unary) {
+            return emitUnary((IrNodes.Unary) instruction);
         }
         if (context == null) {
             throw new IllegalStateException(
                     "JNI IR instructions require a method emission context");
+        }
+        if (instruction instanceof IrNodes.ArrayLength) {
+            return emitArrayLength(method, (IrNodes.ArrayLength) instruction, context);
+        }
+        if (instruction instanceof IrNodes.ArrayLoad) {
+            return emitArrayLoad(method, (IrNodes.ArrayLoad) instruction, context);
+        }
+        if (instruction instanceof IrNodes.ArrayStore) {
+            return emitArrayStore(method, (IrNodes.ArrayStore) instruction, context);
+        }
+        if (instruction instanceof IrNodes.StringLength) {
+            return emitStringLength(method, (IrNodes.StringLength) instruction, context);
         }
         if (instruction instanceof IrNodes.GetField) {
             return emitGetField(method, (IrNodes.GetField) instruction, context);
@@ -108,6 +103,145 @@ public final class IrCppEmitter {
             return emitInvoke(method, (IrNodes.Invoke) instruction, context);
         }
         throw new IllegalStateException("Unknown IR instruction " + instruction.getClass());
+    }
+
+    private List<CppAst.Statement> emitBinary(IrNodes.Binary binary) {
+        CppAst.Expression left = expression(binary.getLeft());
+        CppAst.Expression right = expression(binary.getRight());
+        CppAst.Expression value;
+        switch (binary.getOperation()) {
+            case ADD:
+                value = wrappingArithmetic(left, "+", right);
+                break;
+            case SUBTRACT:
+                value = wrappingArithmetic(left, "-", right);
+                break;
+            case MULTIPLY:
+                value = wrappingArithmetic(left, "*", right);
+                break;
+            case AND:
+                value = wrappingArithmetic(left, "&", right);
+                break;
+            case OR:
+                value = wrappingArithmetic(left, "|", right);
+                break;
+            case XOR:
+                value = wrappingArithmetic(left, "^", right);
+                break;
+            case SHL:
+                value = new CppAst.Cast("jint", new CppAst.Binary(
+                        new CppAst.Cast("uint32_t", left), "<<", shiftAmount(right)));
+                break;
+            case SHR:
+                value = new CppAst.Cast("jint", new CppAst.Binary(
+                        new CppAst.Cast("int32_t", left), ">>", shiftAmount(right)));
+                break;
+            case USHR:
+                value = new CppAst.Cast("jint", new CppAst.Binary(
+                        new CppAst.Cast("uint32_t", left), ">>", shiftAmount(right)));
+                break;
+            default:
+                throw new IllegalStateException("Unknown binary operation "
+                        + binary.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
+    private CppAst.Expression wrappingArithmetic(CppAst.Expression left, String operator,
+                                                 CppAst.Expression right) {
+        return new CppAst.Cast("jint", new CppAst.Binary(
+                new CppAst.Cast("uint32_t", left), operator,
+                new CppAst.Cast("uint32_t", right)));
+    }
+
+    private CppAst.Expression shiftAmount(CppAst.Expression right) {
+        return new CppAst.Binary(new CppAst.Cast("uint32_t", right), "&",
+                new CppAst.IntLiteral(31));
+    }
+
+    private List<CppAst.Statement> emitUnary(IrNodes.Unary unary) {
+        CppAst.Expression operand = expression(unary.getOperand());
+        CppAst.Expression value;
+        switch (unary.getOperation()) {
+            case NEGATE:
+                value = new CppAst.Cast("jint",
+                        new CppAst.Unary("-", new CppAst.Cast("uint32_t", operand)));
+                break;
+            case I2B:
+                value = new CppAst.Cast("jint", new CppAst.Cast("jbyte", operand));
+                break;
+            case I2S:
+                value = new CppAst.Cast("jint", new CppAst.Cast("jshort", operand));
+                break;
+            case I2C:
+                value = new CppAst.Cast("jint", new CppAst.Cast("jchar", operand));
+                break;
+            default:
+                throw new IllegalStateException("Unknown unary operation "
+                        + unary.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(unary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitArrayLength(IrMethod method, IrNodes.ArrayLength length,
+                                                   MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, length.getArray(), "ARRAYLENGTH npe",
+                length.getSourceLine(), context));
+        statements.add(new CppAst.Assignment(variable(length.getResult()),
+                memberCall("env", "GetArrayLength",
+                        new CppAst.Cast("jarray", expression(length.getArray())))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitArrayLoad(IrMethod method, IrNodes.ArrayLoad load,
+                                                 MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, load.getArray(), "IALOAD npe",
+                load.getSourceLine(), context));
+        String temporary = "iaload" + arrayTemporaryId++;
+        List<CppAst.Statement> scoped = new ArrayList<>();
+        scoped.add(new CppAst.Declaration("jint", temporary, new CppAst.IntLiteral(0)));
+        scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"), true,
+                "GetIntArrayRegion", Arrays.asList(
+                        new CppAst.Cast("jintArray", expression(load.getArray())),
+                        expression(load.getIndex()), new CppAst.IntLiteral(1),
+                        new CppAst.Unary("&", variable(temporary))))));
+        scoped.add(exceptionCheck(method));
+        scoped.add(new CppAst.Assignment(variable(load.getResult()), variable(temporary)));
+        statements.add(new CppAst.Block(scoped));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitArrayStore(IrMethod method, IrNodes.ArrayStore store,
+                                                  MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, store.getArray(), "IASTORE npe",
+                store.getSourceLine(), context));
+        String temporary = "iastore" + arrayTemporaryId++;
+        List<CppAst.Statement> scoped = new ArrayList<>();
+        scoped.add(new CppAst.Declaration("jint", temporary, expression(store.getValue())));
+        scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"), true,
+                "SetIntArrayRegion", Arrays.asList(
+                        new CppAst.Cast("jintArray", expression(store.getArray())),
+                        expression(store.getIndex()), new CppAst.IntLiteral(1),
+                        new CppAst.Unary("&", variable(temporary))))));
+        scoped.add(exceptionCheck(method));
+        statements.add(new CppAst.Block(scoped));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitStringLength(IrMethod method, IrNodes.StringLength length,
+                                                    MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, length.getReceiver(), "String.length npe",
+                length.getSourceLine(), context));
+        statements.add(new CppAst.Assignment(variable(length.getResult()),
+                memberCall("env", "GetStringLength",
+                        new CppAst.Cast("jstring", expression(length.getReceiver())))));
+        return statements;
     }
 
     private List<CppAst.Statement> emitGetField(IrMethod method, IrNodes.GetField field,

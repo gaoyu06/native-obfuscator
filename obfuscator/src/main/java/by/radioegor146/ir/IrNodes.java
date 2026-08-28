@@ -242,11 +242,218 @@ public final class IrNodes {
         }
     }
 
+    public static final class Unary implements IrInstruction {
+        public enum Operation {
+            NEGATE("ineg"),
+            I2B("i2b"),
+            I2S("i2s"),
+            I2C("i2c");
+
+            private final String mnemonic;
+
+            Operation(String mnemonic) {
+                this.mnemonic = mnemonic;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue operand;
+        private final int bytecodeOffset;
+
+        public Unary(IrValue result, Operation operation, IrValue operand, int bytecodeOffset) {
+            this.result = requireI32(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.operand = requireI32(operand, "operand");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getOperand() {
+            return operand;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class ArrayLength implements IrInstruction {
+        private final IrValue result;
+        private final IrValue array;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public ArrayLength(IrValue result, IrValue array, int bytecodeOffset, int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.array = requireReference(array, "array");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getArray() {
+            return array;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class ArrayLoad implements IrInstruction {
+        private final IrValue result;
+        private final IrValue array;
+        private final IrValue index;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public ArrayLoad(IrValue result, IrValue array, IrValue index, int bytecodeOffset,
+                         int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.array = requireReference(array, "array");
+            this.index = requireI32(index, "index");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getArray() {
+            return array;
+        }
+
+        public IrValue getIndex() {
+            return index;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class ArrayStore implements IrInstruction {
+        private final IrValue array;
+        private final IrValue index;
+        private final IrValue value;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public ArrayStore(IrValue array, IrValue index, IrValue value, int bytecodeOffset,
+                          int sourceLine) {
+            this.array = requireReference(array, "array");
+            this.index = requireI32(index, "index");
+            this.value = requireI32(value, "value");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        public IrValue getArray() {
+            return array;
+        }
+
+        public IrValue getIndex() {
+            return index;
+        }
+
+        public IrValue getValue() {
+            return value;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    /**
+     * Dedicated {@code String.length()} intrinsic. It lowers to a single
+     * {@code GetStringLength} call instead of a full {@code invokevirtual}
+     * method-id lookup and {@code CallIntMethod}.
+     */
+    public static final class StringLength implements IrInstruction {
+        private final IrValue result;
+        private final IrValue receiver;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public StringLength(IrValue result, IrValue receiver, int bytecodeOffset,
+                            int sourceLine) {
+            this.result = requireI32(result, "result");
+            this.receiver = requireReference(receiver, "receiver");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getReceiver() {
+            return receiver;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
     public static final class Binary implements IrInstruction {
         public enum Operation {
             ADD("iadd"),
             SUBTRACT("isub"),
-            MULTIPLY("imul");
+            MULTIPLY("imul"),
+            AND("iand"),
+            OR("ior"),
+            XOR("ixor"),
+            SHL("ishl"),
+            SHR("ishr"),
+            USHR("iushr");
 
             private final String mnemonic;
 

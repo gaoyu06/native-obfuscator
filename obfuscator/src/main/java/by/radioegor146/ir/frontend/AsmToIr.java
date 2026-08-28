@@ -167,9 +167,11 @@ public final class AsmToIr {
                         supported = opcode == Opcodes.NOP
                                 || opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                                 || opcode == Opcodes.DUP
-                                || opcode == Opcodes.IADD
-                                || opcode == Opcodes.ISUB
-                                || opcode == Opcodes.IMUL
+                                || isIntBinaryOp(opcode)
+                                || isIntUnaryOp(opcode)
+                                || opcode == Opcodes.IALOAD
+                                || opcode == Opcodes.IASTORE
+                                || opcode == Opcodes.ARRAYLENGTH
                                 || opcode == Opcodes.IRETURN
                                 || opcode == Opcodes.RETURN;
                         break;
@@ -304,11 +306,24 @@ public final class AsmToIr {
                 throw unsupported("Operand stack underflow", instruction);
             }
             stack.add(stack.get(stack.size() - 1));
-        } else if (opcode == Opcodes.IADD || opcode == Opcodes.ISUB
-                || opcode == Opcodes.IMUL) {
+        } else if (isIntBinaryOp(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
+        } else if (isIntUnaryOp(opcode)) {
+            popType(stack, IrType.I32, instruction);
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.ARRAYLENGTH) {
+            popType(stack, IrType.REFERENCE, instruction);
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.IALOAD) {
+            popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.REFERENCE, instruction);
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.IASTORE) {
+            popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.GETFIELD) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
@@ -525,16 +540,36 @@ public final class AsmToIr {
                 IrValue value = pop(state, instruction);
                 state.stack.add(value);
                 state.stack.add(value);
-            } else if (opcode == Opcodes.IADD || opcode == Opcodes.ISUB
-                    || opcode == Opcodes.IMUL) {
+            } else if (isIntBinaryOp(opcode)) {
                 IrValue right = pop(state, IrType.I32, instruction);
                 IrValue left = pop(state, IrType.I32, instruction);
-                IrNodes.Binary.Operation operation = opcode == Opcodes.IADD
-                        ? IrNodes.Binary.Operation.ADD
-                        : opcode == Opcodes.ISUB ? IrNodes.Binary.Operation.SUBTRACT
-                        : IrNodes.Binary.Operation.MULTIPLY;
-                state.stack.add(blockBinary(irMethod, block, operation, left, right,
+                state.stack.add(blockBinary(irMethod, block, binaryOperation(opcode), left,
+                        right, instruction.getOriginalIndex()));
+            } else if (isIntUnaryOp(opcode)) {
+                IrValue operand = pop(state, IrType.I32, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                block.addInstruction(new IrNodes.Unary(result, unaryOperation(opcode), operand,
                         instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.ARRAYLENGTH) {
+                IrValue array = pop(state, IrType.REFERENCE, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                block.addInstruction(new IrNodes.ArrayLength(result, array,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.IALOAD) {
+                IrValue index = pop(state, IrType.I32, instruction);
+                IrValue array = pop(state, IrType.REFERENCE, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                block.addInstruction(new IrNodes.ArrayLoad(result, array, index,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.IASTORE) {
+                IrValue value = pop(state, IrType.I32, instruction);
+                IrValue index = pop(state, IrType.I32, instruction);
+                IrValue array = pop(state, IrType.REFERENCE, instruction);
+                block.addInstruction(new IrNodes.ArrayStore(array, index, value,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
             } else if (node instanceof FieldInsnNode) {
                 FieldInsnNode field = (FieldInsnNode) node;
                 if (opcode == Opcodes.GETFIELD) {
@@ -553,6 +588,14 @@ public final class AsmToIr {
                 }
             } else if (node instanceof MethodInsnNode) {
                 MethodInsnNode invoke = (MethodInsnNode) node;
+                if (isStringLength(invoke)) {
+                    IrValue receiver = pop(state, IrType.REFERENCE, instruction);
+                    IrValue result = irMethod.newInstructionValue(IrType.I32);
+                    block.addInstruction(new IrNodes.StringLength(result, receiver,
+                            instruction.getOriginalIndex(), instruction.getSourceLine()));
+                    state.stack.add(result);
+                    continue;
+                }
                 Type[] argumentTypes = Type.getArgumentTypes(invoke.desc);
                 List<IrValue> arguments = new ArrayList<>(
                         Collections.nCopies(argumentTypes.length, (IrValue) null));
@@ -738,6 +781,65 @@ public final class AsmToIr {
             }
         }
         return true;
+    }
+
+    private static boolean isIntBinaryOp(int opcode) {
+        return opcode == Opcodes.IADD || opcode == Opcodes.ISUB || opcode == Opcodes.IMUL
+                || opcode == Opcodes.IAND || opcode == Opcodes.IOR || opcode == Opcodes.IXOR
+                || opcode == Opcodes.ISHL || opcode == Opcodes.ISHR
+                || opcode == Opcodes.IUSHR;
+    }
+
+    private static boolean isIntUnaryOp(int opcode) {
+        return opcode == Opcodes.INEG || opcode == Opcodes.I2B || opcode == Opcodes.I2S
+                || opcode == Opcodes.I2C;
+    }
+
+    private static IrNodes.Binary.Operation binaryOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.IADD:
+                return IrNodes.Binary.Operation.ADD;
+            case Opcodes.ISUB:
+                return IrNodes.Binary.Operation.SUBTRACT;
+            case Opcodes.IMUL:
+                return IrNodes.Binary.Operation.MULTIPLY;
+            case Opcodes.IAND:
+                return IrNodes.Binary.Operation.AND;
+            case Opcodes.IOR:
+                return IrNodes.Binary.Operation.OR;
+            case Opcodes.IXOR:
+                return IrNodes.Binary.Operation.XOR;
+            case Opcodes.ISHL:
+                return IrNodes.Binary.Operation.SHL;
+            case Opcodes.ISHR:
+                return IrNodes.Binary.Operation.SHR;
+            case Opcodes.IUSHR:
+                return IrNodes.Binary.Operation.USHR;
+            default:
+                throw new IllegalArgumentException("Not an integer binary opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.Unary.Operation unaryOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.INEG:
+                return IrNodes.Unary.Operation.NEGATE;
+            case Opcodes.I2B:
+                return IrNodes.Unary.Operation.I2B;
+            case Opcodes.I2S:
+                return IrNodes.Unary.Operation.I2S;
+            case Opcodes.I2C:
+                return IrNodes.Unary.Operation.I2C;
+            default:
+                throw new IllegalArgumentException("Not an integer unary opcode: " + opcode);
+        }
+    }
+
+    private static boolean isStringLength(MethodInsnNode invoke) {
+        return invoke.getOpcode() == Opcodes.INVOKEVIRTUAL
+                && "java/lang/String".equals(invoke.owner)
+                && "length".equals(invoke.name)
+                && "()I".equals(invoke.desc);
     }
 
     private static boolean isUnaryIntJump(int opcode) {

@@ -96,7 +96,8 @@ public final class CppAst {
         private final Expression operand;
 
         public Unary(String operator, Expression operand) {
-            if (!"!".equals(operator)) {
+            if (!"!".equals(operator) && !"-".equals(operator) && !"~".equals(operator)
+                    && !"&".equals(operator)) {
                 throw new IllegalArgumentException("Unsupported C++ unary operator: " + operator);
             }
             this.operator = operator;
@@ -354,7 +355,8 @@ public final class CppAst {
         if ("+".equals(value) || "-".equals(value) || "*".equals(value)
                 || "==".equals(value) || "!=".equals(value) || "<".equals(value)
                 || ">=".equals(value) || ">".equals(value) || "<=".equals(value)
-                || "||".equals(value)) {
+                || "||".equals(value) || "&".equals(value) || "|".equals(value)
+                || "^".equals(value) || "<<".equals(value) || ">>".equals(value)) {
             return value;
         }
         throw new IllegalArgumentException("Unsupported C++ operator: " + value);

@@ -141,6 +141,63 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void emitsBitwiseAndShiftOps() {
+        String cpp = emitter.emitBody(frontend.build("example/Math", bitwiseShiftMethod()));
+
+        assertTrue(cpp.contains("(uint32_t) arg0 & (uint32_t) arg1"));
+        assertTrue(cpp.contains("| (uint32_t) arg1"));
+        assertTrue(cpp.contains("^ (uint32_t) arg1"));
+        assertTrue(cpp.contains("<< ((uint32_t) arg1 & 31)"));
+        assertTrue(cpp.contains("(int32_t) v2 >> ((uint32_t) arg1 & 31)")
+                || cpp.contains(">> ((uint32_t) arg1 & 31)"));
+    }
+
+    @Test
+    public void emitsUnaryIntConversions() {
+        IrMethod ir = frontend.build("example/Math", unaryMethod());
+        String pretty = ir.toString();
+        assertTrue(pretty.contains("ineg"));
+        assertTrue(pretty.contains("i2b"));
+        assertTrue(pretty.contains("i2s"));
+        assertTrue(pretty.contains("i2c"));
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("(jint) (-(uint32_t) arg0)"));
+        assertTrue(cpp.contains("(jint) (jbyte)"));
+        assertTrue(cpp.contains("(jint) (jshort)"));
+        assertTrue(cpp.contains("(jint) (jchar)"));
+    }
+
+    @Test
+    public void lowersIntArrayLoadStoreAndLength() {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, intArrayMethod(), 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->GetArrayLength"));
+        assertTrue(cpp.contains("env->GetIntArrayRegion"));
+        assertTrue(cpp.contains("env->SetIntArrayRegion"));
+        assertTrue(cpp.contains("utils::throw_re"));
+    }
+
+    @Test
+    public void lowersStringLengthAsDedicatedIntrinsic() {
+        IrMethod ir = frontend.build("example/Math", stringLengthMethod());
+        assertTrue(ir.toString().contains("stringlength"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, stringLengthMethod(), 0,
+                owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->GetStringLength"));
+        assertFalse(cpp.contains("CallIntMethod"));
+        assertFalse(cpp.contains("GetMethodID"));
+    }
+
+    @Test
     public void rejectsIntStoreIntoInstanceReceiverLocal() {
         MethodNode method = new MethodNode(Opcodes.ASM9, 0,
                 "badStore", "()V", null, null);
@@ -182,7 +239,8 @@ public class IrCompilerTest {
         IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
         MethodNode[] methods = {
                 addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
-                staticInvokeMethod(), virtualInvokeMethod()
+                staticInvokeMethod(), virtualInvokeMethod(), bitwiseShiftMethod(),
+                unaryMethod(), intArrayMethod(), stringLengthMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -222,6 +280,10 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->GetIntField"));
         assertTrue(source.contains("env->CallStaticIntMethod"));
         assertTrue(source.contains("env->CallIntMethod"));
+        assertTrue(source.contains("env->GetArrayLength"));
+        assertTrue(source.contains("env->GetIntArrayRegion"));
+        assertTrue(source.contains("env->SetIntArrayRegion"));
+        assertTrue(source.contains("env->GetStringLength"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
         Path sourceFile = directory.resolve("ir-smoke.cpp");
@@ -290,13 +352,82 @@ public class IrCompilerTest {
 
     private MethodNode virtualInvokeMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "length", "(Ljava/lang/String;)I", null, null);
+                "identity", "(Ljava/lang/Object;)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/Object", "hashCode", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode stringLengthMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "stringLength", "(Ljava/lang/String;)I", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
                 "java/lang/String", "length", "()I", false));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode bitwiseShiftMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "mix", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IAND));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISHL));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISHR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unaryMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "narrow", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new InsnNode(Opcodes.I2B));
+        method.instructions.add(new InsnNode(Opcodes.I2S));
+        method.instructions.add(new InsnNode(Opcodes.I2C));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode intArrayMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "bump", "([II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IALOAD));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IASTORE));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 3;
+        method.maxStack = 4;
         return method;
     }
 
