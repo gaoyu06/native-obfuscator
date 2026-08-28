@@ -182,7 +182,8 @@ extern "C" no_sdk_status_v1 no_sdk_sha256_v1(
     if (output_32.capacity < SHA256_SIZE) {
         return NO_SDK_BUFFER_TOO_SMALL_V1;
     }
-    if (!representable_size(input.size)) {
+    if (!representable_size(input.size) ||
+        input.size > std::numeric_limits<uint64_t>::max() / 8) {
         return NO_SDK_SIZE_OVERFLOW_V1;
     }
 
