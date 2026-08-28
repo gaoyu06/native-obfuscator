@@ -73,6 +73,23 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void buildsTwoSlotLongLocalsAndEmitsWrappingI64Operations() {
+        IrMethod ir = frontend.build("example/Math", longMixMethod());
+        String text = ir.toString();
+        String cpp = emitter.emitBody(ir);
+
+        assertTrue(text.contains("method example/Math.longMix(JI)J -> i64 [static]"));
+        assertTrue(text.contains("%arg0:i64, %arg1:i32"));
+        assertTrue(text.contains(" = i2l %arg1"));
+        assertTrue(text.contains(" = ladd "));
+        assertTrue(text.contains(" = lmul "));
+        assertTrue(cpp.contains("jlong v2;"));
+        assertTrue(cpp.contains("(uint64_t) arg0 + (uint64_t) v2"));
+        assertTrue(cpp.contains("(uint64_t) v3 * (uint64_t) arg0"));
+        assertTrue(cpp.contains("return v4;"));
+    }
+
+    @Test
     public void integratedEmitterUsesExistingJniSignatureStyleWithoutLegacySlots() {
         MethodNode method = addMethod();
         ClassNode owner = new ClassNode(Opcodes.ASM9);
@@ -626,6 +643,23 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode longMixMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longMix", "(JI)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.I2L));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.LMUL));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 5;
+        method.maxStack = 4;
         return method;
     }
 

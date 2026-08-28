@@ -704,7 +704,7 @@ public class InterpreterStreamStrategyTest {
             byte[] buffer = new byte[4096];
             StringBuilder result = new StringBuilder();
             int read;
-            while ((read = input.read(buffer)) >= 0) {
+            while ((read = input.read(buffer)) != -1) {
                 result.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
             }
             return result.toString();
