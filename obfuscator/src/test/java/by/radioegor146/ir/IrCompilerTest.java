@@ -227,6 +227,15 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->ExceptionClear();"));
         assertTrue(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
         assertTrue(cpp.contains("env->Throw(caught_exception);"));
+        assertTrue(cpp.contains("= -7;"));
+        assertEquals(cpp.indexOf("IR_CATCH_0:"), cpp.lastIndexOf("IR_CATCH_0:"));
+        int arrayCall = cpp.indexOf("env->GetIntArrayRegion");
+        int dispatchGoto = cpp.indexOf("goto IR_CATCH_0;", arrayCall);
+        int successfulLoad = cpp.indexOf(" = iaload", arrayCall);
+        int swallowedReturn = cpp.indexOf("return 0;", arrayCall);
+        assertTrue(arrayCall >= 0 && dispatchGoto > arrayCall
+                && successfulLoad > dispatchGoto);
+        assertTrue(swallowedReturn < 0 || swallowedReturn > successfulLoad);
     }
 
     @Test
