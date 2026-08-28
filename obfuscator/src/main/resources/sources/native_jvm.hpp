@@ -20,7 +20,9 @@
 
 namespace native_jvm::ir_eval {
     jint evaluate_i32(const std::uint8_t *data, std::size_t size,
-                      const jint *arguments, std::size_t argument_count);
+                      const jlong *arguments, std::size_t argument_count);
+    jlong evaluate_i64(const std::uint8_t *data, std::size_t size,
+                       const jlong *arguments, std::size_t argument_count);
 }
 
 namespace native_jvm::utils {

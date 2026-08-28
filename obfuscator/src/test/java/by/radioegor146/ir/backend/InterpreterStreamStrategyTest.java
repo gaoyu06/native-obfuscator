@@ -55,7 +55,8 @@ public class InterpreterStreamStrategyTest {
         String cpp = context.output.toString();
         assertTrue(cpp.contains("static const std::uint8_t ir_method_data[]"));
         assertTrue(cpp.contains("native_jvm::ir_eval::evaluate_i32"));
-        assertTrue(cpp.contains("const jint ir_method_args[] = { arg0, arg1 };"));
+        assertTrue(cpp.contains("const jlong ir_method_args[] = { "
+                + "static_cast<jlong>(arg0), static_cast<jlong>(arg1) };"));
         assertFalse(cpp.contains("// IR codegen:"));
         assertFalse(cpp.contains("jint v2;"));
         assertFalse(cpp.contains("(uint32_t) arg0 + (uint32_t) arg1"));
@@ -124,6 +125,51 @@ public class InterpreterStreamStrategyTest {
     }
 
     @Test
+    public void serializesEveryI64OpcodeNumber() {
+        byte[] identity = lower(longIdentityMethod()).getMethodData();
+        byte[] add = lower(longBinaryMethod("addLong", Opcodes.LADD)).getMethodData();
+        byte[] subtract = lower(longBinaryMethod("subtractLong", Opcodes.LSUB)).getMethodData();
+        byte[] multiply = lower(longBinaryMethod("multiplyLong", Opcodes.LMUL)).getMethodData();
+        byte[] i2l = lower(i2lMethod()).getMethodData();
+        byte[] l2i = lower(l2iMethod()).getMethodData();
+
+        assertNotNull(identity);
+        assertEquals(21, identity.length);
+        assertEquals(0x23, identity[8] & 0xff);
+        assertEquals(0x24, identity[13] & 0xff);
+        assertEquals(0x28, identity[18] & 0xff);
+
+        assertLongBinaryOpcode(add, 0x25);
+        assertLongBinaryOpcode(subtract, 0x26);
+        assertLongBinaryOpcode(multiply, 0x27);
+
+        assertNotNull(i2l);
+        assertEquals(21, i2l.length);
+        assertEquals(0x29, i2l[8] & 0xff);
+        assertEquals(0x24, i2l[13] & 0xff);
+        assertEquals(0x28, i2l[18] & 0xff);
+
+        assertNotNull(l2i);
+        assertEquals(21, l2i.length);
+        assertEquals(0x23, l2i[8] & 0xff);
+        assertEquals(0x2a, l2i[13] & 0xff);
+        assertEquals(0x22, l2i[18] & 0xff);
+    }
+
+    @Test
+    public void cppEvaluatorUsesTheSameI64OpcodeNumbers() throws Exception {
+        String cpp = readResource("/sources/native_jvm_eval.cpp");
+        assertTrue(cpp.contains("OP_LLOAD = 0x23;"));
+        assertTrue(cpp.contains("OP_LSTORE = 0x24;"));
+        assertTrue(cpp.contains("OP_LADD = 0x25;"));
+        assertTrue(cpp.contains("OP_LSUB = 0x26;"));
+        assertTrue(cpp.contains("OP_LMUL = 0x27;"));
+        assertTrue(cpp.contains("OP_LRETURN = 0x28;"));
+        assertTrue(cpp.contains("OP_I2L = 0x29;"));
+        assertTrue(cpp.contains("OP_L2I = 0x2a;"));
+    }
+
+    @Test
     public void evalSelectionCopiesRuntimeAndKeepsFixtureMethodsOnEvaluatorPath()
             throws Exception {
         Path directory = Files.createTempDirectory("ir-eval-generation");
@@ -155,6 +201,10 @@ public class InterpreterStreamStrategyTest {
         assertEvaluatorMethod(generated, "// add(II)I");
         assertEvaluatorMethod(generated, "// sumTo(I)I");
         assertEvaluatorMethod(generated, "// run(I)I");
+        assertEvaluatorMethod(generated, "// roundTrip(J)J");
+        String longMethod = generatedMethod(generated, "// roundTrip(J)J");
+        assertTrue(longMethod.contains("native_jvm::ir_eval::evaluate_i64"));
+        assertTrue(longMethod.contains("const jlong ir_method_args[] = { arg0 };"));
     }
 
     @Test
@@ -194,6 +244,14 @@ public class InterpreterStreamStrategyTest {
         byte[] shrData = lower(binaryMethod("shr", Opcodes.ISHR)).getMethodData();
         byte[] ushrData = lower(binaryMethod("ushr", Opcodes.IUSHR)).getMethodData();
         byte[] kernelData = lower(irFriendlyIntKernelMethod()).getMethodData();
+        byte[] longAddData = lower(longBinaryMethod("addLong", Opcodes.LADD)).getMethodData();
+        byte[] longSubtractData = lower(
+                longBinaryMethod("subtractLong", Opcodes.LSUB)).getMethodData();
+        byte[] longMultiplyData = lower(
+                longBinaryMethod("multiplyLong", Opcodes.LMUL)).getMethodData();
+        byte[] i2lData = lower(i2lMethod()).getMethodData();
+        byte[] l2iData = lower(l2iMethod()).getMethodData();
+        byte[] longIdentityData = lower(longIdentityMethod()).getMethodData();
         Path harness = directory.resolve("harness.cpp");
         String source = "#include \"native_jvm_eval.hpp\"\n"
                 + "#include <iostream>\n"
@@ -209,14 +267,31 @@ public class InterpreterStreamStrategyTest {
                 + "static const std::uint8_t ushr_data[] = { " + bytes(ushrData) + " };\n"
                 + "static const std::uint8_t kernel_data[] = { "
                 + bytes(kernelData) + " };\n"
+                + "static const std::uint8_t long_add_data[] = { "
+                + bytes(longAddData) + " };\n"
+                + "static const std::uint8_t long_sub_data[] = { "
+                + bytes(longSubtractData) + " };\n"
+                + "static const std::uint8_t long_mul_data[] = { "
+                + bytes(longMultiplyData) + " };\n"
+                + "static const std::uint8_t i2l_data[] = { " + bytes(i2lData) + " };\n"
+                + "static const std::uint8_t l2i_data[] = { " + bytes(l2iData) + " };\n"
+                + "static const std::uint8_t long_identity_data[] = { "
+                + bytes(longIdentityData) + " };\n"
                 + "int main() {\n"
-                + "    const jint add_args[] = { 3, 4 };\n"
-                + "    const jint sum_args[] = { 6 };\n"
-                + "    const jint sub_mul_args[] = { 8, 3 };\n"
-                + "    const jint bitwise_args[] = { 12, 10 };\n"
-                + "    const jint shl_args[] = { 1, 33 };\n"
-                + "    const jint right_shift_args[] = { -4, 33 };\n"
-                + "    const jint kernel_args[] = { 10 };\n"
+                + "    const jlong add_args[] = { 3, 4 };\n"
+                + "    const jlong sum_args[] = { 6 };\n"
+                + "    const jlong sub_mul_args[] = { 8, 3 };\n"
+                + "    const jlong bitwise_args[] = { 12, 10 };\n"
+                + "    const jlong shl_args[] = { 1, 33 };\n"
+                + "    const jlong right_shift_args[] = { -4, 33 };\n"
+                + "    const jlong kernel_args[] = { 10 };\n"
+                + "    const jlong long_add_args[] = { 9223372036854775807LL, 1 };\n"
+                + "    const jlong long_sub_args[] = { "
+                + "static_cast<jlong>(0x8000000000000000ULL), 1 };\n"
+                + "    const jlong long_mul_args[] = { 9223372036854775807LL, 2 };\n"
+                + "    const jlong i2l_args[] = { -2147483648LL };\n"
+                + "    const jlong l2i_args[] = { 4294967297LL };\n"
+                + "    const jlong identity_args[] = { -1234567890123456789LL };\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(add_data, "
                 + "sizeof(add_data), add_args, 2) << '\\n';\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(sum_data, "
@@ -237,6 +312,18 @@ public class InterpreterStreamStrategyTest {
                 + "sizeof(ushr_data), right_shift_args, 2) << '\\n';\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(kernel_data, "
                 + "sizeof(kernel_data), kernel_args, 1) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_add_data, "
+                + "sizeof(long_add_data), long_add_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_sub_data, "
+                + "sizeof(long_sub_data), long_sub_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_mul_data, "
+                + "sizeof(long_mul_data), long_mul_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(i2l_data, "
+                + "sizeof(i2l_data), i2l_args, 1) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(l2i_data, "
+                + "sizeof(l2i_data), l2i_args, 1) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_identity_data, "
+                + "sizeof(long_identity_data), identity_args, 1) << '\\n';\n"
                 + "}\n";
         Files.write(harness, source.getBytes(StandardCharsets.UTF_8));
 
@@ -253,7 +340,9 @@ public class InterpreterStreamStrategyTest {
         int runtimeExit = run(runtimeOutput, executable.toString());
         assertEquals(0, runtimeExit, "evaluator harness failed:\n" + read(runtimeOutput));
         assertEquals("7\n15\n15\n8\n14\n6\n2\n-2\n2147483646\n"
-                        + runIrFriendlyIntKernel(10) + "\n",
+                        + runIrFriendlyIntKernel(10) + "\n"
+                        + "-9223372036854775808\n9223372036854775807\n-2\n"
+                        + "-2147483648\n1\n-1234567890123456789\n",
                 normalizeNewlines(read(runtimeOutput)));
     }
 
@@ -303,6 +392,56 @@ public class InterpreterStreamStrategyTest {
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new InsnNode(opcode));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode longIdentityMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "roundTrip", "(J)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode longBinaryMethod(String name, int opcode) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                name, "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(opcode));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode i2lMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "widen", "(I)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.I2L));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode l2iMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "narrow", "(J)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.L2I));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
@@ -413,6 +552,7 @@ public class InterpreterStreamStrategyTest {
         writeAdd(writer);
         writeSumTo(writer);
         writeIrFriendlyIntKernel(writer);
+        writeLongRoundTrip(writer);
         writer.visitEnd();
 
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
@@ -504,13 +644,40 @@ public class InterpreterStreamStrategyTest {
         method.visitEnd();
     }
 
-    private void assertEvaluatorMethod(String generated, String marker) {
+    private void writeLongRoundTrip(ClassWriter writer) {
+        MethodVisitor method = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "roundTrip", "(J)J", null, null);
+        method.visitCode();
+        method.visitVarInsn(Opcodes.LLOAD, 0);
+        method.visitVarInsn(Opcodes.LSTORE, 2);
+        method.visitVarInsn(Opcodes.LLOAD, 2);
+        method.visitInsn(Opcodes.LRETURN);
+        method.visitMaxs(0, 0);
+        method.visitEnd();
+    }
+
+    private void assertLongBinaryOpcode(byte[] data, int opcode) {
+        assertNotNull(data);
+        assertEquals(33, data.length);
+        assertEquals(0x23, data[8] & 0xff);
+        assertEquals(0x23, data[13] & 0xff);
+        assertEquals(opcode, data[18] & 0xff);
+        assertEquals(0x24, data[25] & 0xff);
+        assertEquals(0x28, data[30] & 0xff);
+    }
+
+    private String generatedMethod(String generated, String marker) {
         int start = generated.indexOf(marker);
         assertTrue(start >= 0, "Missing generated method " + marker);
         int end = generated.indexOf("\n\n", start);
-        String method = generated.substring(start, end < 0 ? generated.length() : end);
-        assertTrue(method.contains("native_jvm::ir_eval::evaluate_i32"));
+        return generated.substring(start, end < 0 ? generated.length() : end);
+    }
+
+    private void assertEvaluatorMethod(String generated, String marker) {
+        String method = generatedMethod(generated, marker);
+        assertTrue(method.contains("native_jvm::ir_eval::evaluate_"));
         assertTrue(method.contains("static const std::uint8_t ir_method_data[]"));
+        assertFalse(method.contains("// IR codegen:"));
         assertFalse(method.contains("cstack"));
         assertFalse(method.contains("(uint32_t)"));
     }
@@ -527,6 +694,20 @@ public class InterpreterStreamStrategyTest {
                 .getResourceAsStream(name)) {
             assertNotNull(input, "Missing resource " + name);
             Files.copy(input, destination);
+        }
+    }
+
+    private String readResource(String name) throws Exception {
+        try (InputStream input = InterpreterStreamStrategyTest.class
+                .getResourceAsStream(name)) {
+            assertNotNull(input, "Missing resource " + name);
+            byte[] buffer = new byte[4096];
+            StringBuilder result = new StringBuilder();
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                result.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+            }
+            return result.toString();
         }
     }
 

@@ -97,8 +97,10 @@ public final class AsmToIr {
             IrValue[] locals = new IrValue[method.maxLocals];
             IrPhi[] localPhis = new IrPhi[method.maxLocals];
             for (int local = 0; local < method.maxLocals; local++) {
-                if (definiteLocals.in.get(rawBlock)[local]) {
-                    IrType type = shape.localTypes[local];
+                IrType type = shape.localTypes[local];
+                if (type != null && definiteLocals.in.get(rawBlock)[local]
+                        && (type != IrType.I64
+                        || definiteLocals.in.get(rawBlock)[local + 1])) {
                     IrPhi phi = irMethod.addPhi(irBlock, type, IrPhi.SlotKind.LOCAL, local);
                     localPhis[local] = phi;
                     locals[local] = phi.getResult();
@@ -122,11 +124,14 @@ public final class AsmToIr {
                 stackPhis = new IrPhi[0];
             } else {
                 stackPhis = new IrPhi[blockStackTypes.size()];
+                int stackSlot = 0;
                 for (int slot = 0; slot < blockStackTypes.size(); slot++) {
-                    IrPhi phi = irMethod.addPhi(irBlock, blockStackTypes.get(slot),
-                            IrPhi.SlotKind.STACK, slot);
+                    IrType type = blockStackTypes.get(slot);
+                    IrPhi phi = irMethod.addPhi(irBlock, type,
+                            IrPhi.SlotKind.STACK, stackSlot);
                     stackPhis[slot] = phi;
                     stack.add(phi.getResult());
+                    stackSlot += type.getJvmSlots();
                 }
             }
             inputs.put(rawBlock, new BlockInputs(locals, stack, localPhis, stackPhis));
@@ -151,17 +156,20 @@ public final class AsmToIr {
             irReturn = IrType.VOID;
         } else if (isIntLike(returnType)) {
             irReturn = IrType.I32;
+        } else if (returnType.getSort() == Type.LONG) {
+            irReturn = IrType.I64;
         } else {
             throw new UnsupportedIrConstructException(
-                    "Only void and JVM int-carrier method returns are supported");
+                    "Only void, JVM int-carrier, and long method returns are supported");
         }
 
         boolean staticMethod = (method.access & Opcodes.ACC_STATIC) != 0;
         int requiredLocals = staticMethod ? 0 : 1;
         for (Type argument : Type.getArgumentTypes(method.desc)) {
-            if (!isIntLike(argument) && !isReference(argument)) {
+            if (!isIntLike(argument) && !isReference(argument)
+                    && argument.getSort() != Type.LONG) {
                 throw new UnsupportedIrConstructException(
-                        "Only JVM int-carrier and reference arguments are supported");
+                        "Only JVM int-carrier, long, and reference arguments are supported");
             }
             requiredLocals += argument.getSize();
         }
@@ -170,15 +178,21 @@ public final class AsmToIr {
         }
 
         IrType[] localTypes = new IrType[method.maxLocals];
+        boolean[] wideContinuations = new boolean[method.maxLocals];
         int local = 0;
         if (!staticMethod) {
             localTypes[local++] = IrType.REFERENCE;
         }
         for (Type argument : Type.getArgumentTypes(method.desc)) {
-            localTypes[local] = irType(argument);
+            IrType type = irType(argument);
+            localTypes[local] = type;
+            if (type == IrType.I64) {
+                wideContinuations[local + 1] = true;
+            }
             local += argument.getSize();
         }
-        return new MethodShape(staticMethod, irReturn, localTypes, requiredLocals);
+        return new MethodShape(staticMethod, irReturn, localTypes, wideContinuations,
+                requiredLocals);
     }
 
     private void validateHandlerEntries(CfgBuilder.Graph graph,
@@ -204,14 +218,18 @@ public final class AsmToIr {
                     case AbstractInsnNode.INSN:
                         supported = opcode == Opcodes.NOP
                                 || opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
+                                || opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1
                                 || opcode == Opcodes.DUP
                                 || isIntBinaryOp(opcode)
+                                || isLongBinaryOp(opcode)
                                 || isIntUnaryOp(opcode)
+                                || opcode == Opcodes.I2L || opcode == Opcodes.L2I
                                 || opcode == Opcodes.IALOAD
                                 || opcode == Opcodes.IASTORE
                                 || opcode == Opcodes.ARRAYLENGTH
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
+                                || opcode == Opcodes.LRETURN
                                 || opcode == Opcodes.RETURN;
                         break;
                     case AbstractInsnNode.INT_INSN:
@@ -219,13 +237,15 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.VAR_INSN:
                         supported = opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
+                                || opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE
                                 || opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE;
                         break;
                     case AbstractInsnNode.IINC_INSN:
                         supported = true;
                         break;
                     case AbstractInsnNode.LDC_INSN:
-                        supported = ((LdcInsnNode) node).cst instanceof Integer;
+                        supported = ((LdcInsnNode) node).cst instanceof Integer
+                                || ((LdcInsnNode) node).cst instanceof Long;
                         break;
                     case AbstractInsnNode.JUMP_INSN:
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
@@ -262,6 +282,8 @@ public final class AsmToIr {
                     int opcode = node.getOpcode();
                     if (opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE) {
                         requiredType = IrType.I32;
+                    } else if (opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE) {
+                        requiredType = IrType.I64;
                     } else if (opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE) {
                         requiredType = IrType.REFERENCE;
                     }
@@ -273,13 +295,31 @@ public final class AsmToIr {
                 if (requiredType == null) {
                     continue;
                 }
-                local = checkedLocal(local, method, instruction);
+                local = requiredType == IrType.I64
+                        ? checkedWideLocal(local, method, instruction)
+                        : checkedLocal(local, method, instruction);
+                if (shape.wideContinuations[local]) {
+                    throw unsupported("Local " + local
+                            + " is the second slot of an i64 local", instruction);
+                }
                 IrType knownType = shape.localTypes[local];
                 if (knownType == null) {
+                    if (requiredType == IrType.I64
+                            && (shape.localTypes[local + 1] != null
+                            || shape.wideContinuations[local + 1])) {
+                        throw unsupported("I64 local overlaps an existing local at "
+                                + (local + 1), instruction);
+                    }
                     shape.localTypes[local] = requiredType;
+                    if (requiredType == IrType.I64) {
+                        shape.wideContinuations[local + 1] = true;
+                    }
                 } else if (knownType != requiredType) {
                     throw unsupported("Local " + local + " is " + knownType
                             + " but this instruction requires " + requiredType, instruction);
+                } else if (requiredType == IrType.I64
+                        && !shape.wideContinuations[local + 1]) {
+                    throw unsupported("I64 local is missing its second JVM slot", instruction);
                 }
             }
         }
@@ -343,8 +383,15 @@ public final class AsmToIr {
         int opcode = node.getOpcode();
         if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                 || opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH
-                || opcode == Opcodes.LDC || opcode == Opcodes.ILOAD) {
+                || opcode == Opcodes.ILOAD
+                || opcode == Opcodes.LDC
+                && ((LdcInsnNode) node).cst instanceof Integer) {
             stack.add(IrType.I32);
+        } else if (opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1
+                || opcode == Opcodes.LLOAD
+                || opcode == Opcodes.LDC
+                && ((LdcInsnNode) node).cst instanceof Long) {
+            stack.add(IrType.I64);
         } else if (opcode == Opcodes.ALOAD) {
             int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
             IrType type = shape.localTypes[local];
@@ -354,19 +401,35 @@ public final class AsmToIr {
             stack.add(type);
         } else if (opcode == Opcodes.ISTORE) {
             popType(stack, IrType.I32, instruction);
+        } else if (opcode == Opcodes.LSTORE) {
+            popType(stack, IrType.I64, instruction);
         } else if (opcode == Opcodes.ASTORE) {
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.DUP) {
             if (stack.isEmpty()) {
                 throw unsupported("Operand stack underflow", instruction);
             }
-            stack.add(stack.get(stack.size() - 1));
+            IrType top = stack.get(stack.size() - 1);
+            if (top.getJvmSlots() != 1) {
+                throw unsupported("DUP requires a one-slot operand", instruction);
+            }
+            stack.add(top);
         } else if (isIntBinaryOp(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
+        } else if (isLongBinaryOp(opcode)) {
+            popType(stack, IrType.I64, instruction);
+            popType(stack, IrType.I64, instruction);
+            stack.add(IrType.I64);
         } else if (isIntUnaryOp(opcode)) {
             popType(stack, IrType.I32, instruction);
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.I2L) {
+            popType(stack, IrType.I32, instruction);
+            stack.add(IrType.I64);
+        } else if (opcode == Opcodes.L2I) {
+            popType(stack, IrType.I64, instruction);
             stack.add(IrType.I32);
         } else if (opcode == Opcodes.ARRAYLENGTH) {
             popType(stack, IrType.REFERENCE, instruction);
@@ -409,6 +472,11 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
             if (!stack.isEmpty()) {
                 throw unsupported("IRETURN requires exactly one operand", instruction);
+            }
+        } else if (opcode == Opcodes.LRETURN) {
+            popType(stack, IrType.I64, instruction);
+            if (!stack.isEmpty()) {
+                throw unsupported("LRETURN requires exactly one operand", instruction);
             }
         } else if (opcode == Opcodes.RETURN && !stack.isEmpty()) {
             throw unsupported("RETURN requires an empty operand stack", instruction);
@@ -496,16 +564,28 @@ public final class AsmToIr {
                 AbstractInsnNode node = instruction.getNode();
                 if (node instanceof VarInsnNode
                         && (node.getOpcode() == Opcodes.ILOAD
+                        || node.getOpcode() == Opcodes.LLOAD
                         || node.getOpcode() == Opcodes.ALOAD)) {
-                    int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
-                    if (!current[local]) {
+                    boolean wide = node.getOpcode() == Opcodes.LLOAD;
+                    int local = wide
+                            ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
+                            : checkedLocal(((VarInsnNode) node).var, method, instruction);
+                    if (!current[local] || wide && !current[local + 1]) {
                         throw unsupported("Read of a local not defined on every incoming edge",
                                 instruction);
                     }
                 } else if (node instanceof VarInsnNode
                         && (node.getOpcode() == Opcodes.ISTORE
+                        || node.getOpcode() == Opcodes.LSTORE
                         || node.getOpcode() == Opcodes.ASTORE)) {
-                    current[checkedLocal(((VarInsnNode) node).var, method, instruction)] = true;
+                    boolean wide = node.getOpcode() == Opcodes.LSTORE;
+                    int local = wide
+                            ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
+                            : checkedLocal(((VarInsnNode) node).var, method, instruction);
+                    current[local] = true;
+                    if (wide) {
+                        current[local + 1] = true;
+                    }
                 } else if (node instanceof IincInsnNode) {
                     int local = checkedLocal(((IincInsnNode) node).var, method, instruction);
                     if (!current[local]) {
@@ -523,10 +603,15 @@ public final class AsmToIr {
         for (CfgBuilder.Instruction instruction : block.getInstructions()) {
             if (instruction.getNode() instanceof VarInsnNode
                     && (instruction.getNode().getOpcode() == Opcodes.ISTORE
+                    || instruction.getNode().getOpcode() == Opcodes.LSTORE
                     || instruction.getNode().getOpcode() == Opcodes.ASTORE)) {
                 int local = ((VarInsnNode) instruction.getNode()).var;
                 if (local >= 0 && local < result.length) {
                     result[local] = true;
+                    if (instruction.getNode().getOpcode() == Opcodes.LSTORE
+                            && local + 1 < result.length) {
+                        result[local + 1] = true;
+                    }
                 }
             }
         }
@@ -574,20 +659,34 @@ public final class AsmToIr {
             if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
                 pushConstant(irMethod, block, state, opcode - Opcodes.ICONST_0,
                         instruction.getOriginalIndex());
+            } else if (opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1) {
+                pushLongConstant(irMethod, block, state, opcode - Opcodes.LCONST_0,
+                        instruction.getOriginalIndex());
             } else if (node instanceof IntInsnNode) {
                 pushConstant(irMethod, block, state, ((IntInsnNode) node).operand,
                         instruction.getOriginalIndex());
             } else if (node instanceof LdcInsnNode) {
-                pushConstant(irMethod, block, state, (Integer) ((LdcInsnNode) node).cst,
-                        instruction.getOriginalIndex());
+                Object constant = ((LdcInsnNode) node).cst;
+                if (constant instanceof Integer) {
+                    pushConstant(irMethod, block, state, (Integer) constant,
+                            instruction.getOriginalIndex());
+                } else {
+                    pushLongConstant(irMethod, block, state, (Long) constant,
+                            instruction.getOriginalIndex());
+                }
             } else if (node instanceof VarInsnNode
-                    && (opcode == Opcodes.ILOAD || opcode == Opcodes.ALOAD)) {
-                int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
+                    && (opcode == Opcodes.ILOAD || opcode == Opcodes.LLOAD
+                    || opcode == Opcodes.ALOAD)) {
+                int local = opcode == Opcodes.LLOAD
+                        ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
+                        : checkedLocal(((VarInsnNode) node).var, method, instruction);
                 IrValue value = state.locals[local];
-                IrType expected = opcode == Opcodes.ILOAD
-                        ? IrType.I32 : IrType.REFERENCE;
+                IrType expected = opcode == Opcodes.ILOAD ? IrType.I32
+                        : opcode == Opcodes.LLOAD ? IrType.I64 : IrType.REFERENCE;
                 if (value == null || value.getType() != expected) {
-                    throw unsupported((opcode == Opcodes.ILOAD ? "ILOAD" : "ALOAD")
+                    String mnemonic = opcode == Opcodes.ILOAD ? "ILOAD"
+                            : opcode == Opcodes.LLOAD ? "LLOAD" : "ALOAD";
+                    throw unsupported(mnemonic
                             + " requires a defined " + expected + " local", instruction);
                 }
                 state.stack.add(value);
@@ -597,6 +696,12 @@ public final class AsmToIr {
                     throw unsupported("ISTORE cannot write a reference-typed local", instruction);
                 }
                 state.locals[local] = pop(state, IrType.I32, instruction);
+            } else if (node instanceof VarInsnNode && opcode == Opcodes.LSTORE) {
+                int local = checkedWideLocal(((VarInsnNode) node).var, method, instruction);
+                if (shape.localTypes[local] != IrType.I64) {
+                    throw unsupported("LSTORE cannot write a non-i64 local", instruction);
+                }
+                state.locals[local] = pop(state, IrType.I64, instruction);
             } else if (node instanceof VarInsnNode && opcode == Opcodes.ASTORE) {
                 int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
                 if (shape.localTypes[local] != IrType.REFERENCE) {
@@ -624,10 +729,26 @@ public final class AsmToIr {
                 IrValue left = pop(state, IrType.I32, instruction);
                 state.stack.add(blockBinary(irMethod, block, binaryOperation(opcode), left,
                         right, instruction.getOriginalIndex()));
+            } else if (isLongBinaryOp(opcode)) {
+                IrValue right = pop(state, IrType.I64, instruction);
+                IrValue left = pop(state, IrType.I64, instruction);
+                state.stack.add(blockLongBinary(irMethod, block, longBinaryOperation(opcode),
+                        left, right, instruction.getOriginalIndex()));
             } else if (isIntUnaryOp(opcode)) {
                 IrValue operand = pop(state, IrType.I32, instruction);
                 IrValue result = irMethod.newInstructionValue(IrType.I32);
                 block.addInstruction(new IrNodes.Unary(result, unaryOperation(opcode), operand,
+                        instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.I2L || opcode == Opcodes.L2I) {
+                IrNodes.Conversion.Operation operation = opcode == Opcodes.I2L
+                        ? IrNodes.Conversion.Operation.I2L
+                        : IrNodes.Conversion.Operation.L2I;
+                IrValue operand = pop(state, opcode == Opcodes.I2L
+                        ? IrType.I32 : IrType.I64, instruction);
+                IrValue result = irMethod.newInstructionValue(opcode == Opcodes.I2L
+                        ? IrType.I64 : IrType.I32);
+                block.addInstruction(new IrNodes.Conversion(result, operation, operand,
                         instruction.getOriginalIndex()));
                 state.stack.add(result);
             } else if (opcode == Opcodes.ARRAYLENGTH) {
@@ -698,6 +819,12 @@ public final class AsmToIr {
                     throw unsupported("IRETURN does not match the method descriptor", instruction);
                 }
                 block.setTerminator(new IrNodes.Return(pop(state, IrType.I32, instruction),
+                        instruction.getOriginalIndex()));
+            } else if (opcode == Opcodes.LRETURN) {
+                if (shape.returnType != IrType.I64) {
+                    throw unsupported("LRETURN does not match the method descriptor", instruction);
+                }
+                block.setTerminator(new IrNodes.Return(pop(state, IrType.I64, instruction),
                         instruction.getOriginalIndex()));
             } else if (opcode == Opcodes.RETURN) {
                 if (shape.returnType != IrType.VOID) {
@@ -815,11 +942,29 @@ public final class AsmToIr {
         return result;
     }
 
+    private IrValue pushLongConstant(IrMethod method, IrBlock block, ValueState state,
+                                     long value, int offset) {
+        IrValue result = method.newInstructionValue(IrType.I64);
+        block.addInstruction(new IrNodes.LongConst(result, value, offset));
+        if (state != null) {
+            state.stack.add(result);
+        }
+        return result;
+    }
+
     private IrValue blockBinary(IrMethod method, IrBlock block,
                                 IrNodes.Binary.Operation operation,
                                 IrValue left, IrValue right, int offset) {
         IrValue result = method.newInstructionValue(IrType.I32);
         block.addInstruction(new IrNodes.Binary(result, operation, left, right, offset));
+        return result;
+    }
+
+    private IrValue blockLongBinary(IrMethod method, IrBlock block,
+                                    IrNodes.LongBinary.Operation operation,
+                                    IrValue left, IrValue right, int offset) {
+        IrValue result = method.newInstructionValue(IrType.I64);
+        block.addInstruction(new IrNodes.LongBinary(result, operation, left, right, offset));
         return result;
     }
 
@@ -847,6 +992,14 @@ public final class AsmToIr {
         return local;
     }
 
+    private int checkedWideLocal(int local, MethodNode method,
+                                 CfgBuilder.Instruction instruction) {
+        if (local < 0 || local + 1 >= method.maxLocals) {
+            throw unsupported("Wide local index is outside maxLocals", instruction);
+        }
+        return local;
+    }
+
     private static boolean isIntLike(Type type) {
         int sort = type.getSort();
         return sort >= Type.BOOLEAN && sort <= Type.INT;
@@ -859,6 +1012,9 @@ public final class AsmToIr {
     private static IrType irType(Type type) {
         if (isIntLike(type)) {
             return IrType.I32;
+        }
+        if (type.getSort() == Type.LONG) {
+            return IrType.I64;
         }
         if (isReference(type)) {
             return IrType.REFERENCE;
@@ -888,6 +1044,10 @@ public final class AsmToIr {
     private static boolean isIntUnaryOp(int opcode) {
         return opcode == Opcodes.INEG || opcode == Opcodes.I2B || opcode == Opcodes.I2S
                 || opcode == Opcodes.I2C;
+    }
+
+    private static boolean isLongBinaryOp(int opcode) {
+        return opcode == Opcodes.LADD || opcode == Opcodes.LSUB || opcode == Opcodes.LMUL;
     }
 
     private static IrNodes.Binary.Operation binaryOperation(int opcode) {
@@ -927,6 +1087,19 @@ public final class AsmToIr {
                 return IrNodes.Unary.Operation.I2C;
             default:
                 throw new IllegalArgumentException("Not an integer unary opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.LongBinary.Operation longBinaryOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.LADD:
+                return IrNodes.LongBinary.Operation.ADD;
+            case Opcodes.LSUB:
+                return IrNodes.LongBinary.Operation.SUBTRACT;
+            case Opcodes.LMUL:
+                return IrNodes.LongBinary.Operation.MULTIPLY;
+            default:
+                throw new IllegalArgumentException("Not a long binary opcode: " + opcode);
         }
     }
 
@@ -980,13 +1153,15 @@ public final class AsmToIr {
         private final boolean staticMethod;
         private final IrType returnType;
         private final IrType[] localTypes;
+        private final boolean[] wideContinuations;
         private final int parameterLocalCount;
 
         private MethodShape(boolean staticMethod, IrType returnType, IrType[] localTypes,
-                            int parameterLocalCount) {
+                            boolean[] wideContinuations, int parameterLocalCount) {
             this.staticMethod = staticMethod;
             this.returnType = returnType;
             this.localTypes = localTypes;
+            this.wideContinuations = wideContinuations;
             this.parameterLocalCount = parameterLocalCount;
         }
     }

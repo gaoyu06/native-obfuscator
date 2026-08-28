@@ -1,6 +1,6 @@
 # IR evaluator backend
 
-Status: implemented as an opt-in lowering for the current IR integer slice.
+Status: implemented as an opt-in lowering for the current IR i32/i64 slice.
 
 ## Selection
 
@@ -17,8 +17,8 @@ The command-line defaults remain:
 - `direct` uses `DirectCppStrategy` and the existing structured, straight-line
   C++ emitter.
 - `eval` uses `InterpreterStreamStrategy`. It emits one method-data array and a
-  JNI trampoline that passes the Java integer arguments to
-  `native_jvm::ir_eval::evaluate_i32`.
+  JNI trampoline that passes Java integer/long arguments through `jlong`
+  carriers to `native_jvm::ir_eval::evaluate_i32` or `evaluate_i64`.
 
 The evaluator source is copied to the generated `cpp/` tree and added to the
 existing CMake shared-library target only for `--codegen=ir --ir-lower=eval`.
@@ -26,9 +26,10 @@ existing CMake shared-library target only for `--codegen=ir --ir-lower=eval`.
 ## Method-data format
 
 All multi-byte integers are little-endian. Registers are unsigned 16-bit
-indices into a per-call `jint` register array. IR parameters occupy registers
+indices into a per-call 64-bit bit-carrier array. I32 operations consume the
+low 32 bits; i64 operations consume all 64 bits. IR parameters occupy registers
 `0..argument_count-1`; other SSA values keep their IR value IDs. Additional
-registers at the end of the array stage parallel phi copies.
+registers at the end of the array stage parallel phi copies and an i64 return.
 
 The eight-byte header is:
 
@@ -56,12 +57,31 @@ Instructions follow immediately:
 | `0x20` | `target:u32` | Jump to a byte offset in the method data |
 | `0x21` | `condition:u8, lhs:u16, rhs:u16, true:u32, false:u32` | Signed integer branch |
 | `0x22` | `src:u16` | Return an integer register |
+| `0x23` | `dst:u16, argument:u16` | `LLOAD`: load a `jlong` argument into an i64 register |
+| `0x24` | `dst:u16, src:u16` | `LSTORE`: copy an i64 register into an i64 staging register |
+| `0x25` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `LADD` |
+| `0x26` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `LSUB` |
+| `0x27` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `LMUL` |
+| `0x28` | `src:u16` | `LRETURN`: return an i64 register as `jlong` |
+| `0x29` | `dst:u16, src:u16` | `I2L`: sign-extend an i32 register to i64 |
+| `0x2a` | `dst:u16, src:u16` | `L2I`: keep the low 32 bits of an i64 register |
+
+`0x23`–`0x2a` are the first eight-opcode contiguous unused range after the
+existing `0x13`–`0x18` arithmetic block; `0x20`–`0x22` retain their existing
+control-flow and i32-return assignments.
 
 Bitwise operations and left shifts run on the 32-bit unsigned carrier and copy
 the result bits back to `jint`, preserving JVM wraparound without signed C++
 overflow. `IUSHR` shifts that unsigned carrier. `ISHR` explicitly fills the
 high bits when the sign bit is set, so its JVM arithmetic-shift behavior does
 not depend on C++17's implementation-defined signed right shift.
+
+`LADD`, `LSUB`, and `LMUL` operate on an unsigned 64-bit bit carrier and copy
+the result bits to/from JNI `jlong`, avoiding signed C++ overflow while
+preserving JVM two's-complement wraparound. `I2L` sign-extends `jint`; `L2I`
+truncates to the low 32 bits. JVM local `LLOAD`/`LSTORE` instructions disappear
+into SSA in the frontend; the evaluator `LLOAD` materializes i64 parameters and
+`LSTORE` stages the i64 return without changing those values.
 
 Branch condition values are `0 EQ`, `1 NE`, `2 LT`, `3 GE`, `4 GT`, and
 `5 LE`. An `rhs` value of `0xffff` means the literal integer zero, matching the
@@ -77,9 +97,12 @@ parallel phi semantics, including loop backedges.
 
 The evaluator lowering currently accepts:
 
-- static methods with only JVM integer-carrier arguments and an integer return;
+- static methods with JVM integer-carrier/long arguments and an i32 or i64
+  return;
 - integer constants;
 - `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
+- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `I2L`, `L2I`, and `LRETURN`
+  through the shared typed SSA representation;
 - `GOTO`, all unary and binary integer comparisons represented by the IR, and
   `IRETURN`;
 - local-variable and operand-stack merges already represented as IR phi values.
@@ -91,6 +114,9 @@ existing per-method legacy fallback remains safe.
 
 The current evaluator path falls back for instance methods, void/reference
 signatures, exception edges, JNI-dependent nodes (fields, invokes, arrays, and
-throws), integer operations outside the binary operations above, unary integer
-operations, and any other IR node not listed here. The direct IR strategy
-retains its existing broader support.
+throws), integer operations outside the operations above, unary integer
+operations, and any other IR node not listed here. `LDIV` and `LREM` remain
+fallbacks because the evaluator does not yet implement their JVM
+division-by-zero and `Long.MIN_VALUE / -1` behavior. Long constants also remain
+fallbacks. Float/double and object values are outside this evaluator slice. The
+direct IR strategy retains its existing broader support.

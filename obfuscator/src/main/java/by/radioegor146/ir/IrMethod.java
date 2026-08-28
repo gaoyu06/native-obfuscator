@@ -132,8 +132,19 @@ public final class IrMethod {
             return constant.getResult() + ":" + constant.getResult().getType()
                     + " = iconst " + constant.getValue();
         }
+        if (instruction instanceof IrNodes.LongConst) {
+            IrNodes.LongConst constant = (IrNodes.LongConst) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = lconst " + constant.getValue();
+        }
         if (instruction instanceof IrNodes.Binary) {
             IrNodes.Binary binary = (IrNodes.Binary) instruction;
+            return binary.getResult() + ":" + binary.getResult().getType() + " = "
+                    + binary.getOperation().getMnemonic() + " " + binary.getLeft()
+                    + ", " + binary.getRight();
+        }
+        if (instruction instanceof IrNodes.LongBinary) {
+            IrNodes.LongBinary binary = (IrNodes.LongBinary) instruction;
             return binary.getResult() + ":" + binary.getResult().getType() + " = "
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
@@ -142,6 +153,12 @@ public final class IrMethod {
             IrNodes.Unary unary = (IrNodes.Unary) instruction;
             return unary.getResult() + ":" + unary.getResult().getType() + " = "
                     + unary.getOperation().getMnemonic() + " " + unary.getOperand();
+        }
+        if (instruction instanceof IrNodes.Conversion) {
+            IrNodes.Conversion conversion = (IrNodes.Conversion) instruction;
+            return conversion.getResult() + ":" + conversion.getResult().getType() + " = "
+                    + conversion.getOperation().getMnemonic() + " "
+                    + conversion.getOperand();
         }
         if (instruction instanceof IrNodes.ArrayLength) {
             IrNodes.ArrayLength length = (IrNodes.ArrayLength) instruction;

@@ -95,11 +95,23 @@ public final class IrCppEmitter {
                     new CppAst.Assignment(variable(constant.getResult()),
                             new CppAst.IntLiteral(constant.getValue())));
         }
+        if (instruction instanceof IrNodes.LongConst) {
+            IrNodes.LongConst constant = (IrNodes.LongConst) instruction;
+            return Collections.<CppAst.Statement>singletonList(
+                    new CppAst.Assignment(variable(constant.getResult()),
+                            new CppAst.LongLiteral(constant.getValue())));
+        }
         if (instruction instanceof IrNodes.Binary) {
             return emitBinary((IrNodes.Binary) instruction);
         }
+        if (instruction instanceof IrNodes.LongBinary) {
+            return emitLongBinary((IrNodes.LongBinary) instruction);
+        }
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
+        }
+        if (instruction instanceof IrNodes.Conversion) {
+            return emitConversion((IrNodes.Conversion) instruction);
         }
         if (context == null) {
             throw new IllegalStateException(
@@ -179,6 +191,29 @@ public final class IrCppEmitter {
                 new CppAst.Cast("uint32_t", right)));
     }
 
+    private List<CppAst.Statement> emitLongBinary(IrNodes.LongBinary binary) {
+        String operator;
+        switch (binary.getOperation()) {
+            case ADD:
+                operator = "+";
+                break;
+            case SUBTRACT:
+                operator = "-";
+                break;
+            case MULTIPLY:
+                operator = "*";
+                break;
+            default:
+                throw new IllegalStateException("Unknown long binary operation "
+                        + binary.getOperation());
+        }
+        CppAst.Expression value = new CppAst.Cast("jlong", new CppAst.Binary(
+                new CppAst.Cast("uint64_t", expression(binary.getLeft())), operator,
+                new CppAst.Cast("uint64_t", expression(binary.getRight()))));
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
     private CppAst.Expression shiftAmount(CppAst.Expression right) {
         return new CppAst.Binary(new CppAst.Cast("uint32_t", right), "&",
                 new CppAst.IntLiteral(31));
@@ -207,6 +242,24 @@ public final class IrCppEmitter {
         }
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(unary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitConversion(IrNodes.Conversion conversion) {
+        CppAst.Expression value;
+        switch (conversion.getOperation()) {
+            case I2L:
+                value = new CppAst.Cast("jlong", expression(conversion.getOperand()));
+                break;
+            case L2I:
+                value = new CppAst.Cast("jint", new CppAst.Cast("uint32_t",
+                        expression(conversion.getOperand())));
+                break;
+            default:
+                throw new IllegalStateException("Unknown conversion "
+                        + conversion.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                variable(conversion.getResult()), value));
     }
 
     private List<CppAst.Statement> emitArrayLength(IrMethod method, IrBlock block,

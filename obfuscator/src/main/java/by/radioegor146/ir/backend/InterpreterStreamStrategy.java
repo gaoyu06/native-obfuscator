@@ -39,6 +39,14 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
     private static final int OP_JUMP = 0x20;
     private static final int OP_BRANCH = 0x21;
     private static final int OP_RETURN_I32 = 0x22;
+    private static final int OP_LLOAD = 0x23;
+    private static final int OP_LSTORE = 0x24;
+    private static final int OP_LADD = 0x25;
+    private static final int OP_LSUB = 0x26;
+    private static final int OP_LMUL = 0x27;
+    private static final int OP_LRETURN = 0x28;
+    private static final int OP_I2L = 0x29;
+    private static final int OP_L2I = 0x2a;
 
     private static final int ZERO_REGISTER = 0xffff;
     private static final int MAX_REGISTER_COUNT = 0xffff;
@@ -69,20 +77,22 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         if (!method.isStaticMethod()) {
             throw unsupported("Evaluator lowering currently supports static methods only", -1);
         }
-        if (method.getReturnType() != IrType.I32) {
-            throw unsupported("Evaluator lowering requires an i32 method return", -1);
+        if (method.getReturnType() != IrType.I32
+                && method.getReturnType() != IrType.I64) {
+            throw unsupported("Evaluator lowering requires an i32 or i64 method return", -1);
         }
         for (int i = 0; i < method.getParameters().size(); i++) {
             IrValue parameter = method.getParameters().get(i);
-            if (parameter.getType() != IrType.I32 || parameter.getId() != i) {
+            if (!isEvaluatorValueType(parameter.getType()) || parameter.getId() != i) {
                 throw unsupported(
-                        "Evaluator arguments must be contiguous i32 IR parameters", -1);
+                        "Evaluator arguments must be contiguous i32/i64 IR parameters", -1);
             }
         }
 
         int maximumRegister = -1;
         for (IrValue parameter : method.getParameters()) {
-            maximumRegister = Math.max(maximumRegister, checkedI32(parameter, -1));
+            maximumRegister = Math.max(maximumRegister,
+                    checkedValue(parameter, parameter.getType(), -1));
         }
         for (IrBlock block : method.getBlocks()) {
             if (!block.getExceptionEdges().isEmpty()) {
@@ -91,17 +101,17 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             }
             for (IrPhi phi : block.getPhis()) {
                 maximumRegister = Math.max(maximumRegister,
-                        checkedI32(phi.getResult(), -1));
+                        checkedEvaluatorValue(phi.getResult(), -1));
                 for (IrValue incoming : phi.getIncoming().values()) {
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(incoming, -1));
+                            checkedValue(incoming, phi.getResult().getType(), -1));
                 }
             }
             for (IrInstruction instruction : block.getInstructions()) {
                 int offset = instruction.getBytecodeOffset();
                 if (instruction instanceof IrNodes.Const) {
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(instruction.getResult(), offset));
+                            checkedValue(instruction.getResult(), IrType.I32, offset));
                 } else if (instruction instanceof IrNodes.Binary) {
                     IrNodes.Binary binary = (IrNodes.Binary) instruction;
                     if (!isSupportedBinaryOperation(binary.getOperation())) {
@@ -109,11 +119,29 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                                 + binary.getOperation(), offset);
                     }
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(binary.getResult(), offset));
+                            checkedValue(binary.getResult(), IrType.I32, offset));
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(binary.getLeft(), offset));
+                            checkedValue(binary.getLeft(), IrType.I32, offset));
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(binary.getRight(), offset));
+                            checkedValue(binary.getRight(), IrType.I32, offset));
+                } else if (instruction instanceof IrNodes.LongBinary) {
+                    IrNodes.LongBinary binary = (IrNodes.LongBinary) instruction;
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getResult(), IrType.I64, offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getLeft(), IrType.I64, offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getRight(), IrType.I64, offset));
+                } else if (instruction instanceof IrNodes.Conversion) {
+                    IrNodes.Conversion conversion = (IrNodes.Conversion) instruction;
+                    IrType operandType = conversion.getOperation()
+                            == IrNodes.Conversion.Operation.I2L ? IrType.I32 : IrType.I64;
+                    IrType resultType = conversion.getOperation()
+                            == IrNodes.Conversion.Operation.I2L ? IrType.I64 : IrType.I32;
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(conversion.getOperand(), operandType, offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(conversion.getResult(), resultType, offset));
                 } else {
                     throw unsupported("Unsupported evaluator instruction "
                             + instruction.getClass().getSimpleName(), offset);
@@ -129,17 +157,18 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             } else if (terminator instanceof IrNodes.Branch) {
                 IrNodes.Branch branch = (IrNodes.Branch) terminator;
                 maximumRegister = Math.max(maximumRegister,
-                        checkedI32(branch.getLeft(), offset));
+                        checkedValue(branch.getLeft(), IrType.I32, offset));
                 if (branch.getRight() != null) {
                     maximumRegister = Math.max(maximumRegister,
-                            checkedI32(branch.getRight(), offset));
+                            checkedValue(branch.getRight(), IrType.I32, offset));
                 }
             } else if (terminator instanceof IrNodes.Return) {
                 IrValue value = ((IrNodes.Return) terminator).getValue();
                 if (value == null) {
-                    throw unsupported("Evaluator lowering requires IRETURN", offset);
+                    throw unsupported("Evaluator lowering requires IRETURN or LRETURN", offset);
                 }
-                maximumRegister = Math.max(maximumRegister, checkedI32(value, offset));
+                maximumRegister = Math.max(maximumRegister,
+                        checkedValue(value, method.getReturnType(), offset));
             } else {
                 throw unsupported("Unsupported evaluator terminator "
                         + terminator.getClass().getSimpleName(), offset);
@@ -150,7 +179,8 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         for (IrBlock block : method.getBlocks()) {
             temporaryCount = Math.max(temporaryCount, block.getPhis().size());
         }
-        long registerCount = (long) maximumRegister + 1L + temporaryCount;
+        long registerCount = (long) maximumRegister + 1L + temporaryCount
+                + (method.getReturnType() == IrType.I64 ? 1L : 0L);
         if (registerCount <= 0 || registerCount > MAX_REGISTER_COUNT) {
             throw unsupported("Evaluator register count exceeds the u16 ISA limit", -1);
         }
@@ -176,10 +206,25 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         }
     }
 
-    private int checkedI32(IrValue value, int offset) {
-        if (value == null || value.getType() != IrType.I32) {
-            throw unsupported("Evaluator operands must be i32 values", offset);
+    private boolean isEvaluatorValueType(IrType type) {
+        return type == IrType.I32 || type == IrType.I64;
+    }
+
+    private int checkedEvaluatorValue(IrValue value, int offset) {
+        if (value == null || !isEvaluatorValueType(value.getType())) {
+            throw unsupported("Evaluator operands must be i32 or i64 values", offset);
         }
+        return checkedRegisterId(value, offset);
+    }
+
+    private int checkedValue(IrValue value, IrType type, int offset) {
+        if (value == null || value.getType() != type) {
+            throw unsupported("Evaluator operand must be " + type, offset);
+        }
+        return checkedRegisterId(value, offset);
+    }
+
+    private int checkedRegisterId(IrValue value, int offset) {
         if (value.getId() < 0 || value.getId() >= ZERO_REGISTER) {
             throw unsupported("Evaluator register id exceeds the u16 ISA limit", offset);
         }
@@ -205,19 +250,29 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             }
         }
         out.append("    };\n");
+        String evaluator = method.getReturnType() == IrType.I64
+                ? "evaluate_i64" : "evaluate_i32";
         if (method.getParameters().isEmpty()) {
-            out.append("    return native_jvm::ir_eval::evaluate_i32(ir_method_data, ")
+            out.append("    return native_jvm::ir_eval::").append(evaluator)
+                    .append("(ir_method_data, ")
                     .append("sizeof(ir_method_data), nullptr, 0);\n");
         } else {
-            out.append("    const jint ir_method_args[] = { ");
+            out.append("    const jlong ir_method_args[] = { ");
             for (int i = 0; i < method.getParameters().size(); i++) {
                 if (i != 0) {
                     out.append(", ");
                 }
-                out.append(method.getParameters().get(i).getCppParameterName());
+                IrValue parameter = method.getParameters().get(i);
+                if (parameter.getType() == IrType.I32) {
+                    out.append("static_cast<jlong>(")
+                            .append(parameter.getCppParameterName()).append(')');
+                } else {
+                    out.append(parameter.getCppParameterName());
+                }
             }
             out.append(" };\n");
-            out.append("    return native_jvm::ir_eval::evaluate_i32(ir_method_data, ")
+            out.append("    return native_jvm::ir_eval::").append(evaluator)
+                    .append("(ir_method_data, ")
                     .append("sizeof(ir_method_data), ir_method_args, ")
                     .append(method.getParameters().size()).append(");\n");
         }
@@ -236,6 +291,7 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         private final List<Edge> conditionalEdges = new ArrayList<>();
         private final int baseRegisterCount;
         private final int registerCount;
+        private final int longReturnRegister;
 
         private Serializer(IrMethod method) {
             this.method = method;
@@ -260,7 +316,10 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 }
             }
             baseRegisterCount = maximumRegister + 1;
-            registerCount = baseRegisterCount + maximumPhiCount;
+            longReturnRegister = method.getReturnType() == IrType.I64
+                    ? baseRegisterCount + maximumPhiCount : -1;
+            registerCount = baseRegisterCount + maximumPhiCount
+                    + (longReturnRegister >= 0 ? 1 : 0);
         }
 
         private byte[] serialize() {
@@ -271,6 +330,14 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             writer.u16(registerCount);
             writer.u16(method.getParameters().size());
 
+            for (int i = 0; i < method.getParameters().size(); i++) {
+                IrValue parameter = method.getParameters().get(i);
+                if (parameter.getType() == IrType.I64) {
+                    writer.u8(OP_LLOAD);
+                    writer.u16(parameter.getId());
+                    writer.u16(i);
+                }
+            }
             for (IrBlock block : method.getBlocks()) {
                 mark(blockLabels.get(block));
                 for (IrInstruction instruction : block.getInstructions()) {
@@ -295,7 +362,22 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 writer.i32(constant.getValue());
                 return;
             }
-            IrNodes.Binary binary = (IrNodes.Binary) instruction;
+            if (instruction instanceof IrNodes.Binary) {
+                emitIntBinary((IrNodes.Binary) instruction);
+                return;
+            }
+            if (instruction instanceof IrNodes.LongBinary) {
+                emitLongBinary((IrNodes.LongBinary) instruction);
+                return;
+            }
+            IrNodes.Conversion conversion = (IrNodes.Conversion) instruction;
+            writer.u8(conversion.getOperation() == IrNodes.Conversion.Operation.I2L
+                    ? OP_I2L : OP_L2I);
+            writer.u16(conversion.getResult().getId());
+            writer.u16(conversion.getOperand().getId());
+        }
+
+        private void emitIntBinary(IrNodes.Binary binary) {
             switch (binary.getOperation()) {
                 case ADD:
                     writer.u8(OP_IADD);
@@ -332,6 +414,25 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             writer.u16(binary.getRight().getId());
         }
 
+        private void emitLongBinary(IrNodes.LongBinary binary) {
+            switch (binary.getOperation()) {
+                case ADD:
+                    writer.u8(OP_LADD);
+                    break;
+                case SUBTRACT:
+                    writer.u8(OP_LSUB);
+                    break;
+                case MULTIPLY:
+                    writer.u8(OP_LMUL);
+                    break;
+                default:
+                    throw new IllegalStateException("Validated long operation changed");
+            }
+            writer.u16(binary.getResult().getId());
+            writer.u16(binary.getLeft().getId());
+            writer.u16(binary.getRight().getId());
+        }
+
         private void emitTerminator(IrBlock predecessor, IrTerminator terminator) {
             if (terminator instanceof IrNodes.Goto) {
                 IrBlock target = ((IrNodes.Goto) terminator).getTarget();
@@ -356,8 +457,14 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 return;
             }
             IrValue value = ((IrNodes.Return) terminator).getValue();
-            writer.u8(OP_RETURN_I32);
-            writer.u16(value.getId());
+            if (value.getType() == IrType.I64) {
+                emitLongStore(longReturnRegister, value.getId());
+                writer.u8(OP_LRETURN);
+                writer.u16(longReturnRegister);
+            } else {
+                writer.u8(OP_RETURN_I32);
+                writer.u16(value.getId());
+            }
         }
 
         private void emitPhiCopies(IrBlock predecessor, IrBlock target) {
@@ -379,6 +486,12 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
 
         private void emitMove(int destination, int source) {
             writer.u8(OP_MOVE);
+            writer.u16(destination);
+            writer.u16(source);
+        }
+
+        private void emitLongStore(int destination, int source) {
+            writer.u8(OP_LSTORE);
             writer.u16(destination);
             writer.u16(source);
         }

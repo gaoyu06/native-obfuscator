@@ -50,6 +50,22 @@ public final class CppAst {
         }
     }
 
+    public static final class LongLiteral implements Expression {
+        private final long value;
+
+        public LongLiteral(long value) {
+            this.value = value;
+        }
+
+        @Override
+        public String render() {
+            if (value == Long.MIN_VALUE) {
+                return "((jlong) 0x8000000000000000ULL)";
+            }
+            return Long.toString(value) + "LL";
+        }
+    }
+
     public static final class NullLiteral implements Expression {
         @Override
         public String render() {

@@ -63,6 +63,32 @@ public final class IrNodes {
         }
     }
 
+    public static final class LongConst implements IrInstruction {
+        private final IrValue result;
+        private final long value;
+        private final int bytecodeOffset;
+
+        public LongConst(IrValue result, long value, int bytecodeOffset) {
+            this.result = requireI64(result, "result");
+            this.value = value;
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public long getValue() {
+            return value;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class GetField implements IrInstruction {
         private final IrValue result;
         private final String owner;
@@ -314,6 +340,58 @@ public final class IrNodes {
         }
     }
 
+    public static final class Conversion implements IrInstruction {
+        public enum Operation {
+            I2L("i2l", IrType.I32, IrType.I64),
+            L2I("l2i", IrType.I64, IrType.I32);
+
+            private final String mnemonic;
+            private final IrType operandType;
+            private final IrType resultType;
+
+            Operation(String mnemonic, IrType operandType, IrType resultType) {
+                this.mnemonic = mnemonic;
+                this.operandType = operandType;
+                this.resultType = resultType;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue operand;
+        private final int bytecodeOffset;
+
+        public Conversion(IrValue result, Operation operation, IrValue operand,
+                          int bytecodeOffset) {
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.result = requireType(result, operation.resultType, "result");
+            this.operand = requireType(operand, operation.operandType, "operand");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getOperand() {
+            return operand;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class ArrayLength implements IrInstruction {
         private final IrValue result;
         private final IrValue array;
@@ -527,6 +605,61 @@ public final class IrNodes {
         }
     }
 
+    public static final class LongBinary implements IrInstruction {
+        public enum Operation {
+            ADD("ladd"),
+            SUBTRACT("lsub"),
+            MULTIPLY("lmul");
+
+            private final String mnemonic;
+
+            Operation(String mnemonic) {
+                this.mnemonic = mnemonic;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue left;
+        private final IrValue right;
+        private final int bytecodeOffset;
+
+        public LongBinary(IrValue result, Operation operation, IrValue left, IrValue right,
+                          int bytecodeOffset) {
+            this.result = requireI64(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.left = requireI64(left, "left");
+            this.right = requireI64(right, "right");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class Goto implements IrTerminator {
         private final IrBlock target;
         private final int bytecodeOffset;
@@ -634,7 +767,11 @@ public final class IrNodes {
 
         public Return(IrValue value, int bytecodeOffset) {
             if (value != null) {
-                requireI32(value, "value");
+                IrType type = value.getType();
+                if (type != IrType.I32 && type != IrType.I64) {
+                    throw new IllegalArgumentException(
+                            "value must be i32 or i64, got " + type);
+                }
             }
             this.value = value;
             this.bytecodeOffset = bytecodeOffset;
@@ -680,19 +817,23 @@ public final class IrNodes {
     }
 
     private static IrValue requireI32(IrValue value, String name) {
+        return requireType(value, IrType.I32, name);
+    }
+
+    private static IrValue requireI64(IrValue value, String name) {
+        return requireType(value, IrType.I64, name);
+    }
+
+    private static IrValue requireType(IrValue value, IrType type, String name) {
         IrValue result = Objects.requireNonNull(value, name);
-        if (result.getType() != IrType.I32) {
-            throw new IllegalArgumentException(name + " must be i32, got " + result.getType());
+        if (result.getType() != type) {
+            throw new IllegalArgumentException(name + " must be " + type
+                    + ", got " + result.getType());
         }
         return result;
     }
 
     private static IrValue requireReference(IrValue value, String name) {
-        IrValue result = Objects.requireNonNull(value, name);
-        if (result.getType() != IrType.REFERENCE) {
-            throw new IllegalArgumentException(name + " must be a reference, got "
-                    + result.getType());
-        }
-        return result;
+        return requireType(value, IrType.REFERENCE, name);
     }
 }

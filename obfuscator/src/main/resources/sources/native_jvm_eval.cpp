@@ -19,6 +19,14 @@ namespace {
     constexpr std::uint8_t OP_JUMP = 0x20;
     constexpr std::uint8_t OP_BRANCH = 0x21;
     constexpr std::uint8_t OP_RETURN_I32 = 0x22;
+    constexpr std::uint8_t OP_LLOAD = 0x23;
+    constexpr std::uint8_t OP_LSTORE = 0x24;
+    constexpr std::uint8_t OP_LADD = 0x25;
+    constexpr std::uint8_t OP_LSUB = 0x26;
+    constexpr std::uint8_t OP_LMUL = 0x27;
+    constexpr std::uint8_t OP_LRETURN = 0x28;
+    constexpr std::uint8_t OP_I2L = 0x29;
+    constexpr std::uint8_t OP_L2I = 0x2a;
 
     constexpr std::uint16_t ZERO_REGISTER = 0xffff;
     constexpr std::size_t HEADER_SIZE = 8;
@@ -71,16 +79,22 @@ namespace {
         bool valid_;
     };
 
-    std::uint32_t jint_bits(jint value) {
-        static_assert(sizeof(jint) == sizeof(std::uint32_t),
-                      "The evaluator requires a 32-bit jint");
-        std::uint32_t result;
+    jint bits_to_jint(std::uint32_t value) {
+        jint result;
         std::memcpy(&result, &value, sizeof(result));
         return result;
     }
 
-    jint bits_to_jint(std::uint32_t value) {
-        jint result;
+    std::uint64_t jlong_bits(jlong value) {
+        static_assert(sizeof(jlong) == sizeof(std::uint64_t),
+                      "The evaluator requires a 64-bit jlong");
+        std::uint64_t result;
+        std::memcpy(&result, &value, sizeof(result));
+        return result;
+    }
+
+    jlong bits_to_jlong(std::uint64_t value) {
+        jlong result;
         std::memcpy(&result, &value, sizeof(result));
         return result;
     }
@@ -121,8 +135,8 @@ namespace {
     }
 }
 
-jint evaluate_i32(const std::uint8_t *data, std::size_t size,
-                  const jint *arguments, std::size_t argument_count) {
+std::uint64_t evaluate_bits(const std::uint8_t *data, std::size_t size,
+                            const jlong *arguments, std::size_t argument_count) {
     Reader reader(data, size);
     if (size < HEADER_SIZE
             || reader.u8() != 0x4e
@@ -141,9 +155,9 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
         return 0;
     }
 
-    std::vector<jint> registers(register_count, 0);
+    std::vector<std::uint64_t> registers(register_count, 0);
     for (std::size_t i = 0; i < argument_count; i++) {
-        registers[i] = arguments[i];
+        registers[i] = jlong_bits(arguments[i]);
     }
 
     while (reader.valid()) {
@@ -156,7 +170,7 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                         || !valid_register(destination, registers.size())) {
                     return 0;
                 }
-                registers[destination] = bits_to_jint(immediate);
+                registers[destination] = immediate;
                 break;
             }
             case OP_MOVE: {
@@ -188,8 +202,10 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                         || !valid_register(right, registers.size())) {
                     return 0;
                 }
-                const std::uint32_t left_value = jint_bits(registers[left]);
-                const std::uint32_t right_value = jint_bits(registers[right]);
+                const std::uint32_t left_value =
+                        static_cast<std::uint32_t>(registers[left]);
+                const std::uint32_t right_value =
+                        static_cast<std::uint32_t>(registers[right]);
                 const std::uint32_t shift = right_value & 31U;
                 std::uint32_t result;
                 switch (opcode) {
@@ -223,7 +239,75 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                     default:
                         return 0;
                 }
-                registers[destination] = bits_to_jint(result);
+                registers[destination] = result;
+                break;
+            }
+            case OP_LLOAD: {
+                const std::uint16_t destination = reader.u16();
+                const std::uint16_t argument = reader.u16();
+                if (!reader.valid()
+                        || !valid_register(destination, registers.size())
+                        || argument >= argument_count) {
+                    return 0;
+                }
+                registers[destination] = jlong_bits(arguments[argument]);
+                break;
+            }
+            case OP_LSTORE: {
+                const std::uint16_t destination = reader.u16();
+                const std::uint16_t source = reader.u16();
+                if (!reader.valid()
+                        || !valid_register(destination, registers.size())
+                        || !valid_register(source, registers.size())) {
+                    return 0;
+                }
+                registers[destination] = registers[source];
+                break;
+            }
+            case OP_LADD:
+            case OP_LSUB:
+            case OP_LMUL: {
+                const std::uint16_t destination = reader.u16();
+                const std::uint16_t left = reader.u16();
+                const std::uint16_t right = reader.u16();
+                if (!reader.valid()
+                        || !valid_register(destination, registers.size())
+                        || !valid_register(left, registers.size())
+                        || !valid_register(right, registers.size())) {
+                    return 0;
+                }
+                switch (opcode) {
+                    case OP_LADD:
+                        registers[destination] = registers[left] + registers[right];
+                        break;
+                    case OP_LSUB:
+                        registers[destination] = registers[left] - registers[right];
+                        break;
+                    case OP_LMUL:
+                        registers[destination] = registers[left] * registers[right];
+                        break;
+                    default:
+                        return 0;
+                }
+                break;
+            }
+            case OP_I2L:
+            case OP_L2I: {
+                const std::uint16_t destination = reader.u16();
+                const std::uint16_t source = reader.u16();
+                if (!reader.valid()
+                        || !valid_register(destination, registers.size())
+                        || !valid_register(source, registers.size())) {
+                    return 0;
+                }
+                if (opcode == OP_I2L) {
+                    const jint value = bits_to_jint(
+                            static_cast<std::uint32_t>(registers[source]));
+                    registers[destination] = jlong_bits(static_cast<jlong>(value));
+                } else {
+                    registers[destination] =
+                            static_cast<std::uint32_t>(registers[source]);
+                }
                 break;
             }
             case OP_JUMP: {
@@ -245,9 +329,12 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                         && !valid_register(right, registers.size()))) {
                     return 0;
                 }
-                const jint right_value = right == ZERO_REGISTER ? 0 : registers[right];
+                const jint left_value = bits_to_jint(
+                        static_cast<std::uint32_t>(registers[left]));
+                const jint right_value = right == ZERO_REGISTER ? 0 : bits_to_jint(
+                        static_cast<std::uint32_t>(registers[right]));
                 const std::uint32_t target =
-                        branch_matches(condition, registers[left], right_value)
+                        branch_matches(condition, left_value, right_value)
                                 ? true_target : false_target;
                 if (!reader.jump(target)) {
                     return 0;
@@ -259,6 +346,13 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                 if (!reader.valid() || !valid_register(source, registers.size())) {
                     return 0;
                 }
+                return static_cast<std::uint32_t>(registers[source]);
+            }
+            case OP_LRETURN: {
+                const std::uint16_t source = reader.u16();
+                if (!reader.valid() || !valid_register(source, registers.size())) {
+                    return 0;
+                }
                 return registers[source];
             }
             default:
@@ -266,5 +360,16 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
         }
     }
     return 0;
+}
+
+jint evaluate_i32(const std::uint8_t *data, std::size_t size,
+                  const jlong *arguments, std::size_t argument_count) {
+    return bits_to_jint(static_cast<std::uint32_t>(
+            evaluate_bits(data, size, arguments, argument_count)));
+}
+
+jlong evaluate_i64(const std::uint8_t *data, std::size_t size,
+                   const jlong *arguments, std::size_t argument_count) {
+    return bits_to_jlong(evaluate_bits(data, size, arguments, argument_count));
 }
 }
