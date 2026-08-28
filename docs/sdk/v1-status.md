@@ -44,7 +44,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --no-build-cache --rerun-tasks --info
 ```
 
-Result: **PASS** (`BUILD SUCCESSFUL`, test completed in 1554 ms). The test:
+Result: **PASS** (`BUILD SUCCESSFUL`, latest test completed in 1568 ms). The test:
 
 1. generates the output JAR and C++ tree;
 2. confirms the SDK and SHA-256 sources are listed by generated CMake;
@@ -70,7 +70,7 @@ Result: **PASS** (`BUILD SUCCESSFUL`).
 
 The first integration invocation stopped before CMake because Gradle 9.3.1
 requires an explicit JUnit Platform launcher. Adding launcher 1.4.2 to match the
-existing JUnit 5.4.2 runtime resolved that test-runner failure; both subsequent
+existing JUnit 5.4.2 runtime resolved that test-runner failure; all subsequent
 native integration invocations passed.
 
 Generated-library symbol inspection found:
