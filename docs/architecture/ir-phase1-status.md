@@ -57,5 +57,94 @@ other opcodes fall back.
 
 ## Commands and evidence
 
-Exact verification commands and outcomes are recorded here after the branch's
-required pre-test commit and push.
+The implementation was committed and pushed before these verification commands,
+as required for this branch.
+
+### Gradle
+
+```text
+./gradlew :obfuscator:test --tests by.radioegor146.CodegenModeTest --tests by.radioegor146.ir.IrCompilerTest
+```
+
+Result on the final test sources: **failed at test-process startup** after
+`compileJava`, `compileTestJava`, and `testClasses` were up to date. Exact Gradle
+diagnostic:
+
+```text
+Could not start Gradle Test Executor 1: Failed to load JUnit Platform.
+Please ensure that all JUnit Platform dependencies are available on the test's
+runtime classpath, including the JUnit Platform launcher.
+```
+
+Executor 2 reported the same error. This is the known missing-launcher problem.
+JUnit dependencies and `obfuscator/build.gradle` test configuration were not
+changed.
+
+An earlier invocation of the same command exposed an invalid use of a newer
+Picocli test API (`ParseResult.valueFor`) and failed `compileTestJava`; the test
+was corrected to work with the repository's Picocli 4.6.3. The current
+compilation evidence is:
+
+```text
+./gradlew :obfuscator:compileTestJava :obfuscator:shadowJar
+BUILD SUCCESSFUL
+```
+
+Because the launcher could not start, a temporary Java source launcher called
+the six new public test methods directly with the compiled test classes, the
+shadow jar, JUnit API, platform-commons, opentest4j, and apiguardian on the
+classpath:
+
+```text
+java --class-path <compiled-tests:shadow-jar:resolved-junit-api-jars> /tmp/RunIrChecks.java
+MANUAL_ASSERTIONS_PASSED
+```
+
+The temporary runner was deleted. An earlier JShell attempt is not counted as
+evidence because JShell continued after individual snippet exceptions.
+
+### CLI and generated-source smoke checks
+
+```text
+java -jar obfuscator/build/libs/obfuscator.jar --help
+```
+
+Exited 0 and displayed
+`--codegen=<codegenMode> Method code generator: LEGACY, IR (default: legacy)`.
+
+A temporary Java 8 jar containing `add`, `sumTo`, and an object-using
+`unsupported` method was transpiled once with no codegen flag and once with
+`--codegen=ir`:
+
+```text
+javac --release 8 .../Example.java &&
+jar --create --file .../example.jar ... &&
+java -jar obfuscator/build/libs/obfuscator.jar .../example.jar .../default &&
+java -jar obfuscator/build/libs/obfuscator.jar .../example.jar .../ir --codegen=ir
+```
+
+Both invocations exited 0. The default output used legacy `cstack` code for
+`add` and `sumTo`. The IR output contained direct IR bodies for both methods and
+legacy `cstack` code for only the unsupported method. The logged fallback was:
+
+```text
+IR codegen unsupported for Example#unsupported(Ljava/lang/Object;)I:
+Only JVM int-carrier arguments are supported; falling back to legacy for this method
+```
+
+The IR output also contained the existing JNI signature shape:
+
+```text
+jint JNICALL __ngen_native_add1(JNIEnv *env, jclass clazz, jint arg0, jint arg1)
+```
+
+For the shell extraction check, the same fixture was transpiled by a detached
+`master` worktree and by this branch in default mode. `cmp` reported exact
+equality for `cpp/output/Example_0.cpp` and `cpp/string_pool.cpp`.
+
+```text
+git diff master -- obfuscator/build.gradle obfuscator/test_data
+```
+
+Produced no output. No CMake build, C++ compiler, transformed-jar execution, or
+full native E2E was run, so this branch is not direct-production evidence.
