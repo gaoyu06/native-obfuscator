@@ -312,9 +312,8 @@ public final class IrCppEmitter {
                 new CppAst.IntLiteral(0)), new CppAst.Block(negativeLength), null));
 
         int classId = context.getCachedClasses().getId(array.getComponentType());
-        int classStringId = context.getCachedStrings().getId(
-                array.getComponentType().replace('/', '.'));
-        statements.addAll(emitClassCache(method, block, classId, classStringId));
+        statements.addAll(emitClassCache(method, block, classId, context,
+                array.getComponentType()));
         statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
                 new CppAst.Block(exceptionalExit(method, block)), null));
 
@@ -505,9 +504,8 @@ public final class IrCppEmitter {
                                    long descriptorOffset, MethodContext context,
                                    IrBlock block) {
         int classId = context.getCachedClasses().getId(owner);
-        int classStringId = context.getCachedStrings().getId(owner.replace('/', '.'));
         List<CppAst.Statement> statements = emitClassCache(method, block, classId,
-                classStringId);
+                context, owner);
 
         CppAst.Expression memberSlot = array(memberArray, memberId);
         CppAst.Expression lookup = memberCall("env", lookupMethod,
@@ -521,7 +519,8 @@ public final class IrCppEmitter {
     }
 
     private List<CppAst.Statement> emitClassCache(IrMethod method, IrBlock block,
-                                                  int classId, int classStringId) {
+                                                  int classId, MethodContext context,
+                                                  String className) {
         CppAst.Expression classSlot = array("cclasses", classId);
         CppAst.Expression cacheMissing = new CppAst.Binary(
                 new CppAst.Unary("!", classSlot), "||",
@@ -529,16 +528,24 @@ public final class IrCppEmitter {
 
         String resolvedName = "resolved_class_" + classId;
         CppAst.Variable resolved = variable(resolvedName);
+        CppAst.Expression classLookup;
+        if (className.startsWith("[")) {
+            classLookup = memberCall("env", "FindClass",
+                    pool(context.getStringPool().getOffset(className)));
+        } else {
+            int classStringId = context.getCachedStrings().getId(
+                    className.replace('/', '.'));
+            classLookup = new CppAst.Call("utils::find_class_wo_static", Arrays.asList(
+                    variable("env"), variable("classloader"),
+                    array("cstrings", classStringId)));
+        }
         List<CppAst.Statement> publishClass = Arrays.<CppAst.Statement>asList(
                 new CppAst.Assignment(classSlot,
                         new CppAst.Cast("jclass", memberCall("env", "NewWeakGlobalRef", resolved))),
                 new CppAst.ExpressionStatement(
                         memberCall("env", "DeleteLocalRef", resolved)));
         List<CppAst.Statement> resolveClass = Arrays.<CppAst.Statement>asList(
-                new CppAst.Declaration("jclass", resolvedName,
-                        new CppAst.Call("utils::find_class_wo_static", Arrays.asList(
-                                variable("env"), variable("classloader"),
-                                array("cstrings", classStringId)))),
+                new CppAst.Declaration("jclass", resolvedName, classLookup),
                 new CppAst.If(new CppAst.Binary(resolved, "!=", new CppAst.NullLiteral()),
                         new CppAst.Block(publishClass), null));
 

@@ -371,6 +371,26 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void resolvesArrayComponentAnewarrayWithFindClass() {
+        MethodNode method = newNestedObjectArrayMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains(
+                "// IR codegen: example/Math.allocateStringRows(I)I"));
+        assertTrue(cpp.contains("env->FindClass(((char *)(string_pool + "));
+        assertTrue(cpp.contains("env->NewObjectArray(arg0"));
+        assertFalse(cpp.contains("utils::find_class_wo_static(env, classloader"));
+        assertTrue(obfuscator.getCachedClasses().getCache()
+                .containsKey("[Ljava/lang/String;"));
+        assertFalse(obfuscator.getCachedStrings().getCache()
+                .containsKey("[Ljava.lang.String;"));
+    }
+
+    @Test
     public void rejectsUnsupportedInstructionAfterAnewarrayBeforeMutation() {
         MethodNode method = unsupportedAfterObjectArrayMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -558,7 +578,8 @@ public class IrCompilerTest {
                 explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null),
                 divRemMethod(), divideCatchMethod(), newIntArrayCatchMethod(),
                 staticIntFieldMethod(), tableSwitchMethod(), lookupSwitchMethod(),
-                newObjectArrayCatchMethod(), newObjectArrayMethod()
+                newObjectArrayCatchMethod(), newObjectArrayMethod(),
+                newNestedObjectArrayMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -620,7 +641,9 @@ public class IrCompilerTest {
         assertTrue(source.contains("default: {"));
         assertTrue(source.contains("IR codegen: example/Math.allocateStrings(I)I"));
         assertTrue(source.contains("IR codegen: example/Math.allocateObjects(I)I"));
+        assertTrue(source.contains("IR codegen: example/Math.allocateStringRows(I)I"));
         assertTrue(source.contains("env->NewObjectArray(arg0"));
+        assertTrue(source.contains("env->FindClass(((char *)(string_pool + "));
         assertFalse(source.contains("juint"));
 
         Path directory = Files.createTempDirectory("ir-compile-smoke");
@@ -919,6 +942,19 @@ public class IrCompilerTest {
                 "allocateObjects", "(I)I", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
         method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode newNestedObjectArrayMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "allocateStringRows", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new TypeInsnNode(Opcodes.ANEWARRAY,
+                "[Ljava/lang/String;"));
         method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
