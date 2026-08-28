@@ -103,3 +103,26 @@ test ! -e "$PUBLISHED/cpp/native_jvm_interp.cpp"
 ! jar tf "$PUBLISHED/fixture.jar" | rg -q 'native_jvm_interp\.cpp'
 ! rg --files "$PUBLISHED" | rg -q '\.cpp$'
 ```
+
+## Broader regression run
+
+This full-module command was also run:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --console=plain
+```
+
+It ran 26 tests: 25 passed and `PullRequest72` failed before transformation
+while starting its ideal fixture, because `TestStringConcatFactory` was absent.
+The same fixture failure was reproduced at the compact-encoding base commit
+`be53efe` with:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.TestsGenerator \
+  --rerun-tasks --console=plain
+```
+
+The base run completed 8 dynamic fixtures with 7 passing and the same
+`PullRequest72` `ClassNotFoundException`. The focused 14-test link-only command
+above is the passing result for this change.
