@@ -160,7 +160,6 @@ def write_report(report):
     rendered = json.dumps(report, indent=2, sort_keys=True)
     RESULT.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
-    print("Raw result: {}".format(RESULT), file=sys.stderr)
 
 
 def main():
