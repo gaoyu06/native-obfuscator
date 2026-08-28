@@ -2,6 +2,7 @@ package by.radioegor146;
 
 import by.radioegor146.helpers.ProcessHelper;
 import by.radioegor146.helpers.ProcessHelper.ProcessResult;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.function.Executable;
 
 import java.io.File;
@@ -71,6 +72,26 @@ public class ClassicTest implements Executable {
                     .filter(Files::isRegularFile)
                     .forEach(resourceFiles::add);
 
+            if (!krakatauFiles.isEmpty()) {
+                if (!useKrakatau) {
+                    clean();
+                }
+                Assumptions.assumeTrue(useKrakatau,
+                        "Fixture requires krak2, but krak2 -V was not successful");
+            }
+
+            int javaRelease = requiredJavaRelease();
+            if (javaRelease > 0) {
+                ProcessResult releaseProbe = ProcessHelper.run(temp, 10_000,
+                        Arrays.asList("javac", "--release", Integer.toString(javaRelease), "-version"));
+                if (releaseProbe.timeout || releaseProbe.exitCode != 0) {
+                    clean();
+                }
+                Assumptions.assumeTrue(!releaseProbe.timeout && releaseProbe.exitCode == 0,
+                        String.format("Fixture requires javac with --release %d support; stdout=%s stderr=%s",
+                                javaRelease, releaseProbe.stdout, releaseProbe.stderr));
+            }
+
             Optional<String> mainClassOptional = javaFiles.stream()
                     .filter(uncheckedPredicate(p -> Files.lines(p).collect(Collectors.joining("\n"))
                             .matches("(?s).*public(\\s+static)?\\s+void\\s+main.*")))
@@ -96,7 +117,13 @@ public class ClassicTest implements Executable {
 
             System.out.println("Compiling...");
 
-            List<String> javacParameters = new ArrayList<>(Arrays.asList("javac", "-d", tempClasses.toString()));
+            List<String> javacParameters = new ArrayList<>(Collections.singletonList("javac"));
+            if (javaRelease > 0) {
+                javacParameters.add("--release");
+                javacParameters.add(Integer.toString(javaRelease));
+            }
+            javacParameters.add("-d");
+            javacParameters.add(tempClasses.toString());
             javaFiles.stream().map(Path::toString).forEach(javacParameters::add);
 
             ProcessHelper.run(temp, 10_000, javacParameters)
@@ -195,6 +222,15 @@ public class ClassicTest implements Executable {
             e.printStackTrace(System.err);
             throw e;
         }
+    }
+
+    private int requiredJavaRelease() {
+        for (Path part : testData) {
+            if (part.toString().equals("jdk17")) {
+                return 17;
+            }
+        }
+        return 0;
     }
 
     private void fail(ProcessResult testRun, ProcessResult ideaRun) {
