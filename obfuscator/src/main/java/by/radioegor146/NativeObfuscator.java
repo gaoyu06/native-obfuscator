@@ -1,6 +1,8 @@
 package by.radioegor146;
 
 import by.radioegor146.bytecode.PreprocessorRunner;
+import by.radioegor146.interpreter.InterpreterMethodEmitter;
+import by.radioegor146.interpreter.InterpreterMethodProcessor;
 import by.radioegor146.source.CMakeFilesBuilder;
 import by.radioegor146.source.ClassSourceBuilder;
 import by.radioegor146.source.MainSourceBuilder;
@@ -41,6 +43,7 @@ public class NativeObfuscator {
     private final Snippets snippets;
     private final StringPool stringPool;
     private final MethodProcessor methodProcessor;
+    private final InterpreterMethodProcessor interpreterMethodProcessor;
 
     private final NodeCache<String> cachedStrings;
     private final NodeCache<String> cachedClasses;
@@ -91,12 +94,23 @@ public class NativeObfuscator {
         cachedMethods = new NodeCache<>("(cmethods[%d])");
         cachedFields = new NodeCache<>("(cfields[%d])");
         methodProcessor = new MethodProcessor(this);
+        interpreterMethodProcessor = new InterpreterMethodProcessor();
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
                           List<String> blackList, List<String> whiteList, String plainLibName,
                           String customLibraryDirectory,
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar, CompilerBackend.CPP);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CompilerBackend backend) throws IOException {
+        Objects.requireNonNull(backend, "backend");
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -120,6 +134,10 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm.hpp", cppDir);
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
+        if (backend == CompilerBackend.INTERPRETER) {
+            Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
+            Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
+        }
 
         String projectName = "native_library";
 
@@ -130,6 +148,10 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("native_jvm_output.cpp");
         cMakeBuilder.addMainFile("string_pool.hpp");
         cMakeBuilder.addMainFile("string_pool.cpp");
+        if (backend == CompilerBackend.INTERPRETER) {
+            cMakeBuilder.addMainFile("native_jvm_interp.hpp");
+            cMakeBuilder.addMainFile("native_jvm_interp.cpp");
+        }
 
         if (platform == Platform.HOTSPOT) {
             cMakeBuilder.addFlag("USE_HOTSPOT");
@@ -247,7 +269,8 @@ public class NativeObfuscator {
                     cachedFields.clear();
 
                     try (ClassSourceBuilder cppBuilder =
-                                 new ClassSourceBuilder(cppOutput, classNode.name, classIndexReference[0]++, stringPool)) {
+                                 new ClassSourceBuilder(cppOutput, classNode.name, classIndexReference[0]++, stringPool,
+                                         backend == CompilerBackend.INTERPRETER)) {
                         StringBuilder instructions = new StringBuilder();
 
                         for (int i = 0; i < classNode.methods.size(); i++) {
@@ -262,7 +285,15 @@ public class NativeObfuscator {
                             }
 
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
-                            methodProcessor.processMethod(context);
+                            InterpreterMethodEmitter.CompiledMethod interpreted =
+                                    backend == CompilerBackend.INTERPRETER
+                                            ? InterpreterMethodEmitter.tryCompile(classNode, method)
+                                            : null;
+                            if (interpreted != null) {
+                                interpreterMethodProcessor.processMethod(context, interpreted);
+                            } else {
+                                methodProcessor.processMethod(context);
+                            }
                             instructions.append(context.output.toString().replace("\n", "\n    "));
 
                             nativeMethods.append(context.nativeMethods);
