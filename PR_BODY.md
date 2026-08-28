@@ -37,11 +37,29 @@ fallback-before-mutation invariant, and native runtime coverage.
 
 ## (d) Verification / 验证
 
-Verification will run the focused Java suite, including serializer/path
-assertions, the evaluator translation-unit g++ syntax smoke, and a linked
-native harness that executes all six new operations plus the IR-friendly
-kernel shape. Defaults remain covered by `CodegenModeTest`.
+The focused Gradle suite passed **28/28**, with 0 skipped, failures, or errors:
+`CodegenModeTest` 4/4, `IrCompilerTest` 17/17, and
+`InterpreterStreamStrategyTest` 7/7.
 
-验证将运行聚焦 Java 测试集，其中包括序列化与路径断言、evaluator 翻译单元的 g++
-语法检查，以及执行全部六个新增操作与 IR-friendly 内核形态的原生链接 harness。
-`CodegenModeTest` 继续覆盖默认选项不变。
+聚焦 Gradle 测试共 **28/28** 通过，0 skipped、0 failures、0 errors：
+`CodegenModeTest` 4/4、`IrCompilerTest` 17/17、
+`InterpreterStreamStrategyTest` 7/7。
+
+- Serializer assertions cover all six new opcode numbers. The g++ evaluator
+  translation-unit syntax smoke and linked runtime harness both executed.
+- The native harness evaluated each new operation, including masked shift
+  distances and negative `ISHR`/`IUSHR` inputs.
+- An equivalent `IrFriendlyIntKernel.run(I)I` stream ran natively for 10 rounds
+  and returned `802611040`, matching the Java reference. Generated-source
+  inspection found its evaluator data/trampoline and no legacy body/fallback.
+- The unsupported-unary test still proves rejection before method/output/cache
+  mutation. CLI tests still prove the `legacy` and `direct` defaults.
+
+- 序列化断言覆盖全部六个新增 opcode 数值；g++ evaluator 翻译单元语法检查与链接后的
+  运行 harness 均实际执行。
+- 原生 harness 执行了每个新增操作，包括移位距离掩码以及负数 `ISHR`/`IUSHR`。
+- 等价的 `IrFriendlyIntKernel.run(I)I` 数据流原生执行 10 轮，结果
+  `802611040` 与 Java 参考一致；生成源码确认其使用 evaluator 数据/trampoline，
+  没有 legacy 函数体或回退。
+- 不支持的一元操作测试继续证明方法、输出与缓存改写前即拒绝；CLI 测试继续证明
+  `legacy` 与 `direct` 默认值不变。
