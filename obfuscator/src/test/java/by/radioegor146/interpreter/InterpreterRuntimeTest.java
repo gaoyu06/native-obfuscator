@@ -77,6 +77,34 @@ public class InterpreterRuntimeTest {
                 "    return native_jvm::interp::execute_i(sum_method, f, &result) && result == expected;\n" +
                 "}\n" +
                 "\n" +
+                "static bool rejects_invalid_streams() {\n" +
+                "    static const std::uint8_t unknown_code[] = { 255 };\n" +
+                "    static const method_desc unknown_method = { 1, 1, 1, unknown_code, sizeof(unknown_code) };\n" +
+                "    static const std::uint8_t truncated_code[] = { 1, 0 };\n" +
+                "    static const method_desc truncated_method = { 1, 1, 1, truncated_code, sizeof(truncated_code) };\n" +
+                "    static const std::uint8_t bad_goto_code[] = { 18, 5, 0, 0, 0 };\n" +
+                "    static const method_desc bad_goto_method = { 1, 1, 1, bad_goto_code, sizeof(bad_goto_code) };\n" +
+                "    static const std::uint8_t bad_ifeq_code[] = {\n" +
+                "        1,1,0,0,0, 6,255,0,0,0, 1,7,0,0,0, 19\n" +
+                "    };\n" +
+                "    static const method_desc bad_ifeq_method = { 1, 1, 1, bad_ifeq_code, sizeof(bad_ifeq_code) };\n" +
+                "    static const std::uint8_t bad_if_icmpeq_code[] = {\n" +
+                "        1,1,0,0,0, 1,2,0,0,0, 12,255,0,0,0, 1,7,0,0,0, 19\n" +
+                "    };\n" +
+                "    static const method_desc bad_if_icmpeq_method = {\n" +
+                "        1, 2, 1, bad_if_icmpeq_code, sizeof(bad_if_icmpeq_code)\n" +
+                "    };\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack };\n" +
+                "    return !native_jvm::interp::execute_i(unknown_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(truncated_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(bad_goto_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(bad_ifeq_method, f, &result) &&\n" +
+                "           !native_jvm::interp::execute_i(bad_if_icmpeq_method, f, &result);\n" +
+                "}\n" +
+                "\n" +
                 "int main() {\n" +
                 "    if (!run_add(7, -3, 4)) return 1;\n" +
                 "    if (!run_add(std::numeric_limits<std::int32_t>::max(), 1,\n" +
@@ -87,6 +115,7 @@ public class InterpreterRuntimeTest {
                 "    if (!run_sum(-3, 0)) return 5;\n" +
                 "    if (!run_sum(0, 0)) return 6;\n" +
                 "    if (!run_sum(10, 45)) return 7;\n" +
+                "    if (!rejects_invalid_streams()) return 8;\n" +
                 "    return 0;\n" +
                 "}\n";
     }

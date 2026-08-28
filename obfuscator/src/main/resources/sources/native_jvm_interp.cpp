@@ -113,7 +113,8 @@ namespace native_jvm::interp {
                 case opcode::ifgt:
                 case opcode::ifle: {
                     std::uint32_t target;
-                    if (!read_u32(method, pc, target) || sp == 0) {
+                    if (!read_u32(method, pc, target) ||
+                            !valid_target(method, target) || sp == 0) {
                         return false;
                     }
                     std::int32_t value = current_frame.stack[--sp];
@@ -124,9 +125,6 @@ namespace native_jvm::interp {
                             (current == opcode::ifgt && value > 0) ||
                             (current == opcode::ifle && value <= 0);
                     if (taken) {
-                        if (!valid_target(method, target)) {
-                            return false;
-                        }
                         pc = target;
                     }
                     break;
@@ -138,7 +136,8 @@ namespace native_jvm::interp {
                 case opcode::if_icmpgt:
                 case opcode::if_icmple: {
                     std::uint32_t target;
-                    if (!read_u32(method, pc, target) || sp < 2) {
+                    if (!read_u32(method, pc, target) ||
+                            !valid_target(method, target) || sp < 2) {
                         return false;
                     }
                     std::int32_t right = current_frame.stack[--sp];
@@ -150,9 +149,6 @@ namespace native_jvm::interp {
                             (current == opcode::if_icmpgt && left > right) ||
                             (current == opcode::if_icmple && left <= right);
                     if (taken) {
-                        if (!valid_target(method, target)) {
-                            return false;
-                        }
                         pc = target;
                     }
                     break;
