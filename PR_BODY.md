@@ -1,16 +1,14 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Updates the documentation-only maintainer brief through draft PR #62 using
-only claims recorded in the named branch documents. It adds #61's review of
-the evaluator IUSHR ISA and #62's partial opt-in IR phase 8 while preserving
-#53's `N/A` eval timing, #37/#50's unmet requirement 7, and the complete
-written goal.
+Updates the documentation-only maintainer brief from draft PR #65 with the
+parallel phase-8 reviews in #63 and #64, using only claims recorded in their
+named branch documents. It preserves #53's `N/A` eval timing, #37/#50's unmet
+requirement 7, and the complete written goal.
 
-将仅文档的维护者简报更新至草稿 PR #62，仅采用指定分支文档已经记录的声明。
-新增 #61 对 evaluator IUSHR ISA 的审阅与 #62 的部分、opt-in IR phase 8，
-同时保留 #53 的 eval timing `N/A`、#37/#50 对 requirement 7 未满足的结论，
-以及完整书面目标。
+在草稿 PR #65 的基础上，将仅文档的维护者简报更新至 #63 与 #64 的并行
+phase-8 审阅，仅采用其指定分支文档已经记录的声明。同时保留 #53 的 eval
+timing `N/A`、#37/#50 对 requirement 7 未满足的结论，以及完整书面目标。
 
 ## (a) 本次改动范围 / Change scope
 
@@ -35,21 +33,30 @@ written goal.
   legacy remains the default. Its source records 36 + 2 = 38 focused tests
   and a 34-method g++ smoke translation unit. It remains partial and not
   ship-ready.
+- Add #63, Fable's documentation-only review of #62. Its recorded verdict is
+  **accept**, with no compiler change and 38/38 focused tests. Its only
+  non-blocking observation is a constructor-receiver null check that is never
+  taken on the already allocated and checked object path. It is not a
+  ship-readiness finding.
+- Add #64, Sol's documentation-only review of #62. Its recorded verdict is
+  **accept**, with no compiler change, 38/38 focused tests, and a 34-method
+  g++ syntax check. It is not a ship-readiness finding.
 - Preserve #53 exactly as prior evidence: eval rejected `USHR` and used legacy
   fallback, so its eval median remains `N/A`. Do not back-fill #53 from #57
   or #59.
 - Retain #37 and #50: each reports full recovery of all four methods from its
   valid live subject, so requirement 7 remains unmet.
-- Advance the direct-IR coverage/review lane #45 → #47 → #51 → #54 → #56 → #62
-  and keep evaluator experiment #42 → #44 → #48 → #50 with #57 as an ISA
+- Advance the direct-IR coverage/review lane #45 → #47 → #51 → #54 → #56 →
+  #62 → #63/#64, with #63/#64 as reviews of #62, and keep evaluator experiment
+  #42 → #44 → #48 → #50 with #57 as an ISA
   sibling and #61 as its review.
   Keep benchmark lane #34 → #53, plus #59 stacked on #57, without collapsing
   the two measurements. Preserve SDK #12 → #15 → #46, compatibility
-  #6 → #9 → #14 → #41, and options briefs … → #58 → #60 → this PR.
+  #6 → #9 → #14 → #41, and options briefs … → #60 → #65 → this PR.
 - Preserve the complete written engineering goal; option A remains only the
   v1 product recommendation.
 - Update only `docs/architecture/goal-status-and-options.md` and this bilingual
-  PR body. PRs #1–#62 remain open drafts; `master` remains `e7ca4c8`.
+  PR body. PRs #1–#65 remain open drafts; `master` remains `e7ca4c8`.
 
 - 新增 #56：Sol 对 phase 7（#54）的纯文档审阅。记录结论为 **accept**，未改
   编译器；审阅文档记录重新运行 35/35 个聚焦测试。
@@ -68,19 +75,26 @@ written goal.
   `INVOKESPECIAL`，并扩展 `I`/`J`/引用 invoke 形状。构造器方法体仍排除，
   默认仍为 legacy。来源记录 36 + 2 = 38 个聚焦测试及包含 34 个方法的 g++
   烟测翻译单元；该阶段仍部分且未达上线就绪。
+- 新增 #63：Fable 对 #62 的纯文档审阅。记录结论为 **accept**，无编译器
+  改动，38/38 个聚焦测试通过；唯一非阻塞观察为已分配且检查过的对象路径上
+  永不触发的构造器 receiver null check。该结论不是上线就绪声明。
+- 新增 #64：Sol 对 #62 的纯文档审阅。记录结论为 **accept**，无编译器改动，
+  38/38 个聚焦测试通过，并记录 34-method g++ 语法检查。该结论不是上线就绪
+  声明。
 - 原样保留 #53 的既有证据：eval 因 `USHR` 使用 legacy fallback，故其 eval
   中位数仍为 `N/A`；不得用 #57 或 #59 回填 #53。
 - 保留 #37 与 #50：两者均报告从各自有效 live 样本完整恢复四个方法，因此
   requirement 7 仍未满足。
 - 将 direct-IR coverage/review 路线推进为 #45 → #47 → #51 → #54 → #56 →
-  #62；保持 evaluator 实验 #42 → #44 → #48 → #50，将 #57 作为 ISA
+  #62 → #63/#64，其中 #63/#64 审阅 #62；保持 evaluator 实验
+  #42 → #44 → #48 → #50，将 #57 作为 ISA
   sibling，并将 #61 作为其审阅；另行
   保持 benchmark 路线 #34 → #53，并加入叠加在 #57 上的 #59，但不合并两次
   测量。保留 SDK #12 → #15 → #46、compatibility #6 → #9 → #14 → #41，
-  以及 options brief … → #58 → #60 → 本 PR。
+  以及 options brief … → #60 → #65 → 本 PR。
 - 保留完整书面工程目标；A 仅为 v1 产品建议。
 - 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
-  PR #1–#62 仍均为 open draft；`master` 仍为 `e7ca4c8`。
+  PR #1–#65 仍均为 open draft；`master` 仍为 `e7ca4c8`。
 
 ## (b) 是否可直接上线 / Can this ship to production as-is?
 
@@ -94,7 +108,8 @@ fallback, constructor bodies excluded, and legacy as the default. #53 still
 has no valid eval timing. #57 adds no benchmark result; #59 is one separate
 local diagnostic, not a portable speedup claim. #37 and #50 fully recovered
 all four methods from valid live direct-IR and shared-evaluator subjects, so
-requirement 7 is not met.
+requirement 7 is not met. #63's and #64's accept reviews of #62 are explicitly
+not ship-readiness findings.
 
 所有相关工作仍在草稿 PR 中，`master` 未包含这些内容。#56 是限定范围审阅，
 不是上线批准；#57 仍是 opt-in、窄范围且逐方法 fallback 的 evaluator lowering。
@@ -102,7 +117,8 @@ requirement 7 is not met.
 构造器方法体仍排除，默认仍为 legacy。#53 仍没有有效 eval timing；#57 本身
 不新增 benchmark 结果，#59 只是一次独立本地诊断，并非可移植加速声明。#37
 与 #50 分别从有效 live direct-IR 与 shared-evaluator 样本完整恢复全部四个
-方法，因此 requirement 7 未满足。
+方法，因此 requirement 7 未满足。#63 与 #64 对 #62 的 accept 审阅均明确
+不是上线就绪结论。
 
 ## (c) 上线前是否需要 review / Is review required?
 
@@ -113,11 +129,13 @@ scope, including #59's path classification and non-portability boundary,
 #61's review-only verdict, and #62's partial compiler boundary. Each
 implementation stack still requires independent code review, post-rebase
 verification, supported-platform/JDK CI, and applicable product/release
-approval.
+approval. The #63 and #64 review claims must remain scoped to their named
+review documents.
 
 每项陈述均须与指定来源文档核对并保留其范围，包括 #59 的路径分类与不可移植
 边界、#61 仅限审阅的结论，以及 #62 的部分编译器边界；每条实现栈仍需独立
 代码审查、rebase 后复测、受支持平台/JDK CI，以及适用的产品/发布审批。
+#63 与 #64 的审阅声明必须限定在各自指定审阅文档的范围内。
 
 ## (d) review 的前置条件 / Review preconditions
 
@@ -143,11 +161,11 @@ approval.
 6. Preserve the complete written goal. Option A remains only the v1 product
    recommendation, not a rewrite of the engineering goal.
 7. Preserve the lanes: direct IR coverage/review #45 → #47 → #51 → #54 → #56
-   → #62;
+   → #62 → #63/#64, with #63/#64 reviewing #62;
    benchmark #34 → #53 plus #59 stacked on #57; evaluator experiment
    #42 → #44 → #48 → #50 with #57 as an ISA sibling and #61 reviewing #57;
    SDK #12 → #15 → #46; compatibility #6 → #9 → #14 → #41; options briefs
-   … → #58 → #60 → this PR.
+   … → #60 → #65 → this PR.
 8. Use #61's `docs/architecture/ir-evaluator-ushr-review.md`: preserve the
    **accept** verdict, documentation-only scope, no compiler change, recorded
    28/28 focused tests, and explicit non-ship-readiness boundary.
@@ -157,6 +175,13 @@ approval.
    `I`/`J`/reference invoke shapes, constructor-body exclusion, legacy default,
    36 + 2 = 38 focused tests, 34-method g++ smoke, and partial/not-ship-ready
    status.
+10. Use #63's `docs/architecture/ir-phase8-fable-review.md`: preserve the
+    **accept** verdict, documentation-only scope, no compiler change, 38/38
+    focused tests, the single non-blocking never-taken constructor-receiver
+    null-check observation, and the explicit non-ship-readiness boundary.
+11. Use #64's `docs/architecture/ir-phase8-review.md`: preserve the **accept**
+    verdict, documentation-only scope, no compiler change, 38/38 focused tests,
+    the 34-method g++ syntax check, and the explicit non-ship-readiness boundary.
 
 中文核对项：
 
@@ -176,11 +201,11 @@ approval.
    方法均为 full。保留 #37 与 #50 作为 requirement 7 未满足的证据。
 6. 保留完整书面目标；A 仅作为 v1 产品建议，不改写工程目标。
 7. 保持各线：direct IR coverage/review 为 #45 → #47 → #51 → #54 → #56 →
-   #62；
+   #62 → #63/#64，其中 #63/#64 审阅 #62；
    benchmark 为 #34 → #53，另有叠加在 #57 上的 #59；evaluator 实验为
    #42 → #44 → #48 → #50，#57 为 ISA sibling，#61 审阅 #57；SDK 为
    #12 → #15 → #46；compatibility 为 #6 → #9 → #14 → #41；options brief
-   为 … → #58 → #60 → 本 PR。
+   为 … → #60 → #65 → 本 PR。
 8. 以 #61 的 `docs/architecture/ir-evaluator-ushr-review.md` 为准：保留
    **accept** 结论、纯文档范围、无编译器改动、记录的 28/28 聚焦测试，以及
    明确的非上线就绪边界。
@@ -189,5 +214,12 @@ approval.
    `INVOKESPECIAL`/`CallNonvirtualVoidMethod`、更广的精确 `I`/`J`/引用
    invoke 形状、构造器方法体排除、legacy 默认值、36 + 2 = 38 个聚焦测试、
    34-method g++ 烟测，以及仍部分/未达上线就绪的状态。
+10. 以 #63 的 `docs/architecture/ir-phase8-fable-review.md` 为准：保留
+    **accept** 结论、纯文档范围、无编译器改动、38/38 个聚焦测试、唯一
+    非阻塞且永不触发的构造器 receiver null-check 观察，以及明确的非上线
+    就绪边界。
+11. 以 #64 的 `docs/architecture/ir-phase8-review.md` 为准：保留
+    **accept** 结论、纯文档范围、无编译器改动、38/38 个聚焦测试、
+    34-method g++ 语法检查，以及明确的非上线就绪边界。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
