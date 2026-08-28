@@ -83,6 +83,19 @@ def version(command):
         return "unavailable: {}".format(error)
 
 
+def cxx_compiler():
+    candidates = [
+        os.environ.get("CXX"),
+        shutil.which("g++"),
+        shutil.which("clang++"),
+        shutil.which("c++"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            return str(Path(candidate).resolve())
+    return "c++"
+
+
 def java_home():
     configured = os.environ.get("JAVA_HOME")
     if configured:
@@ -151,6 +164,7 @@ def write_report(report):
 
 
 def main():
+    compiler = cxx_compiler()
     report = {
         "schemaVersion": 1,
         "status": "FAIL",
@@ -159,7 +173,10 @@ def main():
         "environment": {
             "jdk": version(["java", "-version"]),
             "os": platform.platform(),
-            "compiler": version(["c++", "--version"]),
+            "compiler": {
+                "command": compiler,
+                "version": version([compiler, "--version"]),
+            },
             "cmake": version(["cmake", "--version"]),
         },
         "commands": [],
@@ -228,7 +245,15 @@ def main():
         execute(
             report,
             "cmake-configure",
-            ["cmake", "-S", cpp, "-B", cmake_build, "-DCMAKE_BUILD_TYPE=Release"],
+            [
+                "cmake",
+                "-S",
+                cpp,
+                "-B",
+                cmake_build,
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_CXX_COMPILER={}".format(compiler),
+            ],
             timeout=180,
             env=build_env,
         )
