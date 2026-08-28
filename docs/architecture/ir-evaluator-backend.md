@@ -47,9 +47,21 @@ Instructions follow immediately:
 | `0x10` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `IADD` |
 | `0x11` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `ISUB` |
 | `0x12` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `IMUL` |
+| `0x13` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `IAND` |
+| `0x14` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `IOR` |
+| `0x15` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `IXOR` |
+| `0x16` | `dst:u16, lhs:u16, rhs:u16` | JVM-wrapping `ISHL`; shift distance is masked with `& 31` |
+| `0x17` | `dst:u16, lhs:u16, rhs:u16` | Arithmetic `ISHR`; shift distance is masked with `& 31` |
+| `0x18` | `dst:u16, lhs:u16, rhs:u16` | Logical `IUSHR`; shift distance is masked with `& 31` |
 | `0x20` | `target:u32` | Jump to a byte offset in the method data |
 | `0x21` | `condition:u8, lhs:u16, rhs:u16, true:u32, false:u32` | Signed integer branch |
 | `0x22` | `src:u16` | Return an integer register |
+
+Bitwise operations and left shifts run on the 32-bit unsigned carrier and copy
+the result bits back to `jint`, preserving JVM wraparound without signed C++
+overflow. `IUSHR` shifts that unsigned carrier. `ISHR` explicitly fills the
+high bits when the sign bit is set, so its JVM arithmetic-shift behavior does
+not depend on C++17's implementation-defined signed right shift.
 
 Branch condition values are `0 EQ`, `1 NE`, `2 LT`, `3 GE`, `4 GT`, and
 `5 LE`. An `rhs` value of `0xffff` means the literal integer zero, matching the
@@ -67,7 +79,7 @@ The evaluator lowering currently accepts:
 
 - static methods with only JVM integer-carrier arguments and an integer return;
 - integer constants;
-- `IADD`, `ISUB`, and `IMUL`;
+- `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
 - `GOTO`, all unary and binary integer comparisons represented by the IR, and
   `IRETURN`;
 - local-variable and operand-stack merges already represented as IR phi values.
@@ -79,6 +91,6 @@ existing per-method legacy fallback remains safe.
 
 The current evaluator path falls back for instance methods, void/reference
 signatures, exception edges, JNI-dependent nodes (fields, invokes, arrays, and
-throws), integer operations outside the three arithmetic operations above, and
-any other IR node not listed here. The direct IR strategy retains its existing
-broader support.
+throws), integer operations outside the binary operations above, unary integer
+operations, and any other IR node not listed here. The direct IR strategy
+retains its existing broader support.

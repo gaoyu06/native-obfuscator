@@ -20,6 +20,7 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -76,7 +77,7 @@ public class InterpreterStreamStrategyTest {
 
     @Test
     public void rejectsUnsupportedEvaluatorNodeBeforeMethodMutation() {
-        MethodNode method = bitwiseMethod();
+        MethodNode method = unsupportedUnaryMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = context(obfuscator, method);
 
@@ -102,6 +103,24 @@ public class InterpreterStreamStrategyTest {
         assertEquals(0x11, data[8] & 0xff);
         assertEquals(0x12, data[15] & 0xff);
         assertEquals(0x22, data[22] & 0xff);
+    }
+
+    @Test
+    public void serializesBitwiseAndShiftOpcodes() {
+        int[] bytecodeOpcodes = {
+                Opcodes.IAND, Opcodes.IOR, Opcodes.IXOR,
+                Opcodes.ISHL, Opcodes.ISHR, Opcodes.IUSHR
+        };
+        int[] evaluatorOpcodes = {0x13, 0x14, 0x15, 0x16, 0x17, 0x18};
+
+        for (int i = 0; i < bytecodeOpcodes.length; i++) {
+            byte[] data = lower(binaryMethod("op" + i, bytecodeOpcodes[i]))
+                    .getMethodData();
+            assertNotNull(data);
+            assertEquals(18, data.length);
+            assertEquals(evaluatorOpcodes[i], data[8] & 0xff);
+            assertEquals(0x22, data[15] & 0xff);
+        }
     }
 
     @Test
@@ -135,6 +154,7 @@ public class InterpreterStreamStrategyTest {
         String generated = read(classSource);
         assertEvaluatorMethod(generated, "// add(II)I");
         assertEvaluatorMethod(generated, "// sumTo(I)I");
+        assertEvaluatorMethod(generated, "// run(I)I");
     }
 
     @Test
@@ -167,6 +187,13 @@ public class InterpreterStreamStrategyTest {
         byte[] addData = lower(addMethod()).getMethodData();
         byte[] sumData = lower(sumToMethod()).getMethodData();
         byte[] subtractMultiplyData = lower(subtractMultiplyMethod()).getMethodData();
+        byte[] andData = lower(binaryMethod("and", Opcodes.IAND)).getMethodData();
+        byte[] orData = lower(binaryMethod("or", Opcodes.IOR)).getMethodData();
+        byte[] xorData = lower(binaryMethod("xor", Opcodes.IXOR)).getMethodData();
+        byte[] shlData = lower(binaryMethod("shl", Opcodes.ISHL)).getMethodData();
+        byte[] shrData = lower(binaryMethod("shr", Opcodes.ISHR)).getMethodData();
+        byte[] ushrData = lower(binaryMethod("ushr", Opcodes.IUSHR)).getMethodData();
+        byte[] kernelData = lower(irFriendlyIntKernelMethod()).getMethodData();
         Path harness = directory.resolve("harness.cpp");
         String source = "#include \"native_jvm_eval.hpp\"\n"
                 + "#include <iostream>\n"
@@ -174,16 +201,42 @@ public class InterpreterStreamStrategyTest {
                 + "static const std::uint8_t sum_data[] = { " + bytes(sumData) + " };\n"
                 + "static const std::uint8_t sub_mul_data[] = { "
                 + bytes(subtractMultiplyData) + " };\n"
+                + "static const std::uint8_t and_data[] = { " + bytes(andData) + " };\n"
+                + "static const std::uint8_t or_data[] = { " + bytes(orData) + " };\n"
+                + "static const std::uint8_t xor_data[] = { " + bytes(xorData) + " };\n"
+                + "static const std::uint8_t shl_data[] = { " + bytes(shlData) + " };\n"
+                + "static const std::uint8_t shr_data[] = { " + bytes(shrData) + " };\n"
+                + "static const std::uint8_t ushr_data[] = { " + bytes(ushrData) + " };\n"
+                + "static const std::uint8_t kernel_data[] = { "
+                + bytes(kernelData) + " };\n"
                 + "int main() {\n"
                 + "    const jint add_args[] = { 3, 4 };\n"
                 + "    const jint sum_args[] = { 6 };\n"
                 + "    const jint sub_mul_args[] = { 8, 3 };\n"
+                + "    const jint bitwise_args[] = { 12, 10 };\n"
+                + "    const jint shl_args[] = { 1, 33 };\n"
+                + "    const jint right_shift_args[] = { -4, 33 };\n"
+                + "    const jint kernel_args[] = { 10 };\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(add_data, "
                 + "sizeof(add_data), add_args, 2) << '\\n';\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(sum_data, "
                 + "sizeof(sum_data), sum_args, 1) << '\\n';\n"
                 + "    std::cout << native_jvm::ir_eval::evaluate_i32(sub_mul_data, "
                 + "sizeof(sub_mul_data), sub_mul_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(and_data, "
+                + "sizeof(and_data), bitwise_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(or_data, "
+                + "sizeof(or_data), bitwise_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(xor_data, "
+                + "sizeof(xor_data), bitwise_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(shl_data, "
+                + "sizeof(shl_data), shl_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(shr_data, "
+                + "sizeof(shr_data), right_shift_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(ushr_data, "
+                + "sizeof(ushr_data), right_shift_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(kernel_data, "
+                + "sizeof(kernel_data), kernel_args, 1) << '\\n';\n"
                 + "}\n";
         Files.write(harness, source.getBytes(StandardCharsets.UTF_8));
 
@@ -199,7 +252,9 @@ public class InterpreterStreamStrategyTest {
         Path runtimeOutput = directory.resolve("runtime-output.txt");
         int runtimeExit = run(runtimeOutput, executable.toString());
         assertEquals(0, runtimeExit, "evaluator harness failed:\n" + read(runtimeOutput));
-        assertEquals("7\n15\n15\n", normalizeNewlines(read(runtimeOutput)));
+        assertEquals("7\n15\n15\n8\n14\n6\n2\n-2\n2147483646\n"
+                        + runIrFriendlyIntKernel(10) + "\n",
+                normalizeNewlines(read(runtimeOutput)));
     }
 
     private LoweredMethod lower(MethodNode method) {
@@ -229,13 +284,25 @@ public class InterpreterStreamStrategyTest {
         return method;
     }
 
-    private MethodNode bitwiseMethod() {
+    private MethodNode unsupportedUnaryMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9,
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
-                "and", "(II)I", null, null);
+                "negate", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode binaryMethod(String name, int opcode) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                name, "(II)I", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
-        method.instructions.add(new InsnNode(Opcodes.IAND));
+        method.instructions.add(new InsnNode(opcode));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
@@ -285,6 +352,59 @@ public class InterpreterStreamStrategyTest {
         return method;
     }
 
+    private MethodNode irFriendlyIntKernelMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "run", "(I)I", null, null);
+        LabelNode header = new LabelNode();
+        LabelNode exit = new LabelNode();
+        method.instructions.add(new LdcInsnNode(0x1234ABCD));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(header);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPGE, exit));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new LdcInsnNode(1664525));
+        method.instructions.add(new InsnNode(Opcodes.IMUL));
+        method.instructions.add(new LdcInsnNode(1013904223));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new LdcInsnNode(13));
+        method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new LdcInsnNode(31));
+        method.instructions.add(new InsnNode(Opcodes.IMUL));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_5));
+        method.instructions.add(new InsnNode(Opcodes.ISHL));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(new IincInsnNode(2, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, header));
+        method.instructions.add(exit);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 3;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private int runIrFriendlyIntKernel(int rounds) {
+        int value = 0x1234ABCD;
+        for (int i = 0; i < rounds; i++) {
+            value = (value * 1664525 + 1013904223) ^ (value >>> 13);
+            value += (i * 31) ^ (value << 5);
+        }
+        return value;
+    }
+
     private void writeFixtureJar(Path jar) throws Exception {
         ClassWriter writer = new ClassWriter(
                 ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
@@ -292,6 +412,7 @@ public class InterpreterStreamStrategyTest {
                 null, "java/lang/Object", null);
         writeAdd(writer);
         writeSumTo(writer);
+        writeIrFriendlyIntKernel(writer);
         writer.visitEnd();
 
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
@@ -329,6 +450,49 @@ public class InterpreterStreamStrategyTest {
         method.visitJumpInsn(Opcodes.IF_ICMPGE, exit);
         method.visitVarInsn(Opcodes.ILOAD, 1);
         method.visitVarInsn(Opcodes.ILOAD, 2);
+        method.visitInsn(Opcodes.IADD);
+        method.visitVarInsn(Opcodes.ISTORE, 1);
+        method.visitIincInsn(2, 1);
+        method.visitJumpInsn(Opcodes.GOTO, header);
+        method.visitLabel(exit);
+        method.visitVarInsn(Opcodes.ILOAD, 1);
+        method.visitInsn(Opcodes.IRETURN);
+        method.visitMaxs(0, 0);
+        method.visitEnd();
+    }
+
+    private void writeIrFriendlyIntKernel(ClassWriter writer) {
+        MethodVisitor method = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run", "(I)I", null, null);
+        org.objectweb.asm.Label header = new org.objectweb.asm.Label();
+        org.objectweb.asm.Label exit = new org.objectweb.asm.Label();
+        method.visitCode();
+        method.visitLdcInsn(0x1234ABCD);
+        method.visitVarInsn(Opcodes.ISTORE, 1);
+        method.visitInsn(Opcodes.ICONST_0);
+        method.visitVarInsn(Opcodes.ISTORE, 2);
+        method.visitLabel(header);
+        method.visitVarInsn(Opcodes.ILOAD, 2);
+        method.visitVarInsn(Opcodes.ILOAD, 0);
+        method.visitJumpInsn(Opcodes.IF_ICMPGE, exit);
+        method.visitVarInsn(Opcodes.ILOAD, 1);
+        method.visitLdcInsn(1664525);
+        method.visitInsn(Opcodes.IMUL);
+        method.visitLdcInsn(1013904223);
+        method.visitInsn(Opcodes.IADD);
+        method.visitVarInsn(Opcodes.ILOAD, 1);
+        method.visitLdcInsn(13);
+        method.visitInsn(Opcodes.IUSHR);
+        method.visitInsn(Opcodes.IXOR);
+        method.visitVarInsn(Opcodes.ISTORE, 1);
+        method.visitVarInsn(Opcodes.ILOAD, 1);
+        method.visitVarInsn(Opcodes.ILOAD, 2);
+        method.visitLdcInsn(31);
+        method.visitInsn(Opcodes.IMUL);
+        method.visitVarInsn(Opcodes.ILOAD, 1);
+        method.visitInsn(Opcodes.ICONST_5);
+        method.visitInsn(Opcodes.ISHL);
+        method.visitInsn(Opcodes.IXOR);
         method.visitInsn(Opcodes.IADD);
         method.visitVarInsn(Opcodes.ISTORE, 1);
         method.visitIincInsn(2, 1);

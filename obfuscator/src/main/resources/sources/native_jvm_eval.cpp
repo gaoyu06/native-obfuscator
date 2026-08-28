@@ -10,6 +10,12 @@ namespace {
     constexpr std::uint8_t OP_IADD = 0x10;
     constexpr std::uint8_t OP_ISUB = 0x11;
     constexpr std::uint8_t OP_IMUL = 0x12;
+    constexpr std::uint8_t OP_IAND = 0x13;
+    constexpr std::uint8_t OP_IOR = 0x14;
+    constexpr std::uint8_t OP_IXOR = 0x15;
+    constexpr std::uint8_t OP_ISHL = 0x16;
+    constexpr std::uint8_t OP_ISHR = 0x17;
+    constexpr std::uint8_t OP_IUSHR = 0x18;
     constexpr std::uint8_t OP_JUMP = 0x20;
     constexpr std::uint8_t OP_BRANCH = 0x21;
     constexpr std::uint8_t OP_RETURN_I32 = 0x22;
@@ -77,6 +83,18 @@ namespace {
         jint result;
         std::memcpy(&result, &value, sizeof(result));
         return result;
+    }
+
+    std::uint32_t arithmetic_shift_right(std::uint32_t value,
+                                         std::uint32_t shift) {
+        if (shift == 0) {
+            return value;
+        }
+        const std::uint32_t shifted = value >> shift;
+        if ((value & 0x80000000U) == 0) {
+            return shifted;
+        }
+        return shifted | (0xffffffffU << (32U - shift));
     }
 
     bool valid_register(std::uint16_t index, std::size_t register_count) {
@@ -154,7 +172,13 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
             }
             case OP_IADD:
             case OP_ISUB:
-            case OP_IMUL: {
+            case OP_IMUL:
+            case OP_IAND:
+            case OP_IOR:
+            case OP_IXOR:
+            case OP_ISHL:
+            case OP_ISHR:
+            case OP_IUSHR: {
                 const std::uint16_t destination = reader.u16();
                 const std::uint16_t left = reader.u16();
                 const std::uint16_t right = reader.u16();
@@ -166,13 +190,38 @@ jint evaluate_i32(const std::uint8_t *data, std::size_t size,
                 }
                 const std::uint32_t left_value = jint_bits(registers[left]);
                 const std::uint32_t right_value = jint_bits(registers[right]);
+                const std::uint32_t shift = right_value & 31U;
                 std::uint32_t result;
-                if (opcode == OP_IADD) {
-                    result = left_value + right_value;
-                } else if (opcode == OP_ISUB) {
-                    result = left_value - right_value;
-                } else {
-                    result = left_value * right_value;
+                switch (opcode) {
+                    case OP_IADD:
+                        result = left_value + right_value;
+                        break;
+                    case OP_ISUB:
+                        result = left_value - right_value;
+                        break;
+                    case OP_IMUL:
+                        result = left_value * right_value;
+                        break;
+                    case OP_IAND:
+                        result = left_value & right_value;
+                        break;
+                    case OP_IOR:
+                        result = left_value | right_value;
+                        break;
+                    case OP_IXOR:
+                        result = left_value ^ right_value;
+                        break;
+                    case OP_ISHL:
+                        result = left_value << shift;
+                        break;
+                    case OP_ISHR:
+                        result = arithmetic_shift_right(left_value, shift);
+                        break;
+                    case OP_IUSHR:
+                        result = left_value >> shift;
+                        break;
+                    default:
+                        return 0;
                 }
                 registers[destination] = bits_to_jint(result);
                 break;

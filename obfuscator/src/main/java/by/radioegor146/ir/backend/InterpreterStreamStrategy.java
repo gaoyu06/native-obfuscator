@@ -30,6 +30,12 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
     private static final int OP_IADD = 0x10;
     private static final int OP_ISUB = 0x11;
     private static final int OP_IMUL = 0x12;
+    private static final int OP_IAND = 0x13;
+    private static final int OP_IOR = 0x14;
+    private static final int OP_IXOR = 0x15;
+    private static final int OP_ISHL = 0x16;
+    private static final int OP_ISHR = 0x17;
+    private static final int OP_IUSHR = 0x18;
     private static final int OP_JUMP = 0x20;
     private static final int OP_BRANCH = 0x21;
     private static final int OP_RETURN_I32 = 0x22;
@@ -98,9 +104,7 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                             checkedI32(instruction.getResult(), offset));
                 } else if (instruction instanceof IrNodes.Binary) {
                     IrNodes.Binary binary = (IrNodes.Binary) instruction;
-                    if (binary.getOperation() != IrNodes.Binary.Operation.ADD
-                            && binary.getOperation() != IrNodes.Binary.Operation.SUBTRACT
-                            && binary.getOperation() != IrNodes.Binary.Operation.MULTIPLY) {
+                    if (!isSupportedBinaryOperation(binary.getOperation())) {
                         throw unsupported("Unsupported evaluator binary operation "
                                 + binary.getOperation(), offset);
                     }
@@ -152,6 +156,23 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         }
         if (method.getParameters().size() > MAX_REGISTER_COUNT) {
             throw unsupported("Evaluator argument count exceeds the u16 ISA limit", -1);
+        }
+    }
+
+    private boolean isSupportedBinaryOperation(IrNodes.Binary.Operation operation) {
+        switch (operation) {
+            case ADD:
+            case SUBTRACT:
+            case MULTIPLY:
+            case AND:
+            case OR:
+            case XOR:
+            case SHL:
+            case SHR:
+            case USHR:
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -284,6 +305,24 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                     break;
                 case MULTIPLY:
                     writer.u8(OP_IMUL);
+                    break;
+                case AND:
+                    writer.u8(OP_IAND);
+                    break;
+                case OR:
+                    writer.u8(OP_IOR);
+                    break;
+                case XOR:
+                    writer.u8(OP_IXOR);
+                    break;
+                case SHL:
+                    writer.u8(OP_ISHL);
+                    break;
+                case SHR:
+                    writer.u8(OP_ISHR);
+                    break;
+                case USHR:
+                    writer.u8(OP_IUSHR);
                     break;
                 default:
                     throw new IllegalStateException("Validated binary operation changed");
