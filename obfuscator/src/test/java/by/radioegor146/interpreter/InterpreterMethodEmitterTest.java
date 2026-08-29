@@ -7,6 +7,7 @@ import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -40,6 +41,102 @@ public class InterpreterMethodEmitterTest {
                 2, 1, 0,
                 4,
                 19), compiled.getCode());
+    }
+
+    @Test
+    public void emitsLongAddGoldenAndUsesTwoSlotLocals() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "addLong", "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxStack = 4;
+        method.maxLocals = 4;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertEquals(3, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(4, compiled.getMaxStack());
+        assertEquals(4, compiled.getMaxLocals());
+        assertArrayEquals(bytes(
+                31, 0, 0,
+                31, 2, 0,
+                33,
+                43), compiled.getCode());
+    }
+
+    @Test
+    public void emitsLongConstantStoreShiftAndNegateGolden() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "constant", "()J", null, null);
+        method.instructions.add(new LdcInsnNode(0x0102030405060708L));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.LSHL));
+        method.instructions.add(new InsnNode(Opcodes.LNEG));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxStack = 3;
+        method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                30, 8, 7, 6, 5, 4, 3, 2, 1,
+                32, 0, 0,
+                31, 0, 0,
+                1, 1, 0, 0, 0,
+                39,
+                42,
+                43), compiled.getCode());
+    }
+
+    @Test
+    public void emitsRemainingLongArithmeticOpcodes() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "arithmetic", "(JJI)J", null, null);
+        int[] opcodes = {
+                Opcodes.LSUB, Opcodes.LMUL, Opcodes.LAND,
+                Opcodes.LOR, Opcodes.LXOR, Opcodes.LDIV, Opcodes.LREM
+        };
+        for (int opcode : opcodes) {
+            method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+            method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+            method.instructions.add(new InsnNode(opcode));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LSHR));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LUSHR));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxStack = 32;
+        method.maxLocals = 5;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                31, 0, 0, 31, 2, 0, 34,
+                31, 0, 0, 31, 2, 0, 35,
+                31, 0, 0, 31, 2, 0, 36,
+                31, 0, 0, 31, 2, 0, 37,
+                31, 0, 0, 31, 2, 0, 38,
+                31, 0, 0, 31, 2, 0, 44,
+                31, 0, 0, 31, 2, 0, 45,
+                31, 0, 0, 2, 4, 0, 40,
+                31, 0, 0, 2, 4, 0, 41,
+                43), compiled.getCode());
     }
 
     @Test
@@ -125,7 +222,7 @@ public class InterpreterMethodEmitterTest {
                 InterpreterMethodEmitter.tryCompile(owner(), method);
 
         assertNotNull(compiled);
-        assertEquals(2, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(3, InterpreterMethodEmitter.ISA_VERSION);
         assertArrayEquals(bytes(
                 2, 0, 0,
                 2, 1, 0,

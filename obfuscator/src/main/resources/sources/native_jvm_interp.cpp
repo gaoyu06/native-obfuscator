@@ -40,10 +40,41 @@ namespace native_jvm::interp {
             return true;
         }
 
+        bool read_u64(const method_desc &method, std::uint32_t &pc,
+                      std::uint64_t &value) noexcept {
+            std::uint32_t low;
+            std::uint32_t high;
+            if (!read_u32(method, pc, low) ||
+                    !read_u32(method, pc, high)) {
+                return false;
+            }
+            value = static_cast<std::uint64_t>(low) |
+                    (static_cast<std::uint64_t>(high) << 32U);
+            return true;
+        }
+
         std::int32_t from_unsigned(std::uint32_t value) noexcept {
             std::int32_t result;
             std::memcpy(&result, &value, sizeof(result));
             return result;
+        }
+
+        std::int64_t long_from_unsigned(std::uint64_t value) noexcept {
+            std::int64_t result;
+            std::memcpy(&result, &value, sizeof(result));
+            return result;
+        }
+
+        std::uint64_t long_bits(const std::int32_t *slots) noexcept {
+            return static_cast<std::uint32_t>(slots[0]) |
+                    (static_cast<std::uint64_t>(
+                            static_cast<std::uint32_t>(slots[1])) << 32U);
+        }
+
+        void store_long_bits(std::int32_t *slots,
+                             std::uint64_t value) noexcept {
+            slots[0] = from_unsigned(static_cast<std::uint32_t>(value));
+            slots[1] = from_unsigned(static_cast<std::uint32_t>(value >> 32U));
         }
 
         std::uint32_t arithmetic_shift_right(std::uint32_t value,
@@ -58,17 +89,38 @@ namespace native_jvm::interp {
             return shifted;
         }
 
+        std::uint64_t arithmetic_shift_right(std::uint64_t value,
+                                             std::uint32_t distance) noexcept {
+            if (distance == 0) {
+                return value;
+            }
+            std::uint64_t shifted = value >> distance;
+            if ((value & 0x8000000000000000ULL) != 0) {
+                shifted |= ~std::uint64_t{0} << (64U - distance);
+            }
+            return shifted;
+        }
+
         bool valid_target(const method_desc &method,
                           std::uint32_t target) noexcept {
             return target < method.code_len;
         }
     }
 
-    execution_result execute_i(const method_desc &method, frame &current_frame,
-                               std::int32_t *result) noexcept {
+    void store_long(std::int32_t *slots, std::int64_t value) noexcept {
+        std::uint64_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        store_long_bits(slots, bits);
+    }
+
+    namespace {
+    execution_result execute(const method_desc &method, frame &current_frame,
+                             std::int32_t *int_result,
+                             std::int64_t *long_result) noexcept {
         if (method.isa_version != ISA_VERSION || method.code == nullptr ||
                 method.code_len == 0 || current_frame.locals == nullptr ||
-                current_frame.stack == nullptr || result == nullptr) {
+                current_frame.stack == nullptr ||
+                (int_result == nullptr) == (long_result == nullptr)) {
             return execution_result::invalid_stream;
         }
 
@@ -104,6 +156,45 @@ namespace native_jvm::interp {
                         return execution_result::invalid_stream;
                     }
                     current_frame.locals[local] = current_frame.stack[--sp];
+                    break;
+                }
+                case opcode::lpush: {
+                    std::uint64_t value;
+                    if (!read_u64(method, pc, value) ||
+                            sp > method.max_stack ||
+                            method.max_stack - sp < 2) {
+                        return execution_result::invalid_stream;
+                    }
+                    store_long_bits(current_frame.stack + sp, value);
+                    sp += 2;
+                    break;
+                }
+                case opcode::lload: {
+                    std::uint16_t local;
+                    if (!read_u16(method, pc, local) ||
+                            local >= method.max_locals ||
+                            method.max_locals - local < 2 ||
+                            sp > method.max_stack ||
+                            method.max_stack - sp < 2) {
+                        return execution_result::invalid_stream;
+                    }
+                    current_frame.stack[sp] = current_frame.locals[local];
+                    current_frame.stack[sp + 1] =
+                            current_frame.locals[local + 1];
+                    sp += 2;
+                    break;
+                }
+                case opcode::lstore: {
+                    std::uint16_t local;
+                    if (!read_u16(method, pc, local) ||
+                            local >= method.max_locals ||
+                            method.max_locals - local < 2 || sp < 2) {
+                        return execution_result::invalid_stream;
+                    }
+                    sp -= 2;
+                    current_frame.locals[local] = current_frame.stack[sp];
+                    current_frame.locals[local + 1] =
+                            current_frame.stack[sp + 1];
                     break;
                 }
                 case opcode::iadd:
@@ -191,6 +282,95 @@ namespace native_jvm::interp {
                     --sp;
                     break;
                 }
+                case opcode::ladd:
+                case opcode::lsub:
+                case opcode::lmul:
+                case opcode::land:
+                case opcode::lor:
+                case opcode::lxor:
+                case opcode::ldiv:
+                case opcode::lrem: {
+                    if (sp < 4) {
+                        return execution_result::invalid_stream;
+                    }
+                    std::uint64_t left =
+                            long_bits(current_frame.stack + sp - 4);
+                    std::uint64_t right =
+                            long_bits(current_frame.stack + sp - 2);
+                    std::uint64_t value;
+                    switch (current) {
+                        case opcode::ladd:
+                            value = left + right;
+                            break;
+                        case opcode::lsub:
+                            value = left - right;
+                            break;
+                        case opcode::lmul:
+                            value = left * right;
+                            break;
+                        case opcode::land:
+                            value = left & right;
+                            break;
+                        case opcode::lor:
+                            value = left | right;
+                            break;
+                        case opcode::lxor:
+                            value = left ^ right;
+                            break;
+                        case opcode::ldiv:
+                        case opcode::lrem: {
+                            std::int64_t signed_left =
+                                    long_from_unsigned(left);
+                            std::int64_t signed_right =
+                                    long_from_unsigned(right);
+                            if (signed_right == 0) {
+                                return execution_result::
+                                        arithmetic_exception;
+                            }
+                            if (signed_left ==
+                                    std::numeric_limits<
+                                            std::int64_t>::min() &&
+                                    signed_right == -1) {
+                                value = current == opcode::ldiv ? left : 0;
+                            } else if (current == opcode::ldiv) {
+                                value = static_cast<std::uint64_t>(
+                                        signed_left / signed_right);
+                            } else {
+                                value = static_cast<std::uint64_t>(
+                                        signed_left % signed_right);
+                            }
+                            break;
+                        }
+                        default:
+                            return execution_result::invalid_stream;
+                    }
+                    store_long_bits(current_frame.stack + sp - 4, value);
+                    sp -= 2;
+                    break;
+                }
+                case opcode::lshl:
+                case opcode::lshr:
+                case opcode::lushr: {
+                    if (sp < 3) {
+                        return execution_result::invalid_stream;
+                    }
+                    std::uint64_t left =
+                            long_bits(current_frame.stack + sp - 3);
+                    std::uint32_t distance =
+                            static_cast<std::uint32_t>(
+                                    current_frame.stack[sp - 1]) & 0x3fU;
+                    std::uint64_t value;
+                    if (current == opcode::lshl) {
+                        value = left << distance;
+                    } else if (current == opcode::lshr) {
+                        value = arithmetic_shift_right(left, distance);
+                    } else {
+                        value = left >> distance;
+                    }
+                    store_long_bits(current_frame.stack + sp - 3, value);
+                    --sp;
+                    break;
+                }
                 case opcode::ineg: {
                     if (sp == 0) {
                         return execution_result::invalid_stream;
@@ -199,6 +379,15 @@ namespace native_jvm::interp {
                             static_cast<std::uint32_t>(
                                     current_frame.stack[sp - 1]);
                     current_frame.stack[sp - 1] = from_unsigned(value);
+                    break;
+                }
+                case opcode::lneg: {
+                    if (sp < 2) {
+                        return execution_result::invalid_stream;
+                    }
+                    std::uint64_t value = 0ULL -
+                            long_bits(current_frame.stack + sp - 2);
+                    store_long_bits(current_frame.stack + sp - 2, value);
                     break;
                 }
                 case opcode::ifeq:
@@ -264,15 +453,34 @@ namespace native_jvm::interp {
                     break;
                 }
                 case opcode::ireturn:
-                    if (sp == 0) {
+                    if (sp == 0 || int_result == nullptr) {
                         return execution_result::invalid_stream;
                     }
-                    *result = current_frame.stack[--sp];
+                    *int_result = current_frame.stack[--sp];
+                    return execution_result::success;
+                case opcode::lreturn:
+                    if (sp < 2 || long_result == nullptr) {
+                        return execution_result::invalid_stream;
+                    }
+                    sp -= 2;
+                    *long_result = long_from_unsigned(
+                            long_bits(current_frame.stack + sp));
                     return execution_result::success;
                 default:
                     return execution_result::invalid_stream;
             }
         }
         return execution_result::invalid_stream;
+    }
+    }
+
+    execution_result execute_i(const method_desc &method, frame &current_frame,
+                               std::int32_t *result) noexcept {
+        return execute(method, current_frame, result, nullptr);
+    }
+
+    execution_result execute_j(const method_desc &method, frame &current_frame,
+                               std::int64_t *result) noexcept {
+        return execute(method, current_frame, nullptr, result);
     }
 }
