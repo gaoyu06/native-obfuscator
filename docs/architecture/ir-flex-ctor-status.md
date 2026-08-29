@@ -128,12 +128,13 @@ Try/catch entries are classified independently and fail closed:
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
 - One exact mixed placement is also admitted: `start` and `end` are suffix
-  labels, while `handler` is a prefix label immediately followed by
-  `POP; RETURN`. The instruction immediately before the handler must be
-  `GOTO`, no jump or switch may target the handler, and the label may not also
-  delimit a protected range. `createNativeBody` appends this isolated handler
-  to the suffix clone and preserves the original exception-table edge.
-  `postProcess` omits the now-dead prefix copy from the bytecode wrapper.
+  labels, while `handler` is a prefix label whose executable sequence is
+  exactly `POP; RETURN` (stack-map frames may separate those nodes). The
+  preceding executable instruction must be `GOTO`, no jump or switch may
+  target the handler, and the label may not also delimit a protected range.
+  `createNativeBody` appends this isolated handler to the suffix clone and
+  preserves the original exception-table edge. `postProcess` omits the
+  now-dead prefix copy from the bytecode wrapper.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
 - Every other mixed placement is rejected, including a prefix protected range

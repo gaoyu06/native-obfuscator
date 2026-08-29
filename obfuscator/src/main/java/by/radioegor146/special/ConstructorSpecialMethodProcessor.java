@@ -364,15 +364,28 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         Integer handlerIndex = instructionIndexes.get(tryCatch.handler);
-        if (handlerIndex == null
-                || handlerIndex == 0
-                || handlerIndex + 2 >= constructor.instructions.size()
-                || constructor.instructions.get(handlerIndex + 1)
+        if (handlerIndex == null) {
+            return null;
+        }
+        int popIndex =
+                firstExecutableIndex(constructor, handlerIndex + 1);
+        int returnIndex =
+                firstExecutableIndex(constructor, popIndex + 1);
+        int previousIndex =
+                previousExecutableIndex(constructor, handlerIndex - 1);
+        if (popIndex >= constructor.instructions.size()
+                || returnIndex >= constructor.instructions.size()
+                || previousIndex < 0
+                || constructor.instructions.get(popIndex)
                 .getOpcode() != Opcodes.POP
-                || constructor.instructions.get(handlerIndex + 2)
+                || constructor.instructions.get(returnIndex)
                 .getOpcode() != Opcodes.RETURN
-                || constructor.instructions.get(handlerIndex - 1)
+                || constructor.instructions.get(previousIndex)
                 .getOpcode() != Opcodes.GOTO
+                || !containsOnlyFrames(
+                        constructor, handlerIndex + 1, popIndex)
+                || !containsOnlyFrames(
+                        constructor, popIndex + 1, returnIndex)
                 || hasNormalTarget(constructor, tryCatch.handler)
                 || isTryRangeBoundary(constructor, tryCatch.handler)
                 || !isOnlyUsedBySuffixRanges(
@@ -380,7 +393,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return new RelocatedPrefixHandler(
-                handlerIndex, handlerIndex + 3);
+                handlerIndex, returnIndex + 1);
+    }
+
+    private static boolean containsOnlyFrames(
+            MethodNode method, int start, int end) {
+        for (int i = start; i < end; i++) {
+            if (!(method.instructions.get(i) instanceof FrameNode)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean hasNormalTarget(
@@ -490,6 +513,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return method.instructions.size();
+    }
+
+    private static int previousExecutableIndex(
+            MethodNode method, int startIndex) {
+        for (int i = startIndex; i >= 0; i--) {
+            if (method.instructions.get(i).getOpcode() >= 0) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static void validateNoRepeatedChainCall(
