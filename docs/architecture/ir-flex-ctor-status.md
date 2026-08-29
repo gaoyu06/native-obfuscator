@@ -73,7 +73,7 @@ The constructor split now covers these related prefix shapes:
   declared long-argument loads, `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or
   the admitted single-load `LNEG`, and whose shift counts remain proven
   int-family leaves;
-  a tree of at most two `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
+  a tree of at most three `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
   a float argument, whose leaves are declared float-argument loads,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
@@ -197,12 +197,12 @@ One additional family is reduced to that same shared-join form:
   preserving Java long wrapping, negate semantics, bitwise semantics, JVM
   divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
   without reproducing those semantics in C++.
-- A float call argument may instead contain a tree of at most two `FADD`,
+- A float call argument may instead contain a tree of at most three `FADD`,
   `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
   declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
   `Float`, or one `FNEG` whose sole operand is a matching declared-argument
-  `FLOAD`. This proof has its own two-level binary budget, which `FNEG` does
-  not consume: three-or-more nested float binaries, extra-local float loads,
+  `FLOAD`. This proof has its own three-level binary budget, which `FNEG` does
+  not consume: four-or-more nested float binaries, extra-local float loads,
   `FNEG` of a constant, double `FNEG`, and `FNEG` of an extra-local or
   computed value remain rejected, as do computed double or reference inputs.
   The admitted arithmetic stays in the retained bytecode prefix, preserving
@@ -916,7 +916,14 @@ Synthetic bytecode unit tests in
   `FADD` tree. The retained prefix executes every float operation, all paths
   share one hidden bridge, rewritten Java 8 classes verify, and the complete
   CMake/g++ JNI transform matches plain Java.
-- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps three-or-more
+- `admitsThreeLevelNestedFloatChainInputs`,
+  `rewrittenThreeLevelNestedFloatChainInputsPassJvmVerification`, and
+  `threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
+  three-level `FADD` plus inner and outer `FDIV` positions. The retained prefix
+  executes every float operation, all paths share one hidden bridge, rewritten
+  Java 8 classes verify, and the complete CMake/g++ JNI transform matches plain
+  Java.
+- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps four-or-more
   nested float binaries, extra-local float operands, and unsafe `FNEG` forms
   fail-closed without constructor or hidden-method mutation.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
