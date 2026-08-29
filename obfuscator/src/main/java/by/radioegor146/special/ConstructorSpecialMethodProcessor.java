@@ -43,6 +43,8 @@ import java.util.TreeMap;
  * fully admitted remainder to a hidden static native bridge.
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
+    private static final int MAX_DISTINCT_SUFFIXES = 8;
+
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
     private List<RelocatedPrefixHandler> relocatedPrefixHandlers =
             new ArrayList<>();
@@ -91,17 +93,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         ConstructorSplit split = split(context.clazz, context.method);
         Map<LabelNode, LabelNode> labels = labels(context.method);
         if (split.distinctSuffix != null) {
-            InsnList wrapper = cloneRange(
-                    context.method, 0,
-                    split.distinctSuffix.callIndexes.get(0) + 1,
-                    labels, relocatedPrefixHandlers);
-            appendBridgeInvocation(context, split, wrapper, 0);
-            wrapper.add(cloneRange(
-                    context.method,
-                    split.distinctSuffix.suffixes.get(0).endIndex,
-                    split.distinctSuffix.callIndexes.get(1) + 1,
-                    labels, relocatedPrefixHandlers));
-            appendBridgeInvocation(context, split, wrapper, 1);
+            InsnList wrapper = new InsnList();
+            int retainedStart = 0;
+            for (int i = 0;
+                 i < split.distinctSuffix.callIndexes.size(); i++) {
+                wrapper.add(cloneRange(
+                        context.method, retainedStart,
+                        split.distinctSuffix.callIndexes.get(i) + 1,
+                        labels, relocatedPrefixHandlers));
+                appendBridgeInvocation(context, split, wrapper, i);
+                retainedStart =
+                        split.distinctSuffix.suffixes.get(i).endIndex;
+            }
             context.method.instructions = wrapper;
             context.method.maxStack = Math.max(
                     context.method.maxStack,
@@ -138,8 +141,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     extra.type.getOpcode(Opcodes.ILOAD), extra.index));
         }
         if (pathId != null) {
-            wrapper.add(new InsnNode(
-                    pathId == 0 ? Opcodes.ICONST_0 : Opcodes.ICONST_1));
+            appendIntConstant(wrapper, pathId);
         }
 
         HiddenMethodsPool.HiddenMethod bridge = context.proxyMethod;
@@ -147,6 +149,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 bridge.getClassNode().name, bridge.getMethodNode().name,
                 bridge.getMethodNode().desc, false));
         wrapper.add(new InsnNode(Opcodes.RETURN));
+    }
+
+    private static void appendIntConstant(InsnList instructions, int value) {
+        if (value >= 0 && value <= 5) {
+            instructions.add(new InsnNode(Opcodes.ICONST_0 + value));
+        } else if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
+            instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        } else {
+            instructions.add(new IntInsnNode(Opcodes.SIPUSH, value));
+        }
     }
 
     private static int bridgeArgumentSlots(
@@ -176,21 +188,43 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
         Map<LabelNode, LabelNode> labels = labels(constructor);
         if (split.distinctSuffix != null) {
-            LabelNode secondSuffix = new LabelNode();
             int pathIdLocal = firstExtraLocal(constructor);
             body.instructions.add(new VarInsnNode(
                     Opcodes.ILOAD, pathIdLocal));
-            body.instructions.add(new JumpInsnNode(
-                    Opcodes.IFNE, secondSuffix));
-            appendRelocatedRange(
-                    body, constructor, labels, split,
-                    split.distinctSuffix.suffixes.get(0).startIndex,
-                    split.distinctSuffix.suffixes.get(0).endIndex);
-            body.instructions.add(secondSuffix);
-            appendRelocatedRange(
-                    body, constructor, labels, split,
-                    split.distinctSuffix.suffixes.get(1).startIndex,
-                    split.distinctSuffix.suffixes.get(1).endIndex);
+            int suffixCount = split.distinctSuffix.suffixes.size();
+            if (suffixCount == 2) {
+                LabelNode secondSuffix = new LabelNode();
+                body.instructions.add(new JumpInsnNode(
+                        Opcodes.IFNE, secondSuffix));
+                appendRelocatedRange(
+                        body, constructor, labels, split,
+                        split.distinctSuffix.suffixes.get(0).startIndex,
+                        split.distinctSuffix.suffixes.get(0).endIndex);
+                body.instructions.add(secondSuffix);
+                appendRelocatedRange(
+                        body, constructor, labels, split,
+                        split.distinctSuffix.suffixes.get(1).startIndex,
+                        split.distinctSuffix.suffixes.get(1).endIndex);
+            } else {
+                LabelNode invalidPath = new LabelNode();
+                LabelNode[] suffixLabels = new LabelNode[suffixCount];
+                for (int i = 0; i < suffixCount; i++) {
+                    suffixLabels[i] = new LabelNode();
+                }
+                body.instructions.add(new TableSwitchInsnNode(
+                        0, suffixCount - 1, invalidPath, suffixLabels));
+                body.instructions.add(invalidPath);
+                body.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                body.instructions.add(new InsnNode(Opcodes.ATHROW));
+                for (int i = 0; i < suffixCount; i++) {
+                    LinearSuffix suffix =
+                            split.distinctSuffix.suffixes.get(i);
+                    body.instructions.add(suffixLabels[i]);
+                    appendRelocatedRange(
+                            body, constructor, labels, split,
+                            suffix.startIndex, suffix.endIndex);
+                }
+            }
             body.maxLocals = Math.max(body.maxLocals, pathIdLocal + 1);
             body.maxStack = Math.max(constructor.maxStack, 1);
             return body;
@@ -1087,15 +1121,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves the bounded two-call form whose nonempty linear suffixes differ.
-     * Both call sites keep locally visible receiver/argument inputs, and every
-     * complete path reaches RETURN after exactly one call. The independent
-     * body receives one trailing int selector; suffix locals are therefore
-     * restricted to declared constructor slots in this increment.
+     * Proves a bounded multi-call form whose nonempty linear suffixes are
+     * pairwise different. Every call site keeps locally visible
+     * receiver/argument inputs, and every complete path reaches RETURN after
+     * exactly one call. The independent body receives one trailing int
+     * selector; suffix locals are therefore restricted to declared
+     * constructor slots.
      */
     private static DistinctSuffix distinctSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
-        if (callIndexes.size() != 2
+        if (callIndexes.size() < 2
+                || callIndexes.size() > MAX_DISTINCT_SUFFIXES
                 || !constructor.tryCatchBlocks.isEmpty()) {
             return null;
         }
@@ -1105,18 +1141,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             LinearSuffix suffix =
                     linearSuffix(constructor, callIndexes.get(i));
             if (suffix == null || suffix.endIndex - suffix.startIndex <= 1
-                    || (i == 0
-                    && suffix.endIndex > callIndexes.get(1))) {
+                    || (i + 1 < callIndexes.size()
+                    && suffix.endIndex > callIndexes.get(i + 1))) {
                 return null;
             }
             suffixes.add(suffix);
         }
-        if (suffixes.get(1).endIndex != constructor.instructions.size()
-                || sameLinearSuffix(
-                constructor, suffixes.get(0), suffixes.get(1))
+        if (suffixes.get(suffixes.size() - 1).endIndex
+                != constructor.instructions.size()
                 || !hasDirectDeclaredChainInputs(constructor, callIndexes)
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
+        }
+        for (int i = 0; i < suffixes.size(); i++) {
+            for (int j = i + 1; j < suffixes.size(); j++) {
+                if (sameLinearSuffix(
+                        constructor, suffixes.get(i), suffixes.get(j))) {
+                    return null;
+                }
+            }
         }
 
         int firstExtraLocal = firstExtraLocal(constructor);
