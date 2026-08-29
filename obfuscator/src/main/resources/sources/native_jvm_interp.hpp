@@ -60,13 +60,21 @@ namespace native_jvm::interp {
         astore = 48,
         areturn = 49,
         ifnull = 50,
-        ifnonnull = 51
+        ifnonnull = 51,
+        athrow = 52
     };
 
     enum class execution_result : std::uint8_t {
         success,
         invalid_stream,
-        arithmetic_exception
+        pending_exception
+    };
+
+    struct exception_handler {
+        std::uint32_t start_pc;
+        std::uint32_t end_pc;
+        std::uint32_t handler_pc;
+        const char *catch_type;
     };
 
     struct method_desc {
@@ -75,6 +83,8 @@ namespace native_jvm::interp {
         std::uint16_t max_locals;
         const std::uint8_t *code;
         std::uint32_t code_len;
+        const exception_handler *exception_table = nullptr;
+        std::uint32_t exception_table_len = 0;
     };
 
     struct frame {
@@ -82,18 +92,22 @@ namespace native_jvm::interp {
         std::int32_t *stack;
         jobject *ref_locals = nullptr;
         jobject *ref_stack = nullptr;
+        jthrowable pending_exception = nullptr;
     };
 
     void store_long(std::int32_t *slots, std::int64_t value) noexcept;
 
     execution_result execute_i(const method_desc &method, frame &current_frame,
-                               std::int32_t *result) noexcept;
+                               std::int32_t *result,
+                               JNIEnv *env = nullptr) noexcept;
 
     execution_result execute_j(const method_desc &method, frame &current_frame,
-                               std::int64_t *result) noexcept;
+                               std::int64_t *result,
+                               JNIEnv *env = nullptr) noexcept;
 
     execution_result execute_l(const method_desc &method, frame &current_frame,
-                               jobject *result) noexcept;
+                               jobject *result,
+                               JNIEnv *env = nullptr) noexcept;
 }
 
 #endif

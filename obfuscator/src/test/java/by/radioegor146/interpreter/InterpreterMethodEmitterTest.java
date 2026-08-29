@@ -11,6 +11,7 @@ import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -129,6 +130,101 @@ public class InterpreterMethodEmitterTest {
         arrayIdentity.maxLocals = 1;
         assertNotNull(InterpreterMethodEmitter.tryCompile(
                 owner(), arrayIdentity));
+    }
+
+    @Test
+    public void emitsAthrowAsAppendedOpcode() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "raise", "(Ljava/lang/Throwable;)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.maxStack = 1;
+        method.maxLocals = 1;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertEquals(4, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(52, InterpreterMethodEmitter.ATHROW);
+        assertArrayEquals(bytes(47, 0, 0, 52), compiled.getCode());
+        assertEquals(0, compiled.getExceptionHandlers().length);
+    }
+
+    @Test
+    public void emitsOrderedTypedAndCatchAllExceptionTable() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "divideOrMinusOne", "(II)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/ArithmeticException"));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, null));
+        method.maxStack = 2;
+        method.maxLocals = 3;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                2, 1, 0,
+                28,
+                19,
+                48, 2, 0,
+                1, -1, -1, -1, -1,
+                19), compiled.getCode());
+        InterpreterMethodEmitter.ExceptionHandler[] handlers =
+                compiled.getExceptionHandlers();
+        assertEquals(2, handlers.length);
+        assertEquals(0, handlers[0].getStartPc());
+        assertEquals(7, handlers[0].getEndPc());
+        assertEquals(8, handlers[0].getHandlerPc());
+        assertEquals("java/lang/ArithmeticException",
+                handlers[0].getCatchType());
+        assertEquals(0, handlers[1].getStartPc());
+        assertEquals(7, handlers[1].getEndPc());
+        assertEquals(8, handlers[1].getHandlerPc());
+        assertNull(handlers[1].getCatchType());
+    }
+
+    @Test
+    public void rejectsTryCatchWithUnsupportedHandlerInstruction() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "unsupportedHandler", "(Ljava/lang/Throwable;)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(end);
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, null));
+        method.maxStack = 1;
+        method.maxLocals = 1;
+
+        assertNull(InterpreterMethodEmitter.tryCompile(owner(), method));
     }
 
     @Test

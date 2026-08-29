@@ -67,8 +67,8 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(15, occurrences(generated, "_interp_code[]"));
-        assertEquals(6, occurrences(generated,
+        assertEquals(16, occurrences(generated, "_interp_code[]"));
+        assertEquals(7, occurrences(generated,
                 "native_jvm::interp::execute_i("));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_j("));
@@ -83,9 +83,11 @@ public class InterpreterBackendIntegrationTest {
         assertTrue(generated.contains(
                         "jarray JNICALL __ngen_native_arrayIdentity"),
                 "array descriptors must use the JNI array carrier");
+        assertTrue(generated.contains("_interp_exceptions[]"),
+                "an admitted try/catch method must emit an exception table");
         assertTrue(generated.contains(
-                        "utils::throw_re(env, \"java/lang/ArithmeticException\""),
-                "division status must become a pending JNI exception");
+                        "env->Throw(interp_frame.pending_exception);"),
+                "an unhandled interpreter exception must propagate through JNI");
         assertTrue(generated.contains("cstack0.j = cstack0.i;"),
                 "unsupported I2L must use the active legacy codegen");
         assertTrue(generated.contains(
@@ -123,7 +125,7 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(15, occurrences(generated, "_interp_code[]"));
+        assertEquals(16, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
                         "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
                 "unsupported I2L must use the active IR codegen");
@@ -226,6 +228,28 @@ public class InterpreterBackendIntegrationTest {
         divide.visitInsn(Opcodes.IRETURN);
         divide.visitMaxs(0, 0);
         divide.visitEnd();
+
+        MethodVisitor catchDivide = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "catchDivide", "(II)I", null, null);
+        Label catchDivideStart = new Label();
+        Label catchDivideEnd = new Label();
+        Label catchDivideHandler = new Label();
+        catchDivide.visitCode();
+        catchDivide.visitTryCatchBlock(catchDivideStart, catchDivideEnd,
+                catchDivideHandler, "java/lang/ArithmeticException");
+        catchDivide.visitLabel(catchDivideStart);
+        catchDivide.visitVarInsn(Opcodes.ILOAD, 0);
+        catchDivide.visitVarInsn(Opcodes.ILOAD, 1);
+        catchDivide.visitInsn(Opcodes.IDIV);
+        catchDivide.visitLabel(catchDivideEnd);
+        catchDivide.visitInsn(Opcodes.IRETURN);
+        catchDivide.visitLabel(catchDivideHandler);
+        catchDivide.visitVarInsn(Opcodes.ASTORE, 2);
+        catchDivide.visitInsn(Opcodes.ICONST_M1);
+        catchDivide.visitInsn(Opcodes.IRETURN);
+        catchDivide.visitMaxs(0, 0);
+        catchDivide.visitEnd();
 
         MethodVisitor longAdd = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
