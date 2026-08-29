@@ -1740,6 +1740,65 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeDistinctSuffixesWithInSuffixIntBranch() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeBranchedSuffixes",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                threeBranchedDistinctSuffixConstructor(
+                        owner.name, owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(III)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ILOAD, Opcodes.TABLESWITCH,
+                        Opcodes.ACONST_NULL, Opcodes.ATHROW,
+                        Opcodes.ILOAD, Opcodes.IFEQ,
+                        Opcodes.ALOAD, Opcodes.ICONST_0,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.ALOAD, Opcodes.ICONST_1,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.ALOAD, Opcodes.ICONST_2,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.ALOAD, Opcodes.ICONST_3,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(3, hiddenBridgeCallCount(constructor));
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method -> method == context.proxyMethod.getMethodNode())
+                .count());
+        assertEquals(1L,
+                Arrays.stream(constructor.instructions.toArray())
+                        .filter(MethodInsnNode.class::isInstance)
+                        .map(MethodInsnNode.class::cast)
+                        .filter(invoke ->
+                                invoke.getOpcode() == Opcodes.INVOKESTATIC
+                                        && invoke.owner.contains("/hidden/"))
+                        .map(invoke -> invoke.owner + "." + invoke.name
+                                + invoke.desc)
+                        .distinct().count());
+        assertEquals(
+                "(Ljava/lang/Object;III)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
+    }
+
+    @Test
     public void admitsTwoDistinctSuffixesWithProvenPrefixExtra() {
         ClassNode owner = constructorOwner(
                 "example/TwoSuffixExtra", "example/MultiSuperBase");
@@ -2122,6 +2181,43 @@ public class IrCompilerTest {
                     Opcodes.ACC_PUBLIC, "result", "I", null, null));
             MethodNode constructor =
                     branchedDistinctSuffixWithEscapingBranchConstructor(
+                            owner.name, owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void rejectsThreeCallCrossSuffixBranchBeforeMutation() {
+        for (String shape : Arrays.asList("cross-suffix", "suffix-prefix")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedThreeBranchedSuffix"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor =
+                    threeBranchedSuffixWithEscapingBranchConstructor(
                             owner.name, owner.superName, shape);
             int instructionCount = constructor.instructions.size();
             java.util.List<Integer> opcodes = realOpcodes(constructor);
@@ -2875,6 +2971,50 @@ public class IrCompilerTest {
         }
         assertEquals(2, directChainCallCount(constructor, owner));
         assertEquals(2, hiddenBridgeCallCount(constructor));
+        assertEquals(
+                "(Ljava/lang/Object;III)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeBranchedDistinctSuffixesPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperBase(
+                "example/VerifiedThreeBranchedSuffixBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeBranchedSuffix", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                threeBranchedDistinctSuffixConstructor(
+                        owner.name, base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            for (int condition : new int[]{0, 1}) {
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, int.class)
+                                .newInstance(selector, condition));
+                assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+            }
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(3, hiddenBridgeCallCount(constructor));
         assertEquals(
                 "(Ljava/lang/Object;III)V",
                 context.proxyMethod.getMethodNode().desc);
@@ -3987,6 +4127,105 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native branched-suffix Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeBranchedDistinctSuffixesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the three-branched-suffix runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the three-branched-suffix runtime test");
+
+        String ownerName = "example/ThreeBranchedSuffixRuntime";
+        String baseName = "example/ThreeBranchedSuffixRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-branched-suffix-run");
+        Path inputJar = directory.resolve("three-branched-suffix.jar");
+        Path outputDirectory = directory.resolve("output");
+        createThreeBranchedDistinctSuffixJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain three-branched-suffix Java run");
+        assertEquals(
+                "1" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "2" + System.lineSeparator()
+                        + "2" + System.lineSeparator()
+                        + "3" + System.lineSeparator()
+                        + "3" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(3, hiddenBridgeCallCount(transformedConstructor));
+        java.util.List<MethodInsnNode> bridges = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .collect(Collectors.toList());
+        assertEquals(3, bridges.size());
+        assertEquals(1L, bridges.stream()
+                .map(invoke -> invoke.owner + "." + invoke.name + invoke.desc)
+                .distinct().count());
+        assertEquals("(Ljava/lang/Object;III)V", bridges.get(0).desc);
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.PUTFIELD));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("three-branched-suffix CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("three-branched-suffix CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Three-branched-suffix native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native three-branched-suffix Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -9544,6 +9783,37 @@ public class IrCompilerTest {
         }
     }
 
+    private void createThreeBranchedDistinctSuffixJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                threeBranchedDistinctSuffixConstructor(
+                        ownerName, baseName));
+        owner.methods.add(threeBranchedDistinctSuffixMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createTwoDistinctSuffixExtraJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -11171,6 +11441,94 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode threeBranchedDistinctSuffixConstructor(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperThreeSeparateReturnsConstructor(superName);
+        method.desc = "(II)V";
+        java.util.List<MethodInsnNode> calls = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .collect(Collectors.toList());
+        if (calls.size() != 3) {
+            throw new AssertionError("Expected three chain calls");
+        }
+
+        LabelNode firstZero = new LabelNode();
+        InsnList firstSuffix = new InsnList();
+        firstSuffix.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        firstSuffix.add(new JumpInsnNode(Opcodes.IFEQ, firstZero));
+        firstSuffix.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        firstSuffix.add(new InsnNode(Opcodes.ICONST_0));
+        firstSuffix.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        firstSuffix.add(new InsnNode(Opcodes.RETURN));
+        firstSuffix.add(firstZero);
+        firstSuffix.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        firstSuffix.add(new InsnNode(Opcodes.ICONST_1));
+        firstSuffix.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.insert(calls.get(0), firstSuffix);
+
+        for (int i = 1; i < calls.size(); i++) {
+            InsnList suffix = new InsnList();
+            suffix.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            suffix.add(new InsnNode(
+                    i == 1 ? Opcodes.ICONST_2 : Opcodes.ICONST_3));
+            suffix.add(new FieldInsnNode(
+                    Opcodes.PUTFIELD, owner, "result", "I"));
+            method.instructions.insert(calls.get(i), suffix);
+        }
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode threeBranchedSuffixWithEscapingBranchConstructor(
+            String owner, String superName, String shape) {
+        MethodNode method =
+                threeBranchedDistinctSuffixConstructor(owner, superName);
+        JumpInsnNode suffixBranch = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(JumpInsnNode.class::isInstance)
+                .map(JumpInsnNode.class::cast)
+                .filter(jump -> jump.getOpcode() == Opcodes.IFEQ
+                        && jump.getPrevious() instanceof VarInsnNode
+                        && ((VarInsnNode) jump.getPrevious()).var == 2)
+                .findFirst().orElseThrow(AssertionError::new);
+        if ("cross-suffix".equals(shape)) {
+            MethodInsnNode secondCall = Arrays.stream(
+                            method.instructions.toArray())
+                    .filter(MethodInsnNode.class::isInstance)
+                    .map(MethodInsnNode.class::cast)
+                    .filter(invoke ->
+                            invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                                    && "<init>".equals(invoke.name)
+                                    && superName.equals(invoke.owner))
+                    .skip(1)
+                    .findFirst().orElseThrow(AssertionError::new);
+            LabelNode secondSuffix = new LabelNode();
+            method.instructions.insert(secondCall, secondSuffix);
+            suffixBranch.label = secondSuffix;
+        } else if ("suffix-prefix".equals(shape)) {
+            JumpInsnNode prefixBranch = Arrays.stream(
+                            method.instructions.toArray())
+                    .filter(JumpInsnNode.class::isInstance)
+                    .map(JumpInsnNode.class::cast)
+                    .filter(jump -> jump.getOpcode() == Opcodes.IFEQ
+                            && jump != suffixBranch)
+                    .findFirst().orElseThrow(AssertionError::new);
+            suffixBranch.label = prefixBranch.label;
+        } else {
+            throw new IllegalArgumentException("Unknown shape " + shape);
+        }
+        return method;
+    }
+
     private MethodNode twoDistinctSuffixesWithProvenPrefixExtraConstructor(
             String owner, String superName) {
         MethodNode method =
@@ -11931,6 +12289,20 @@ public class IrCompilerTest {
         appendBranchedDistinctSuffixPrint(method, owner, 7, 1);
         appendBranchedDistinctSuffixPrint(method, owner, -7, 0);
         appendBranchedDistinctSuffixPrint(method, owner, -7, 1);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private MethodNode threeBranchedDistinctSuffixMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int selector : new int[]{7, -7, 0}) {
+            appendBranchedDistinctSuffixPrint(method, owner, selector, 0);
+            appendBranchedDistinctSuffixPrint(method, owner, selector, 1);
+        }
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 5;

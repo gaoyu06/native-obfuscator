@@ -45,12 +45,11 @@ The constructor split now covers these related prefix shapes:
 - between two and eight reachable direct this/super calls whose separate
   nonempty suffixes end in `RETURN` and are pairwise not
   instruction-identical, when every call consumes the original `ALOAD 0`
-  receiver and only locally proven chain arguments; with exactly two calls,
-  either suffix may additionally contain one closed int-family conditional
-  branch whose arms stay in that suffix and reach `RETURN`; prefix-assigned
-  extras read by those suffixes must have one compatible type on every
-  bridge-taking path, and every retained path calls one hidden bridge with a
-  trailing constant path id; and
+  receiver and only locally proven chain arguments; any suffix may additionally
+  contain one closed int-family conditional branch whose arms stay in that
+  suffix and reach `RETURN`; prefix-assigned extras read by those suffixes must
+  have one compatible type on every bridge-taking path, and every retained
+  path calls one hidden bridge with a trailing constant path id; and
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
@@ -160,8 +159,7 @@ without normalizing the suffixes to one copied join:
   `ALOAD 0` and the same locally proven argument-input families used by the
   bounded multi-return proof.
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
-  The 3–8-call form remains straight-line. With exactly two calls, either
-  suffix may contain one unary `IFxx` over a direct declared int-family
+  Any suffix may contain one unary `IFxx` over a direct declared int-family
   `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
   another such load or an int-family constant. Every target and both
   fallthrough arms must stay inside that suffix and reach `RETURN`; a `GOTO`
@@ -187,9 +185,8 @@ without normalizing the suffixes to one copied join:
   parameters and packed extras. It therefore does not reuse a live extra slot,
   receiver slot, or category-2 parameter slot.
 
-Three-or-more calls with branched suffixes, extra-local or aliased chain inputs,
-nested binary expressions (including nested bitwise and shift forms), `IDIV`,
-`IREM`, other
+Extra-local or aliased chain inputs, nested binary expressions (including
+nested bitwise and shift forms), `IDIV`, `IREM`, other
 binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
 fields, method calls, stack duplication, computed or rewritten receivers, or
 any other unlisted input remain rejected. Distinct joins, other conditional or
@@ -440,6 +437,17 @@ Synthetic bytecode unit tests in
   and both in-suffix branch arms through plain Java and the complete CMake/g++
   JNI transform under `java -Xverify:all -Xcheck:jni`, requiring identical
   stdout.
+- `admitsThreeDistinctSuffixesWithInSuffixIntBranch` proves that the same
+  closed conditional proof works with three pairwise-distinct suffixes behind
+  the existing path-id `TABLESWITCH` dispatch and one hidden bridge.
+- `rewrittenThreeBranchedDistinctSuffixesPassJvmVerification` selects every
+  prefix path with both condition values after loading the rewritten owner,
+  superclass, and hidden class.
+- `threeBranchedDistinctSuffixesCompileAndRunWithJavaParity` exercises those
+  six argument combinations through plain Java and the complete CMake/g++ JNI
+  transform under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `rejectsThreeCallCrossSuffixBranchBeforeMutation` keeps branches into a
+  sibling suffix or retained prefix fail-closed before bridge allocation.
 - `rejectsCrossSuffixOrPrefixTargetingBranchBeforeMutation` checks that a
   suffix branch into its sibling suffix or back into retained pre-call
   bytecode fails before bridge allocation or constructor mutation. The
@@ -471,8 +479,8 @@ Synthetic bytecode unit tests in
   and four invocations of one hidden bridge.
 - `rejectsUnprovenThreeDistinctSuffixShapesBeforeMutation` and
   `rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation` keep partly
-  identical, branched, skip-super, exception-table, and unproven suffix-only
-  extra-local variants fail-closed.
+  identical, standalone-`GOTO`, skip-super, exception-table, and unproven
+  suffix-only extra-local variants fail-closed.
 - `admitsMultipleSuperWithImmediateSeparateReturns` proves that an immediate
   `RETURN` after each of exactly two chain calls creates a `RETURN`-only native
   body and normalizes to one retained wrapper join and one hidden bridge.
@@ -601,10 +609,10 @@ Synthetic bytecode unit tests in
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, nested
   forms of each admitted binary opcode, trapping `IDIV`, a rewritten `ASTORE 0`
-  receiver, partly identical post-call work, a branched suffix, a zero-call
-  return, skip-super paths, and nonempty exception tables before mutation.
-  Other multi-call negatives still cover try/catch spanning a chain call and
-  suffix code and a path that executes two chain calls. Existing
+  receiver, partly identical post-call work, a standalone-`GOTO` suffix, a
+  zero-call return, skip-super paths, and nonempty exception tables before
+  mutation. Other multi-call negatives still cover try/catch spanning a chain
+  call and suffix code and a path that executes two chain calls. Existing
   prefix-to-suffix, suffix-to-prefix, and
   conditionally assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
