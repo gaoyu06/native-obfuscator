@@ -49,6 +49,19 @@ public class CodegenModeTest {
     }
 
     @Test
+    public void cliDefaultsToDirectIrLowering() throws Exception {
+        assertEquals(IrLoweringMode.DIRECT,
+                parseIrLowering("input.jar", "output", "--codegen=ir"));
+    }
+
+    @Test
+    public void cliAcceptsEvaluatorIrLoweringCaseInsensitively() throws Exception {
+        assertEquals(IrLoweringMode.EVAL,
+                parseIrLowering("--codegen=ir", "--ir-lower=EvAl",
+                        "input.jar", "output"));
+    }
+
+    @Test
     public void methodProcessingConvenienceDefaultRemainsLegacy() {
         MethodNode constructor = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", "()V", null, null);
@@ -136,5 +149,14 @@ public class CodegenModeTest {
         Field field = Main.NativeObfuscatorRunner.class.getDeclaredField("codegenMode");
         field.setAccessible(true);
         return (CodegenMode) field.get(runner);
+    }
+
+    private IrLoweringMode parseIrLowering(String... args) throws Exception {
+        Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
+        new CommandLine(runner).setCaseInsensitiveEnumValuesAllowed(true).parseArgs(args);
+        Field field = Main.NativeObfuscatorRunner.class
+                .getDeclaredField("irLoweringMode");
+        field.setAccessible(true);
+        return (IrLoweringMode) field.get(runner);
     }
 }

@@ -1,12 +1,9 @@
 # IR evaluator backend
 
-> **Not on current `master` as compiler code.** `--ir-lower=eval` lived on a
-> sibling stack (PRs #42–#87). Documents and reader/bench notes are in-tree;
-> the flag is **not** in `Main.java` on the phase-18 line. See
-> [project-status.md](project-status.md).
-
-Status (on that sibling stack): implemented as an opt-in lowering for the
-then-current IR i32/i64 slice.
+Status: ported to the current compiler line as an opt-in, default-off lowering
+for a narrow IR i32/i64 slice. This is compiler/codegen infrastructure, not a
+packer, protector, obfuscation product, or anti-analysis feature. It is **not
+ship-ready**. The benchmark issue #53 evaluator median remains `N/A`.
 
 ## Selection
 
@@ -72,11 +69,18 @@ Instructions follow immediately:
 | `0x28` | `src:u16` | `LRETURN`: return an i64 register as `jlong` |
 | `0x29` | `dst:u16, src:u16` | `I2L`: sign-extend an i32 register to i64 |
 | `0x2a` | `dst:u16, src:u16` | `L2I`: keep the low 32 bits of an i64 register |
-| `0x2b` | `dst:u16, lhs:u16, rhs:u16` | Signed `LDIV`; throw `ArithmeticException` when `rhs` is zero |
-| `0x2c` | `dst:u16, lhs:u16, rhs:u16` | Signed `LREM`; throw `ArithmeticException` when `rhs` is zero |
+| `0x2b` | — | Reserved for future `LDIV`; not implemented |
+| `0x2c` | — | Reserved for future `LREM`; not implemented |
+| `0x2d` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LAND` |
+| `0x2e` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LOR` |
+| `0x2f` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LXOR` |
+| `0x30` | `dst:u16, value:u16, count:u16` | `LSHL`; shift distance is masked with `& 63` |
+| `0x31` | `dst:u16, value:u16, count:u16` | `LSHR`; shift distance is masked with `& 63` |
+| `0x32` | `dst:u16, value:u16, count:u16` | `LUSHR`; shift distance is masked with `& 63` |
 
-`0x2b` and `0x2c` extend the existing contiguous `0x23`–`0x2a` i64 block.
-`0x20`–`0x22` retain their existing control-flow and i32-return assignments.
+`0x2b` and `0x2c` remain reserved so this port does not claim the direct IR
+agent's future `LDIV`/`LREM` work. `0x20`–`0x22` retain their existing
+control-flow and i32-return assignments.
 
 Bitwise operations and left shifts run on the 32-bit unsigned carrier and copy
 the result bits back to `jint`, preserving JVM wraparound without signed C++
@@ -91,12 +95,10 @@ truncates to the low 32 bits. JVM local `LLOAD`/`LSTORE` instructions disappear
 into SSA in the frontend; the evaluator `LLOAD` materializes i64 parameters and
 `LSTORE` stages the i64 return without changing those values.
 
-`LDIV` and `LREM` use signed C++ division only after checking its two JVM edge
-cases. A zero divisor creates a pending `java/lang/ArithmeticException` through
-the trampoline's `JNIEnv*` and exits evaluation immediately.
-`Long.MIN_VALUE / -1` bypasses signed C++ overflow and returns
-`Long.MIN_VALUE`; the corresponding remainder returns zero. All other results
-use truncation toward zero, matching JVM long division.
+`LAND`, `LOR`, and `LXOR` operate directly on the 64-bit carrier. Long shifts
+mask the i32 count with `& 63`. `LSHL` and `LUSHR` use unsigned shifts; `LSHR`
+fills the high bits explicitly and does not rely on implementation-defined
+signed C++ right shift.
 
 Branch condition values are `0 EQ`, `1 NE`, `2 LT`, `3 GE`, `4 GT`, and
 `5 LE`. An `rhs` value of `0xffff` means the literal integer zero, matching the
@@ -116,8 +118,9 @@ The evaluator lowering currently accepts:
   return;
 - i32 constants;
 - `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
-- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `I2L`, `L2I`,
-  and `LRETURN` through the shared typed SSA representation;
+- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LAND`, `LOR`, `LXOR`, `LSHL`,
+  `LSHR`, `LUSHR`, `I2L`, `L2I`, and `LRETURN` through the shared typed SSA
+  representation;
 - `GOTO`, all unary and binary integer comparisons represented by the IR, and
   `IRETURN`;
 - local-variable and operand-stack merges already represented as IR phi values.
@@ -132,6 +135,89 @@ signatures, exception edges, JNI-dependent nodes (fields, invokes, arrays, and
 throws), integer operations outside the operations above, unary integer
 operations, and any other IR node not listed here. Long constants remain
 fallbacks. Float/double and object values are outside this evaluator slice.
-The shared frontend and direct IR strategy also admit `LDIV`/`LREM`; direct
-lowering applies the same zero-divisor and `Long.MIN_VALUE / -1` rules and can
-route a pending exception through its existing exception-edge dispatch.
+The current frontend does not admit `LDIV`, `LREM`, or `LNEG`; this port does
+not add frontend nodes or evaluator opcodes for them. If those operations become
+available as IR nodes, evaluator lowering must continue to reject them until a
+separate capability extension is reviewed.
+
+## Port verification
+
+The default-off generation checks use one fixture with a static `(II)I`
+add/subtract/multiply method and an unsupported unary-int method. The fixture
+was compiled to `build/ir-eval-fixture.jar`, then the committed compiler jar was
+run as follows:
+
+```bash
+java -jar obfuscator/build/libs/obfuscator.jar \
+  build/ir-eval-fixture.jar build/proof-default
+java -jar obfuscator/build/libs/obfuscator.jar --ir-lower=direct \
+  build/ir-eval-fixture.jar build/proof-default-direct
+java -jar obfuscator/build/libs/obfuscator.jar --codegen=ir \
+  build/ir-eval-fixture.jar build/proof-ir-implicit
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=direct \
+  build/ir-eval-fixture.jar build/proof-ir-direct
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=eval \
+  build/ir-eval-fixture.jar build/proof-ir-eval
+```
+
+Default-off comparisons:
+
+```bash
+diff -r build/proof-default/cpp build/proof-default-direct/cpp
+# exit 0
+
+diff -r build/proof-ir-implicit build/proof-ir-direct
+# exit 0
+
+test ! -e build/proof-default/cpp/native_jvm_eval.cpp &&
+  test ! -e build/proof-default/cpp/native_jvm_eval.hpp &&
+  test ! -e build/proof-ir-direct/cpp/native_jvm_eval.cpp &&
+  test ! -e build/proof-ir-direct/cpp/native_jvm_eval.hpp
+# exit 0
+```
+
+Evaluator and fallback inspection:
+
+```bash
+rg -n \
+  'IR evaluator data: EvalFixture\.(add|subtract|multiply)|native_jvm::ir_eval::evaluate_i32' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; all three methods have data plus evaluate_i32
+
+! rg -n 'IR codegen: EvalFixture\.(add|subtract|multiply)' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; no direct structured body for those methods
+
+rg -n '// negate\(I\)I|jvalue cstack0|// INEG' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; the unsupported unary node used the legacy fallback
+```
+
+The focused command was:
+
+```bash
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.CodegenModeTest \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+```
+
+Result: 16/16 passed, 0 skipped, 0 failures, 0 errors. The unchanged direct-IR
+and interpreter-dispatch suites passed 96/96:
+
+```bash
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest
+```
+
+Finally, the complete generated evaluator target configured and linked:
+
+```bash
+cmake -S build/proof-ir-eval/cpp -B build/proof-ir-eval/cpp/build \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+cmake --build build/proof-ir-eval/cpp/build --parallel 2
+# exit 0
+```
