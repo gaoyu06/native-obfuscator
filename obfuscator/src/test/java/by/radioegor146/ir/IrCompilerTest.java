@@ -3583,7 +3583,7 @@ public class IrCompilerTest {
                     .filter(IrCompilerTest::isLongChainBinaryOpcode)
                     .count();
             assertEquals(expectedLongChainBinaryOpcodeCount(shape),
-                    longBinaryCount, shape);
+                    binaryCount, shape);
             assertEquals(2, Collections.frequency(
                     realOpcodes(constructor), Opcodes.GOTO), shape);
             assertEquals(1, Collections.frequency(
