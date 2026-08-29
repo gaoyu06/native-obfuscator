@@ -29,6 +29,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+Local JUnit XML from this branch records 242 `IrCompilerTest` cases and 7
+`CodegenModeTest` cases, with zero failures, errors, or skips.
+
 New tests:
 
 - `admitsPrefixOnlyTryCatchOnThreeImmediateReturns()`
@@ -67,6 +70,9 @@ this/super 调用形式：
 ## (c) 审查与门禁
 
 父代理会重新运行上面的 Gradle 聚焦测试。新增测试名称如下：
+
+本分支本地生成的 JUnit XML 记录为：`IrCompilerTest` 242 项、
+`CodegenModeTest` 7 项，失败、错误及跳过均为 0。
 
 - `admitsPrefixOnlyTryCatchOnThreeImmediateReturns()`
 - `admitsPrefixOnlyTryCatchOnThreeDistinctSuffixes()`
