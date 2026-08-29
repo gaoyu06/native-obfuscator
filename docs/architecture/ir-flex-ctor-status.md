@@ -73,6 +73,9 @@ The constructor split now covers these related prefix shapes:
   declared long-argument loads, `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or
   the admitted single-load `LNEG`, and whose shift counts remain proven
   int-family leaves;
+  one leaf-only `FADD` for a float argument, whose leaves are declared
+  float-argument loads, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
+  `Float`;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -193,6 +196,15 @@ One additional family is reduced to that same shared-join form:
   preserving Java long wrapping, negate semantics, bitwise semantics, JVM
   divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
   without reproducing those semantics in C++.
+- A float call argument may instead contain exactly one `FADD` over two
+  non-recursive float leaves. A float leaf must be a matching
+  declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
+  `Float`. This proof has its own one-level binary budget: nested `FADD`,
+  `FSUB`, `FMUL`, `FDIV`, `FREM`, `FNEG`, extra-local float loads, and
+  computed double or reference inputs remain rejected. The admitted `FADD`
+  stays in the retained bytecode prefix, preserving Java evaluation order,
+  rounding, signed-zero, infinity, and NaN behavior without reproducing float
+  addition in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -786,6 +798,15 @@ Synthetic bytecode unit tests in
   three paths, including a wrapping `Long.MAX_VALUE + 1`, through plain Java
   and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
+  `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
+  all three chain calls, two join `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateFaddSuperReturnsPassJvmVerification` selects every
+  rewritten path through a Java 8 owner and float-taking superclass, reaching
+  the unresolved hidden bridge only after JVM verification succeeds.
+- `threeImmediateFaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
+  float inputs through plain Java and the complete CMake/g++ JNI transform
+  under `-Xverify:all -Xcheck:jni`, requiring exactly matching float stdout.
 - `admitsThreeImmediateReturnsWithLsubAndLmulOfProvenChainInputs` checks the
   former `long-lsub` and `long-lmul` leftovers with only declared long loads
   and `LCONST_1` as operands, retaining all arithmetic and chain calls behind
@@ -852,8 +873,11 @@ Synthetic bytecode unit tests in
   extra-local long-shift value and int-count operands, extra-local
   `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
   or computed `LNEG` operands fail-closed without constructor or hidden-method
-  mutation. The existing non-int-family negative continues to reject `FADD`,
-  `DADD`, and `AALOAD`.
+  mutation. The remaining non-int-family negative continues to reject `DADD`
+  and `AALOAD`.
+- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps nested `FADD`,
+  extra-local float operands, and non-`FADD` float binaries fail-closed without
+  constructor or hidden-method mutation.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join

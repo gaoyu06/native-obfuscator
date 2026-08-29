@@ -45,6 +45,7 @@ import java.util.TreeMap;
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
     private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 4;
+    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 1;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2255,6 +2256,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     constructor, inputIndex, declaredArguments,
                     MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS);
         }
+        if (expected.getSort() == Type.FLOAT) {
+            return previousProvenFloatChainOperand(
+                    constructor, inputIndex, declaredArguments,
+                    MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS);
+        }
         if (!isIntFamily(expected)) {
             return null;
         }
@@ -2364,6 +2370,66 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || opcode == Opcodes.LDC
                 && input instanceof LdcInsnNode
                 && ((LdcInsnNode) input).cst instanceof Long;
+    }
+
+    /**
+     * Proves at most one FADD over two float leaves. The separate one-level
+     * budget keeps nested float binaries fail-closed.
+     */
+    private static Integer previousProvenFloatChainOperand(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments,
+            int remainingBinaryLevels) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != Opcodes.FADD) {
+            return previousProvenFloatChainLeaf(
+                    constructor, inputIndex, declaredArguments);
+        }
+        if (remainingBinaryLevels == 0) {
+            return null;
+        }
+        Integer beforeRight = previousProvenFloatChainOperand(
+                constructor,
+                previousExecutableIndex(constructor, inputIndex - 1),
+                declaredArguments, remainingBinaryLevels - 1);
+        if (beforeRight == null) {
+            return null;
+        }
+        return previousProvenFloatChainOperand(
+                constructor, beforeRight, declaredArguments,
+                remainingBinaryLevels - 1);
+    }
+
+    /**
+     * Proves one float leaf: a declared FLOAD, FCONST_0/1/2, or an LDC whose
+     * constant is a Float.
+     */
+    private static Integer previousProvenFloatChainLeaf(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isDirectDeclaredArgumentLoad(
+                input, Type.FLOAT_TYPE, declaredArguments)
+                || isFloatConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        return null;
+    }
+
+    private static boolean isFloatConstant(AbstractInsnNode input) {
+        int opcode = input.getOpcode();
+        return opcode == Opcodes.FCONST_0
+                || opcode == Opcodes.FCONST_1
+                || opcode == Opcodes.FCONST_2
+                || opcode == Opcodes.LDC
+                && input instanceof LdcInsnNode
+                && ((LdcInsnNode) input).cst instanceof Float;
     }
 
     /**
