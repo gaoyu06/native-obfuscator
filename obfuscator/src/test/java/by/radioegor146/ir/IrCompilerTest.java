@@ -1506,13 +1506,55 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithShiftProvenChainInputs() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeShiftMultiReturn",
+                "example/MultiSuperBase");
+        MethodNode constructor =
+                multipleSuperThreeShiftReturnsConstructor(owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ISHL));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ISHR));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IUSHR));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
                 "extra-local", "iadd-extra-local", "nested-iadd",
                 "isub-extra-local", "imul-extra-local",
                 "iand-extra-local", "ior-extra-local",
-                "ixor-extra-local", "nested-isub", "nested-imul",
-                "nested-iand", "nested-ior", "nested-ixor", "idiv",
+                "ixor-extra-local", "ishl-extra-local",
+                "ishr-extra-local", "iushr-extra-local",
+                "nested-isub", "nested-imul",
+                "nested-iand", "nested-ior", "nested-ixor",
+                "nested-ishl", "nested-ishr", "nested-iushr", "idiv",
                 "astore-zero", "post-call", "skip-super",
                 "exception-table")) {
             ClassNode owner = constructorOwner(
@@ -2319,6 +2361,48 @@ public class IrCompilerTest {
                 realOpcodes(constructor), Opcodes.IOR));
         assertEquals(1, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IXOR));
+    }
+
+    @Test
+    public void rewrittenThreeImmediateShiftSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeShiftBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeShift", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                multipleSuperThreeShiftReturnsConstructor(base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int argument : new int[]{11, -22, 0}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ISHL));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ISHR));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IUSHR));
     }
 
     @Test
@@ -3324,6 +3408,98 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native bitwise three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateShiftSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the shift three-return runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the shift three-return runtime test");
+
+        String ownerName = "example/ThreeShiftReturnRuntime";
+        String baseName = "example/ThreeShiftReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-shift-return-run");
+        Path inputJar = directory.resolve("three-shift-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeShiftReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain shift three-return multi-super Java run");
+        assertEquals(
+                "44" + System.lineSeparator()
+                        + "1073741818" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ISHL));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ISHR));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IUSHR));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("shift three-return multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("shift three-return multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Shift three-return native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native shift three-return multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -8067,6 +8243,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeShiftReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(
+                multipleSuperThreeShiftReturnsConstructor(baseName));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeIdenticalSuffixCopiesJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -9551,6 +9757,48 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode multipleSuperThreeShiftReturnsConstructor(
+            String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 34));
+        method.instructions.add(new InsnNode(Opcodes.ISHL));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 34));
+        method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(zero);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 34));
+        method.instructions.add(new InsnNode(Opcodes.ISHR));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode multipleSuperThreeIdenticalSuffixCopiesConstructor(
             String superName) {
         return multipleSuperThreeSuffixCopiesConstructor(
@@ -9671,7 +9919,10 @@ public class IrCompilerTest {
                 || "imul-extra-local".equals(shape)
                 || "iand-extra-local".equals(shape)
                 || "ior-extra-local".equals(shape)
-                || "ixor-extra-local".equals(shape);
+                || "ixor-extra-local".equals(shape)
+                || "ishl-extra-local".equals(shape)
+                || "ishr-extra-local".equals(shape)
+                || "iushr-extra-local".equals(shape);
 
         if (extraLocalOperand) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -9709,6 +9960,9 @@ public class IrCompilerTest {
                 && !"nested-iand".equals(shape)
                 && !"nested-ior".equals(shape)
                 && !"nested-ixor".equals(shape)
+                && !"nested-ishl".equals(shape)
+                && !"nested-ishr".equals(shape)
+                && !"nested-iushr".equals(shape)
                 && !"idiv".equals(shape)
                 && !"post-call".equals(shape)) {
             throw new IllegalArgumentException("Unknown shape " + shape);
@@ -9740,6 +9994,15 @@ public class IrCompilerTest {
         } else if ("ixor-extra-local".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IXOR));
+        } else if ("ishl-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.ISHL));
+        } else if ("ishr-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.ISHR));
+        } else if ("iushr-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IUSHR));
         } else if ("nested-iadd".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
@@ -9770,6 +10033,21 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.IXOR));
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IXOR));
+        } else if ("nested-ishl".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.ISHL));
+        } else if ("nested-ishr".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.ISHR));
+        } else if ("nested-iushr".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IUSHR));
         } else if ("idiv".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IDIV));
