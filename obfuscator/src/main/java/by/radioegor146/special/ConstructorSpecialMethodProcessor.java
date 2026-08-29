@@ -46,6 +46,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final int MAX_DISTINCT_SUFFIXES = 8;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
+    private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
     private List<RelocatedPrefixHandler> relocatedPrefixHandlers =
             new ArrayList<>();
 
@@ -61,6 +62,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         retainedPrefixTryCatches =
                 new ArrayList<>(split.prefixTryCatches);
+        retainedSuffixTryCatches =
+                new ArrayList<>(split.suffixTryCatches);
         relocatedPrefixHandlers =
                 new ArrayList<>(split.relocatedPrefixHandlers);
         // The JNI shell only needs catch metadata for the native suffix.
@@ -95,7 +98,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     @Override
     public void postProcess(MethodContext context) {
+        // MethodShellEmitter clears catch metadata after IR lowering. Restore
+        // it only long enough to reproduce the proven split, including an
+        // isolated tail that is discoverable solely through its handler role.
+        context.method.tryCatchBlocks.addAll(retainedPrefixTryCatches);
+        context.method.tryCatchBlocks.addAll(retainedSuffixTryCatches);
         ConstructorSplit split = split(context.clazz, context.method);
+        context.method.tryCatchBlocks.clear();
         Map<LabelNode, LabelNode> labels = labels(context.method);
         if (split.distinctSuffix != null) {
             InsnList wrapper = new InsnList();
@@ -513,7 +522,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 RelocatedPrefixHandler relocated =
                         relocatablePrefixHandler(
                                 constructor, prefixLabels, suffixLabels,
-                                instructionIndexes, suffixStartIndex, tryCatch);
+                                instructionIndexes, suffixStartIndex, tryCatch,
+                                null);
                 if (relocated == null) {
                     throw new UnsupportedIrConstructException(
                             "Constructor exception regions may not cross the this/super split");
@@ -579,6 +589,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             MethodNode constructor, List<Integer> callIndexes,
             DistinctSuffix distinctSuffix) {
         Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Map<LabelNode, RelocatedPrefixHandler> methodEndHandlers =
+                methodEndIsolatedHandlers(constructor, indexes);
         List<TryCatchBlockNode> prefix = new ArrayList<>();
         List<TryCatchBlockNode> suffix = new ArrayList<>();
         Map<LabelNode, RelocatedPrefixHandler> relocatedByLabel =
@@ -594,12 +606,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         Set<LabelNode> prefixLabels = new HashSet<>();
-        for (AbstractInsnNode instruction : constructor.instructions) {
-            if (instruction instanceof LabelNode
-                    && !suffixLabels.contains(instruction)) {
-                prefixLabels.add((LabelNode) instruction);
-            }
-        }
+        prefixLabels.addAll(labelsInRange(
+                constructor, 0,
+                distinctSuffix.suffixes.get(0).startIndex));
         int firstCallIndex = callIndexes.get(0);
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             if (tryCatchLabelsBefore(
@@ -623,7 +632,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     relocatablePrefixHandler(
                             constructor, prefixLabels, suffixLabels, indexes,
                             distinctSuffix.suffixes.get(0).startIndex,
-                            tryCatch);
+                            tryCatch, methodEndHandlers.get(tryCatch.handler));
             boolean protectedInOneSuffix = false;
             if (relocated != null) {
                 for (LinearSuffix range : distinctSuffix.suffixes) {
@@ -684,27 +693,52 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves the prefix-handler shapes that can be moved without changing their
-     * exception behavior. The protected range is wholly in the suffix, and the
-     * isolated handler either returns after consuming the caught exception or
-     * rethrows that same exception directly or through one exact ASTORE/ALOAD
-     * pair. Return handlers may also jump to an equally isolated prefix return.
-     * With no extra incoming edge or other range role, the handler and optional
-     * return block can be removed from the wrapper and cloned into the suffix
-     * with the original table entry.
+     * Proves the isolated-handler shapes that can be moved without changing
+     * their exception behavior. The protected range is wholly in the suffix,
+     * and the handler is either in the retained prefix or in one isolated tail
+     * immediately after the last suffix. The handler either returns after
+     * consuming the caught exception or rethrows that same exception directly
+     * or through one exact ASTORE/ALOAD pair. Return handlers may also jump to
+     * an equally isolated return. With no extra incoming edge or other range
+     * role, the handler and optional return block can be removed from the
+     * wrapper and cloned into the suffix with the original table entry.
      */
     private static RelocatedPrefixHandler relocatablePrefixHandler(
             MethodNode constructor,
             Set<LabelNode> prefixLabels, Set<LabelNode> suffixLabels,
             Map<LabelNode, Integer> instructionIndexes,
             int suffixStartIndex,
-            TryCatchBlockNode tryCatch) {
+            TryCatchBlockNode tryCatch,
+            RelocatedPrefixHandler methodEndHandler) {
         if (!suffixLabels.contains(tryCatch.start)
                 || !suffixLabels.contains(tryCatch.end)
-                || !prefixLabels.contains(tryCatch.handler)) {
+                || (!prefixLabels.contains(tryCatch.handler)
+                && methodEndHandler == null)) {
             return null;
         }
         Integer handlerIndex = instructionIndexes.get(tryCatch.handler);
+        if (handlerIndex == null
+                || hasNormalTarget(constructor, tryCatch.handler)
+                || isTryRangeBoundary(constructor, tryCatch.handler)
+                || !isOnlyUsedBySuffixRanges(
+                        constructor, suffixLabels, tryCatch.handler)) {
+            return null;
+        }
+        if (methodEndHandler != null) {
+            return methodEndHandler.startIndex == handlerIndex
+                    ? methodEndHandler : null;
+        }
+        return isolatedHandler(
+                constructor, prefixLabels, instructionIndexes,
+                suffixStartIndex, tryCatch.handler, false);
+    }
+
+    private static RelocatedPrefixHandler isolatedHandler(
+            MethodNode constructor, Set<LabelNode> prefixLabels,
+            Map<LabelNode, Integer> instructionIndexes,
+            int suffixStartIndex, LabelNode handler,
+            boolean methodEnd) {
+        Integer handlerIndex = instructionIndexes.get(handler);
         if (handlerIndex == null) {
             return null;
         }
@@ -714,22 +748,26 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 previousExecutableIndex(constructor, handlerIndex - 1);
         if (firstIndex >= constructor.instructions.size()
                 || previousIndex < 0
-                || constructor.instructions.get(previousIndex)
-                .getOpcode() != Opcodes.GOTO
+                || (methodEnd
+                ? canFallThrough(constructor.instructions.get(previousIndex))
+                : constructor.instructions.get(previousIndex)
+                .getOpcode() != Opcodes.GOTO)
                 || !containsOnlyFrames(
                         constructor, handlerIndex + 1, firstIndex)
-                || hasNormalTarget(constructor, tryCatch.handler)
-                || isTryRangeBoundary(constructor, tryCatch.handler)
-                || !isOnlyUsedBySuffixRanges(
-                        constructor, suffixLabels, tryCatch.handler)) {
+                || hasNormalTarget(constructor, handler)
+                || isTryRangeBoundary(constructor, handler)
+                || !handlerInstructionInRegion(
+                        firstIndex, handlerIndex,
+                        suffixStartIndex, methodEnd)) {
             return null;
         }
         AbstractInsnNode first = constructor.instructions.get(firstIndex);
         if (first.getOpcode() == Opcodes.ATHROW) {
-            return firstIndex < suffixStartIndex
-                    ? new RelocatedPrefixHandler(
-                    handlerIndex, firstIndex + 1)
-                    : null;
+            return completeIsolatedHandler(
+                    constructor,
+                    new RelocatedPrefixHandler(
+                            handlerIndex, firstIndex + 1),
+                    methodEnd);
         }
 
         boolean popsException = first.getOpcode() == Opcodes.POP;
@@ -753,25 +791,36 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             int throwIndex =
                     firstExecutableIndex(constructor, successorIndex + 1);
             if (reload.var != storedExceptionLocal
-                    || throwIndex >= suffixStartIndex
+                    || !handlerInstructionInRegion(
+                    successorIndex, handlerIndex,
+                    suffixStartIndex, methodEnd)
+                    || !handlerInstructionInRegion(
+                    throwIndex, handlerIndex,
+                    suffixStartIndex, methodEnd)
+                    || throwIndex >= constructor.instructions.size()
                     || constructor.instructions.get(throwIndex)
                     .getOpcode() != Opcodes.ATHROW
                     || !containsOnlyFrames(
-                    constructor, successorIndex + 1, throwIndex)
-                    || firstIndex >= suffixStartIndex
-                    || successorIndex >= suffixStartIndex) {
+                    constructor, successorIndex + 1, throwIndex)) {
                 return null;
             }
-            return new RelocatedPrefixHandler(
-                    handlerIndex, throwIndex + 1);
+            return completeIsolatedHandler(
+                    constructor,
+                    new RelocatedPrefixHandler(
+                            handlerIndex, throwIndex + 1),
+                    methodEnd);
         }
         if (successor.getOpcode() == Opcodes.RETURN) {
-            if (firstIndex >= suffixStartIndex
-                    || successorIndex >= suffixStartIndex) {
+            if (!handlerInstructionInRegion(
+                    successorIndex, handlerIndex,
+                    suffixStartIndex, methodEnd)) {
                 return null;
             }
-            return new RelocatedPrefixHandler(
-                    handlerIndex, successorIndex + 1);
+            return completeIsolatedHandler(
+                    constructor,
+                    new RelocatedPrefixHandler(
+                            handlerIndex, successorIndex + 1),
+                    methodEnd);
         }
         if (!(successor instanceof JumpInsnNode)
                 || successor.getOpcode() != Opcodes.GOTO) {
@@ -781,12 +830,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         JumpInsnNode jump = (JumpInsnNode) successor;
         LabelNode returnLabel = jump.label;
         Integer returnLabelIndex = instructionIndexes.get(returnLabel);
-        if (!prefixLabels.contains(returnLabel)
+        if ((!methodEnd && !prefixLabels.contains(returnLabel))
                 || returnLabelIndex == null
                 || returnLabelIndex <= successorIndex
-                || firstIndex >= suffixStartIndex
-                || successorIndex >= suffixStartIndex
-                || returnLabelIndex >= suffixStartIndex
+                || !handlerInstructionInRegion(
+                successorIndex, handlerIndex,
+                suffixStartIndex, methodEnd)
+                || !handlerInstructionInRegion(
+                returnLabelIndex, handlerIndex,
+                suffixStartIndex, methodEnd)
                 || !containsOnlyFrames(
                         constructor, successorIndex + 1,
                         returnLabelIndex)) {
@@ -796,7 +848,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 firstExecutableIndex(constructor, returnLabelIndex + 1);
         int returnPreviousIndex =
                 previousExecutableIndex(constructor, returnLabelIndex - 1);
-        if (returnIndex >= suffixStartIndex
+        if (!handlerInstructionInRegion(
+                returnIndex, handlerIndex, suffixStartIndex, methodEnd)
+                || returnIndex >= constructor.instructions.size()
                 || constructor.instructions.get(returnIndex)
                 .getOpcode() != Opcodes.RETURN
                 || !containsOnlyFrames(
@@ -810,9 +864,52 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         constructor.instructions.get(returnPreviousIndex)))) {
             return null;
         }
-        return new RelocatedPrefixHandler(
-                handlerIndex, successorIndex + 1,
-                returnLabelIndex, returnIndex + 1);
+        return completeIsolatedHandler(
+                constructor,
+                new RelocatedPrefixHandler(
+                        handlerIndex, successorIndex + 1,
+                        returnLabelIndex, returnIndex + 1),
+                methodEnd);
+    }
+
+    private static boolean handlerInstructionInRegion(
+            int index, int handlerIndex, int suffixStartIndex,
+            boolean methodEnd) {
+        return methodEnd
+                ? index > handlerIndex
+                : index < suffixStartIndex;
+    }
+
+    private static RelocatedPrefixHandler completeIsolatedHandler(
+            MethodNode constructor, RelocatedPrefixHandler handler,
+            boolean methodEnd) {
+        if (!methodEnd) {
+            return handler;
+        }
+        int endIndex = handler.returnEndIndex >= 0
+                ? handler.returnEndIndex : handler.endIndex;
+        return firstExecutableIndex(constructor, endIndex)
+                == constructor.instructions.size() ? handler : null;
+    }
+
+    private static Map<LabelNode, RelocatedPrefixHandler>
+    methodEndIsolatedHandlers(
+            MethodNode constructor,
+            Map<LabelNode, Integer> instructionIndexes) {
+        Map<LabelNode, RelocatedPrefixHandler> handlers =
+                new IdentityHashMap<>();
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            if (handlers.containsKey(tryCatch.handler)) {
+                continue;
+            }
+            RelocatedPrefixHandler handler = isolatedHandler(
+                    constructor, new HashSet<>(), instructionIndexes,
+                    0, tryCatch.handler, true);
+            if (handler != null) {
+                handlers.put(tryCatch.handler, handler);
+            }
+        }
+        return handlers;
     }
 
     private static Integer relocatableCaughtExceptionLocal(
@@ -1353,7 +1450,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             RelocatedPrefixHandler relocated =
                     relocatablePrefixHandler(
                             constructor, prefixLabels, canonicalLabels,
-                            indexes, canonical.startIndex, tryCatch);
+                            indexes, canonical.startIndex, tryCatch, null);
             if (relocated != null
                     && tryCatchRangeLabelsInRange(
                     tryCatch, indexes, canonical)) {
@@ -1377,10 +1474,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the only executable tail accepted after the canonical copy's
-     * normal RETURN: one suffix-owned handler that consumes the caught value
-     * and returns. The normal RETURN makes the handler unreachable by
-     * fallthrough; the generic split later clones the handler and its table
-     * into the independent IR body.
+     * normal RETURN: one suffix-owned handler matching the same six isolated
+     * return/rethrow forms used by handler relocation. The normal RETURN makes
+     * the handler unreachable by fallthrough; the generic split later clones
+     * the handler and its table into the independent IR body.
      */
     private static Set<LabelNode> canonicalSuffixTailHandlers(
             MethodNode constructor, LinearSuffix canonical,
@@ -1402,32 +1499,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         LabelNode handler = handlers.iterator().next();
-        int handlerIndex = indexes.get(handler);
-        int firstIndex =
-                firstExecutableIndex(constructor, handlerIndex + 1);
-        if (firstIndex >= constructor.instructions.size()
-                || !containsOnlyFrames(
-                constructor, handlerIndex + 1, firstIndex)
-                || hasNormalTarget(constructor, handler)
-                || isTryRangeBoundary(constructor, handler)) {
-            return null;
-        }
-        AbstractInsnNode first = constructor.instructions.get(firstIndex);
-        if (first.getOpcode() != Opcodes.POP
-                && relocatableCaughtExceptionLocal(
-                constructor, first) == null) {
-            return null;
-        }
-        int returnIndex =
-                firstExecutableIndex(constructor, firstIndex + 1);
-        if (returnIndex >= constructor.instructions.size()
-                || constructor.instructions.get(returnIndex)
-                .getOpcode() != Opcodes.RETURN
-                || !containsOnlyFrames(
-                constructor, firstIndex + 1, returnIndex)
-                || firstExecutableIndex(
-                constructor, returnIndex + 1)
-                != constructor.instructions.size()) {
+        Map<LabelNode, RelocatedPrefixHandler> isolatedHandlers =
+                methodEndIsolatedHandlers(constructor, indexes);
+        RelocatedPrefixHandler isolated = isolatedHandlers.get(handler);
+        if (isolated == null
+                || isolated.startIndex != canonical.endIndex) {
             return null;
         }
         return handlers;
@@ -1540,10 +1616,19 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
 
+        Map<LabelNode, Integer> instructionIndexes =
+                labelIndexes(constructor);
+        Map<LabelNode, RelocatedPrefixHandler> methodEndHandlers =
+                methodEndIsolatedHandlers(
+                        constructor, instructionIndexes);
+        Set<LabelNode> methodEndHandlerLabels =
+                methodEndHandlers.keySet();
         List<LinearSuffix> suffixes = new ArrayList<>();
         for (int i = 0; i < callIndexes.size(); i++) {
             LinearSuffix suffix =
-                    boundedDistinctSuffix(constructor, callIndexes.get(i));
+                    boundedDistinctSuffix(
+                            constructor, callIndexes.get(i),
+                            methodEndHandlerLabels);
             if (suffix == null || executableInstructionCount(
                     constructor, suffix) <= 1
                     || (i + 1 < callIndexes.size()
@@ -1552,8 +1637,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
             suffixes.add(suffix);
         }
-        if (suffixes.get(suffixes.size() - 1).endIndex
-                != constructor.instructions.size()
+        LinearSuffix finalSuffix =
+                suffixes.get(suffixes.size() - 1);
+        boolean endsBeforeIsolatedHandler =
+                methodEndHandlers.size() == 1
+                        && methodEndHandlers.values().iterator().next()
+                        .startIndex == finalSuffix.endIndex;
+        if ((finalSuffix.endIndex != constructor.instructions.size()
+                && !endsBeforeIsolatedHandler)
                 || !hasDirectDeclaredChainInputs(
                         constructor, callIndexes, hasPrefixReceiverStore)
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
@@ -1586,7 +1677,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * every path must terminate with RETURN.
      */
     private static LinearSuffix boundedDistinctSuffix(
-            MethodNode constructor, int callIndex) {
+            MethodNode constructor, int callIndex,
+            Set<LabelNode> methodEndHandlers) {
         int startIndex = callIndex + 1;
         int instructionCount = constructor.instructions.size();
         if (startIndex >= instructionCount) {
@@ -1620,7 +1712,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             if (opcode >= 0) {
                 addExceptionSuccessors(
                         constructor, labelIndexes, startIndex,
-                        index, pending);
+                        index, pending, methodEndHandlers);
             }
             if (opcode == Opcodes.RETURN) {
                 reachesReturn = true;
@@ -1738,7 +1830,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static void addExceptionSuccessors(
             MethodNode constructor, Map<LabelNode, Integer> labelIndexes,
             int suffixStartIndex, int instructionIndex,
-            ArrayDeque<Integer> pending) {
+            ArrayDeque<Integer> pending,
+            Set<LabelNode> methodEndHandlers) {
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             Integer startIndex = labelIndexes.get(tryCatch.start);
             Integer endIndex = labelIndexes.get(tryCatch.end);
@@ -1749,7 +1842,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     // A backward handler is outside this candidate suffix.
                     // Its exact isolated-prefix form is checked after all
                     // suffix ranges have been discovered.
-                    && handlerIndex >= suffixStartIndex) {
+                    && handlerIndex >= suffixStartIndex
+                    // A proven isolated method-end handler is relocated after
+                    // suffix discovery; it is not a path-selected suffix.
+                    && !methodEndHandlers.contains(tryCatch.handler)) {
                 pending.add(handlerIndex);
             }
         }
