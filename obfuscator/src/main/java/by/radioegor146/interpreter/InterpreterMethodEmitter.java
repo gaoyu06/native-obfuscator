@@ -18,11 +18,11 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * ASM-to-opcode-stream lowering for the integer-only interpreter slice.
+ * ASM-to-opcode-stream lowering for the integer and long interpreter slice.
  */
 public final class InterpreterMethodEmitter {
 
-    public static final int ISA_VERSION = 2;
+    public static final int ISA_VERSION = 3;
 
     public static final int IPUSH = 1;
     public static final int ILOAD = 2;
@@ -53,6 +53,22 @@ public final class InterpreterMethodEmitter {
     public static final int INEG = 27;
     public static final int IDIV = 28;
     public static final int IREM = 29;
+    public static final int LPUSH = 30;
+    public static final int LLOAD = 31;
+    public static final int LSTORE = 32;
+    public static final int LADD = 33;
+    public static final int LSUB = 34;
+    public static final int LMUL = 35;
+    public static final int LAND = 36;
+    public static final int LOR = 37;
+    public static final int LXOR = 38;
+    public static final int LSHL = 39;
+    public static final int LSHR = 40;
+    public static final int LUSHR = 41;
+    public static final int LNEG = 42;
+    public static final int LRETURN = 43;
+    public static final int LDIV = 44;
+    public static final int LREM = 45;
 
     private InterpreterMethodEmitter() {
     }
@@ -63,8 +79,8 @@ public final class InterpreterMethodEmitter {
                 (method.access & Opcodes.ACC_STATIC) == 0 ||
                 (method.access & Opcodes.ACC_SYNCHRONIZED) != 0 ||
                 method.name.startsWith("<") ||
-                Type.getReturnType(method.desc).getSort() != Type.INT ||
-                !hasOnlyIntArguments(method.desc) ||
+                !isSupportedType(Type.getReturnType(method.desc)) ||
+                !hasOnlySupportedArguments(method.desc) ||
                 (method.tryCatchBlocks != null && !method.tryCatchBlocks.isEmpty()) ||
                 method.maxLocals > 0xffff ||
                 method.maxStack > 0xffff - 2) {
@@ -100,13 +116,17 @@ public final class InterpreterMethodEmitter {
         return new CompiledMethod(code.toByteArray(), maxStack, method.maxLocals);
     }
 
-    private static boolean hasOnlyIntArguments(String descriptor) {
+    private static boolean hasOnlySupportedArguments(String descriptor) {
         for (Type argument : Type.getArgumentTypes(descriptor)) {
-            if (argument.getSort() != Type.INT) {
+            if (!isSupportedType(argument)) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean isSupportedType(Type type) {
+        return type.getSort() == Type.INT || type.getSort() == Type.LONG;
     }
 
     private static int instructionSize(AbstractInsnNode instruction) {
@@ -124,7 +144,11 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ICONST_4:
                 case Opcodes.ICONST_5:
                     return 5;
+                case Opcodes.LCONST_0:
+                case Opcodes.LCONST_1:
+                    return 9;
                 case Opcodes.IRETURN:
+                case Opcodes.LRETURN:
                     return 1;
                 default:
                     return arithmeticOpcode(opcode) >= 0 ? 1 : -1;
@@ -134,12 +158,20 @@ public final class InterpreterMethodEmitter {
             return opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH ? 5 : -1;
         }
         if (instruction instanceof LdcInsnNode) {
-            return ((LdcInsnNode) instruction).cst instanceof Integer ? 5 : -1;
+            Object constant = ((LdcInsnNode) instruction).cst;
+            if (constant instanceof Integer) {
+                return 5;
+            }
+            return constant instanceof Long ? 9 : -1;
         }
         if (instruction instanceof VarInsnNode) {
             VarInsnNode variable = (VarInsnNode) instruction;
-            return (opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE) &&
-                    variable.var >= 0 && variable.var <= 0xffff ? 3 : -1;
+            boolean supported = opcode == Opcodes.ILOAD ||
+                    opcode == Opcodes.ISTORE ||
+                    opcode == Opcodes.LLOAD ||
+                    opcode == Opcodes.LSTORE;
+            return supported && variable.var >= 0 &&
+                    variable.var <= 0xffff ? 3 : -1;
         }
         if (instruction instanceof IincInsnNode) {
             int variable = ((IincInsnNode) instruction).var;
@@ -169,8 +201,15 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ICONST_5:
                     emitIntConstant(code, opcode - Opcodes.ICONST_0);
                     return true;
+                case Opcodes.LCONST_0:
+                case Opcodes.LCONST_1:
+                    emitLongConstant(code, opcode - Opcodes.LCONST_0);
+                    return true;
                 case Opcodes.IRETURN:
                     code.write(IRETURN);
+                    return true;
+                case Opcodes.LRETURN:
+                    code.write(LRETURN);
                     return true;
                 default:
                     int interpretedOpcode = arithmeticOpcode(opcode);
@@ -186,12 +225,17 @@ public final class InterpreterMethodEmitter {
             return true;
         }
         if (instruction instanceof LdcInsnNode) {
-            emitIntConstant(code, (Integer) ((LdcInsnNode) instruction).cst);
+            Object constant = ((LdcInsnNode) instruction).cst;
+            if (constant instanceof Integer) {
+                emitIntConstant(code, (Integer) constant);
+            } else {
+                emitLongConstant(code, (Long) constant);
+            }
             return true;
         }
         if (instruction instanceof VarInsnNode) {
             VarInsnNode variable = (VarInsnNode) instruction;
-            code.write(opcode == Opcodes.ILOAD ? ILOAD : ISTORE);
+            code.write(variableOpcode(opcode));
             writeU16(code, variable.var);
             return true;
         }
@@ -221,6 +265,26 @@ public final class InterpreterMethodEmitter {
     private static void emitIntConstant(ByteArrayOutputStream code, int value) {
         code.write(IPUSH);
         writeI32(code, value);
+    }
+
+    private static void emitLongConstant(ByteArrayOutputStream code, long value) {
+        code.write(LPUSH);
+        writeI64(code, value);
+    }
+
+    private static int variableOpcode(int asmOpcode) {
+        switch (asmOpcode) {
+            case Opcodes.ILOAD:
+                return ILOAD;
+            case Opcodes.ISTORE:
+                return ISTORE;
+            case Opcodes.LLOAD:
+                return LLOAD;
+            case Opcodes.LSTORE:
+                return LSTORE;
+            default:
+                return -1;
+        }
     }
 
     private static int branchOpcode(int asmOpcode) {
@@ -282,6 +346,30 @@ public final class InterpreterMethodEmitter {
                 return IDIV;
             case Opcodes.IREM:
                 return IREM;
+            case Opcodes.LADD:
+                return LADD;
+            case Opcodes.LSUB:
+                return LSUB;
+            case Opcodes.LMUL:
+                return LMUL;
+            case Opcodes.LAND:
+                return LAND;
+            case Opcodes.LOR:
+                return LOR;
+            case Opcodes.LXOR:
+                return LXOR;
+            case Opcodes.LSHL:
+                return LSHL;
+            case Opcodes.LSHR:
+                return LSHR;
+            case Opcodes.LUSHR:
+                return LUSHR;
+            case Opcodes.LNEG:
+                return LNEG;
+            case Opcodes.LDIV:
+                return LDIV;
+            case Opcodes.LREM:
+                return LREM;
             default:
                 return -1;
         }
@@ -297,6 +385,17 @@ public final class InterpreterMethodEmitter {
         output.write((value >>> 8) & 0xff);
         output.write((value >>> 16) & 0xff);
         output.write((value >>> 24) & 0xff);
+    }
+
+    private static void writeI64(ByteArrayOutputStream output, long value) {
+        output.write((int) (value & 0xff));
+        output.write((int) ((value >>> 8) & 0xff));
+        output.write((int) ((value >>> 16) & 0xff));
+        output.write((int) ((value >>> 24) & 0xff));
+        output.write((int) ((value >>> 32) & 0xff));
+        output.write((int) ((value >>> 40) & 0xff));
+        output.write((int) ((value >>> 48) & 0xff));
+        output.write((int) ((value >>> 56) & 0xff));
     }
 
     public static final class CompiledMethod {

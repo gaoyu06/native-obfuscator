@@ -67,9 +67,14 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(6, occurrences(generated, "_interp_code[]"));
+        assertEquals(12, occurrences(generated, "_interp_code[]"));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_i("));
+        assertEquals(6, occurrences(generated,
+                "native_jvm::interp::execute_j("));
+        assertTrue(generated.contains(
+                        "native_jvm::interp::store_long(interp_locals + 2"),
+                "second long argument must begin at JVM local slot 2");
         assertTrue(generated.contains(
                         "utils::throw_re(env, \"java/lang/ArithmeticException\""),
                 "division status must become a pending JNI exception");
@@ -107,7 +112,7 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(6, occurrences(generated, "_interp_code[]"));
+        assertEquals(12, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
                         "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
                 "unsupported I2L must use the active IR codegen");
@@ -207,6 +212,91 @@ public class InterpreterBackendIntegrationTest {
         divide.visitInsn(Opcodes.IRETURN);
         divide.visitMaxs(0, 0);
         divide.visitEnd();
+
+        MethodVisitor longAdd = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longAdd", "(JJ)J", null, null);
+        longAdd.visitCode();
+        longAdd.visitVarInsn(Opcodes.LLOAD, 0);
+        longAdd.visitVarInsn(Opcodes.LLOAD, 2);
+        longAdd.visitInsn(Opcodes.LADD);
+        longAdd.visitInsn(Opcodes.LRETURN);
+        longAdd.visitMaxs(0, 0);
+        longAdd.visitEnd();
+
+        MethodVisitor longArithmetic = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longArithmetic", "(JJ)J", null, null);
+        longArithmetic.visitCode();
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 0);
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 2);
+        longArithmetic.visitInsn(Opcodes.LSUB);
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 0);
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 2);
+        longArithmetic.visitInsn(Opcodes.LAND);
+        longArithmetic.visitInsn(Opcodes.LMUL);
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 0);
+        longArithmetic.visitVarInsn(Opcodes.LLOAD, 2);
+        longArithmetic.visitInsn(Opcodes.LOR);
+        longArithmetic.visitInsn(Opcodes.LXOR);
+        longArithmetic.visitInsn(Opcodes.LNEG);
+        longArithmetic.visitInsn(Opcodes.LRETURN);
+        longArithmetic.visitMaxs(0, 0);
+        longArithmetic.visitEnd();
+
+        MethodVisitor longShift = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longShift", "(JI)J", null, null);
+        longShift.visitCode();
+        longShift.visitVarInsn(Opcodes.LLOAD, 0);
+        longShift.visitVarInsn(Opcodes.ILOAD, 2);
+        longShift.visitInsn(Opcodes.LSHL);
+        longShift.visitVarInsn(Opcodes.LLOAD, 0);
+        longShift.visitVarInsn(Opcodes.ILOAD, 2);
+        longShift.visitInsn(Opcodes.LSHR);
+        longShift.visitInsn(Opcodes.LXOR);
+        longShift.visitVarInsn(Opcodes.LLOAD, 0);
+        longShift.visitVarInsn(Opcodes.ILOAD, 2);
+        longShift.visitInsn(Opcodes.LUSHR);
+        longShift.visitInsn(Opcodes.LXOR);
+        longShift.visitInsn(Opcodes.LRETURN);
+        longShift.visitMaxs(0, 0);
+        longShift.visitEnd();
+
+        MethodVisitor longDivide = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longDivide", "(JJ)J", null, null);
+        longDivide.visitCode();
+        longDivide.visitVarInsn(Opcodes.LLOAD, 0);
+        longDivide.visitVarInsn(Opcodes.LLOAD, 2);
+        longDivide.visitInsn(Opcodes.LDIV);
+        longDivide.visitVarInsn(Opcodes.LLOAD, 0);
+        longDivide.visitVarInsn(Opcodes.LLOAD, 2);
+        longDivide.visitInsn(Opcodes.LREM);
+        longDivide.visitInsn(Opcodes.LXOR);
+        longDivide.visitInsn(Opcodes.LRETURN);
+        longDivide.visitMaxs(0, 0);
+        longDivide.visitEnd();
+
+        MethodVisitor longStore = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longStore", "(J)J", null, null);
+        longStore.visitCode();
+        longStore.visitVarInsn(Opcodes.LLOAD, 0);
+        longStore.visitVarInsn(Opcodes.LSTORE, 2);
+        longStore.visitVarInsn(Opcodes.LLOAD, 2);
+        longStore.visitInsn(Opcodes.LRETURN);
+        longStore.visitMaxs(0, 0);
+        longStore.visitEnd();
+
+        MethodVisitor longConstant = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "longConstant", "()J", null, null);
+        longConstant.visitCode();
+        longConstant.visitLdcInsn(0x0102030405060708L);
+        longConstant.visitInsn(Opcodes.LRETURN);
+        longConstant.visitMaxs(0, 0);
+        longConstant.visitEnd();
 
         MethodVisitor unsupportedConversion = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,

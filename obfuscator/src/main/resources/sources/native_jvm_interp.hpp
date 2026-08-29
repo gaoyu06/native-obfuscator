@@ -5,7 +5,7 @@
 
 namespace native_jvm::interp {
 
-    constexpr std::uint16_t ISA_VERSION = 2;
+    constexpr std::uint16_t ISA_VERSION = 3;
 
     enum class opcode : std::uint8_t {
         ipush = 1,
@@ -36,7 +36,23 @@ namespace native_jvm::interp {
         iushr = 26,
         ineg = 27,
         idiv = 28,
-        irem = 29
+        irem = 29,
+        lpush = 30,
+        lload = 31,
+        lstore = 32,
+        ladd = 33,
+        lsub = 34,
+        lmul = 35,
+        land = 36,
+        lor = 37,
+        lxor = 38,
+        lshl = 39,
+        lshr = 40,
+        lushr = 41,
+        lneg = 42,
+        lreturn = 43,
+        ldiv = 44,
+        lrem = 45
     };
 
     enum class execution_result : std::uint8_t {
@@ -58,8 +74,13 @@ namespace native_jvm::interp {
         std::int32_t *stack;
     };
 
+    void store_long(std::int32_t *slots, std::int64_t value) noexcept;
+
     execution_result execute_i(const method_desc &method, frame &current_frame,
                                std::int32_t *result) noexcept;
+
+    execution_result execute_j(const method_desc &method, frame &current_frame,
+                               std::int64_t *result) noexcept;
 }
 
 #endif

@@ -62,31 +62,49 @@ public final class InterpreterMethodProcessor {
                 .append(Math.max(1, compiled.getMaxStack())).append("] = {};\n");
         context.output.append("    std::int32_t interp_locals[")
                 .append(Math.max(1, compiled.getMaxLocals())).append("] = {};\n");
+        int local = 0;
         for (int i = 0; i < arguments.length; i++) {
-            context.output.append("    interp_locals[").append(i)
-                    .append("] = static_cast<std::int32_t>(arg").append(i)
-                    .append(");\n");
+            if (arguments[i].getSort() == Type.LONG) {
+                context.output.append("    native_jvm::interp::store_long(interp_locals + ")
+                        .append(local).append(", static_cast<std::int64_t>(arg")
+                        .append(i).append("));\n");
+            } else {
+                context.output.append("    interp_locals[").append(local)
+                        .append("] = static_cast<std::int32_t>(arg").append(i)
+                        .append(");\n");
+            }
+            local += arguments[i].getSize();
         }
         context.output.append(
                 "    native_jvm::interp::frame interp_frame = { interp_locals, interp_stack };\n");
-        context.output.append("    std::int32_t interp_result = 0;\n");
+        boolean returnsLong = context.ret.getSort() == Type.LONG;
+        context.output.append(returnsLong
+                ? "    std::int64_t interp_result = 0;\n"
+                : "    std::int32_t interp_result = 0;\n");
         context.output.append(
-                "    native_jvm::interp::execution_result interp_status = native_jvm::interp::execute_i(")
+                "    native_jvm::interp::execution_result interp_status = native_jvm::interp::execute_")
+                .append(returnsLong ? "j(" : "i(")
                 .append(dataName)
                 .append("_method, interp_frame, &interp_result);\n");
         context.output.append(
                 "    if (interp_status == native_jvm::interp::execution_result::arithmetic_exception) {\n");
         context.output.append(
-                "        utils::throw_re(env, \"java/lang/ArithmeticException\", \"integer / by zero\", -1);\n");
-        context.output.append("        return (jint) 0;\n");
+                "        utils::throw_re(env, \"java/lang/ArithmeticException\", \"")
+                .append(returnsLong ? "long" : "integer")
+                .append(" / by zero\", -1);\n");
+        context.output.append("        return (")
+                .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
         context.output.append("    }\n");
         context.output.append(
                 "    if (interp_status != native_jvm::interp::execution_result::success) {\n");
         context.output.append(
                 "        env->FatalError(\"invalid native_jvm interpreter opcode stream\");\n");
-        context.output.append("        return (jint) 0;\n");
+        context.output.append("        return (")
+                .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
         context.output.append("    }\n");
-        context.output.append("    return static_cast<jint>(interp_result);\n");
+        context.output.append("    return static_cast<")
+                .append(returnsLong ? "jlong" : "jint")
+                .append(">(interp_result);\n");
         context.output.append("}\n\n");
 
         method.instructions.clear();
