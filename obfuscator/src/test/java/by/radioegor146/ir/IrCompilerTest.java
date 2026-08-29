@@ -72,6 +72,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class IrCompilerTest {
+    private static final int[] POST_CHAIN_INT_COMPARE_OPCODES = {
+            Opcodes.IFEQ, Opcodes.IFLT, Opcodes.IFGE,
+            Opcodes.IFGT, Opcodes.IFLE,
+            Opcodes.IF_ICMPEQ, Opcodes.IF_ICMPNE,
+            Opcodes.IF_ICMPLT, Opcodes.IF_ICMPGE,
+            Opcodes.IF_ICMPGT, Opcodes.IF_ICMPLE
+    };
+
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
 
@@ -850,6 +858,50 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsPostChainIntCompareFamiliesToSharedSuffix() {
+        for (int opcode : POST_CHAIN_INT_COMPARE_OPCODES) {
+            String ownerName = "example/PostChainCompare" + opcode;
+            ClassNode owner = constructorOwner(
+                    ownerName, "example/MultiSuperBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor = postChainIntCompareConstructor(
+                    owner.name, owner.superName, opcode);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals(isBinaryIntCompare(opcode) ? "(III)V" : "(II)V",
+                    nativeBody.desc, "opcode " + opcode);
+            assertEquals(Arrays.asList(
+                            Opcodes.ALOAD, Opcodes.BIPUSH,
+                            Opcodes.PUTFIELD, Opcodes.RETURN),
+                    realOpcodes(nativeBody), "opcode " + opcode);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(2, directChainCallCount(constructor, owner),
+                    "opcode " + opcode);
+            assertEquals(1, hiddenBridgeCallCount(constructor),
+                    "opcode " + opcode);
+            assertTrue(realOpcodes(constructor).contains(opcode),
+                    "opcode " + opcode);
+            assertFalse(realOpcodes(constructor).contains(Opcodes.GOTO),
+                    "opcode " + opcode);
+            assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD),
+                    "opcode " + opcode);
+            assertEquals(2, Collections.frequency(
+                            realOpcodes(constructor), Opcodes.RETURN),
+                    "opcode " + opcode);
+        }
+    }
+
+    @Test
     public void admitsConditionallyAssignedExtraOnBridgePathOnly() {
         ClassNode owner = constructorOwner(
                 "example/ConditionalBridgeExtra", "example/MultiSuperBase");
@@ -1526,6 +1578,65 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenPostChainIntCompareFamiliesPassJvmVerification()
+            throws Exception {
+        for (int opcode : POST_CHAIN_INT_COMPARE_OPCODES) {
+            String suffix = Integer.toString(opcode);
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedPostChainCompareBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedPostChainCompare" + suffix, base.name);
+            owner.version = Opcodes.V1_8;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor = postChainIntCompareConstructor(
+                    owner.name, base.name, opcode);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[][] operands = postChainCompareOperands(opcode);
+
+            InvocationTargetException taken = assertThrows(
+                    InvocationTargetException.class,
+                    () -> newPostChainCompareInstance(
+                            verified, opcode, 7, operands[0]),
+                    "suffix-taken opcode " + opcode);
+            assertTrue(taken.getCause() instanceof UnsatisfiedLinkError,
+                    "suffix-taken opcode " + opcode);
+
+            Object earlyReturn = newPostChainCompareInstance(
+                    verified, opcode, 7, operands[1]);
+            assertEquals(0, verified.getField("result").getInt(earlyReturn),
+                    "immediate-return opcode " + opcode);
+
+            InvocationTargetException secondCall = assertThrows(
+                    InvocationTargetException.class,
+                    () -> newPostChainCompareInstance(
+                            verified, opcode, -5, operands[1]),
+                    "second-call opcode " + opcode);
+            assertTrue(secondCall.getCause() instanceof UnsatisfiedLinkError,
+                    "second-call opcode " + opcode);
+            assertEquals(2, directChainCallCount(constructor, owner),
+                    "opcode " + opcode);
+            assertEquals(1, hiddenBridgeCallCount(constructor),
+                    "opcode " + opcode);
+        }
+    }
+
+    @Test
     public void rewrittenConditionalBridgeExtraPassesJvmVerification()
             throws Exception {
         ClassNode base =
@@ -1930,6 +2041,96 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native post-chain branch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void postChainIntCompareFamiliesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the post-chain compare runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the post-chain compare runtime test");
+
+        String ownerPrefix = "example/PostChainCompareRuntime";
+        String baseName = ownerPrefix + "Base";
+        String mainName = ownerPrefix + "Main";
+        Path directory =
+                Files.createTempDirectory("ir-post-chain-compare-run");
+        Path inputJar = directory.resolve("post-chain-compares.jar");
+        Path outputDirectory = directory.resolve("output");
+        createPostChainIntCompareFamilyJar(
+                inputJar, ownerPrefix, baseName, mainName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain post-chain compare Java run");
+        StringBuilder expected = new StringBuilder();
+        for (int ignored : POST_CHAIN_INT_COMPARE_OPCODES) {
+            expected.append(41).append(System.lineSeparator());
+            expected.append(0).append(System.lineSeparator());
+            expected.append(41).append(System.lineSeparator());
+        }
+        assertEquals(expected.toString(), javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int opcode : POST_CHAIN_INT_COMPARE_OPCODES) {
+                String ownerName = ownerPrefix + opcode;
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor = transformed.methods.stream()
+                        .filter(method -> "<init>".equals(method.name))
+                        .findFirst().orElseThrow(AssertionError::new);
+                assertEquals(2, directChainCallCount(
+                                transformedConstructor, transformed),
+                        "opcode " + opcode);
+                assertEquals(1, hiddenBridgeCallCount(transformedConstructor),
+                        "opcode " + opcode);
+                assertTrue(realOpcodes(transformedConstructor).contains(opcode),
+                        "opcode " + opcode);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("post-chain compare CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("post-chain compare CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Post-chain compare native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native post-chain compare Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -6543,6 +6744,49 @@ public class IrCompilerTest {
         }
     }
 
+    private void createPostChainIntCompareFamilyJar(
+            Path jarPath, String ownerPrefix, String baseName,
+            String mainName) throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        java.util.List<ClassNode> owners = new java.util.ArrayList<>();
+        for (int opcode : POST_CHAIN_INT_COMPARE_OPCODES) {
+            ClassNode owner = constructorOwner(
+                    ownerPrefix + opcode, baseName);
+            owner.version = Opcodes.V1_8;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            owner.methods.add(postChainIntCompareConstructor(
+                    owner.name, baseName, opcode));
+            owners.add(owner);
+        }
+
+        ClassNode main = constructorOwner(mainName, "java/lang/Object");
+        main.version = Opcodes.V1_8;
+        main.methods.add(postChainIntCompareFamilyMain(ownerPrefix));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
     private void createConditionalBridgeExtraJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -7581,9 +7825,16 @@ public class IrCompilerTest {
 
     private MethodNode postChainConditionalBranchConstructor(
             String owner, String superName) {
+        return postChainIntCompareConstructor(
+                owner, superName, Opcodes.IFNE);
+    }
+
+    private MethodNode postChainIntCompareConstructor(
+            String owner, String superName, int compareOpcode) {
+        boolean binaryCompare = isBinaryIntCompare(compareOpcode);
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
-                "<init>", "(II)V", null, null);
+                "<init>", binaryCompare ? "(III)V" : "(II)V", null, null);
         LabelNode secondCall = new LabelNode();
         LabelNode join = new LabelNode();
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -7594,7 +7845,10 @@ public class IrCompilerTest {
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
-        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, join));
+        if (binaryCompare) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        }
+        method.instructions.add(new JumpInsnNode(compareOpcode, join));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.instructions.add(secondCall);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -7609,7 +7863,7 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(
                 Opcodes.PUTFIELD, owner, "result", "I"));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
-        method.maxLocals = 3;
+        method.maxLocals = binaryCompare ? 4 : 3;
         method.maxStack = 2;
         return method;
     }
@@ -7934,6 +8188,49 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode postChainIntCompareFamilyMain(String ownerPrefix) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int opcode : POST_CHAIN_INT_COMPARE_OPCODES) {
+            int[][] operands = postChainCompareOperands(opcode);
+            String owner = ownerPrefix + opcode;
+            appendPostChainIntComparePrint(
+                    method, owner, opcode, 7, operands[0]);
+            appendPostChainIntComparePrint(
+                    method, owner, opcode, 7, operands[1]);
+            appendPostChainIntComparePrint(
+                    method, owner, opcode, -5, operands[1]);
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private void appendPostChainIntComparePrint(
+            MethodNode method, String owner, int opcode,
+            int selector, int[] operands) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
+        for (int operand : operands) {
+            method.instructions.add(
+                    new IntInsnNode(Opcodes.BIPUSH, operand));
+        }
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                isBinaryIntCompare(opcode) ? "(III)V" : "(II)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+    }
+
     private MethodNode conditionalBridgeExtraMain(String owner) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
@@ -7988,6 +8285,55 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
                 "println", "(I)V", false));
+    }
+
+    private boolean isBinaryIntCompare(int opcode) {
+        return opcode >= Opcodes.IF_ICMPEQ
+                && opcode <= Opcodes.IF_ICMPLE;
+    }
+
+    private int[][] postChainCompareOperands(int opcode) {
+        switch (opcode) {
+            case Opcodes.IFEQ:
+                return new int[][]{{0}, {1}};
+            case Opcodes.IFNE:
+                return new int[][]{{1}, {0}};
+            case Opcodes.IFLT:
+                return new int[][]{{-1}, {0}};
+            case Opcodes.IFGE:
+                return new int[][]{{0}, {-1}};
+            case Opcodes.IFGT:
+                return new int[][]{{1}, {0}};
+            case Opcodes.IFLE:
+                return new int[][]{{0}, {1}};
+            case Opcodes.IF_ICMPEQ:
+                return new int[][]{{2, 2}, {2, 3}};
+            case Opcodes.IF_ICMPNE:
+                return new int[][]{{2, 3}, {2, 2}};
+            case Opcodes.IF_ICMPLT:
+                return new int[][]{{2, 3}, {3, 2}};
+            case Opcodes.IF_ICMPGE:
+                return new int[][]{{3, 2}, {2, 3}};
+            case Opcodes.IF_ICMPGT:
+                return new int[][]{{3, 2}, {2, 3}};
+            case Opcodes.IF_ICMPLE:
+                return new int[][]{{2, 3}, {3, 2}};
+            default:
+                throw new IllegalArgumentException(
+                        "Not an int compare opcode: " + opcode);
+        }
+    }
+
+    private Object newPostChainCompareInstance(
+            Class<?> owner, int opcode, int selector, int[] operands)
+            throws Exception {
+        if (isBinaryIntCompare(opcode)) {
+            return owner.getConstructor(
+                            int.class, int.class, int.class)
+                    .newInstance(selector, operands[0], operands[1]);
+        }
+        return owner.getConstructor(int.class, int.class)
+                .newInstance(selector, operands[0]);
     }
 
     private MethodNode multipleSuperSeparateReturnsMain(

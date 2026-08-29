@@ -579,19 +579,22 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one non-GOTO prefix-to-suffix edge. For exactly two chain calls,
-     * the first call may select the shared suffix with a declared int-family
-     * argument and otherwise return immediately:
+     * the first call may compare one or two directly loaded declared int-family
+     * arguments, select the shared suffix, and otherwise return immediately:
      *
      * <pre>
      * invokespecial owner-or-super.&lt;init&gt;
      * iload declaredArgument
-     * ifne sharedSuffix
+     * [iload declaredArgument]
+     * if&lt;int-condition&gt; sharedSuffix
      * return
      * </pre>
      *
-     * The no-handler and empty-entry-stack restrictions keep this a local
-     * control-flow proof. The full chain-count analysis subsequently proves
-     * that the join and every return are reached after exactly one chain call.
+     * The admitted conditions are the JVM unary int-zero and binary int-compare
+     * jump families. The no-handler and empty-entry-stack restrictions keep
+     * this a local control-flow proof. The full chain-count analysis
+     * subsequently proves that the join and every return are reached after
+     * exactly one chain call.
      */
     private static Integer conditionalJoinOrReturnBranch(
             MethodNode constructor, List<Integer> callIndexes,
@@ -602,26 +605,45 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
-        int loadIndex = firstExecutableIndex(
+        int firstLoadIndex = firstExecutableIndex(
                 constructor, callIndexes.get(callOrdinal) + 1);
-        if (loadIndex >= constructor.instructions.size()) {
+        if (firstLoadIndex >= constructor.instructions.size()) {
             return null;
         }
-        AbstractInsnNode load = constructor.instructions.get(loadIndex);
-        if (load.getOpcode() != Opcodes.ILOAD
+        AbstractInsnNode firstLoad =
+                constructor.instructions.get(firstLoadIndex);
+        if (firstLoad.getOpcode() != Opcodes.ILOAD
                 || !isDeclaredIntArgument(
-                constructor, ((VarInsnNode) load).var)) {
+                constructor, ((VarInsnNode) firstLoad).var)) {
             return null;
         }
 
-        int branchIndex = firstExecutableIndex(constructor, loadIndex + 1);
+        int branchIndex =
+                firstExecutableIndex(constructor, firstLoadIndex + 1);
         if (branchIndex >= constructor.instructions.size()) {
             return null;
         }
         AbstractInsnNode branch = constructor.instructions.get(branchIndex);
         if (!(branch instanceof JumpInsnNode)
-                || branch.getOpcode() != Opcodes.IFNE
-                || ((JumpInsnNode) branch).label != join) {
+                || !isUnaryIntCompare(branch.getOpcode())) {
+            AbstractInsnNode secondLoad = branch;
+            if (secondLoad.getOpcode() != Opcodes.ILOAD
+                    || !isDeclaredIntArgument(
+                    constructor, ((VarInsnNode) secondLoad).var)) {
+                return null;
+            }
+            branchIndex =
+                    firstExecutableIndex(constructor, branchIndex + 1);
+            if (branchIndex >= constructor.instructions.size()) {
+                return null;
+            }
+            branch = constructor.instructions.get(branchIndex);
+            if (!(branch instanceof JumpInsnNode)
+                    || !isBinaryIntCompare(branch.getOpcode())) {
+                return null;
+            }
+        }
+        if (((JumpInsnNode) branch).label != join) {
             return null;
         }
 
@@ -632,6 +654,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return branchIndex;
+    }
+
+    private static boolean isUnaryIntCompare(int opcode) {
+        return opcode >= Opcodes.IFEQ && opcode <= Opcodes.IFLE;
+    }
+
+    private static boolean isBinaryIntCompare(int opcode) {
+        return opcode >= Opcodes.IF_ICMPEQ && opcode <= Opcodes.IF_ICMPLE;
     }
 
     private static boolean isDeclaredIntArgument(
