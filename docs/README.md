@@ -81,6 +81,8 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 
 | Document | Stack |
 | --- | --- |
+| [architecture/interpreter-isa-i64-status.md](architecture/interpreter-isa-i64-status.md) | Interpreter ISA v3 i64 slice (#140) |
+| [reviews/interpreter-isa-i64-sol.md](reviews/interpreter-isa-i64-sol.md) | Sol accept of #140 |
 | [architecture/interpreter-on-master-status.md](architecture/interpreter-on-master-status.md) | What `--backend=interpreter` actually does on master |
 | [reviews/interpreter-on-master-fable.md](reviews/interpreter-on-master-fable.md) | Fable accept-with-nits of #124 |
 | [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` on master (default `direct`; #137) |

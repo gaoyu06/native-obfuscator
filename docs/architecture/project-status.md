@@ -1,7 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after landing [#132](https://github.com/gaoyu06/native-obfuscator/pull/132)–[#138](https://github.com/gaoyu06/native-obfuscator/pull/138)
-(post-phase-19 bench, IR phase 20, and the default-off `--ir-lower=eval` port)
+Last updated after landing interpreter ISA v3
+[#140](https://github.com/gaoyu06/native-obfuscator/pull/140)/[#143](https://github.com/gaoyu06/native-obfuscator/pull/143)
+on the post-[#139](https://github.com/gaoyu06/native-obfuscator/pull/139) tree.
 on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
@@ -43,11 +44,13 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
   caching remains on the legacy path.
 - **Opt-in interpreter.** `--backend=interpreter` (default `cpp`) lowers a
-  narrow static `int` slice to an opcode stream plus a C++17 `switch`
-  dispatcher. First increment [#124](https://github.com/gaoyu06/native-obfuscator/pull/124)
-  (Fable accept-with-nits [#125](https://github.com/gaoyu06/native-obfuscator/pull/125));
-  ISA v2 [#127](https://github.com/gaoyu06/native-obfuscator/pull/127) adds
-  multiply, bitwise ops, shifts, `INEG`, and `IDIV`/`IREM`.
+  narrow integer slice to an opcode stream plus a C++17 `switch` dispatcher.
+  ISA v2 is static `int`. ISA v3
+  ([#140](https://github.com/gaoyu06/native-obfuscator/pull/140); Sol accept
+  [#143](https://github.com/gaoyu06/native-obfuscator/pull/143)) adds an i64
+  slice (`LPUSH`/`LLOAD`/`LSTORE`, arith/bitwise/shift/`LNEG`/`LRETURN`,
+  `LDIV`/`LREM` with the same `/0` and `MIN/-1` rules as IR phase 20).
+  Objects and exception dispatch are still outside this backend.
 - **Opt-in evaluator.** `--ir-lower=eval` (default `direct`) is consulted only
   when `--codegen=ir` successfully builds an `IrMethod`.
   [#137](https://github.com/gaoyu06/native-obfuscator/pull/137) (Sol
@@ -122,8 +125,7 @@ reader/bench notes remain historical.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Widen the interpreter beyond the static `int` slice (objects / exceptions;
-  i64 increment is open as #140).
+- Widen the interpreter to objects and exception dispatch.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答

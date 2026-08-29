@@ -22,7 +22,7 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | JDK 21 IR fixtures | 6 `--release 21` programs matched on **one** Linux VM after the local-type split. Not “supports JDK 21” |
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
-| Interpreter | `--backend=interpreter` default off (`cpp`). Static `int` ISA v2 (add/sub/mul/bitwise/shift/neg/div/rem). Not a protection product |
+| Interpreter | `--backend=interpreter` default off (`cpp`). ISA v3: static `int` plus a first i64 slice. Not a protection product |
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). All three kernels stayed on IR on one VM. Not a portable speedup. Prefer a whitelist |
@@ -67,7 +67,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-p` | `hotspot` (default), `std_java`, or `android` |
 | `--codegen` | `legacy` (default) or `ir` |
 | `--ir-lower` | `direct` (default) or `eval`; consulted only with `--codegen=ir` |
-| `--backend` | `cpp` (default) or `interpreter` (narrow static `int` slice; default off) |
+| `--backend` | `cpp` (default) or `interpreter` (narrow int/i64 slice; default off) |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
 | `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
