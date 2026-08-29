@@ -58,7 +58,8 @@ The constructor split now covers these related prefix shapes:
   loads, int-family constants, or one `INEG` over a direct declared int-family
   argument load, plus a tree of at most two `IADD`, `ISUB`, `IMUL`, `IAND`,
   `IOR`, `IXOR`, `ISHL`, `ISHR`, or `IUSHR` levels whose leaves are each one
-  of those already-proven int-family inputs).
+  of those already-proven int-family inputs, or one leaf-only `IDIV`/`IREM`
+  whose two operands are already-proven int-family inputs).
 
 ## Current rule
 
@@ -142,9 +143,13 @@ One additional family is reduced to that same shared-join form:
   or `IUSHR`. Each outer operand may be one admitted inner binary whose two
   operands are direct loads, constants, or single-load `INEG` forms. The inner
   proof is leaf-only and does not recurse, so a third binary level is rejected.
+  `IDIV` and `IREM` are admitted only as one-level operations whose two
+  operands are those direct leaves; they cannot be nested or used as an inner
+  operand of another binary.
   Shift-count masking is not reproduced by this proof: every admitted shift
   remains in the retained bytecode prefix and therefore keeps JVM shift
-  semantics.
+  semantics. Every admitted division or remainder also stays in that retained
+  prefix, preserving JVM divide-by-zero and signed-overflow behavior.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -193,9 +198,10 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Extra-local or aliased chain inputs, binary expression trees deeper than two
-levels, `IDIV`, `IREM`, other binary arithmetic, `IINC`, non-int-family
-constants, non-`Integer` `LDC`, fields, method calls, stack duplication,
-computed or rewritten receivers, or any other unlisted input remain rejected.
+levels, nested `IDIV`/`IREM`, `IDIV`/`IREM` used as an inner binary, other
+binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
+fields, method calls, stack duplication, computed or rewritten receivers, or
+any other unlisted input remain rejected.
 Distinct joins, other conditional or switch forms,
 unproven condition/switch-key loads, computed keys, escaping switch targets,
 labels or control flow in a copied suffix, nonempty exception tables for the
@@ -532,6 +538,18 @@ Synthetic bytecode unit tests in
 - `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity` selects all three
   paths through plain Java and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
+  leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
+  arguments, retains both operations with all three calls and two join
+  `GOTO`s, and creates one hidden bridge whose independent body builds.
+- `rewrittenThreeImmediateIdivIremSuperReturnsPassJvmVerification` selects the
+  positive, negative, and zero prefix paths of a Java 8 constructor and reaches
+  the unresolved bridge only after the rewritten owner and hidden class pass
+  JVM verification.
+- `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity` exercises
+  all three paths with nonzero constant divisors through plain Java and the
+  complete CMake/g++ JNI transform under `java -Xverify:all -Xcheck:jni`,
+  requiring identical stdout.
 - `admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs` applies the
   same leaf-only proof to one `ISUB` path, one `IMUL` path, and one direct-load
   path; it retains both arithmetic opcodes, all three calls, two shared-join
@@ -647,9 +665,10 @@ Synthetic bytecode unit tests in
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
-  three-level nested binary input, trapping `IDIV`, a rewritten `ASTORE 0`
-  receiver, a standalone-`GOTO` suffix, a zero-call return, skip-super paths,
-  and nonempty exception tables before mutation. Other multi-call negatives
+  three-level nested binary input, nested or inner-tree `IDIV`/`IREM`,
+  extra-local `IDIV`/`IREM` operands, a rewritten `ASTORE 0` receiver, a
+  standalone-`GOTO` suffix, a zero-call return, skip-super paths, and nonempty
+  exception tables before mutation. Other multi-call negatives
   still cover try/catch spanning a chain
   call and suffix code and a path that executes two chain calls. Existing
   prefix-to-suffix, suffix-to-prefix, and
@@ -666,9 +685,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 232 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 235 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 239 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 242 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

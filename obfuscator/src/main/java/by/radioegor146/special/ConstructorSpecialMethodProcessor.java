@@ -1682,7 +1682,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: ALOAD 0 followed by direct declared-argument
      * loads, int-family constants, one INEG over a direct declared int-family
      * argument load, or an admitted int binary tree of at most two levels over
-     * those int-family leaves.
+     * those int-family leaves. IDIV and IREM are admitted only as one-level
+     * operations whose two operands are leaves.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1734,6 +1735,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         int opcode = input.getOpcode();
+        if (opcode == Opcodes.IDIV || opcode == Opcodes.IREM) {
+            Integer beforeRight = previousProvenIntChainLeaf(
+                    constructor,
+                    previousExecutableIndex(constructor, inputIndex - 1),
+                    declaredArguments);
+            if (beforeRight == null) {
+                return null;
+            }
+            return previousProvenIntChainLeaf(
+                    constructor, beforeRight, declaredArguments);
+        }
         if (isProvenIntChainBinary(opcode)) {
             Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
