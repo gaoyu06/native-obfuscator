@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #230 (leaf-only `DSUB`/`DMUL`)
+   `master` after #231 (leaf-only `DDIV`/`DREM`)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -62,8 +62,9 @@ The goal is complete only when all of the following are true:
    remaining multi-super shapes such as five-or-more nested
    int binaries, five-or-more nested long
    binaries, five-or-more nested float binaries, extra-local float operands,
-   remaining double leftovers beyond leaf-only `DADD`/`DSUB`/`DMUL`,
-   reference computed
+   remaining double leftovers beyond leaf-only
+   `DADD`/`DSUB`/`DMUL`/`DDIV`/`DREM` (`DNEG`, nested trees, extra-local
+   operands), reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
