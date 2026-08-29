@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing two-level nested chain inputs
-[#197](https://github.com/gaoyu06/native-obfuscator/pull/197)
-(parent re-ran 239/239: 232 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateNestedInputsCompileAndRunWithJavaParity`)
-on the post-[#196](https://github.com/gaoyu06/native-obfuscator/pull/196)
-hybrid-suffix tree. Active process:
+Last updated after landing leaf-only `IDIV`/`IREM` chain inputs
+[#198](https://github.com/gaoyu06/native-obfuscator/pull/198)
+(parent re-ran 242/242: 235 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#197](https://github.com/gaoyu06/native-obfuscator/pull/197)
+nested-input tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -159,11 +159,14 @@ legacy。不能当成 JDK 支持矩阵。
   one other suffix is CFG-distinct.
   [#197](https://github.com/gaoyu06/native-obfuscator/pull/197) admits
   a two-level tree of the already-proven non-trapping int binaries
-  as chain-call inputs. Non-identity `ASTORE 0`, unproven
+  as chain-call inputs.
+  [#198](https://github.com/gaoyu06/native-obfuscator/pull/198) admits
+  one-level leaf-only `IDIV`/`IREM` as chain-call inputs (trapping
+  stays in the retained prefix). Non-identity `ASTORE 0`, unproven
   prefix→suffix jumps/switches, other mixed try/catch placements,
-  remaining multi-super shapes (`IDIV`/`IREM`, three-or-more nested
-  binaries), and extras still unassigned on a bridge-taking path
-  are still rejected.
+  remaining multi-super shapes (nested/`IDIV`-as-inner trees,
+  three-or-more nested binaries), and extras still unassigned on a
+  bridge-taking path are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -291,6 +294,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Closed switches in distinct suffixes (#195) | 233 tests (`IrCompilerTest` 226 + `CodegenModeTest` 7). Parent re-ran 233/233 including `suffixSwitchDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Hybrid identical-plus-distinct suffixes (#196) | 236 tests (`IrCompilerTest` 229 + `CodegenModeTest` 7). Parent re-ran 236/236 including `partlyIdenticalSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Two-level nested chain inputs (#197) | 239 tests (`IrCompilerTest` 232 + `CodegenModeTest` 7). Parent re-ran 239/239 including `threeImmediateNestedInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Leaf-only `IDIV`/`IREM` chain inputs (#198) | 242 tests (`IrCompilerTest` 235 + `CodegenModeTest` 7). Parent re-ran 242/242 including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -338,8 +342,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
   placements beyond #171/#184/#187/#188, remaining multi-super shapes
-  such as `IDIV`/`IREM` or three-or-more nested binaries,
-  extras still unassigned on a bridge-taking path) and
+  such as nested/`IDIV`-as-inner trees or three-or-more nested
+  binaries, extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#191](https://github.com/gaoyu06/native-obfuscator/pull/191),
@@ -356,9 +360,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #197 (two-level
-  nested non-trapping chain inputs). /
-  落地 #197 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #198 (leaf-only
+  `IDIV`/`IREM` chain inputs). /
+  落地 #198 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

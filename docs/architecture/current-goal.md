@@ -53,15 +53,15 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #197 (two-level nested non-trapping chain inputs)
+   `master` after #198 (leaf-only `IDIV`/`IREM` chain inputs)
    include at least: remaining
    constructor-split rejects (non-identity prefix `ASTORE 0` /
    receiver-alias forwarding, unproven prefix→suffix jumps/switches,
    other mixed prefix/suffix try/catch placements beyond
    #171/#184/#187/#188, remaining multi-super shapes such as
-   `IDIV`/`IREM` or three-or-more nested binaries, or more than
-   eight distinct paths, extras still unassigned on a bridge-taking
-   path),
+   nested/`IDIV`-as-inner trees or three-or-more nested binaries,
+   or more than eight distinct paths, extras still unassigned on a
+   bridge-taking path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
    (obsolete; reject is fine). In-tree ClassicTest / JDK fixture
