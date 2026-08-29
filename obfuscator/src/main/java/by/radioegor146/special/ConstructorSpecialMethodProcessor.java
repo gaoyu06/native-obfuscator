@@ -44,6 +44,7 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
+    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 3;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
     private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
@@ -2195,7 +2196,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, int-family constants, one INEG over a direct
      * declared int-family argument load, or an admitted int binary tree of at
-     * most two levels over those int-family leaves. IDIV and IREM are admitted
+     * most three levels over those int-family leaves. IDIV and IREM are admitted
      * only as one-level operations whose two operands are leaves. The
      * identical-copy and distinct-suffix forms may accept a direct alias load
      * only when their separate receiver-frame proof succeeds.
@@ -2263,43 +2264,38 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return previousProvenIntChainLeaf(
                     constructor, beforeRight, declaredArguments);
         }
-        if (isProvenIntChainBinary(opcode)) {
-            Integer beforeRight = previousProvenIntChainOperand(
-                    constructor,
-                    previousExecutableIndex(constructor, inputIndex - 1),
-                    declaredArguments);
-            if (beforeRight == null) {
-                return null;
-            }
-            return previousProvenIntChainOperand(
-                    constructor, beforeRight, declaredArguments);
-        }
         return previousProvenIntChainOperand(
-                constructor, inputIndex, declaredArguments);
+                constructor, inputIndex, declaredArguments,
+                MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
     }
 
     /**
-     * Proves an int-family operand containing at most one binary operation.
-     * Its operands must be leaves, so the caller can admit exactly one outer
-     * binary level without recursively accepting deeper trees.
+     * Proves an int-family operand with a bounded number of non-trapping binary
+     * levels. Every recursive descent consumes one level, so deeper trees stay
+     * rejected rather than opening the local input proof without a bound.
      */
     private static Integer previousProvenIntChainOperand(
             MethodNode constructor, int inputIndex,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            int remainingBinaryLevels) {
         if (inputIndex < 0) {
             return null;
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (isProvenIntChainBinary(input.getOpcode())) {
-            Integer beforeRight = previousProvenIntChainLeaf(
+            if (remainingBinaryLevels == 0) {
+                return null;
+            }
+            Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, inputIndex - 1),
-                    declaredArguments);
+                    declaredArguments, remainingBinaryLevels - 1);
             if (beforeRight == null) {
                 return null;
             }
-            return previousProvenIntChainLeaf(
-                    constructor, beforeRight, declaredArguments);
+            return previousProvenIntChainOperand(
+                    constructor, beforeRight, declaredArguments,
+                    remainingBinaryLevels - 1);
         }
         return previousProvenIntChainLeaf(
                 constructor, inputIndex, declaredArguments);
