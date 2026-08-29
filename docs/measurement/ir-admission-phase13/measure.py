@@ -443,9 +443,21 @@ def main() -> int:
     work.mkdir(parents=True)
     recorder = Recorder(work)
     try:
-        head = recorder.run(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
-        if head != REQUIRED_TIP:
-            raise RuntimeError(f"expected {REQUIRED_TIP}, found {head}")
+        base = recorder.run(
+            ["git", "merge-base", "HEAD", REQUIRED_TIP], cwd=repo
+        ).stdout.strip()
+        if base != REQUIRED_TIP:
+            raise RuntimeError(
+                f"expected phase-13 base {REQUIRED_TIP}, found merge-base {base}"
+            )
+        changed = recorder.run(
+            ["git", "diff", "--name-only", f"{REQUIRED_TIP}..HEAD"], cwd=repo
+        ).stdout.splitlines()
+        non_docs = [path for path in changed if not path.startswith("docs/")]
+        if non_docs:
+            raise RuntimeError(
+                "measurement branch contains non-docs changes: " + ", ".join(non_docs)
+            )
         recorder.run(["uname", "-a"], cwd=repo, output=work / "uname.txt")
         recorder.run(["java", "-version"], cwd=repo, output=work / "java-version.txt")
         recorder.run(["javac", "-version"], cwd=repo, output=work / "javac-version.txt")
