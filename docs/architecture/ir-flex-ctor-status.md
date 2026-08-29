@@ -79,7 +79,8 @@ The constructor split now covers these related prefix shapes:
   direct declared float-argument load;
   at most one `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` level for a double
   argument, whose two leaves are declared double-argument loads, `DCONST_0`,
-  `DCONST_1`, or `LDC` of `Double`;
+  `DCONST_1`, `LDC` of `Double`, or one `DNEG` over a direct declared
+  double-argument load;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -211,13 +212,16 @@ One additional family is reduced to that same shared-join form:
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
-- A double call argument may instead contain exactly one leaf-only `DADD`,
-  `DSUB`, `DMUL`, `DDIV`, or `DREM`. Both operands must be matching
-  declared-argument `DLOAD`s, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`.
-  This proof has its own one-level budget: `DNEG`, nested double binaries, and
-  extra-local double loads remain rejected. The admitted arithmetic stays in
-  the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
-  signed-zero, and other double semantics without reproducing double
+- A double call argument may instead contain at most one `DADD`, `DSUB`,
+  `DMUL`, `DDIV`, or `DREM` level. A double leaf must be a matching
+  declared-argument `DLOAD`, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or
+  one `DNEG` whose sole operand is a matching declared-argument `DLOAD`.
+  This proof has its own one-level binary budget, which `DNEG` does not
+  consume: nested double binaries, extra-local double loads, `DNEG` of a
+  constant, double `DNEG`, and `DNEG` of an extra-local or computed value
+  remain rejected, as do computed reference inputs. The admitted arithmetic
+  stays in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
+  signed-zero, negate, and other double semantics without reproducing double
   arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
@@ -852,10 +856,16 @@ Synthetic bytecode unit tests in
   both double shapes through plain Java and the complete CMake/g++ JNI
   transform under `-Xverify:all -Xcheck:jni`, requiring exactly matching
   stdout.
+- `admitsThreeImmediateReturnsWithDnegOfProvenChainInputs`,
+  `rewrittenThreeImmediateDnegSuperReturnsPassJvmVerification`, and
+  `threeImmediateDnegSuperReturnsCompileAndRunWithJavaParity` prove that one
+  `DNEG` over a declared double `DLOAD` remains in the retained prefix,
+  rewrites to one hidden bridge, passes JVM verification, and matches plain
+  Java through the complete CMake/g++ JNI transform.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps nested
-  double binaries, extra-local double operands, and `DNEG` fail-closed without
-  constructor or hidden-method mutation. Computed reference inputs remain
-  outside this admission increment.
+  double binaries, extra-local double operands, and unsafe `DNEG` forms
+  fail-closed without constructor or hidden-method mutation. Computed
+  reference inputs remain outside this admission increment.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
