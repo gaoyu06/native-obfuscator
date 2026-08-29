@@ -94,6 +94,9 @@ public class IrCompilerTest {
             "four-level-iadd", "four-level-idiv-inner",
             "four-level-idiv-outer"
     };
+    private static final String[] LONG_BITWISE_CHAIN_INPUT_SHAPES = {
+            "long-land", "long-lor", "long-lxor"
+    };
 
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
@@ -3373,6 +3376,49 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithBitwiseProvenLongChainInputs() {
+        int[] opcodes = {Opcodes.LAND, Opcodes.LOR, Opcodes.LXOR};
+        for (int i = 0; i < LONG_BITWISE_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = LONG_BITWISE_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    "example/ThreeLongBitwiseMultiReturn"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperLongBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IJ)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeDivRemMultiReturn",
@@ -3788,7 +3834,8 @@ public class IrCompilerTest {
     public void rejectsUnprovenLongComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "long-nested-ladd", "long-extra-local",
-                "long-ldiv", "long-land")) {
+                "long-ldiv", "long-lrem", "long-lshl",
+                "long-lshr", "long-lushr", "long-lneg")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedLongComputed"
                             + shape.replace("-", ""),
@@ -5098,6 +5145,65 @@ public class IrCompilerTest {
             assertEquals(1, hiddenBridgeCallCount(constructor), shape);
             assertEquals(3, Collections.frequency(
                     realOpcodes(constructor), opcode), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
+    }
+
+    @Test
+    public void rewrittenThreeImmediateLongBitwiseSuperReturnsPassJvmVerification()
+            throws Exception {
+        int[] opcodes = {Opcodes.LAND, Opcodes.LOR, Opcodes.LXOR};
+        for (int i = 0; i < LONG_BITWISE_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = LONG_BITWISE_CHAIN_INPUT_SHAPES[i];
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperLongBase(
+                            "example/VerifiedThreeLongBitwiseBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedThreeLongBitwise" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            long[] values = {11L, -22L, Long.MIN_VALUE};
+            for (int j = 0; j < selectors.length; j++) {
+                int selector = selectors[j];
+                long value = values[j];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, long.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
             assertEquals(
                     "(Ljava/lang/Object;IJ)V",
                     context.proxyMethod.getMethodNode().desc,
@@ -8002,6 +8108,112 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native long arithmetic multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateLongBitwiseSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the long bitwise runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the long bitwise runtime test");
+
+        String ownerName = "example/ThreeLongBitwiseReturnRuntime";
+        String baseName = "example/ThreeLongBitwiseReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-long-bitwise-run");
+        Path inputJar = directory.resolve("three-long-bitwise-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeLongBitwiseReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain long bitwise multi-super Java run");
+        assertEquals(
+                "1" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "11" + System.lineSeparator()
+                        + "-21" + System.lineSeparator()
+                        + (Long.MIN_VALUE + 1) + System.lineSeparator()
+                        + "10" + System.lineSeparator()
+                        + "-21" + System.lineSeparator()
+                        + (Long.MIN_VALUE + 1) + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        String[] transformedNames = {
+                ownerName, ownerName + "$Lor", ownerName + "$Lxor"
+        };
+        int[] opcodes = {Opcodes.LAND, Opcodes.LOR, Opcodes.LXOR};
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int i = 0; i < transformedNames.length; i++) {
+                String transformedName = transformedNames[i];
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(transformedName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed));
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor));
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor), opcodes[i]));
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO));
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN));
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("long bitwise multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("long bitwise multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Long bitwise native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native long bitwise multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -14386,6 +14598,44 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeLongBitwiseReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperLongBase(baseName);
+        base.version = Opcodes.V1_8;
+        String[] ownerNames = {
+                ownerName, ownerName + "$Lor", ownerName + "$Lxor"
+        };
+        ClassNode[] owners = new ClassNode[ownerNames.length];
+        for (int i = 0; i < ownerNames.length; i++) {
+            ClassNode owner = constructorOwner(ownerNames[i], baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, LONG_BITWISE_CHAIN_INPUT_SHAPES[i]));
+            owners[i] = owner;
+        }
+        owners[0].methods.add(multipleSuperThreeLongBitwiseReturnsMain(
+                ownerNames[0], ownerNames[1], ownerNames[2], baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, ownerName.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+        }
+    }
+
     private void createMultipleSuperThreeIdivIremReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -17991,14 +18241,32 @@ public class IrCompilerTest {
         } else if ("long-lsub".equals(shape)
                 || "long-lmul".equals(shape)
                 || "long-ldiv".equals(shape)
-                || "long-land".equals(shape)) {
+                || "long-lrem".equals(shape)
+                || "long-land".equals(shape)
+                || "long-lor".equals(shape)
+                || "long-lxor".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.LCONST_1));
             int opcode = "long-lsub".equals(shape) ? Opcodes.LSUB
                     : "long-lmul".equals(shape) ? Opcodes.LMUL
                     : "long-ldiv".equals(shape) ? Opcodes.LDIV
-                    : Opcodes.LAND;
+                    : "long-lrem".equals(shape) ? Opcodes.LREM
+                    : "long-land".equals(shape) ? Opcodes.LAND
+                    : "long-lor".equals(shape) ? Opcodes.LOR
+                    : Opcodes.LXOR;
             method.instructions.add(new InsnNode(opcode));
+        } else if ("long-lshl".equals(shape)
+                || "long-lshr".equals(shape)
+                || "long-lushr".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            int opcode = "long-lshl".equals(shape) ? Opcodes.LSHL
+                    : "long-lshr".equals(shape) ? Opcodes.LSHR
+                    : Opcodes.LUSHR;
+            method.instructions.add(new InsnNode(opcode));
+        } else if ("long-lneg".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.LNEG));
         } else if ("float-binary".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.FCONST_1));
@@ -18638,6 +18906,27 @@ public class IrCompilerTest {
                 method, lmulOwner, superName, -7, -22L);
         appendMultipleSuperLongPrint(
                 method, lmulOwner, superName, 0, Long.MIN_VALUE);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private MethodNode multipleSuperThreeLongBitwiseReturnsMain(
+            String landOwner, String lorOwner, String lxorOwner,
+            String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (String owner : Arrays.asList(
+                landOwner, lorOwner, lxorOwner)) {
+            appendMultipleSuperLongPrint(
+                    method, owner, superName, 7, 11L);
+            appendMultipleSuperLongPrint(
+                    method, owner, superName, -7, -22L);
+            appendMultipleSuperLongPrint(
+                    method, owner, superName, 0, Long.MIN_VALUE);
+        }
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 6;

@@ -2264,7 +2264,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one LADD, LSUB, or LMUL whose operands are non-recursive long
+     * Proves one admitted long binary whose operands are non-recursive long
      * leaves. The separate one-level budget prevents the int-family depth
      * bound from admitting nested long arithmetic.
      */
@@ -2279,7 +2279,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int opcode = input.getOpcode();
         if ((opcode != Opcodes.LADD
                 && opcode != Opcodes.LSUB
-                && opcode != Opcodes.LMUL)
+                && opcode != Opcodes.LMUL
+                && opcode != Opcodes.LAND
+                && opcode != Opcodes.LOR
+                && opcode != Opcodes.LXOR)
                 || remainingBinaryLevels == 0) {
             return null;
         }
