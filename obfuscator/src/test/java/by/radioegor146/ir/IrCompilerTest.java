@@ -2492,7 +2492,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.MONITORENTER, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -2500,6 +2500,245 @@ public class IrCompilerTest {
         assertEquals(0, obfuscator.getCachedStrings().size());
         assertEquals(0, obfuscator.getCachedFields().size());
         assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
+    public void lowersExplicitMonitorEnterExitAndNullCatchEdge() {
+        MethodNode explicit = explicitMonitorMethod();
+        IrMethod explicitIr = frontend.build("example/Math", explicit);
+        List<IrInstruction> monitorInstructions = explicitIr.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(instruction -> instruction instanceof IrNodes.MonitorEnter
+                        || instruction instanceof IrNodes.MonitorExit)
+                .collect(Collectors.toList());
+        assertEquals(2, monitorInstructions.size());
+        assertTrue(monitorInstructions.get(0) instanceof IrNodes.MonitorEnter);
+        assertTrue(monitorInstructions.get(1) instanceof IrNodes.MonitorExit);
+        assertTrue(explicitIr.toString().contains("monitorenter %arg0"));
+        assertTrue(explicitIr.toString().contains("monitorexit %arg0"));
+
+        MethodNode caught = nullMonitorCatchMethod();
+        IrMethod caughtIr = frontend.build("example/Math", caught);
+        IrBlock enterBlock = caughtIr.getBlocks().stream()
+                .filter(block -> block.getInstructions().stream()
+                        .anyMatch(IrNodes.MonitorEnter.class::isInstance))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(1, enterBlock.getExceptionEdges().size());
+        assertTrue(enterBlock.getExceptionEdges().get(0).getCatchType() == null);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, caught, 0, owner(), 0);
+        String cpp = emitter.emitBody(caughtIr, context);
+        assertTrue(cpp.contains("utils::throw_re"));
+        assertTrue(cpp.contains("env->MonitorEnter(v"));
+        assertTrue(cpp.contains("env->MonitorExit(v"));
+        assertTrue(cpp.contains("goto IR_CATCH_0;"));
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+    }
+
+    @Test
+    public void lowersSynchronizedMethodsAndClearsJvmSynchronizationFlag() {
+        MethodNode staticMethod = synchronizedStaticCounterMethod();
+        IrMethod staticIr = frontend.build("example/Math", staticMethod);
+        assertTrue(staticIr.isStaticMethod());
+        assertTrue(staticIr.isSynchronizedMethod());
+        assertTrue(staticIr.toString().contains("[static synchronized]"));
+
+        NativeObfuscator staticObfuscator = new NativeObfuscator();
+        MethodContext staticContext = new MethodContext(
+                staticObfuscator, staticMethod, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(staticObfuscator))
+                .processMethod(staticContext);
+        assertEquals(0, staticMethod.access & Opcodes.ACC_SYNCHRONIZED);
+        assertTrue((staticMethod.access & Opcodes.ACC_NATIVE) != 0);
+        String staticCpp = staticContext.output.toString();
+        assertTrue(staticCpp.contains("env->MonitorEnter(clazz)"));
+        assertTrue(staticCpp.contains("env->MonitorExit(clazz)"));
+
+        MethodNode instanceMethod = synchronizedInstanceMethod();
+        IrMethod instanceIr = frontend.build("example/Math", instanceMethod);
+        assertFalse(instanceIr.isStaticMethod());
+        assertTrue(instanceIr.isSynchronizedMethod());
+        NativeObfuscator instanceObfuscator = new NativeObfuscator();
+        MethodContext instanceContext = new MethodContext(
+                instanceObfuscator, instanceMethod, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(instanceObfuscator))
+                .processMethod(instanceContext);
+        assertEquals(0, instanceMethod.access & Opcodes.ACC_SYNCHRONIZED);
+        String instanceCpp = instanceContext.output.toString();
+        assertTrue(instanceCpp.contains("env->MonitorEnter(obj)"));
+        assertTrue(instanceCpp.contains("env->MonitorExit(obj)"));
+        assertTrue(instanceCpp.contains(
+                "jthrowable synchronized_exception = env->ExceptionOccurred();"));
+        assertTrue(instanceCpp.contains("env->ExceptionClear();"));
+        assertTrue(instanceCpp.contains("env->Throw(synchronized_exception);"));
+    }
+
+    @Test
+    public void rejectsUnstructuredMonitorPairingBeforeMutation() {
+        MethodNode method = unstructuredMonitorMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.MONITORENTER, error.getOpcode());
+        assertTrue(error.getMessage().contains("monitor is held"));
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable()
+            throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        assertTrue(gpp != null, "g++ is required for the IR monitor runtime test");
+        assertTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are required for the IR monitor runtime test");
+        assertTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are required for the IR monitor runtime test");
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode owner = owner();
+        MethodNode staticMethod = synchronizedStaticCounterMethod();
+        MethodNode instanceMethod = synchronizedInstanceMethod();
+        MethodNode explicitMethod = explicitMonitorMethod();
+        MethodNode nullMethod = nullMonitorCatchMethod();
+        String staticBody = emitter.emitBody(
+                frontend.build(owner.name, staticMethod),
+                new MethodContext(obfuscator, staticMethod, 0, owner, 0));
+        String instanceBody = emitter.emitBody(
+                frontend.build(owner.name, instanceMethod),
+                new MethodContext(obfuscator, instanceMethod, 1, owner, 0));
+        String explicitBody = emitter.emitBody(
+                frontend.build(owner.name, explicitMethod),
+                new MethodContext(obfuscator, explicitMethod, 2, owner, 0));
+        String nullBody = emitter.emitBody(
+                frontend.build(owner.name, nullMethod),
+                new MethodContext(obfuscator, nullMethod, 3, owner, 0));
+
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "static int enter_count = 0;\n"
+                + "static int exit_count = 0;\n"
+                + "static int monitor_depth = 0;\n"
+                + "static jobject expected_monitor = nullptr;\n"
+                + "static jobject active_monitor = nullptr;\n"
+                + "static jthrowable pending_exception = nullptr;\n"
+                + "static char string_pool_storage[512] = {};\n"
+                + "static char *string_pool = string_pool_storage;\n"
+                + "static jthrowable fake_exception() {\n"
+                + "    return reinterpret_cast<jthrowable>(0x7000);\n"
+                + "}\n"
+                + "static jint JNICALL fake_monitor_enter(JNIEnv *, jobject monitor) {\n"
+                + "    if (monitor == nullptr || monitor != expected_monitor) {\n"
+                + "        pending_exception = fake_exception();\n"
+                + "        return -1;\n"
+                + "    }\n"
+                + "    active_monitor = monitor;\n"
+                + "    ++monitor_depth;\n"
+                + "    ++enter_count;\n"
+                + "    return 0;\n"
+                + "}\n"
+                + "static jint JNICALL fake_monitor_exit(JNIEnv *, jobject monitor) {\n"
+                + "    if (monitor_depth == 0 || monitor != active_monitor) {\n"
+                + "        pending_exception = fake_exception();\n"
+                + "        return -1;\n"
+                + "    }\n"
+                + "    --monitor_depth;\n"
+                + "    ++exit_count;\n"
+                + "    if (monitor_depth == 0) active_monitor = nullptr;\n"
+                + "    return 0;\n"
+                + "}\n"
+                + "static jboolean JNICALL fake_exception_check(JNIEnv *) {\n"
+                + "    return pending_exception == nullptr ? JNI_FALSE : JNI_TRUE;\n"
+                + "}\n"
+                + "static jthrowable JNICALL fake_exception_occurred(JNIEnv *) {\n"
+                + "    return pending_exception;\n"
+                + "}\n"
+                + "static void JNICALL fake_exception_clear(JNIEnv *) {\n"
+                + "    pending_exception = nullptr;\n"
+                + "}\n"
+                + "static jint JNICALL fake_throw(JNIEnv *, jthrowable exception) {\n"
+                + "    pending_exception = exception;\n"
+                + "    return 0;\n"
+                + "}\n"
+                + "namespace utils {\n"
+                + "void throw_re(JNIEnv *, const char *, const char *, int) {\n"
+                + "    pending_exception = fake_exception();\n"
+                + "}\n"
+                + "}\n"
+                + "static jint synchronized_static(JNIEnv *env, jclass clazz, jint arg0) {\n"
+                + staticBody
+                + "}\n"
+                + "static jint synchronized_instance(JNIEnv *env, jobject obj, jint arg0) {\n"
+                + instanceBody
+                + "}\n"
+                + "static void explicit_monitor(JNIEnv *env, jobject arg0) {\n"
+                + explicitBody
+                + "}\n"
+                + "static jint null_monitor(JNIEnv *env) {\n"
+                + nullBody
+                + "}\n"
+                + "int main() {\n"
+                + "    JNINativeInterface_ functions = {};\n"
+                + "    functions.MonitorEnter = fake_monitor_enter;\n"
+                + "    functions.MonitorExit = fake_monitor_exit;\n"
+                + "    functions.ExceptionCheck = fake_exception_check;\n"
+                + "    functions.ExceptionOccurred = fake_exception_occurred;\n"
+                + "    functions.ExceptionClear = fake_exception_clear;\n"
+                + "    functions.Throw = fake_throw;\n"
+                + "    JNIEnv_ env_value = {};\n"
+                + "    env_value.functions = &functions;\n"
+                + "    JNIEnv *env = &env_value;\n"
+                + "    jclass clazz = reinterpret_cast<jclass>(0x1000);\n"
+                + "    jobject object = reinterpret_cast<jobject>(0x2000);\n"
+                + "    expected_monitor = reinterpret_cast<jobject>(clazz);\n"
+                + "    jint counter = 0;\n"
+                + "    for (int i = 0; i < 5; ++i) {\n"
+                + "        counter = synchronized_static(env, clazz, counter);\n"
+                + "    }\n"
+                + "    if (counter != 5 || enter_count != 5 || exit_count != 5) return 1;\n"
+                + "    expected_monitor = object;\n"
+                + "    if (synchronized_instance(env, object, 0) != 5) return 2;\n"
+                + "    if (monitor_depth != 0 || enter_count != 6 || exit_count != 6) return 3;\n"
+                + "    if (synchronized_instance(env, object, 1) != 0) return 4;\n"
+                + "    if (pending_exception == nullptr || monitor_depth != 0"
+                + " || enter_count != 7 || exit_count != 7) return 5;\n"
+                + "    fake_exception_clear(env);\n"
+                + "    explicit_monitor(env, object);\n"
+                + "    if (monitor_depth != 0 || enter_count != 8 || exit_count != 8) return 6;\n"
+                + "    int enters_before_null = enter_count;\n"
+                + "    if (null_monitor(env) != 1) return 7;\n"
+                + "    if (pending_exception != nullptr || enter_count != enters_before_null)"
+                + " return 8;\n"
+                + "    return monitor_depth == 0 ? 0 : 9;\n"
+                + "}\n";
+
+        Path directory = Files.createTempDirectory("ir-monitor-run");
+        Path sourceFile = directory.resolve("monitors.cpp");
+        Path binary = directory.resolve("monitors");
+        Path compilerOutput = directory.resolve("gpp-output.txt");
+        Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
+        Process compileProcess = new ProcessBuilder(gpp.toString(), "-std=c++17",
+                "-I" + jniInclude, "-I" + platformInclude,
+                sourceFile.toString(), "-o", binary.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(compilerOutput.toFile())
+                .start();
+        int compileExit = compileProcess.waitFor();
+        String output = new String(Files.readAllBytes(compilerOutput),
+                StandardCharsets.UTF_8);
+        assertEquals(0, compileExit, "g++ failed:\n" + output + "\nSource:\n" + source);
+
+        Process runProcess = new ProcessBuilder(binary.toString()).start();
+        assertEquals(0, runProcess.waitFor(),
+                "Generated monitor lowering violated lock or exception semantics");
     }
 
     @Test
@@ -5561,19 +5800,92 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode unsupportedWideOperationMethod() {
-        // IF_ACMPEQ, the previous sentinel here, is now admitted by the IR
-        // frontend. MONITORENTER is still outside the supported subset (this
-        // PR does not implement monitors), so it keeps proving that rejection
-        // happens before any mutation.
+    private MethodNode explicitMonitorMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedWide", "(Ljava/lang/Object;)V",
-                null, null);
+                "explicitMonitor", "(Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.MONITORENTER));
+        method.instructions.add(new InsnNode(Opcodes.MONITOREXIT));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode nullMonitorCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "nullMonitor", "()I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode entered = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.MONITORENTER));
+        method.instructions.add(entered);
+        method.instructions.add(new InsnNode(Opcodes.MONITOREXIT));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, entered, handler, null));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode synchronizedStaticCounterMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_STATIC | Opcodes.ACC_SYNCHRONIZED,
+                "synchronizedStaticCounter", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode synchronizedInstanceMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_SYNCHRONIZED,
+                "synchronizedInstance", "(I)I", null, null);
+        LabelNode normal = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, normal));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(normal);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_5));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unstructuredMonitorMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unstructuredMonitor", "(Ljava/lang/Object;)V", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new InsnNode(Opcodes.MONITORENTER));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unsupportedWideOperationMethod() {
+        // Monitor operations, the previous sentinel here, are now admitted by
+        // the IR frontend. INVOKEDYNAMIC remains deliberately unsupported.
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedWide", "()V", null, null);
+        appendUnsupportedInvokeDynamic(method);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 0;
         return method;
     }
 

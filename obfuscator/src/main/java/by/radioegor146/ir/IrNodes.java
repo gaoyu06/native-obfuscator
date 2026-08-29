@@ -1203,6 +1203,66 @@ public final class IrNodes {
         }
     }
 
+    public static final class MonitorEnter implements IrInstruction {
+        private final IrValue monitor;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public MonitorEnter(IrValue monitor, int bytecodeOffset, int sourceLine) {
+            this.monitor = requireReference(monitor, "monitor");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        public IrValue getMonitor() {
+            return monitor;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    public static final class MonitorExit implements IrInstruction {
+        private final IrValue monitor;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public MonitorExit(IrValue monitor, int bytecodeOffset, int sourceLine) {
+            this.monitor = requireReference(monitor, "monitor");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        public IrValue getMonitor() {
+            return monitor;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
     public static final class Binary implements IrInstruction {
         public enum Operation {
             ADD("iadd"),

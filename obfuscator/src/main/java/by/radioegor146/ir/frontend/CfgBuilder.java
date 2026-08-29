@@ -262,6 +262,7 @@ public final class CfgBuilder {
                 || opcode == Opcodes.ANEWARRAY || opcode == Opcodes.MULTIANEWARRAY
                 || opcode == Opcodes.CHECKCAST || opcode == Opcodes.INSTANCEOF
                 || opcode == Opcodes.ARRAYLENGTH
+                || opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT
                 || opcode >= Opcodes.IALOAD && opcode <= Opcodes.SALOAD
                 || opcode >= Opcodes.IASTORE && opcode <= Opcodes.SASTORE
                 || opcode == Opcodes.GETFIELD

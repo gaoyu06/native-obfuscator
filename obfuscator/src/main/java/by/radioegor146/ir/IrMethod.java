@@ -14,17 +14,19 @@ public final class IrMethod {
     private final String name;
     private final String descriptor;
     private final boolean staticMethod;
+    private final boolean synchronizedMethod;
     private final IrType returnType;
     private final List<IrValue> parameters = new ArrayList<>();
     private final List<IrBlock> blocks = new ArrayList<>();
     private int nextValueId;
 
     public IrMethod(String owner, String name, String descriptor, boolean staticMethod,
-                    IrType returnType) {
+                    boolean synchronizedMethod, IrType returnType) {
         this.owner = Objects.requireNonNull(owner, "owner");
         this.name = Objects.requireNonNull(name, "name");
         this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
         this.staticMethod = staticMethod;
+        this.synchronizedMethod = synchronizedMethod;
         this.returnType = Objects.requireNonNull(returnType, "returnType");
     }
 
@@ -42,6 +44,10 @@ public final class IrMethod {
 
     public boolean isStaticMethod() {
         return staticMethod;
+    }
+
+    public boolean isSynchronizedMethod() {
+        return synchronizedMethod;
     }
 
     public IrType getReturnType() {
@@ -97,7 +103,8 @@ public final class IrMethod {
         StringBuilder out = new StringBuilder();
         out.append("method ").append(owner).append('.').append(name).append(descriptor)
                 .append(" -> ").append(returnType)
-                .append(" [").append(staticMethod ? "static" : "instance").append("]\n");
+                .append(" [").append(staticMethod ? "static" : "instance")
+                .append(synchronizedMethod ? " synchronized" : "").append("]\n");
         out.append("  params: ");
         out.append(parameters.stream()
                 .map(value -> value + ":" + value.getType())
@@ -296,6 +303,12 @@ public final class IrMethod {
             return instanceOf.getResult() + ":" + instanceOf.getResult().getType()
                     + " = instanceof " + instanceOf.getTargetType() + " "
                     + instanceOf.getOperand();
+        }
+        if (instruction instanceof IrNodes.MonitorEnter) {
+            return "monitorenter " + ((IrNodes.MonitorEnter) instruction).getMonitor();
+        }
+        if (instruction instanceof IrNodes.MonitorExit) {
+            return "monitorexit " + ((IrNodes.MonitorExit) instruction).getMonitor();
         }
         if (instruction instanceof IrNodes.GetField) {
             IrNodes.GetField field = (IrNodes.GetField) instruction;
