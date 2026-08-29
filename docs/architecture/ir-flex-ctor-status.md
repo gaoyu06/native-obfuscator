@@ -24,9 +24,10 @@ The constructor split now covers these related prefix shapes:
   suffix, when their incoming state at the hidden bridge is provable;
 - multiple direct this/super calls in a strict diamond that converges at one
   shared suffix label;
-- exactly two direct this/super calls where the first call is followed by a
-  declared int-argument `ILOAD`, `IFNE` to the shared suffix, and immediate
-  fallthrough `RETURN`, while the second call falls through to that suffix; and
+- exactly two direct this/super calls where the first call is followed by one
+  or two declared int-family argument `ILOAD`s, a unary int-zero or binary
+  `IF_ICMPxx` jump to the shared suffix, and immediate fallthrough `RETURN`,
+  while the second call falls through to that suffix; and
 - exactly two direct this/super calls where the first call returns immediately
   and the second falls through to the suffix, only when a forwarded extra local
   is unassigned at the exiting call but has one provable type on every path
@@ -52,12 +53,15 @@ The constructor split now covers these related prefix shapes:
   each non-final chain call. It must target the exact shared join label. The
   final chain call must fall through to that same label.
 - One non-`GOTO` exception is admitted only for exactly two chain calls with no
-  exception table. The first call must be followed by `ILOAD` of a declared
-  int-family constructor argument, `IFNE` to the exact shared join, and an
-  immediate fallthrough `RETURN`; the second call must fall through to the
-  join. Receiver-stack analysis requires both calls to consume the original
-  constructor receiver with no older stack values. The count-state CFG proof
-  still requires exactly one call at the join and at the early return.
+  exception table. The first call must be followed by either one `ILOAD` of a
+  declared int-family constructor argument and `IFEQ`, `IFNE`, `IFLT`, `IFGE`,
+  `IFGT`, or `IFLE`, or two such direct `ILOAD`s and `IF_ICMPEQ`,
+  `IF_ICMPNE`, `IF_ICMPLT`, `IF_ICMPGE`, `IF_ICMPGT`, or `IF_ICMPLE`. The jump
+  must target the exact shared join and its fallthrough must be an immediate
+  `RETURN`; the second call must fall through to the join. Receiver-stack
+  analysis requires both calls to consume the original constructor receiver
+  with no older stack values. The count-state CFG proof still requires exactly
+  one call at the join and at the early return.
 - One prefix-exit exception is admitted only for exactly two chain calls with
   no exception table and empty chain-entry stacks. The first call must be
   followed immediately by `RETURN`; the final call must fall through directly
@@ -112,7 +116,7 @@ One additional family is reduced to that same shared-join form:
   `RETURN`.
 
 Three-or-more returns with computed or non-argument chain inputs, distinct
-joins, other conditional or switch forms, condition loads that are not
+joins, other conditional or switch forms, condition loads that are not direct
 declared int-family arguments, work between a chain call and an existing join,
 unreachable candidates, and non-identical per-call suffixes remain rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
@@ -280,6 +284,17 @@ Synthetic bytecode unit tests in
   taken prefix-to-suffix edge, its fallthrough early return, and the alternate
   second-call path through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsPostChainIntCompareFamiliesToSharedSuffix` applies the same split proof
+  to the five additional unary int-zero compares and all six binary
+  `IF_ICMPxx` compares, each using only direct declared int-family argument
+  loads.
+- `rewrittenPostChainIntCompareFamiliesPassJvmVerification` verifies the
+  suffix-taken, immediate-return, and alternate second-call paths for every
+  newly admitted compare.
+- `postChainIntCompareFamiliesCompileAndRunWithJavaParity` exercises those
+  three paths for every newly admitted compare through plain Java and the
+  complete CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring
+  identical stdout.
 - `admitsMultipleSuperWithIdenticalLinearSuffixCopies` proves that two
   separate, identical field-writing suffix copies produce one native body and
   normalize to a retained two-call wrapper with one hidden bridge.
@@ -347,9 +362,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 167 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 170 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 174 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 177 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
