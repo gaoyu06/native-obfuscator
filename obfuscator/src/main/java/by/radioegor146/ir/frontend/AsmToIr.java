@@ -1218,7 +1218,7 @@ public final class AsmToIr {
 
     private static IrType fieldType(String descriptor) {
         Type type = Type.getType(descriptor);
-        if (type.getSort() == Type.INT) {
+        if (isIntLike(type)) {
             return IrType.I32;
         }
         if (type.getSort() == Type.LONG) {
@@ -1253,7 +1253,7 @@ public final class AsmToIr {
                 return false;
             }
             for (Type argument : Type.getArgumentTypes(invoke.desc)) {
-                if (argument.getSort() != Type.INT
+                if (!isIntLike(argument)
                         && argument.getSort() != Type.LONG
                         && !isReference(argument)) {
                     return false;
@@ -1267,7 +1267,7 @@ public final class AsmToIr {
 
     private static boolean isSupportedInvokeReturn(Type type) {
         int sort = type.getSort();
-        return sort == Type.VOID || sort == Type.INT || sort == Type.LONG
+        return sort == Type.VOID || isIntLike(type) || sort == Type.LONG
                 || isReference(type);
     }
 

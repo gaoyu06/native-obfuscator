@@ -546,9 +546,11 @@ public final class IrCppEmitter {
         statements.add(nullCheck(method, field.getReceiver(),
                 "GETFIELD " + fieldCarrier(field.getDescriptor()) + " npe",
                 field.getSourceLine(), context, block));
+        CppAst.Expression read = memberCall("env",
+                fieldAccessor(true, false, field.getDescriptor()),
+                expression(field.getReceiver()), array("cfields", slots.memberId));
         statements.add(new CppAst.Assignment(variable(field.getResult()),
-                memberCall("env", fieldAccessor(true, false, field.getDescriptor()),
-                        expression(field.getReceiver()), array("cfields", slots.memberId))));
+                widenIntCarrier(Type.getType(field.getDescriptor()), read)));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -565,7 +567,8 @@ public final class IrCppEmitter {
         statements.add(new CppAst.ExpressionStatement(
                 memberCall("env", fieldAccessor(false, false, field.getDescriptor()),
                         expression(field.getReceiver()), array("cfields", slots.memberId),
-                        expression(field.getValue()))));
+                        narrowIntCarrier(Type.getType(field.getDescriptor()),
+                                expression(field.getValue())))));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -576,9 +579,11 @@ public final class IrCppEmitter {
         CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
                 field.getDescriptor(), true, context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
+        CppAst.Expression read = memberCall("env",
+                fieldAccessor(true, true, field.getDescriptor()),
+                array("cclasses", slots.classId), array("cfields", slots.memberId));
         statements.add(new CppAst.Assignment(variable(field.getResult()),
-                memberCall("env", fieldAccessor(true, true, field.getDescriptor()),
-                        array("cclasses", slots.classId), array("cfields", slots.memberId))));
+                widenIntCarrier(Type.getType(field.getDescriptor()), read)));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -592,7 +597,8 @@ public final class IrCppEmitter {
         statements.add(new CppAst.ExpressionStatement(memberCall("env",
                 fieldAccessor(false, true, field.getDescriptor()),
                 array("cclasses", slots.classId), array("cfields", slots.memberId),
-                expression(field.getValue()))));
+                narrowIntCarrier(Type.getType(field.getDescriptor()),
+                        expression(field.getValue())))));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -604,16 +610,26 @@ public final class IrCppEmitter {
 
     private String fieldCarrier(String descriptor) {
         Type type = Type.getType(descriptor);
-        if (type.getSort() == Type.INT) {
-            return "Int";
+        switch (type.getSort()) {
+            case Type.BOOLEAN:
+                return "Boolean";
+            case Type.BYTE:
+                return "Byte";
+            case Type.CHAR:
+                return "Char";
+            case Type.SHORT:
+                return "Short";
+            case Type.INT:
+                return "Int";
+            case Type.LONG:
+                return "Long";
+            case Type.OBJECT:
+            case Type.ARRAY:
+                return "Object";
+            default:
+                throw new IllegalArgumentException(
+                        "Unsupported field descriptor " + descriptor);
         }
-        if (type.getSort() == Type.LONG) {
-            return "Long";
-        }
-        if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
-            return "Object";
-        }
-        throw new IllegalArgumentException("Unsupported field descriptor " + descriptor);
     }
 
     private List<CppAst.Statement> emitInvoke(IrMethod method, IrBlock block,
@@ -643,15 +659,18 @@ public final class IrCppEmitter {
             arguments.add(array("cclasses", slots.classId));
         }
         arguments.add(array("cmethods", slots.memberId));
-        for (IrValue argument : invoke.getArguments()) {
-            arguments.add(expression(argument));
+        Type[] argumentTypes = Type.getArgumentTypes(invoke.getDescriptor());
+        for (int i = 0; i < invoke.getArguments().size(); i++) {
+            arguments.add(narrowIntCarrier(argumentTypes[i],
+                    expression(invoke.getArguments().get(i))));
         }
         CppAst.Expression call = new CppAst.MemberCall(variable("env"), true,
                 invokeCallMethod(invoke), arguments);
         if (invoke.getResult() == null) {
             statements.add(new CppAst.ExpressionStatement(call));
         } else {
-            statements.add(new CppAst.Assignment(variable(invoke.getResult()), call));
+            statements.add(new CppAst.Assignment(variable(invoke.getResult()),
+                    widenIntCarrier(Type.getReturnType(invoke.getDescriptor()), call)));
         }
         statements.add(exceptionCheck(method, block));
         return statements;
@@ -666,20 +685,64 @@ public final class IrCppEmitter {
         } else {
             prefix = "Call";
         }
+        Type returnType = Type.getReturnType(invoke.getDescriptor());
         String carrier;
-        if (invoke.getResult() == null) {
-            carrier = "Void";
-        } else if (invoke.getResult().getType() == IrType.I32) {
-            carrier = "Int";
-        } else if (invoke.getResult().getType() == IrType.I64) {
-            carrier = "Long";
-        } else if (invoke.getResult().getType() == IrType.REFERENCE) {
-            carrier = "Object";
-        } else {
-            throw new IllegalStateException("Unsupported invoke result type "
-                    + invoke.getResult().getType());
+        switch (returnType.getSort()) {
+            case Type.VOID:
+                carrier = "Void";
+                break;
+            case Type.BOOLEAN:
+                carrier = "Boolean";
+                break;
+            case Type.BYTE:
+                carrier = "Byte";
+                break;
+            case Type.CHAR:
+                carrier = "Char";
+                break;
+            case Type.SHORT:
+                carrier = "Short";
+                break;
+            case Type.INT:
+                carrier = "Int";
+                break;
+            case Type.LONG:
+                carrier = "Long";
+                break;
+            case Type.OBJECT:
+            case Type.ARRAY:
+                carrier = "Object";
+                break;
+            default:
+                throw new IllegalStateException("Unsupported invoke return descriptor "
+                        + returnType);
         }
         return prefix + carrier + "Method";
+    }
+
+    private CppAst.Expression narrowIntCarrier(Type type, CppAst.Expression value) {
+        switch (type.getSort()) {
+            case Type.BOOLEAN:
+                return new CppAst.Cast("jboolean", new CppAst.Binary(
+                        new CppAst.Cast("uint32_t", value), "&",
+                        new CppAst.IntLiteral(1)));
+            case Type.BYTE:
+                return new CppAst.Cast("jbyte", value);
+            case Type.CHAR:
+                return new CppAst.Cast("jchar", value);
+            case Type.SHORT:
+                return new CppAst.Cast("jshort", value);
+            default:
+                return value;
+        }
+    }
+
+    private CppAst.Expression widenIntCarrier(Type type, CppAst.Expression value) {
+        int sort = type.getSort();
+        if (sort >= Type.BOOLEAN && sort < Type.INT) {
+            return new CppAst.Cast("jint", value);
+        }
+        return value;
     }
 
     private CacheSlots cacheField(IrMethod method, String owner, String name,
@@ -874,9 +937,14 @@ public final class IrCppEmitter {
         if (terminator instanceof IrNodes.Return) {
             IrValue value = ((IrNodes.Return) terminator).getValue();
             CppAst.Expression returned = value == null ? null : expression(value);
-            if (value != null && value.getType() == IrType.REFERENCE
-                    && Type.getReturnType(method.getDescriptor()).getSort() == Type.ARRAY) {
-                returned = new CppAst.Cast("jarray", returned);
+            Type returnType = Type.getReturnType(method.getDescriptor());
+            if (value != null) {
+                if (value.getType() == IrType.REFERENCE
+                        && returnType.getSort() == Type.ARRAY) {
+                    returned = new CppAst.Cast("jarray", returned);
+                } else if (value.getType() == IrType.I32) {
+                    returned = narrowIntCarrier(returnType, returned);
+                }
             }
             statements.add(new CppAst.Return(returned));
             return;

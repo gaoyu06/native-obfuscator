@@ -510,6 +510,33 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersSmallPrimitiveInvokeArgumentsAndReturnsWithExactJniFamilies() {
+        String[] descriptors = {"Z", "B", "C", "S"};
+        String[] carriers = {"Boolean", "Byte", "Char", "Short"};
+        String[] jniTypes = {"jboolean", "jbyte", "jchar", "jshort"};
+        for (int i = 0; i < descriptors.length; i++) {
+            String descriptor = "(" + descriptors[i] + ")" + descriptors[i];
+            assertSmallPrimitiveInvoke(staticPrimitiveInvokeMethod(
+                            "static" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.STATIC, "CallStatic" + carriers[i] + "Method",
+                    jniTypes[i], "arg0");
+            assertSmallPrimitiveInvoke(virtualPrimitiveInvokeMethod(
+                            "virtual" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.VIRTUAL, "Call" + carriers[i] + "Method",
+                    jniTypes[i], "arg1");
+            assertSmallPrimitiveInvoke(interfaceInvokeMethod(
+                            "interface" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.INTERFACE, "Call" + carriers[i] + "Method",
+                    jniTypes[i], "arg1");
+            assertSmallPrimitiveInvoke(specialInvokeMethod(
+                            "special" + carriers[i], "example/Base",
+                            "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.SPECIAL,
+                    "CallNonvirtual" + carriers[i] + "Method", jniTypes[i], "arg0");
+        }
+    }
+
+    @Test
     public void nullInterfaceReceiverUsesSharedExceptionalExit() {
         MethodNode method = nullableInterfaceInvokeMethod();
         IrMethod ir = frontend.build("example/Math", method);
@@ -532,9 +559,10 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsInvokeDescriptorsOutsideExactCarrierSet() {
-        for (int opcode : new int[]{Opcodes.INVOKEINTERFACE, Opcodes.INVOKESPECIAL}) {
-            for (String primitive : new String[]{"Z", "B", "C", "S", "F", "D"}) {
+    public void rejectsFloatAndDoubleInvokeDescriptorsBeforeMutation() {
+        for (int opcode : new int[]{Opcodes.INVOKESTATIC, Opcodes.INVOKEVIRTUAL,
+                Opcodes.INVOKEINTERFACE, Opcodes.INVOKESPECIAL}) {
+            for (String primitive : new String[]{"F", "D"}) {
                 assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
                         opcode, "()" + primitive), opcode);
                 assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
@@ -561,6 +589,21 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnsupportedAfterPhaseElevenInvokesBeforeMutation() {
         MethodNode method = unsupportedAfterPhaseElevenInvokesMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseThirteenOpsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseThirteenOpsMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
@@ -817,8 +860,54 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsOtherPrimitiveFieldSortsBeforeMutation() {
-        for (String descriptor : new String[]{"Z", "B", "C", "S", "F", "D"}) {
+    public void nullReceiverSmallPrimitiveOpsUseExceptionalExit() {
+        String fieldCpp = compileToCpp(instanceFieldRoundTripMethod(
+                "nullableCharField", "C", Opcodes.ILOAD, Opcodes.IRETURN), 0);
+        int fieldNullCheck = fieldCpp.indexOf("if (arg0 == nullptr)");
+        int fieldThrow = fieldCpp.indexOf("utils::throw_re", fieldNullCheck);
+        int fieldExit = fieldCpp.indexOf("return 0;", fieldThrow);
+        int fieldCall = fieldCpp.indexOf("env->SetCharField", fieldExit);
+        assertTrue(fieldNullCheck >= 0 && fieldThrow > fieldNullCheck
+                && fieldExit > fieldThrow && fieldCall > fieldExit);
+
+        String invokeCpp = compileToCpp(virtualPrimitiveInvokeMethod(
+                "nullableBooleanInvoke", "identityBoolean", "(Z)Z"), 0);
+        int invokeNullCheck = invokeCpp.indexOf("if (arg0 == nullptr)");
+        int invokeThrow = invokeCpp.indexOf("utils::throw_re", invokeNullCheck);
+        int invokeExit = invokeCpp.indexOf("return 0;", invokeThrow);
+        int invokeCall = invokeCpp.indexOf("env->CallBooleanMethod", invokeExit);
+        assertTrue(invokeNullCheck >= 0 && invokeThrow > invokeNullCheck
+                && invokeExit > invokeThrow && invokeCall > invokeExit);
+    }
+
+    @Test
+    public void lowersSmallPrimitiveFieldRoundTripsWithJvmNarrowing() {
+        assertSmallPrimitiveFieldRoundTrip("booleanFalse", "Z", "Boolean",
+                "jboolean", 0, false);
+        assertSmallPrimitiveFieldRoundTrip("booleanTrue", "Z", "Boolean",
+                "jboolean", 1, false);
+        assertSmallPrimitiveFieldRoundTrip("byteNegative", "B", "Byte",
+                "jbyte", -7, false);
+        assertSmallPrimitiveFieldRoundTrip("charAboveAscii", "C", "Char",
+                "jchar", 200, false);
+        assertSmallPrimitiveFieldRoundTrip("shortNegative", "S", "Short",
+                "jshort", -300, false);
+
+        assertSmallPrimitiveFieldRoundTrip("staticBooleanFalse", "Z", "Boolean",
+                "jboolean", 0, true);
+        assertSmallPrimitiveFieldRoundTrip("staticBooleanTrue", "Z", "Boolean",
+                "jboolean", 1, true);
+        assertSmallPrimitiveFieldRoundTrip("staticByteNegative", "B", "Byte",
+                "jbyte", -7, true);
+        assertSmallPrimitiveFieldRoundTrip("staticCharAboveAscii", "C", "Char",
+                "jchar", 200, true);
+        assertSmallPrimitiveFieldRoundTrip("staticShortNegative", "S", "Short",
+                "jshort", -300, true);
+    }
+
+    @Test
+    public void rejectsFloatAndDoubleFieldSortsBeforeMutation() {
+        for (String descriptor : new String[]{"F", "D"}) {
             MethodNode method = unsupportedPrimitiveFieldMethod(descriptor);
             NativeObfuscator obfuscator = new NativeObfuscator();
             MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
@@ -1389,6 +1478,58 @@ public class IrCompilerTest {
                         "Ljava/lang/Object;", Opcodes.ALOAD, Opcodes.ARETURN),
                 staticFieldRoundTripMethod(
                         "staticArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
+                primitiveFieldConstantRoundTripMethod(
+                        "booleanFalse", "Z", 0, false),
+                primitiveFieldConstantRoundTripMethod(
+                        "booleanTrue", "Z", 1, false),
+                primitiveFieldConstantRoundTripMethod(
+                        "byteNegative", "B", -7, false),
+                primitiveFieldConstantRoundTripMethod(
+                        "charAboveAscii", "C", 200, false),
+                primitiveFieldConstantRoundTripMethod(
+                        "shortNegative", "S", -300, false),
+                primitiveFieldConstantRoundTripMethod(
+                        "staticBooleanFalse", "Z", 0, true),
+                primitiveFieldConstantRoundTripMethod(
+                        "staticBooleanTrue", "Z", 1, true),
+                primitiveFieldConstantRoundTripMethod(
+                        "staticByteNegative", "B", -7, true),
+                primitiveFieldConstantRoundTripMethod(
+                        "staticCharAboveAscii", "C", 200, true),
+                primitiveFieldConstantRoundTripMethod(
+                        "staticShortNegative", "S", -300, true),
+                staticPrimitiveInvokeMethod("staticBoolean",
+                        "identityBoolean", "(Z)Z"),
+                staticPrimitiveInvokeMethod("staticByte",
+                        "identityByte", "(B)B"),
+                staticPrimitiveInvokeMethod("staticChar",
+                        "identityChar", "(C)C"),
+                staticPrimitiveInvokeMethod("staticShort",
+                        "identityShort", "(S)S"),
+                virtualPrimitiveInvokeMethod("virtualBoolean",
+                        "identityBoolean", "(Z)Z"),
+                virtualPrimitiveInvokeMethod("virtualByte",
+                        "identityByte", "(B)B"),
+                virtualPrimitiveInvokeMethod("virtualChar",
+                        "identityChar", "(C)C"),
+                virtualPrimitiveInvokeMethod("virtualShort",
+                        "identityShort", "(S)S"),
+                interfaceInvokeMethod("interfaceBoolean",
+                        "identityBoolean", "(Z)Z"),
+                interfaceInvokeMethod("interfaceByte",
+                        "identityByte", "(B)B"),
+                interfaceInvokeMethod("interfaceChar",
+                        "identityChar", "(C)C"),
+                interfaceInvokeMethod("interfaceShort",
+                        "identityShort", "(S)S"),
+                specialInvokeMethod("specialBoolean", "example/Base",
+                        "identityBoolean", "(Z)Z"),
+                specialInvokeMethod("specialByte", "example/Base",
+                        "identityByte", "(B)B"),
+                specialInvokeMethod("specialChar", "example/Base",
+                        "identityChar", "(C)C"),
+                specialInvokeMethod("specialShort", "example/Base",
+                        "identityShort", "(S)S"),
                 nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod(),
                 intFieldConstructor(), referenceFieldConstructor()
         };
@@ -1497,6 +1638,38 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->SetStaticLongField"));
         assertTrue(source.contains("env->GetStaticObjectField"));
         assertTrue(source.contains("env->SetStaticObjectField"));
+        assertTrue(source.contains("env->GetBooleanField"));
+        assertTrue(source.contains("env->SetBooleanField"));
+        assertTrue(source.contains("env->GetByteField"));
+        assertTrue(source.contains("env->SetByteField"));
+        assertTrue(source.contains("env->GetCharField"));
+        assertTrue(source.contains("env->SetCharField"));
+        assertTrue(source.contains("env->GetShortField"));
+        assertTrue(source.contains("env->SetShortField"));
+        assertTrue(source.contains("env->GetStaticBooleanField"));
+        assertTrue(source.contains("env->SetStaticBooleanField"));
+        assertTrue(source.contains("env->GetStaticByteField"));
+        assertTrue(source.contains("env->SetStaticByteField"));
+        assertTrue(source.contains("env->GetStaticCharField"));
+        assertTrue(source.contains("env->SetStaticCharField"));
+        assertTrue(source.contains("env->GetStaticShortField"));
+        assertTrue(source.contains("env->SetStaticShortField"));
+        assertTrue(source.contains("env->CallStaticBooleanMethod"));
+        assertTrue(source.contains("env->CallStaticByteMethod"));
+        assertTrue(source.contains("env->CallStaticCharMethod"));
+        assertTrue(source.contains("env->CallStaticShortMethod"));
+        assertTrue(source.contains("env->CallBooleanMethod"));
+        assertTrue(source.contains("env->CallByteMethod"));
+        assertTrue(source.contains("env->CallCharMethod"));
+        assertTrue(source.contains("env->CallShortMethod"));
+        assertTrue(source.contains("env->CallNonvirtualBooleanMethod"));
+        assertTrue(source.contains("env->CallNonvirtualByteMethod"));
+        assertTrue(source.contains("env->CallNonvirtualCharMethod"));
+        assertTrue(source.contains("env->CallNonvirtualShortMethod"));
+        assertTrue(source.contains("(jboolean)"));
+        assertTrue(source.contains("(jbyte)"));
+        assertTrue(source.contains("(jchar)"));
+        assertTrue(source.contains("(jshort)"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
         assertTrue(source.contains("IR codegen: example/Math.<init>(I)V"));
         assertTrue(source.contains("jobject ignored_hidden, jobject obj"));
@@ -1603,6 +1776,44 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->" + setAccessor));
         assertEquals(1, obfuscator.getCachedFields().size());
         return cpp;
+    }
+
+    private void assertSmallPrimitiveFieldRoundTrip(String fieldName, String descriptor,
+                                                    String carrier, String jniType,
+                                                    int value, boolean staticField) {
+        MethodNode method = primitiveFieldConstantRoundTripMethod(
+                fieldName, descriptor, value, staticField);
+        String cpp = assertFieldRoundTrip(method, IrType.I32,
+                "Get" + (staticField ? "Static" : "") + carrier + "Field",
+                "Set" + (staticField ? "Static" : "") + carrier + "Field");
+        assertTrue(cpp.contains("= " + value + ";"));
+        assertTrue(cpp.contains("(jint) env->Get"
+                + (staticField ? "Static" : "") + carrier + "Field"));
+        assertTrue(cpp.contains("(" + jniType + ") "));
+        if ("Z".equals(descriptor)) {
+            assertTrue(cpp.contains("& 1"));
+        }
+        assertFalse(cpp.contains("IntField"));
+    }
+
+    private void assertSmallPrimitiveInvoke(MethodNode method, IrNodes.Invoke.Kind kind,
+                                            String callMethod, String jniType,
+                                            String argumentName) {
+        IrNodes.Invoke invoke = onlyInvoke(frontend.build("example/Math", method));
+        assertEquals(kind, invoke.getKind());
+        assertEquals(IrType.I32, invoke.getArguments().get(0).getType());
+        assertEquals(IrType.I32, invoke.getResult().getType());
+
+        String cpp = compileToCpp(method, 0);
+        assertTrue(cpp.contains("(jint) env->" + callMethod));
+        assertTrue(cpp.contains("(" + jniType + ") "));
+        assertTrue(cpp.contains(argumentName));
+        if ("jboolean".equals(jniType)) {
+            assertTrue(cpp.contains("& 1"));
+        }
+        String intCallMethod = callMethod.replace("Boolean", "Int")
+                .replace("Byte", "Int").replace("Char", "Int").replace("Short", "Int");
+        assertFalse(cpp.contains("env->" + intCallMethod + "("));
     }
 
     private String compileToCpp(MethodNode method, int methodId) {
@@ -1730,6 +1941,29 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode primitiveFieldConstantRoundTripMethod(
+            String name, String descriptor, int value, boolean staticField) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, staticField ? "()I" : "(Lexample/Math;)I", null, null);
+        if (!staticField) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        }
+        method.instructions.add(new IntInsnNode(Opcodes.SIPUSH, value));
+        method.instructions.add(new FieldInsnNode(
+                staticField ? Opcodes.PUTSTATIC : Opcodes.PUTFIELD,
+                "example/Math", name, descriptor));
+        if (!staticField) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        }
+        method.instructions.add(new FieldInsnNode(
+                staticField ? Opcodes.GETSTATIC : Opcodes.GETFIELD,
+                "example/Math", name, descriptor));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = staticField ? 0 : 1;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode nullReceiverGetFieldMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "nullReceiverGetField", "(Lexample/Math;)J", null, null);
@@ -1780,6 +2014,21 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode staticPrimitiveInvokeMethod(String wrapperName, String targetName,
+                                                   String targetDescriptor) {
+        Type argumentType = Type.getArgumentTypes(targetDescriptor)[0];
+        Type returnType = Type.getReturnType(targetDescriptor);
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                wrapperName, targetDescriptor, null, null);
+        method.instructions.add(new VarInsnNode(argumentType.getOpcode(Opcodes.ILOAD), 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/PrimitiveTarget", targetName, targetDescriptor, false));
+        method.instructions.add(new InsnNode(returnType.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = argumentType.getSize();
+        method.maxStack = argumentType.getSize();
+        return method;
+    }
+
     private MethodNode virtualInvokeMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "identity", "(Ljava/lang/Object;)I", null, null);
@@ -1789,6 +2038,24 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode virtualPrimitiveInvokeMethod(String wrapperName, String targetName,
+                                                    String targetDescriptor) {
+        String targetOwner = "example/PrimitiveTarget";
+        Type argumentType = Type.getArgumentTypes(targetDescriptor)[0];
+        Type returnType = Type.getReturnType(targetDescriptor);
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                wrapperName, Type.getMethodDescriptor(returnType,
+                Type.getObjectType(targetOwner), argumentType), null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(argumentType.getOpcode(Opcodes.ILOAD), 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                targetOwner, targetName, targetDescriptor, false));
+        method.instructions.add(new InsnNode(returnType.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = 1 + argumentType.getSize();
+        method.maxStack = 1 + argumentType.getSize();
         return method;
     }
 
@@ -1869,20 +2136,27 @@ public class IrCompilerTest {
     private MethodNode unsupportedInvokeDescriptorMethod(int opcode,
                                                          String targetDescriptor) {
         Type[] targetArguments = Type.getArgumentTypes(targetDescriptor);
-        Type[] wrapperArguments = new Type[targetArguments.length + 1];
-        wrapperArguments[0] = Type.getObjectType("example/Phase11Interface");
+        boolean staticInvoke = opcode == Opcodes.INVOKESTATIC;
+        Type[] wrapperArguments = new Type[targetArguments.length + (staticInvoke ? 0 : 1)];
+        if (!staticInvoke) {
+            wrapperArguments[0] = Type.getObjectType("example/Phase11Interface");
+        }
         for (int i = 0; i < targetArguments.length; i++) {
-            wrapperArguments[i + 1] = targetArguments[i].getSize() == 2
+            wrapperArguments[i + (staticInvoke ? 0 : 1)] =
+                    targetArguments[i].getSize() == 2
                     ? Type.LONG_TYPE : Type.INT_TYPE;
         }
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "unsupportedInvoke",
                 Type.getMethodDescriptor(Type.VOID_TYPE, wrapperArguments), null, null);
-        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        int local = 1;
+        int local = 0;
         int argumentSlots = 0;
+        if (!staticInvoke) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, local++));
+            argumentSlots++;
+        }
         for (int i = 0; i < targetArguments.length; i++) {
-            Type wrapperArgument = wrapperArguments[i + 1];
+            Type wrapperArgument = wrapperArguments[i + (staticInvoke ? 0 : 1)];
             method.instructions.add(new VarInsnNode(
                     wrapperArgument.getOpcode(Opcodes.ILOAD), local));
             local += wrapperArgument.getSize();
@@ -1890,7 +2164,8 @@ public class IrCompilerTest {
         }
         method.instructions.add(new MethodInsnNode(opcode,
                 opcode == Opcodes.INVOKEINTERFACE
-                        ? "example/Phase11Interface" : "example/Base",
+                        ? "example/Phase11Interface"
+                        : staticInvoke ? "example/PrimitiveTarget" : "example/Base",
                 "unsupported", targetDescriptor,
                 opcode == Opcodes.INVOKEINTERFACE));
         Type returnType = Type.getReturnType(targetDescriptor);
@@ -1900,7 +2175,7 @@ public class IrCompilerTest {
         }
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = local;
-        method.maxStack = 1 + argumentSlots;
+        method.maxStack = Math.max(argumentSlots, returnType.getSize());
         return method;
     }
 
@@ -2223,6 +2498,51 @@ public class IrCompilerTest {
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseThirteenOpsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseThirteenOps",
+                "(Lexample/Math;Lexample/PrimitiveTarget;IIII)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "booleanValue", "Z"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "booleanValue", "Z"));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", "byteValue", "B"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "byteValue", "B"));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/PrimitiveTarget", "identityChar", "(C)C", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 5));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "example/PrimitiveTarget", "identityShort", "(S)S", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE,
+                "example/Phase11Interface", "identityBoolean", "(Z)Z", true));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "example/Base", "identityByte", "(B)B", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 6;
         method.maxStack = 2;
         return method;
     }

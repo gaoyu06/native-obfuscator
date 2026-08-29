@@ -1355,7 +1355,7 @@ public final class IrNodes {
             throw new IllegalArgumentException("Invalid field descriptor " + descriptor,
                     malformedDescriptor);
         }
-        if (type.getSort() == Type.INT) {
+        if (isIntLike(type)) {
             return IrType.I32;
         }
         if (type.getSort() == Type.LONG) {
@@ -1368,7 +1368,7 @@ public final class IrNodes {
     }
 
     private static IrType invokeType(Type type) {
-        if (type.getSort() == Type.INT) {
+        if (isIntLike(type)) {
             return IrType.I32;
         }
         if (type.getSort() == Type.LONG) {
@@ -1378,6 +1378,11 @@ public final class IrNodes {
             return IrType.REFERENCE;
         }
         throw new IllegalArgumentException("Unsupported invoke carrier " + type);
+    }
+
+    private static boolean isIntLike(Type type) {
+        int sort = type.getSort();
+        return sort >= Type.BOOLEAN && sort <= Type.INT;
     }
 
     private static String requireClassName(String className) {
