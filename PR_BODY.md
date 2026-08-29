@@ -24,7 +24,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML totals: pending.
+JUnit XML totals:
+
+- `IrCompilerTest`: 344 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 351 tests, 0 failures, 0 errors, 0 skipped.
 
 Ship-ready: **No**
 
@@ -53,6 +57,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML 汇总：待运行。
+JUnit XML 汇总：
+
+- `IrCompilerTest`：344 项测试，0 项失败，0 项错误，0 项跳过。
+- `CodegenModeTest`：7 项测试，0 项失败，0 项错误，0 项跳过。
+- 合计：351 项测试，0 项失败，0 项错误，0 项跳过。
 
 可发布：**否**
