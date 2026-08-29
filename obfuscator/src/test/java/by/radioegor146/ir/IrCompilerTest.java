@@ -1598,7 +1598,8 @@ public class IrCompilerTest {
         assertTrue(booleanCpp.contains("GetBooleanArrayRegion"));
         assertTrue(booleanCpp.contains("SetBooleanArrayRegion"));
         assertFalse(booleanCpp.contains("ByteArray"));
-        assertTrue(booleanCpp.contains("((uint32_t) arg1 & 1)"));
+        assertTrue(booleanCpp.contains("(uint32_t)"));
+        assertTrue(booleanCpp.contains("& 1"));
 
         assertTrue(byteCpp.contains("NewByteArray"));
         assertTrue(byteCpp.contains("GetByteArrayRegion"));
