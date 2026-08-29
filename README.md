@@ -130,6 +130,16 @@ Wildcards: `*` is one `/`-separated segment; `**` is any remaining segments.
 
 Omit `--plain-lib-name` if you want natives packed into the JAR after you copy them into that loader directory.
 
+#### Native-access on JDK 24+
+
+The loader classes call `System.load`/`System.loadLibrary`, which [JEP 472](https://openjdk.org/jeps/472) makes restricted operations. On JDK 24+ an unenabled call warns by default, and a future release may turn that into an error. The output JAR is written with `Enable-Native-Access: ALL-UNNAMED` in `META-INF/MANIFEST.MF`, so a `java -jar <output.jar>` launch grants native access to the unnamed module without extra flags (any more specific value already present in the input manifest is preserved). A classpath launch does not honor that manifest attribute and still needs the flag:
+
+```text
+java --enable-native-access=ALL-UNNAMED -cp <output.jar> <main-class>
+```
+
+This is a packaging convenience, not a claim that JDK 25 is supported.
+
 ---
 
 ## Zig toolchain
