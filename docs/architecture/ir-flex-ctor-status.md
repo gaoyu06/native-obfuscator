@@ -14,7 +14,8 @@ The constructor split now covers these related prefix shapes:
 - try/catch entries whose start, end, and handler labels all remain in the
   retained prefix;
 - suffix-protected try/catch entries targeting an isolated prefix
-  `POP; RETURN` handler that has no normal incoming edge;
+  `POP; RETURN` handler, or an isolated `POP; GOTO` handler whose sole target
+  is an isolated prefix `RETURN`, when neither block has an extra incoming edge;
 - `ASTORE 0` writes whose stack input is proven to be the original constructor
   receiver, with every selected this/super call proven to consume that same
   receiver;
@@ -217,18 +218,26 @@ Try/catch entries are classified independently and fail closed:
   suffix start, the entry is admitted. `postProcess` clones the complete entry
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
-- One exact mixed placement is also admitted: `start` and `end` are suffix
-  labels, while `handler` is a prefix label whose executable sequence is
-  exactly `POP; RETURN` (stack-map frames may separate those nodes). The
-  preceding executable instruction must be `GOTO`, no jump or switch may
-  target the handler, and the label may not also delimit a protected range.
-  `createNativeBody` appends this isolated handler to the suffix clone and
-  preserves the original exception-table edge. `postProcess` omits the
-  now-dead prefix copy from the bytecode wrapper.
+- Two exact mixed forms are admitted when `start` and `end` are suffix labels
+  and `handler` is a prefix label. The existing form requires the handler's
+  executable sequence to be exactly `POP; RETURN` (stack-map frames may
+  separate those nodes). The new form requires exactly `POP; GOTO ret`, where
+  `ret` is a prefix label whose first executable instruction is `RETURN`.
+  In both forms the preceding executable instruction before `handler` must be
+  `GOTO`, no jump or switch may target `handler`, and `handler` may not delimit
+  a protected range.
+- For `POP; GOTO ret; RETURN`, the handler's `GOTO` must be the only jump or
+  switch target edge to `ret`; `ret` may not delimit a protected range, serve
+  as an exception handler, or have a fallthrough predecessor. No synthetic
+  local or stack value is introduced. `createNativeBody` appends the isolated
+  handler and return block to the suffix clone and preserves the original
+  exception-table edge. `postProcess` omits both dead prefix blocks from the
+  bytecode wrapper.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
 - Every other mixed placement is rejected, including a prefix protected range
-  with a suffix handler and a suffix protected range with a prefix handler.
+  with a suffix handler and any suffix protected range with a prefix handler
+  that does not match one of the two isolated return forms.
   The hidden bridge is outside every admitted prefix protected range, so native
   suffix exceptions cannot enter a bytecode handler before the bridge.
 
@@ -394,14 +403,26 @@ Synthetic bytecode unit tests in
 - `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` compares normal
   and caught inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`.
-- `admitsSuffixTryCatchWithIsolatedPrefixReturnHandler` checks that the one
-  admitted mixed handler is present in the independent suffix CFG and absent
-  from the bytecode wrapper.
+- `admitsSuffixTryCatchWithIsolatedPrefixReturnHandler` checks that the
+  previously admitted mixed handler is present in the independent suffix CFG
+  and absent from the bytecode wrapper.
 - `rewrittenRelocatedPrefixReturnHandlerPassesJvmVerification` loads the
   rewritten owner and reaches the unresolved bridge after JVM verification.
 - `relocatedPrefixReturnHandlerCompilesAndRunsWithJavaParity` compares normal
   division and caught divide-by-zero paths through plain Java and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
+- `admitsSuffixTryCatchWithIsolatedPrefixGotoReturnHandler` checks that
+  `POP; GOTO ret; RETURN` and its exception edge are present in the independent
+  suffix CFG while both isolated prefix blocks are absent from the wrapper.
+- `rejectsUnsafePrefixGotoReturnHandlersBeforeMutation` covers extra handler
+  work, a non-`RETURN` target, and an extra incoming edge to `ret`.
+- `rewrittenRelocatedPrefixGotoReturnHandlerPassesJvmVerification` serializes
+  and loads the rewritten owner plus hidden class and reaches the unresolved
+  bridge on the caught-path input after JVM verification.
+- `relocatedPrefixGotoReturnHandlerCompilesAndRunsWithJavaParity` compares
+  normal division and caught divide-by-zero paths through plain Java and the
+  complete CMake/g++ JNI transform under
+  `java -Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, `IADD`, `ISUB`, or
@@ -423,7 +444,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML records:
+The `origin/master` baseline JUnit XML records before this increment were:
 
 - `IrCompilerTest`: 183 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.

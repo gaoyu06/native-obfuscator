@@ -149,16 +149,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         for (RelocatedPrefixHandler handler :
                 split.relocatedPrefixHandlers) {
-            for (int i = handler.startIndex; i < handler.endIndex; i++) {
-                AbstractInsnNode instruction =
-                        constructor.instructions.get(i);
-                if (!(instruction instanceof FrameNode)) {
-                    AbstractInsnNode copy = instruction.clone(labels);
-                    remapSuffixLocal(copy, split);
-                    body.instructions.add(copy);
-                    body.maxLocals = Math.max(
-                            body.maxLocals, requiredLocalSlots(copy));
-                }
+            appendRelocatedRange(
+                    body, constructor, labels, split,
+                    handler.startIndex, handler.endIndex);
+            if (handler.returnStartIndex >= 0) {
+                appendRelocatedRange(
+                        body, constructor, labels, split,
+                        handler.returnStartIndex, handler.returnEndIndex);
             }
         }
         for (TryCatchBlockNode tryCatch : split.suffixTryCatches) {
@@ -169,6 +166,23 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         body.maxLocals = Math.max(body.maxLocals, constructor.maxLocals);
         body.maxStack = constructor.maxStack;
         return body;
+    }
+
+    private static void appendRelocatedRange(
+            MethodNode body, MethodNode constructor,
+            Map<LabelNode, LabelNode> labels, ConstructorSplit split,
+            int startIndex, int endIndex) {
+        for (int i = startIndex; i < endIndex; i++) {
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(i);
+            if (!(instruction instanceof FrameNode)) {
+                AbstractInsnNode copy = instruction.clone(labels);
+                remapSuffixLocal(copy, split);
+                body.instructions.add(copy);
+                body.maxLocals = Math.max(
+                        body.maxLocals, requiredLocalSlots(copy));
+            }
+        }
     }
 
     private static ConstructorSplit split(ClassNode owner, MethodNode constructor) {
@@ -342,7 +356,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 RelocatedPrefixHandler relocated =
                         relocatablePrefixReturnHandler(
                                 constructor, prefixLabels, suffixLabels,
-                                instructionIndexes, tryCatch);
+                                instructionIndexes, suffixStartIndex, tryCatch);
                 if (relocated == null) {
                     throw new UnsupportedIrConstructException(
                             "Constructor exception regions may not cross the this/super split");
@@ -387,16 +401,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves the one prefix-handler shape that can be moved without changing
-     * its exception behavior. The protected range is wholly in the suffix, and
-     * the isolated handler consumes the caught exception and returns. With no
-     * normal incoming edge or other range role, the handler can be removed from
-     * the wrapper and cloned into the suffix with the original table entry.
+     * Proves the prefix-handler shapes that can be moved without changing their
+     * exception behavior. The protected range is wholly in the suffix, and the
+     * isolated handler either consumes the caught exception and returns or
+     * jumps to an equally isolated prefix return. With no extra incoming edge
+     * or other range role, the handler and optional return block can be removed
+     * from the wrapper and cloned into the suffix with the original table entry.
      */
     private static RelocatedPrefixHandler relocatablePrefixReturnHandler(
             MethodNode constructor,
             Set<LabelNode> prefixLabels, Set<LabelNode> suffixLabels,
             Map<LabelNode, Integer> instructionIndexes,
+            int suffixStartIndex,
             TryCatchBlockNode tryCatch) {
         if (!suffixLabels.contains(tryCatch.start)
                 || !suffixLabels.contains(tryCatch.end)
@@ -409,31 +425,73 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int popIndex =
                 firstExecutableIndex(constructor, handlerIndex + 1);
-        int returnIndex =
+        int successorIndex =
                 firstExecutableIndex(constructor, popIndex + 1);
         int previousIndex =
                 previousExecutableIndex(constructor, handlerIndex - 1);
         if (popIndex >= constructor.instructions.size()
-                || returnIndex >= constructor.instructions.size()
+                || successorIndex >= constructor.instructions.size()
                 || previousIndex < 0
                 || constructor.instructions.get(popIndex)
                 .getOpcode() != Opcodes.POP
-                || constructor.instructions.get(returnIndex)
-                .getOpcode() != Opcodes.RETURN
                 || constructor.instructions.get(previousIndex)
                 .getOpcode() != Opcodes.GOTO
                 || !containsOnlyFrames(
                         constructor, handlerIndex + 1, popIndex)
                 || !containsOnlyFrames(
-                        constructor, popIndex + 1, returnIndex)
+                        constructor, popIndex + 1, successorIndex)
                 || hasNormalTarget(constructor, tryCatch.handler)
                 || isTryRangeBoundary(constructor, tryCatch.handler)
                 || !isOnlyUsedBySuffixRanges(
                         constructor, suffixLabels, tryCatch.handler)) {
             return null;
         }
+        AbstractInsnNode successor =
+                constructor.instructions.get(successorIndex);
+        if (successor.getOpcode() == Opcodes.RETURN) {
+            return new RelocatedPrefixHandler(
+                    handlerIndex, successorIndex + 1);
+        }
+        if (!(successor instanceof JumpInsnNode)
+                || successor.getOpcode() != Opcodes.GOTO) {
+            return null;
+        }
+
+        JumpInsnNode jump = (JumpInsnNode) successor;
+        LabelNode returnLabel = jump.label;
+        Integer returnLabelIndex = instructionIndexes.get(returnLabel);
+        if (!prefixLabels.contains(returnLabel)
+                || returnLabelIndex == null
+                || returnLabelIndex <= successorIndex
+                || popIndex >= suffixStartIndex
+                || successorIndex >= suffixStartIndex
+                || returnLabelIndex >= suffixStartIndex
+                || !containsOnlyFrames(
+                        constructor, successorIndex + 1,
+                        returnLabelIndex)) {
+            return null;
+        }
+        int returnIndex =
+                firstExecutableIndex(constructor, returnLabelIndex + 1);
+        int returnPreviousIndex =
+                previousExecutableIndex(constructor, returnLabelIndex - 1);
+        if (returnIndex >= suffixStartIndex
+                || constructor.instructions.get(returnIndex)
+                .getOpcode() != Opcodes.RETURN
+                || !containsOnlyFrames(
+                        constructor, returnLabelIndex + 1, returnIndex)
+                || hasNormalTargetOtherThan(
+                        constructor, returnLabel, jump)
+                || isTryRangeBoundary(constructor, returnLabel)
+                || isExceptionHandler(constructor, returnLabel)
+                || (returnPreviousIndex >= 0
+                && canFallThrough(
+                        constructor.instructions.get(returnPreviousIndex)))) {
+            return null;
+        }
         return new RelocatedPrefixHandler(
-                handlerIndex, returnIndex + 1);
+                handlerIndex, successorIndex + 1,
+                returnLabelIndex, returnIndex + 1);
     }
 
     private static boolean containsOnlyFrames(
@@ -448,9 +506,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static boolean hasNormalTarget(
             MethodNode method, LabelNode target) {
+        return hasNormalTargetOtherThan(method, target, null);
+    }
+
+    private static boolean hasNormalTargetOtherThan(
+            MethodNode method, LabelNode target,
+            JumpInsnNode allowedJump) {
         for (AbstractInsnNode instruction : method.instructions) {
             if (instruction instanceof JumpInsnNode
-                    && ((JumpInsnNode) instruction).label == target) {
+                    && ((JumpInsnNode) instruction).label == target
+                    && instruction != allowedJump) {
                 return true;
             }
             if (instruction instanceof TableSwitchInsnNode) {
@@ -466,6 +531,29 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 if (lookup.dflt == target || lookup.labels.contains(target)) {
                     return true;
                 }
+            }
+        }
+        return false;
+    }
+
+    private static boolean canFallThrough(AbstractInsnNode instruction) {
+        int opcode = instruction.getOpcode();
+        if (instruction instanceof TableSwitchInsnNode
+                || instruction instanceof LookupSwitchInsnNode
+                || opcode == Opcodes.GOTO
+                || isReturn(opcode)
+                || opcode == Opcodes.ATHROW
+                || opcode == Opcodes.RET) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean isExceptionHandler(
+            MethodNode method, LabelNode label) {
+        for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
+            if (tryCatch.handler == label) {
+                return true;
             }
         }
         return false;
@@ -2451,7 +2539,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         for (int i = start; i < end; i++) {
             boolean excluded = false;
             for (RelocatedPrefixHandler handler : excludedHandlers) {
-                if (i >= handler.startIndex && i < handler.endIndex) {
+                if (handler.contains(i)) {
                     excluded = true;
                     break;
                 }
@@ -2517,10 +2605,26 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final class RelocatedPrefixHandler {
         private final int startIndex;
         private final int endIndex;
+        private final int returnStartIndex;
+        private final int returnEndIndex;
 
         private RelocatedPrefixHandler(int startIndex, int endIndex) {
+            this(startIndex, endIndex, -1, -1);
+        }
+
+        private RelocatedPrefixHandler(
+                int startIndex, int endIndex,
+                int returnStartIndex, int returnEndIndex) {
             this.startIndex = startIndex;
             this.endIndex = endIndex;
+            this.returnStartIndex = returnStartIndex;
+            this.returnEndIndex = returnEndIndex;
+        }
+
+        private boolean contains(int index) {
+            return (index >= startIndex && index < endIndex)
+                    || (index >= returnStartIndex
+                    && index < returnEndIndex);
         }
     }
 
