@@ -790,16 +790,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one additional two-call shape: both calls fall through to
-     * straight-line, structurally identical suffix copies ending in RETURN.
-     * The copy may be empty, making RETURN the immediate successor of each
-     * call.
+     * Proves one additional multi-call shape: every call falls through to a
+     * straight-line, structurally identical suffix copy ending in RETURN. The
+     * copy may be empty, making RETURN the immediate successor of each call.
      *
-     * <p>For three or more calls, only the empty-copy form is admitted. Every
-     * call must receive the original local-0 receiver and locally proven
-     * argument inputs, and must be immediately followed by RETURN. The
-     * canonical final return can then be shared by replacing every earlier
-     * return with a GOTO; this does not create multiple native exits.
+     * <p>For three or more calls, every call must additionally receive the
+     * original local-0 receiver and locally proven argument inputs. The
+     * canonical final copy can then be shared by replacing every earlier copy
+     * with a GOTO; this does not create multiple native exits.
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -824,19 +822,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
-        if (callIndexes.size() == 2) {
-            if (!sameLinearSuffix(
-                    constructor, suffixes.get(0), canonical)) {
+        for (LinearSuffix suffix : suffixes) {
+            if (!sameLinearSuffix(constructor, suffix, canonical)) {
                 return null;
             }
-        } else {
-            for (LinearSuffix suffix : suffixes) {
-                if (suffix.endIndex != suffix.startIndex + 1
-                        || constructor.instructions.get(suffix.startIndex)
-                        .getOpcode() != Opcodes.RETURN) {
-                    return null;
-                }
-            }
+        }
+        if (callIndexes.size() > 2) {
             if (!hasDirectDeclaredChainInputs(
                     constructor, callIndexes)) {
                 return null;

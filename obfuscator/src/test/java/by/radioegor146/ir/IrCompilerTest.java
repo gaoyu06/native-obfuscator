@@ -1091,6 +1091,41 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeMultiSuffix", "example/MultiSuperBase");
+        MethodNode constructor =
+                multipleSuperThreeIdenticalSuffixCopiesConstructor(
+                        owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ICONST_4, Opcodes.POP, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.POP));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void rejectsPrefixBranchTargetingSuffixLabel() {
         ClassNode owner = constructorOwner("example/Skip", "java/lang/Object");
         UnsupportedIrConstructException error = assertThrows(
@@ -1316,6 +1351,43 @@ public class IrCompilerTest {
                     "example/MultiSuperBase");
             MethodNode constructor =
                     rejectedThreeImmediateReturnsConstructor(
+                            owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void rejectsUnprovenThreeNonemptySuffixCopiesBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "different-instruction", "branch", "skip-super",
+                "exception-table", "extra-local-suffix")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedThreeSuffix"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    rejectedThreeNonemptySuffixCopiesConstructor(
                             owner.superName, shape);
             int instructionCount = constructor.instructions.size();
             java.util.List<Integer> opcodes = realOpcodes(constructor);
@@ -1970,6 +2042,42 @@ public class IrCompilerTest {
         owner.version = Opcodes.V1_8;
         MethodNode constructor =
                 multipleSuperThreeSeparateReturnsConstructor(base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int argument : new int[]{7, -7, 0}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
+    public void rewrittenThreeIdenticalNonemptySuffixCopiesPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeMultiSuffixBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeMultiSuffix", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                multipleSuperThreeIdenticalSuffixCopiesConstructor(base.name);
         owner.methods.add(constructor);
 
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -2745,6 +2853,91 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeIdenticalNonemptySuffixCopiesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the three-suffix runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the three-suffix runtime test");
+
+        String ownerName = "example/ThreeMultiSuffixRuntime";
+        String baseName = "example/ThreeMultiSuffixRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-multi-suffix-run");
+        Path inputJar = directory.resolve("three-multi-suffix.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeIdenticalSuffixCopiesJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain three-suffix multi-super Java run");
+        assertEquals(
+                "11" + System.lineSeparator()
+                        + "22" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(transformedConstructor).contains(Opcodes.POP));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("three-suffix multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("three-suffix multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Three-suffix native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native three-suffix multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -7244,6 +7437,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeIdenticalSuffixCopiesJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(
+                multipleSuperThreeIdenticalSuffixCopiesConstructor(baseName));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createReferenceParameterAstoreJar(Path jarPath) throws IOException {
         ClassNode owner = constructorOwner(
                 "example/FlexCtorAstore", "java/lang/Object");
@@ -8611,6 +8834,113 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode multipleSuperThreeIdenticalSuffixCopiesConstructor(
+            String superName) {
+        return multipleSuperThreeSuffixCopiesConstructor(
+                superName, Opcodes.ICONST_4,
+                Opcodes.ICONST_4, Opcodes.ICONST_4);
+    }
+
+    private MethodNode multipleSuperThreeSuffixCopiesConstructor(
+            String superName, int firstConstant,
+            int secondConstant, int thirdConstant) {
+        MethodNode method =
+                multipleSuperThreeSeparateReturnsConstructor(superName);
+        int[] constants = {firstConstant, secondConstant, thirdConstant};
+        int call = 0;
+        for (AbstractInsnNode instruction :
+                method.instructions.toArray()) {
+            if (!(instruction instanceof MethodInsnNode)
+                    || instruction.getOpcode() != Opcodes.INVOKESPECIAL
+                    || !"<init>".equals(((MethodInsnNode) instruction).name)
+                    || !superName.equals(
+                    ((MethodInsnNode) instruction).owner)) {
+                continue;
+            }
+            InsnList suffix = new InsnList();
+            suffix.add(new InsnNode(constants[call++]));
+            suffix.add(new InsnNode(Opcodes.POP));
+            method.instructions.insert(instruction, suffix);
+        }
+        if (call != constants.length) {
+            throw new AssertionError("Expected three chain calls");
+        }
+        return method;
+    }
+
+    private MethodNode rejectedThreeNonemptySuffixCopiesConstructor(
+            String superName, String shape) {
+        MethodNode method = "different-instruction".equals(shape)
+                ? multipleSuperThreeSuffixCopiesConstructor(
+                superName, Opcodes.ICONST_4,
+                Opcodes.ICONST_5, Opcodes.ICONST_4)
+                : multipleSuperThreeIdenticalSuffixCopiesConstructor(
+                superName);
+        java.util.List<MethodInsnNode> calls = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .collect(Collectors.toList());
+
+        if ("different-instruction".equals(shape)) {
+            return method;
+        } else if ("branch".equals(shape)) {
+            AbstractInsnNode firstReturn =
+                    calls.get(0).getNext().getNext().getNext();
+            LabelNode target = new LabelNode();
+            method.instructions.insertBefore(
+                    firstReturn, new JumpInsnNode(Opcodes.GOTO, target));
+            method.instructions.insertBefore(firstReturn, target);
+        } else if ("skip-super".equals(shape)) {
+            LabelNode continueToCalls = new LabelNode();
+            InsnList prefix = new InsnList();
+            prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            prefix.add(new IntInsnNode(Opcodes.BIPUSH, 99));
+            prefix.add(new JumpInsnNode(
+                    Opcodes.IF_ICMPNE, continueToCalls));
+            prefix.add(new InsnNode(Opcodes.RETURN));
+            prefix.add(continueToCalls);
+            method.instructions.insert(prefix);
+        } else if ("exception-table".equals(shape)) {
+            LabelNode start = new LabelNode();
+            LabelNode end = new LabelNode();
+            LabelNode handler = new LabelNode();
+            LabelNode continueToCalls = new LabelNode();
+            InsnList prefix = new InsnList();
+            prefix.add(start);
+            prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            prefix.add(new InsnNode(Opcodes.POP));
+            prefix.add(end);
+            prefix.add(new JumpInsnNode(
+                    Opcodes.GOTO, continueToCalls));
+            prefix.add(handler);
+            prefix.add(new InsnNode(Opcodes.ATHROW));
+            prefix.add(continueToCalls);
+            method.instructions.insert(prefix);
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    start, end, handler, "java/lang/Throwable"));
+        } else if ("extra-local-suffix".equals(shape)) {
+            InsnList prefix = new InsnList();
+            prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            prefix.add(new VarInsnNode(Opcodes.ISTORE, 2));
+            method.instructions.insert(prefix);
+            for (MethodInsnNode call : calls) {
+                InsnList extraRead = new InsnList();
+                extraRead.add(new VarInsnNode(Opcodes.ILOAD, 2));
+                extraRead.add(new InsnNode(Opcodes.POP));
+                method.instructions.insert(call, extraRead);
+            }
+            method.maxLocals = 3;
+        } else {
+            throw new IllegalArgumentException("Unknown shape " + shape);
+        }
+        method.maxStack = 3;
         return method;
     }
 
