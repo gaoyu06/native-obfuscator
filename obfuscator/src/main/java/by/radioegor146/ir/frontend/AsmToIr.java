@@ -50,8 +50,14 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        return build(owner, owner, method);
+    }
+
+    public IrMethod build(String owner, String dynamicConstantResolverOwner,
+                          MethodNode method) {
         method = lowerPrimitiveClassConstants(method);
-        method = DynamicConstantSupport.lower(owner, method);
+        method = DynamicConstantSupport.lower(
+                owner, dynamicConstantResolverOwner, method);
         method = admitInvokeDynamic(owner, method);
         method = splitReferenceAndIntTemporarySlots(method);
         MethodShape shape = validateMethodShape(method);

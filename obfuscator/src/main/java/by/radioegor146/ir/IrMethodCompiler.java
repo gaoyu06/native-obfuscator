@@ -58,9 +58,12 @@ public final class IrMethodCompiler {
                     context.clazz, context.method);
             frontend.build(context.clazz.name, context.method);
         }
-        DynamicConstantSupport.validateResolverInstallation(
-                context.clazz, bytecodeBody);
-        IrMethod method = frontend.build(context.clazz.name, bytecodeBody);
+        String dynamicConstantResolverOwner =
+                DynamicConstantSupport.validateResolverInstallation(
+                        context.clazz, bytecodeBody,
+                        context.obfuscator.getHiddenMethodsPool());
+        IrMethod method = frontend.build(
+                context.clazz.name, dynamicConstantResolverOwner, bytecodeBody);
         IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
         if (selectedMode == IrLoweringMode.EVAL && method.isSynchronizedMethod()) {
             throw new UnsupportedIrConstructException(
@@ -69,7 +72,9 @@ public final class IrMethodCompiler {
         MethodLoweringStrategy strategy = selectedMode == IrLoweringMode.EVAL
                 ? evaluatorStrategy : directStrategy;
         LoweredMethod lowered = strategy.lower(method, new LoweringContext(context));
-        DynamicConstantSupport.installResolvers(context.clazz, bytecodeBody);
+        DynamicConstantSupport.installResolvers(
+                context.clazz, bytecodeBody,
+                context.obfuscator.getHiddenMethodsPool());
 
         if (method.isSynchronizedMethod()) {
             // The IR body owns the method monitor explicitly. Clear the JVM
