@@ -28,7 +28,7 @@ The JAR contains exactly these input classes:
 - `measurement/phase12/IntOperation.class`
 
 Observed SHA-256:
-`fd9d29e35b4dd6238846b0b64e73d05356158c7fbcf2163d34d898acf67b62e4`.
+`6a46c4d65d7aa9e8c49cefca82a221207522310049aaa53d7a3571e1b3e800e3`.
 The corpus covers a constructor and `I`/`J`/reference field stores, field reads,
 an interface default method, an `INVOKEINTERFACE` call, and a method containing
 the unsupported `I2F` opcode. It does not include or claim to represent JDK 17
@@ -56,6 +56,7 @@ javac --release 8 \
   docs/measurement/ir-admission-phase12/src/measurement/phase12/IntOperation.java \
   docs/measurement/ir-admission-phase12/src/measurement/phase12/AdmissionTarget.java
 jar --create \
+  --date=2026-08-29T00:00:00Z \
   --file /tmp/native-obfuscator-ir-admission-phase12/ir-admission-phase12-input.jar \
   -C /tmp/native-obfuscator-ir-admission-phase12/classes .
 jar --list \
