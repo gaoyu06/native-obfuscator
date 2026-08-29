@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing immediate two-call multi-super returns
-[#173](https://github.com/gaoyu06/native-obfuscator/pull/173)
-(parent re-ran 165/165: 158 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `immediateMultiSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#172](https://github.com/gaoyu06/native-obfuscator/pull/172)
-identical-suffix tree. Active process:
+Last updated after landing post-chain `IFNE` to a shared suffix
+[#174](https://github.com/gaoyu06/native-obfuscator/pull/174)
+(parent re-ran 168/168: 161 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `postChainConditionalBranchCompilesAndRunsWithJavaParity`)
+on the post-[#173](https://github.com/gaoyu06/native-obfuscator/pull/173)
+immediate-return tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -83,11 +83,14 @@ legacy。不能当成 JDK 支持矩阵。
   shared join).
   [#173](https://github.com/gaoyu06/native-obfuscator/pull/173) admits
   the same two-call shape when each chain call is immediately followed
-  by `RETURN` (IR body is `RETURN` only). Non-identity `ASTORE 0`, a
-  prefix→suffix branch that is not an admitted join, other mixed
+  by `RETURN` (IR body is `RETURN` only).
+  [#174](https://github.com/gaoyu06/native-obfuscator/pull/174) admits
+  `ILOAD` of a declared int-family argument then `IFNE` to the shared
+  suffix after the first chain call (else `RETURN`). Non-identity
+  `ASTORE 0`, other prefix→suffix jumps/switches, other mixed
   try/catch placements, remaining multi-super shapes (three-or-more
-  separate returns, post-call work, non-identical suffixes), and
-  conditionally assigned extras are still rejected.
+  separate returns, other post-call work, non-identical suffixes),
+  and conditionally assigned extras are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -191,6 +194,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated prefix-return mixed constructor catch (#171) | 158 tests (`IrCompilerTest` 151 + `CodegenModeTest` 7). Parent re-ran 158/158 including `relocatedPrefixReturnHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Identical-suffix multi-super copies (#172) | 162 tests (`IrCompilerTest` 155 + `CodegenModeTest` 7). Parent re-ran 162/162 including `identicalMultiSuperSuffixCopiesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Immediate two-call multi-super returns (#173) | 165 tests (`IrCompilerTest` 158 + `CodegenModeTest` 7). Parent re-ran 165/165 including `immediateMultiSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-chain `IFNE` to shared suffix (#174) | 168 tests (`IrCompilerTest` 161 + `CodegenModeTest` 7). Parent re-ran 168/168 including `postChainConditionalBranchCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -236,10 +240,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (non-identity `ASTORE 0`,
-  prefix→suffix branch that is not an admitted join, other mixed
-  try/catch placements, remaining multi-super shapes such as
-  three-or-more separate returns, post-call work, or non-identical
-  suffixes, conditionally assigned extras) and
+  other prefix→suffix jumps/switches, other mixed try/catch
+  placements, remaining multi-super shapes such as three-or-more
+  separate returns, other post-call work, or non-identical suffixes,
+  conditionally assigned extras) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#169](https://github.com/gaoyu06/native-obfuscator/pull/169),
@@ -256,8 +260,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #173 (immediate
-  multi-super returns). / 落地 #173 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #174 (post-chain
+  IFNE suffix). / 落地 #174 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

@@ -53,12 +53,12 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #173 (immediate two-call multi-super returns) include
+   `master` after #174 (post-chain `IFNE` to a shared suffix) include
    at least: remaining constructor-split rejects (non-identity prefix
-   `ASTORE 0` / receiver-alias forwarding, prefix branch into suffix
-   that is not an admitted join, other mixed prefix/suffix try/catch
-   placements, remaining multi-super shapes such as three-or-more
-   separate returns, post-call work, or non-identical suffixes,
+   `ASTORE 0` / receiver-alias forwarding, other prefix→suffix
+   jumps/switches, other mixed prefix/suffix try/catch placements,
+   remaining multi-super shapes such as three-or-more separate
+   returns, other post-call work, or non-identical suffixes,
    conditionally assigned extras), remaining unsafe/unproven condy
    shapes (non-static, varargs, malformed, cyclic; stay
    reject-before-mutation), and `jsr` / `ret` (obsolete; reject is
