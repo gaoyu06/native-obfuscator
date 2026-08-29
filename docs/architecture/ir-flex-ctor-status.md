@@ -177,7 +177,7 @@ One additional family is reduced to that same shared-join form:
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
-- A long call argument may instead have at most three levels of `LADD`, `LSUB`,
+- A long call argument may instead have at most four levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
   value while keeping the count as a non-recursive int-family leaf. A long
@@ -186,7 +186,7 @@ One additional family is reduced to that same shared-join form:
   declared-argument `LLOAD`; an int-family count leaf uses the existing
   declared-argument `ILOAD` and int-family constant proof. A standalone
   `LNEG` leaf is admitted under the same operand restriction. This proof has
-  its own explicit three-level binary budget: four-or-more nested long
+  its own explicit four-level binary budget: five-or-more nested long
   binaries, computed shift counts, extra-local value or count loads, `LNEG`
   of a constant, double `LNEG`, and `LNEG` of an extra-local or computed value
   remain rejected. The retained bytecode prefix executes admitted operations,
@@ -261,7 +261,7 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
-trees deeper than four levels, long binary expression trees deeper than two
+trees deeper than four levels, long binary expression trees deeper than four
 levels, other unlisted long operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
@@ -840,13 +840,20 @@ Synthetic bytecode unit tests in
   executes both long binary levels, all paths share one hidden bridge, the
   rewritten classes verify, and the complete CMake/g++ JNI transform matches
   plain Java.
-- `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps three-level long
-  trees (including an inner `LDIV`), extra-local long operands, extra-local
-  long-shift value and int-count operands, extra-local `LDIV`/`LREM` operands,
-  `LNEG` of a constant, double `LNEG`, and extra-local or computed `LNEG`
-  operands fail-closed without constructor or hidden-method mutation. The
-  existing non-int-family negative continues to reject `FADD`, `DADD`, and
-  `AALOAD`.
+- `admitsFourLevelNestedLongChainInputs`,
+  `rewrittenFourLevelNestedLongChainInputsPassJvmVerification`, and
+  `fourLevelNestedLongChainInputsCompileAndRunWithJavaParity` cover bounded
+  four-level `LADD`, inner and outer `LDIV`, and an outer `LSHL` whose count
+  remains an int-family leaf. The retained prefix executes every operation,
+  all paths share one hidden bridge, rewritten Java 8 classes verify, and the
+  complete CMake/g++ JNI transform matches plain Java.
+- `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps five-or-more
+  long binary levels (including an inner `LDIV`), extra-local long operands,
+  extra-local long-shift value and int-count operands, extra-local
+  `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
+  or computed `LNEG` operands fail-closed without constructor or hidden-method
+  mutation. The existing non-int-family negative continues to reject `FADD`,
+  `DADD`, and `AALOAD`.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join
