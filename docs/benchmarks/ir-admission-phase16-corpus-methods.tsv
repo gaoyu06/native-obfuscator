@@ -1,0 +1,183 @@
+corpus	fixture	class	method	descriptor	result	reason
+A	clinit/TestClInitStacktrace	Test	<clinit>	()V	IR	
+A	clinit/TestClInitStacktrace	Test	<init>	()V	IR	
+A	clinit/TestClInitStacktrace	Test	main	([Ljava/lang/String;)V	IR	
+A	clinit/TestClInitStacktrace	Test	printStackTrace	()V	IR	
+A	empty/EmptyTest1	Test	<init>	()V	IR	
+A	empty/EmptyTest1	Test	main	([Ljava/lang/String;)V	IR	
+A	indy/IndyTest1	Test1	<init>	()V	IR	
+A	indy/IndyTest1	Test1	lambda$main$0	(Ljava/lang/String;)Z	IR	
+A	indy/IndyTest1	Test1	main	([Ljava/lang/String;)V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 93 (opcode 93)
+A	interface/InterfaceDefault	Test	<init>	()V	IR	
+A	interface/InterfaceDefault	Test	main	([Ljava/lang/String;)V	IR	
+A	interface/InterfaceDefault	Test$Test2	<init>	()V	IR	
+A	interface/InterfaceDefault	Test$TestInterface	defaultMethod	()V	IR	
+A	interface/InterfaceDefaultStacktrace	Test	<init>	()V	IR	
+A	interface/InterfaceDefaultStacktrace	Test	main	([Ljava/lang/String;)V	IR	
+A	interface/InterfaceDefaultStacktrace	Test$Test2	<init>	()V	IR	
+A	interface/InterfaceDefaultStacktrace	Test$TestInterface	defaultMethod	()V	IR	
+A	issues/Issue52	Issue52	<init>	()V	IR	
+A	issues/Issue52	Issue52	main	([Ljava/lang/String;)V	IR	
+A	issues/Issue52	Issue52	test1	()V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 4 (opcode 197)
+A	issues/Issue52	Issue52	test2	()V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 4 (opcode 197)
+A	java-obfuscator-test/JavaObfuscatorTest	Test	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/Clazz	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/Main	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/Main	main	([Ljava/lang/String;)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/accu/Digi	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/accu/Digi	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/cross/Abst1	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/cross/Abst1	mul	(II)I	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/cross/Top	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/cross/Top	add	(II)I	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/cross/Top	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/ctrl/Ctrl	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/ctrl/Ctrl	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/ctrl/Ctrl	runf	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/ctrl/Ctrl	runt	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Exec	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Exec	addF	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Exec$Inner	<init>	(Lpack/tests/basics/inner/Exec;I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Exec$Inner	doAdd	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Test	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/inner/Test	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/overwirte/Sub	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/overwirte/Sub	face	(I)Ljava/lang/String;	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/overwirte/Sub	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/overwirte/Super	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/overwirte/Super	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Exec	<clinit>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Exec	<init>	(I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Exec	doAdd	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Pool	<clinit>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Pool	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Task	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Task	lambda$run$0	(Lpack/tests/basics/runable/Exec;)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/runable/Task	run	()V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 93 (opcode 93)
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/SolAdd	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/SolAdd	get	()I	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/Solver	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/flo	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/flo	solve	(II)I	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/basics/sub/med	<init>	(II)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	<clinit>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	call	(I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	runAdd	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	runAll	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/bench/Calc	runStr	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/annot/annoe	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/annot/annoe	dov	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/annot/annoe	dox	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/annot/annot	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/annot/annot	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Count	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Count	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Countee	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Countee	mpackp	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Countee	mpriv	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Countee	mprot	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/counter/Countee	mpuli	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/field/FObject	<init>	(I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/field/FObject	add	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/field/FTest	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/field/FTest	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/LRun	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/LRun	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/LTest	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/LTest	readAllBytes	(Ljava/io/InputStream;)[B	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 9 (opcode 188)
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/LTest	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/Loader	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/Loader	findClass	(Ljava/lang/String;)Ljava/lang/Class;	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/Loader	getResourceAsStream	(Ljava/lang/String;)Ljava/io/InputStream;	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/loader/Loader	readAllBytes	(Ljava/io/InputStream;)[B	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 9 (opcode 188)
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/res/Accesor	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/res/Accesor	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracee	<clinit>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracee	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracee	doTrace	(I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracee	toTrace	(I)V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracer	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/reflects/retrace/Tracer	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/SecExec	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/SecExec	doShutdown	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/SecTest	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/SecTest	run	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/Sman	<init>	()V	IR	
+A	java-obfuscator-test/JavaObfuscatorTest	pack/tests/security/Sman	checkPermission	(Ljava/security/Permission;)V	IR	
+A	pull-requests/PullRequest72	Main	<init>	()V	IR	
+A	pull-requests/PullRequest72	Main	main	([Ljava/lang/String;)V	IR	
+B-jdk17	InvokeDynamicLambdaE2E	Main	<init>	()V	IR	
+B-jdk17	InvokeDynamicLambdaE2E	Main	decorate	(Ljava/lang/String;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 51 (opcode 93)
+B-jdk17	InvokeDynamicLambdaE2E	Main	lambda$main$0	(II)I	IR	
+B-jdk17	InvokeDynamicLambdaE2E	Main	lambda$main$1	(Ljava/lang/String;Ljava/util/function/IntUnaryOperator;Ljava/lang/Integer;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 54 (opcode 93)
+B-jdk17	InvokeDynamicLambdaE2E	Main	lambda$main$2	()V	IR	
+B-jdk17	InvokeDynamicLambdaE2E	Main	main	([Ljava/lang/String;)V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 76 (opcode 93)
+B-jdk17	MethodHandlesE2E	Base	<init>	()V	IR	
+B-jdk17	MethodHandlesE2E	Base	message	()Ljava/lang/String;	IR	
+B-jdk17	MethodHandlesE2E	Main	<init>	()V	IR	
+B-jdk17	MethodHandlesE2E	Main	main	([Ljava/lang/String;)V	IR	
+B-jdk17	MethodHandlesE2E	Target	<init>	(Ljava/lang/String;)V	IR	
+B-jdk17	MethodHandlesE2E	Target	fail	()V	IR	
+B-jdk17	MethodHandlesE2E	Target	join	(Ljava/lang/String;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 52 (opcode 93)
+B-jdk17	MethodHandlesE2E	Target	sum	(II)I	IR	
+B-jdk17	NestPrivateAccessE2E	Main	<init>	()V	IR	
+B-jdk17	NestPrivateAccessE2E	Main	main	([Ljava/lang/String;)V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 102 (opcode 93)
+B-jdk17	NestPrivateAccessE2E	Main	secret	(I)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 59 (opcode 93)
+B-jdk17	NestPrivateAccessE2E	Main$Worker	<init>	()V	IR	
+B-jdk17	NestPrivateAccessE2E	Main$Worker	access	(LMain;)Ljava/lang/String;	IR	
+B-jdk17	RecordSemanticsE2E	Main	<init>	()V	IR	
+B-jdk17	RecordSemanticsE2E	Main	describe	(Ljava/lang/reflect/RecordComponent;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 54 (opcode 93)
+B-jdk17	RecordSemanticsE2E	Main	main	([Ljava/lang/String;)V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 147 (opcode 93)
+B-jdk17	RecordSemanticsE2E	Point	<init>	(ILjava/lang/String;)V	IR	
+B-jdk17	RecordSemanticsE2E	Point	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 71 (opcode 93)
+B-jdk17	RecordSemanticsE2E	Point	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+B-jdk17	RecordSemanticsE2E	Point	label	()Ljava/lang/String;	IR	
+B-jdk17	RecordSemanticsE2E	Point	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+B-jdk17	RecordSemanticsE2E	Point	x	()I	IR	
+B-jdk17	SealedHierarchyE2E	Circle	<init>	(I)V	IR	
+B-jdk17	SealedHierarchyE2E	Circle	area	()I	IR	
+B-jdk17	SealedHierarchyE2E	Main	<init>	()V	IR	
+B-jdk17	SealedHierarchyE2E	Main	area	(LShape;)I	IR	
+B-jdk17	SealedHierarchyE2E	Main	main	([Ljava/lang/String;)V	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 115 (opcode 93)
+B-jdk17	SealedHierarchyE2E	Rectangle	<init>	(II)V	IR	
+B-jdk17	SealedHierarchyE2E	Rectangle	area	()I	IR	
+B-jdk17	SealedHierarchyE2E	Shape	kind	()Ljava/lang/String;	IR	
+C-jdk21-extra	PatternSwitchE2E	Count	<init>	(I)V	IR	
+C-jdk21-extra	PatternSwitchE2E	Count	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 63 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Count	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Count	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Count	value	()I	IR	
+C-jdk21-extra	PatternSwitchE2E	Main	<init>	()V	IR	
+C-jdk21-extra	PatternSwitchE2E	Main	classify	(Ljava/lang/Object;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 73 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Main	describe	(LValue;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Main	main	([Ljava/lang/String;)V	IR	
+C-jdk21-extra	PatternSwitchE2E	Main	stringLength	(Ljava/lang/Object;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 64 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Text	<init>	(Ljava/lang/String;)V	IR	
+C-jdk21-extra	PatternSwitchE2E	Text	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 63 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Text	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Text	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	PatternSwitchE2E	Text	value	()Ljava/lang/String;	IR	
+C-jdk21-extra	RecordPatternsE2E	Box	<init>	(LPoint;)V	IR	
+C-jdk21-extra	RecordPatternsE2E	Box	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 63 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Box	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Box	point	()LPoint;	IR	
+C-jdk21-extra	RecordPatternsE2E	Box	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 62 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Main	<init>	()V	IR	
+C-jdk21-extra	RecordPatternsE2E	Main	coordinateSum	(Ljava/lang/Object;)I	legacy-fallback	Local 5 is ref but this instruction requires i32 at bytecode instruction 22 (opcode 54)
+C-jdk21-extra	RecordPatternsE2E	Main	inspect	(Ljava/lang/Object;)Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 61 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Main	main	([Ljava/lang/String;)V	IR	
+C-jdk21-extra	RecordPatternsE2E	Pair	<init>	(LBox;LBox;)V	IR	
+C-jdk21-extra	RecordPatternsE2E	Pair	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 71 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Pair	first	()LBox;	IR	
+C-jdk21-extra	RecordPatternsE2E	Pair	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Pair	second	()LBox;	IR	
+C-jdk21-extra	RecordPatternsE2E	Pair	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Point	<init>	(II)V	IR	
+C-jdk21-extra	RecordPatternsE2E	Point	equals	(Ljava/lang/Object;)Z	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 71 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Point	hashCode	()I	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Point	toString	()Ljava/lang/String;	legacy-fallback	Unsupported instruction for phase-two IR at bytecode instruction 70 (opcode 93)
+C-jdk21-extra	RecordPatternsE2E	Point	x	()I	IR	
+C-jdk21-extra	RecordPatternsE2E	Point	y	()I	IR	
+C-jdk21-extra	SequencedCollectionsE2E	Main	<init>	()V	IR	
+C-jdk21-extra	SequencedCollectionsE2E	Main	main	([Ljava/lang/String;)V	IR	
