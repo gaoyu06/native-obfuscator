@@ -1,26 +1,37 @@
-# IR compiler phase 11 / IR 编译器第十一阶段
+# IR compiler phase 11 review / IR 编译器第十一阶段审查
 
-Required base / 必须基于:
-`cursor/ir-compiler-phase10-6d81`
-(`b8cdb8efb09c135e7d119249f48feba22cf7e8f4`).
-This is the phase-10 tip containing the typed field work and the retained
-phase-9 array-return `jarray` carrier fix. /
-这是包含 typed 字段实现及保留的 phase-9 数组返回 `jarray` carrier 修复的
-phase-10 tip。
+Review branch / 审查分支:
+`cursor/ir-phase11-sol-review-6d81`
+
+Reviewed subject / 审查对象:
+[`cursor/ir-compiler-phase11-6d81`](https://github.com/gaoyu06/native-obfuscator/pull/78)
+at `6fc64927a53c777a36c38e54aaed01b1bd696ed3`, based on
+[`cursor/ir-compiler-phase10-6d81`](https://github.com/gaoyu06/native-obfuscator/pull/73)
+at `b8cdb8efb09c135e7d119249f48feba22cf7e8f4`. /
+审查对象为 `6fc6492` 的 phase-11 分支；其基线为 `b8cdb8e` 的 phase-10
+分支。
 
 ## Summary / 摘要
 
-Phase 11 adds `INVOKEINTERFACE` and non-constructor `INVOKESPECIAL` to the
-optional Java bytecode → typed CFG IR → C++/JNI compiler. Both opcodes use only
-the existing exact `I`, exact `J`, object/array reference, and `V` invoke
-carriers. The default remains `legacy`.
+**Verdict: Accept. Compiler code changed: No.**
 
-第十一阶段为可选的 Java 字节码 → typed CFG IR → C++/JNI 编译路径增加
-`INVOKEINTERFACE` 与非构造器 `INVOKESPECIAL`。两种 opcode 仅使用现有的精确
-`I`、精确 `J`、对象/数组引用及 `V` invoke carrier。默认值仍为 `legacy`。
+The review found no correctness bug in the requested scope. Phase 11 adds
+`INVOKEINTERFACE` and non-constructor `INVOKESPECIAL` to the optional Java
+bytecode → typed CFG IR → C++/JNI compiler. Both opcodes use only the existing
+exact `I`, exact `J`, object/array reference, and `V` invoke carriers. The
+default remains `legacy`.
 
-## (a) Change scope / 本次改动范围
+**结论：接受。编译器代码改动：无。**
 
+审查在指定范围内未发现正确性缺陷。第十一阶段为可选的 Java 字节码 → typed
+CFG IR → C++/JNI 编译路径增加 `INVOKEINTERFACE` 与非构造器
+`INVOKESPECIAL`。两种 opcode 仅使用现有的精确 `I`、精确 `J`、对象/数组引用及
+`V` invoke carrier。默认值仍为 `legacy`。
+
+## (a) Review scope and findings / 审查范围与发现
+
+- This review adds only `docs/architecture/ir-phase11-review.md` and updates
+  this handoff body; no compiler or test source changed.
 - Adds `IrNodes.Invoke.Kind.INTERFACE` and admits `INVOKEINTERFACE` for exact
   `I`, exact `J`, object/array reference, and `V` return descriptors.
 - Resolves the interface owner through the existing class cache, uses
@@ -43,6 +54,8 @@ carriers. The default remains `legacy`.
   constructor-method exclusion, the `legacy` default, and every existing
   snippet.
 
+- 本次审查仅新增 `docs/architecture/ir-phase11-review.md` 并更新此交接正文；
+  编译器与测试源码均未改动。
 - 增加 `IrNodes.Invoke.Kind.INTERFACE`，并为精确 `I`、精确 `J`、对象/数组引用及
   `V` 返回描述符接纳 `INVOKEINTERFACE`。
 - 通过现有 class cache 解析接口 owner，使用 `GetMethodID`，并生成
@@ -100,19 +113,22 @@ nonvirtual receiver/class/method-ID 顺序、null receiver 异常路由，以及
    必须基于 `cursor/ir-compiler-phase10-6d81` 的 `b8cdb8e…` 比较，不得改用
    `master` 或 docs-only review 分支。
 2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 53
+   inspect the actual JUnit XML counts. Review result: `IrCompilerTest` 53
    plus `CodegenModeTest` 2, total 55; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。记录结果为 53 + 2，共 55 个测试；跳过、失败、错误均为零。
+   XML 计数。审查结果为 53 + 2，共 55 个测试；跳过、失败、错误均为零。
 3. With g++ and JNI headers present, require
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to remain
    unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit. Recorded result: the 59-method smoke
-   and independent syntax check both exited zero.
+   retained generated translation unit. Review result: the XML testcase
+   completed in 0.280 s without a `<skipped>` element; the generated source
+   contained 59 `IR codegen:` method markers, and the independent syntax check
+   exited zero.
    当 g++ 与 JNI headers 存在时，必须确认
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   同一份生成 translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录
-   结果：59-method smoke 与独立语法检查均以零退出。
+   同一份生成 translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。审查
+   结果：该 XML testcase 用时 0.280 秒且没有 `<skipped>`；生成源码含 59 个
+   `IR codegen:` 方法标记，独立语法检查以零退出。
 4. Inspect generated C++ for exact `Call[Int|Long|Object|Void]Method` and
    `CallNonvirtual[Int|Long|Object|Void]Method` families. Verify the interface
    argument count matches its descriptor and nonvirtual calls pass receiver,
@@ -120,10 +136,10 @@ nonvirtual receiver/class/method-ID 顺序、null receiver 异常路由，以及
    检查生成 C++ 是否使用精确的 `Call[Int|Long|Object|Void]Method` 与
    `CallNonvirtual[Int|Long|Object|Void]Method` family。确认接口实参数量与描述符
    一致，并确认 nonvirtual 调用依次传入 receiver、声明类、method ID 及描述符参数。
-5. Verify a null interface receiver takes the shared exceptional exit and keeps
-   the `NullPointerException` pending.
-   确认 null 接口 receiver 进入共享异常出口，并保持
-   `NullPointerException` pending。
+5. Verify a null interface receiver takes the exceptional exit and keeps the
+   `NullPointerException` pending until normal catch dispatch or native return.
+   确认 null 接口 receiver 进入异常出口，并在正常 catch dispatch 或 native
+   return 之前保持 `NullPointerException` pending。
 6. During conflict resolution, retain fallback-before-mutation, the phase-9
    `jarray` cast, phase-10 field coverage, constructor-method exclusion, the
    `legacy` default, and all existing snippets.
