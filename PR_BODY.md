@@ -33,7 +33,16 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Independent result and JUnit XML counts: pending the post-commit rerun.
+Independent result on 2026-08-29: `BUILD SUCCESSFUL in 16s`; all nine
+actionable Gradle tasks executed. JUnit XML reports:
+
+```text
+IrCompilerTest: tests=97, skipped=0, failures=0, errors=0
+CodegenModeTest: tests=5, skipped=0, failures=0, errors=0
+Total: 102 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The assertion-based `g++ -std=c++17 -fsyntax-only` gate ran and passed.
 
 ## 中文
 
@@ -58,4 +67,7 @@ Independent result and JUnit XML counts: pending the post-commit rerun.
   `legacy` codegen 默认值，不在本审查中加入 evaluator、interpreter 或 CLI
   默认值变更。
 
-独立复跑结果及 JUnit XML 数量：等待提交后的聚焦复跑。
+2026-08-29 独立复跑结果为 `BUILD SUCCESSFUL in 16s`，九个 actionable Gradle
+task 均实际执行。JUnit XML 显示 `IrCompilerTest` 97 个、
+`CodegenModeTest` 5 个，合计 102 个测试，0 skipped、0 failures、0 errors。
+基于断言的 `g++ -std=c++17 -fsyntax-only` 门槛实际运行并通过。

@@ -71,7 +71,7 @@ change is requested.
 
 ## Focused verification / 聚焦验证
 
-The required independent rerun will use:
+The required independent rerun used:
 
 ```text
 CC=gcc CXX=g++ ./gradlew :obfuscator:test \
@@ -79,9 +79,24 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Independent result and JUnit XML counts: pending the post-commit rerun.
+Independent result on 2026-08-29: `BUILD SUCCESSFUL in 16s`; all nine
+actionable Gradle tasks were executed. Counts read from the generated JUnit
+XML:
 
-独立复跑结果及 JUnit XML 数量：等待提交后的聚焦复跑。
+```text
+IrCompilerTest: tests=97, skipped=0, failures=0, errors=0
+CodegenModeTest: tests=5, skipped=0, failures=0, errors=0
+Total: 102 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The assertion-based `g++ -std=c++17 -fsyntax-only` gate ran as part of
+`IrCompilerTest` and passed in 0.385 seconds.
+
+2026-08-29 独立复跑结果为 `BUILD SUCCESSFUL in 16s`，九个 actionable Gradle
+task 均实际执行。生成的 JUnit XML 显示 `IrCompilerTest` 97 个、
+`CodegenModeTest` 5 个，合计 102 个测试，0 skipped、0 failures、0 errors。
+`IrCompilerTest` 中基于断言的 `g++ -std=c++17 -fsyntax-only` 门槛实际运行
+并通过，用时 0.385 秒。
 
 ## Ship-readiness / 交付准备度
 
