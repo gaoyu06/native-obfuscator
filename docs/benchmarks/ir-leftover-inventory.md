@@ -3,7 +3,7 @@
 ## Scope and interpretation
 
 - Measured compiler base (merge-base with `origin/master`): `08bbcf45803fb2f9b28bdbf6880d4093a16d923f`
-- Measurement commit: `bd8120ef0f55d28d2f78b2e42b03e6fb9655c464`
+- Measurement commit: `19d0da673c398511e62569b8e4b4db2e93be5a2a`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge** or a behavioral/native E2E claim.
 - The CLI default is still **`legacy`**; this run did not change it.
