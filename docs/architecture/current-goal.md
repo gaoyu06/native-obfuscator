@@ -53,13 +53,13 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #185 (leaf-only `IAND`/`IOR`/`IXOR` chain inputs)
+   `master` after #186 (leaf-only `ISHL`/`ISHR`/`IUSHR` chain inputs)
    include at least: remaining constructor-split rejects (non-identity
    prefix `ASTORE 0` / receiver-alias forwarding, unproven
    prefix→suffix jumps/switches, other mixed prefix/suffix try/catch
    placements, remaining multi-super shapes such as
-   nested/`IDIV`/shift computed inputs or non-identical
-   suffixes, extras still unassigned on a bridge-taking path),
+   nested/`IDIV` computed inputs or non-identical suffixes,
+   extras still unassigned on a bridge-taking path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
    (obsolete; reject is fine). In-tree ClassicTest / JDK fixture
