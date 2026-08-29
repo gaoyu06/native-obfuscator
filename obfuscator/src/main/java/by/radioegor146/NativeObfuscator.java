@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -571,11 +572,9 @@ public class NativeObfuscator {
             }
 
             logger.info("Jar file ready!");
-            Manifest mf = jar.getManifest();
-            if (mf != null) {
-                out.putNextEntry(new ZipEntry(JarFile.MANIFEST_NAME));
-                mf.write(out);
-            }
+            Manifest mf = buildOutputManifest(jar.getManifest());
+            out.putNextEntry(new ZipEntry(JarFile.MANIFEST_NAME));
+            mf.write(out);
             out.closeEntry();
             metadataReader.close();
         }
@@ -588,6 +587,30 @@ public class NativeObfuscator {
         Files.write(cppDir.resolve("CMakeLists.txt"), cMakeBuilder.build().getBytes(StandardCharsets.UTF_8));
 
         return nativeDir;
+    }
+
+    static final Attributes.Name ENABLE_NATIVE_ACCESS =
+            new Attributes.Name("Enable-Native-Access");
+
+    /**
+     * Builds the manifest written to the output JAR. Generated classes call
+     * {@code System.load}/{@code System.loadLibrary}, which JEP 472 restricts on
+     * JDK 24+. Declaring {@code Enable-Native-Access: ALL-UNNAMED} lets a
+     * {@code java -jar} launch grant native access to the unnamed module without
+     * a command-line flag. Any pre-existing, more specific value from the input
+     * manifest is preserved; all other input attributes (e.g. {@code Main-Class})
+     * are carried through unchanged.
+     */
+    static Manifest buildOutputManifest(Manifest inputManifest) {
+        Manifest mf = inputManifest != null ? new Manifest(inputManifest) : new Manifest();
+        Attributes mainAttributes = mf.getMainAttributes();
+        if (mainAttributes.getValue(Attributes.Name.MANIFEST_VERSION) == null) {
+            mainAttributes.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        }
+        if (mainAttributes.getValue(ENABLE_NATIVE_ACCESS) == null) {
+            mainAttributes.put(ENABLE_NATIVE_ACCESS, "ALL-UNNAMED");
+        }
+        return mf;
     }
 
     private static MethodNode readOriginalMethod(byte[] classBytes, String name,
