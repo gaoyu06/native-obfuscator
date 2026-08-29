@@ -389,14 +389,34 @@ def write_results(
     counts: dict[str, collections.Counter[str]] = collections.defaultdict(
         collections.Counter
     )
+    fixture_counts: dict[
+        tuple[str, str], collections.Counter[str]
+    ] = collections.defaultdict(collections.Counter)
     reasons: dict[str, collections.Counter[str]] = collections.defaultdict(
         collections.Counter
+    )
+    reason_families: collections.Counter[tuple[str, str, str, str]] = (
+        collections.Counter()
     )
     for row in rows:
         counts[row["corpus"]]["inventory"] += 1
         counts[row["corpus"]][row["result"]] += 1
+        fixture_key = (row["corpus"], row["fixture"])
+        fixture_counts[fixture_key]["inventory"] += 1
+        fixture_counts[fixture_key][row["result"]] += 1
         if row["reason"]:
             reasons[row["corpus"]][row["reason"]] += 1
+            match = re.fullmatch(
+                r"(.*) at bytecode instruction \d+ \(opcode (\d+)\)",
+                row["reason"],
+            )
+            if match:
+                message, opcode = match.groups()
+            else:
+                message, opcode = row["reason"], "n/a"
+            reason_families[
+                (row["corpus"], row["result"], opcode, message)
+            ] += 1
     with (work / "raw-counts.txt").open("w", encoding="utf-8") as stream:
         print("corpus\tinventory\tIR\tlegacy-fallback\tconstructor-left-java\tmissing", file=stream)
         for corpus in sorted(counts):
@@ -411,6 +431,33 @@ def write_results(
                 sep="\t",
                 file=stream,
             )
+    with (work / "fixture-counts.tsv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+        writer.writerow(
+            [
+                "corpus",
+                "fixture",
+                "inventory",
+                "IR",
+                "legacy-fallback",
+                "constructor-left-java",
+                "missing",
+            ]
+        )
+        for (corpus, fixture), count in sorted(fixture_counts.items()):
+            writer.writerow(
+                [
+                    corpus,
+                    fixture,
+                    count["inventory"],
+                    count["IR"],
+                    count["legacy-fallback"],
+                    count["constructor-left-java"],
+                    count["missing"],
+                ]
+            )
     with (work / "fallback-histogram.tsv").open(
         "w", encoding="utf-8", newline=""
     ) as stream:
@@ -421,6 +468,22 @@ def write_results(
                 reasons[corpus].items(), key=lambda item: (-item[1], item[0])
             ):
                 writer.writerow([corpus, count, reason])
+    with (work / "fallback-family-histogram.tsv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+        writer.writerow(["corpus", "result", "count", "opcode", "message"])
+        for (corpus, result, opcode, message), count in sorted(
+            reason_families.items(),
+            key=lambda item: (
+                item[0][0],
+                item[0][1],
+                -item[1],
+                item[0][2],
+                item[0][3],
+            ),
+        ):
+            writer.writerow([corpus, result, count, opcode, message])
 
 
 def main() -> int:
@@ -543,6 +606,11 @@ def main() -> int:
         print((work / "raw-counts.txt").read_text(encoding="utf-8"), end="")
         print("\nFallback histogram:")
         print((work / "fallback-histogram.tsv").read_text(encoding="utf-8"), end="")
+        print("\nFallback family histogram:")
+        print(
+            (work / "fallback-family-histogram.tsv").read_text(encoding="utf-8"),
+            end="",
+        )
         return 0
     finally:
         recorder.close()
