@@ -1,7 +1,7 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Updates the documentation-only maintainer brief from draft PR #67 through
+Stacks the documentation-only maintainer brief on draft PR #67 and adds
 #66 and #68–#71, using only claims in their named branch documents. It
 preserves #53's `N/A` evaluator timing, #37/#50's unmet requirement 7, and the
 complete written engineering goal. #70, which contains the reviewed
