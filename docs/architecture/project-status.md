@@ -53,7 +53,10 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   [#137](https://github.com/gaoyu06/native-obfuscator/pull/137) (Sol
   accept-with-nits [#138](https://github.com/gaoyu06/native-obfuscator/pull/138))
   serializes a narrow i32/i64 slice to a method-data stream plus a C++17
-  trampoline. `LDIV`/`LREM` opcodes `0x2b`/`0x2c` stay reserved unused.
+  trampoline. [#139](https://github.com/gaoyu06/native-obfuscator/pull/139)
+  (Sol accept [#142](https://github.com/gaoyu06/native-obfuscator/pull/142))
+  wires `0x2b`/`0x2c` to phase-20 `LongDivRem`; try/catch around those ops
+  still falls back.
   Sources are copied into generated `cpp/` only for this lowering.
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
@@ -119,9 +122,8 @@ reader/bench notes remain historical.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Wire evaluator `0x2b`/`0x2c` to the phase-20 `LongDivRem` nodes, or keep
-  those methods on fallback.
-- Widen the interpreter beyond the static `int` slice (long ops, objects).
+- Widen the interpreter beyond the static `int` slice (objects / exceptions;
+  i64 increment is open as #140).
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答

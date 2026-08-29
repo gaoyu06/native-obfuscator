@@ -85,6 +85,7 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 | [reviews/interpreter-on-master-fable.md](reviews/interpreter-on-master-fable.md) | Fable accept-with-nits of #124 |
 | [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` on master (default `direct`; #137) |
 | [reviews/ir-eval-port-sol.md](reviews/ir-eval-port-sol.md) | Sol accept-with-nits of #137 |
+| [reviews/ir-eval-ldiv-sol.md](reviews/ir-eval-ldiv-sol.md) | Sol accept of #139 `LDIV`/`LREM` wire-up |
 | [eval/](eval/) | Reader / recovery notes (requirement 7 unmet) |
 
 Older #17–#28 sibling flags and old evaluator PRs #42–#87 are not the current CLI.
