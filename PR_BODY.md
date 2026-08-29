@@ -20,8 +20,8 @@ No.
 
 `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
 
-Expected focused total after this increment: 225 tests (218
-`IrCompilerTest` + 7 `CodegenModeTest`), with zero failures, errors, or skips.
+Focused gate result: 225 tests (218 `IrCompilerTest` + 7
+`CodegenModeTest`), with zero failures, errors, or skips.
 
 ## (d) Scope and follow-up
 
@@ -50,8 +50,8 @@ and `jsr`/`ret` rejected. Compiler defaults are unchanged.
 
 `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
 
-本次增量后的预期聚焦测试总数为 225（`IrCompilerTest` 218 项 +
-`CodegenModeTest` 7 项），失败、错误和跳过均为零。
+聚焦测试结果为 225 项（`IrCompilerTest` 218 项 + `CodegenModeTest`
+7 项），失败、错误和跳过均为零。
 
 ## (d) 范围与后续
 
