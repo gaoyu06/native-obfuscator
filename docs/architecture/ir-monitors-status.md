@@ -46,12 +46,14 @@ Status recorded on 2026-08-29 from `cursor/ir-if-acmp-6d81` at `34de8d6`.
 
 ## Verification
 
-The acceptance command and exact JUnit XML counts are recorded in
-`PR_BODY.md`. Focused execution covers synchronized static and instance
-methods, an explicit enter/exit block, null enter to caught
-`NullPointerException`, and reject-before-mutation for unstructured pairing.
-The existing compiled-and-executed `LCMP` and `IF_ACMP` harnesses remain in
-the selected test class.
+The required acceptance command completed with `BUILD SUCCESSFUL`. JUnit XML
+records 118 tests, 0 skipped, 0 failures, and 0 errors: `IrCompilerTest` 111
+and `CodegenModeTest` 7.
+
+Focused execution covers synchronized static and instance methods, an
+explicit enter/exit block, null enter to caught `NullPointerException`, and
+reject-before-mutation for unstructured pairing. The existing
+compiled-and-executed `LCMP` and `IF_ACMP` harnesses also ran.
 
 ## Ship readiness
 

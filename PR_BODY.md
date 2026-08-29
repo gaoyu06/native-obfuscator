@@ -31,7 +31,19 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Exact JUnit XML counts will be recorded after the committed acceptance run.
+Result: `BUILD SUCCESSFUL`; 118 tests, 0 skipped, 0 failures, 0 errors:
+
+- `IrCompilerTest`: 111 tests, 0 skipped, 0 failures, 0 errors.
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors.
+
+Counts are from the generated JUnit XML reports. Executed C++ coverage included:
+
+- `executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable`: synchronized
+  static counter, synchronized instance normal and exceptional returns,
+  explicit enter/exit, and null enter routed to caught NPE.
+- `executesLongCompareSemanticsWhenToolchainAvailable`.
+- `executesReferenceCompareSemanticsWhenToolchainAvailable`.
+- `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable`.
 
 ## (b) Ship-ready?
 
@@ -85,7 +97,19 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-提交后的验收运行结束后，将填写 JUnit XML 的精确计数。
+结果：`BUILD SUCCESSFUL`；共 118 项测试，0 跳过、0 失败、0 错误：
+
+- `IrCompilerTest`：111 项，0 跳过、0 失败、0 错误。
+- `CodegenModeTest`：7 项，0 跳过、0 失败、0 错误。
+
+计数来自生成的 JUnit XML 报告。已执行的 C++ 覆盖包括：
+
+- `executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable`：同步静态
+  counter、同步实例方法的普通及异常返回、显式 enter/exit，以及 null enter
+  路由到被捕获的 NPE。
+- `executesLongCompareSemanticsWhenToolchainAvailable`。
+- `executesReferenceCompareSemanticsWhenToolchainAvailable`。
+- `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable`。
 
 ## (b) 是否可直接上线？
 
