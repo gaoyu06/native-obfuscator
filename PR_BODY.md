@@ -1,117 +1,131 @@
-# IR compiler phase 10 / IR 编译器第十阶段
+# IR compiler phase 11 / IR 编译器第十一阶段
 
-Preferred base / 首选基线:
-`cursor/ir-phase9-sol-review-6d81`
-(`0e323da959d34f29b3c3cede206e48aa96a4559e`).
-This is the reviewed phase-9 tip containing the array-return `jarray` carrier
-fix. / 这是包含数组返回 `jarray` carrier 修复的 phase-9 已审查 tip。
+Required base / 必须基于:
+`cursor/ir-compiler-phase10-6d81`
+(`b8cdb8efb09c135e7d119249f48feba22cf7e8f4`).
+This is the phase-10 tip containing the typed field work and the retained
+phase-9 array-return `jarray` carrier fix. /
+这是包含 typed 字段实现及保留的 phase-9 数组返回 `jarray` carrier 修复的
+phase-10 tip。
 
 ## Summary / 摘要
 
-Phase 10 adds typed instance and static field access to the optional Java
-bytecode → typed CFG IR → C++/JNI compiler. Exact `I`, exact `J`, and object or
-array reference fields now use their matching JNI carriers and accessors. The
-default remains `legacy`.
+Phase 11 adds `INVOKEINTERFACE` and non-constructor `INVOKESPECIAL` to the
+optional Java bytecode → typed CFG IR → C++/JNI compiler. Both opcodes use only
+the existing exact `I`, exact `J`, object/array reference, and `V` invoke
+carriers. The default remains `legacy`.
 
-第十阶段为可选的 Java 字节码 → typed CFG IR → C++/JNI 编译路径增加 typed 实例与
-静态字段访问。精确 `I`、精确 `J` 以及对象或数组引用字段分别使用匹配的 JNI
-carrier 与 accessor。默认值仍为 `legacy`。
+第十一阶段为可选的 Java 字节码 → typed CFG IR → C++/JNI 编译路径增加
+`INVOKEINTERFACE` 与非构造器 `INVOKESPECIAL`。两种 opcode 仅使用现有的精确
+`I`、精确 `J`、对象/数组引用及 `V` invoke carrier。默认值仍为 `legacy`。
 
 ## (a) Change scope / 本次改动范围
 
-- Admits `GETFIELD`, `PUTFIELD`, `GETSTATIC`, and `PUTSTATIC` for exact `I`,
-  exact `J`, and object/array field descriptors.
-- Maps `I` to `IrType.I32` / `jint`, `J` to `IrType.I64` / `jlong`, and
-  object/array descriptors to `IrType.REFERENCE` / `jobject`; there is no
-  implicit integer widening for field access.
-- Selects `Get/Set[Static]IntField`, `Get/Set[Static]LongField`, or
-  `Get/Set[Static]ObjectField` from the descriptor while retaining the existing
-  `CachedFieldInfo`, `cfields`, `GetFieldID`, and `GetStaticFieldID` paths.
-- Routes a null instance receiver through the block exceptional exit with
-  `NullPointerException` pending.
-- Rejects field sorts `Z`, `B`, `C`, `S`, `F`, and `D` during frontend
-  admission. They remain per-method fallback cases.
-- Adds instance/static get+put round-trips for `I`, `J`, object references, and
-  `[I` fields; null-receiver and fallback-before-mutation regressions; and all
-  new methods to the retained g++ translation unit.
-- Preserves the phase-9 array-return regression and `jarray` boundary cast,
-  constructor-method exclusion, `legacy` default, and every existing snippet.
+- Adds `IrNodes.Invoke.Kind.INTERFACE` and admits `INVOKEINTERFACE` for exact
+  `I`, exact `J`, object/array reference, and `V` return descriptors.
+- Resolves the interface owner through the existing class cache, uses
+  `GetMethodID`, and emits `CallIntMethod`, `CallLongMethod`,
+  `CallObjectMethod`, or `CallVoidMethod`.
+- Adds non-constructor `INVOKESPECIAL` for the same carrier set and emits
+  `CallNonvirtualIntMethod`, `CallNonvirtualLongMethod`,
+  `CallNonvirtualObjectMethod`, or `CallNonvirtualVoidMethod` with receiver,
+  declaring class, method ID, and arguments.
+- Keeps `<init>` calls on the existing `CallNonvirtualVoidMethod` path.
+- Validates invoke argument count, argument types, and result type against the
+  descriptor. Primitive sorts `Z`, `B`, `C`, `S`, `F`, and `D` remain rejected
+  instead of being widened.
+- Treats interface calls as potentially throwing and routes null receivers and
+  pending JNI exceptions through the block exceptional exit.
+- Adds interface and special I/J/reference/V regressions, an interface
+  null-receiver catch case, unsupported-descriptor and `invokedynamic`
+  rejection, and fallback-before-mutation after both newly admitted calls.
+- Preserves the phase-9 array-return and phase-10 field regressions,
+  constructor-method exclusion, the `legacy` default, and every existing
+  snippet.
 
-- 为精确 `I`、精确 `J` 及对象/数组字段描述符接纳 `GETFIELD`、`PUTFIELD`、
-  `GETSTATIC` 与 `PUTSTATIC`。
-- 将 `I` 映射到 `IrType.I32` / `jint`，将 `J` 映射到 `IrType.I64` /
-  `jlong`，将对象/数组描述符映射到 `IrType.REFERENCE` / `jobject`；字段访问
-  不进行隐式整数拓宽。
-- 根据描述符选择 `Get/Set[Static]IntField`、`Get/Set[Static]LongField` 或
-  `Get/Set[Static]ObjectField`，并保留现有 `CachedFieldInfo`、`cfields`、
-  `GetFieldID` 与 `GetStaticFieldID` 路径。
-- 实例字段接收者为 null 时，在 `NullPointerException` 保持 pending 的情况下走
-  当前 block 的异常出口。
-- 在 frontend 准入阶段拒绝 `Z`、`B`、`C`、`S`、`F` 与 `D` 字段 sort；这些
-  情况继续按方法 fallback。
-- 新增实例/静态 `I`、`J`、对象引用及 `[I` 字段的 get+put round-trip，
-  null-receiver 与 mutation 前 fallback 回归，并将全部新方法加入保留的 g++
-  translation unit。
-- 保留 phase-9 数组返回回归与 `jarray` 边界转换、构造器方法体排除、
-  `legacy` 默认值及全部现有 snippets。
+- 增加 `IrNodes.Invoke.Kind.INTERFACE`，并为精确 `I`、精确 `J`、对象/数组引用及
+  `V` 返回描述符接纳 `INVOKEINTERFACE`。
+- 通过现有 class cache 解析接口 owner，使用 `GetMethodID`，并生成
+  `CallIntMethod`、`CallLongMethod`、`CallObjectMethod` 或
+  `CallVoidMethod`。
+- 为相同 carrier 集接纳非构造器 `INVOKESPECIAL`，并以 receiver、声明类、
+  method ID 和参数生成 `CallNonvirtualIntMethod`、
+  `CallNonvirtualLongMethod`、`CallNonvirtualObjectMethod` 或
+  `CallNonvirtualVoidMethod`。
+- `<init>` 调用继续使用现有 `CallNonvirtualVoidMethod` 路径。
+- 按描述符校验 invoke 参数数量、参数类型及结果类型。primitive sort `Z`、`B`、
+  `C`、`S`、`F` 与 `D` 继续被拒绝，不进行拓宽。
+- 将接口调用视为可抛异常；null receiver 和 pending JNI 异常均经当前 block
+  的异常出口路由。
+- 新增接口与 special 的 I/J/引用/V 回归、接口 null-receiver catch、
+  不支持描述符与 `invokedynamic` 拒绝，以及两种新调用之后的 mutation 前
+  fallback 回归。
+- 保留 phase-9 数组返回及 phase-10 字段回归、构造器方法体排除、`legacy`
+  默认值及全部现有 snippets。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
 **No / 否。**
 
-Phase 10 remains a partial, opt-in compiler slice. Unsupported bytecodes and
-descriptors still fall back, including the six other primitive field sorts,
+Phase 11 remains a partial, opt-in compiler slice. Unsupported bytecodes and
+descriptors still fall back, including other primitive invoke carriers,
 float/double operations, `MULTIANEWARRAY`, non-`int` primitive array
-operations, `INVOKEINTERFACE`, invokedynamic, non-constructor
-`INVOKESPECIAL`, constructor method bodies, and category-two stack
+operations, invokedynamic, constructor method bodies, and category-two stack
 manipulation. Focused unit and C++ syntax evidence does not replace
 supported-platform native runtime-parity gates.
 
-第十阶段仍是部分、可选的编译器增量。不支持的字节码与描述符仍会 fallback，包括
-其余六种 primitive 字段 sort、float/double 操作、`MULTIANEWARRAY`、非 `int`
-primitive array 操作、`INVOKEINTERFACE`、invokedynamic、非构造器
-`INVOKESPECIAL`、构造器方法体及 category-two stack manipulation。聚焦单测与
-C++ 语法证据不能替代受支持平台上的 native 运行时等价性门禁。
+第十一阶段仍是部分、可选的编译器增量。不支持的字节码与描述符继续 fallback，
+包括其他 primitive invoke carrier、float/double 操作、`MULTIANEWARRAY`、
+非 `int` primitive array 操作、invokedynamic、构造器方法体及 category-two
+stack manipulation。聚焦单测与 C++ 语法证据不能替代受支持平台上的 native
+运行时等价性门禁。
 
 ## (c) Is review required? / 上线前是否需要 review？
 
 **Yes / 是。**
 
-Review must confirm descriptor-exact IR typing and JNI accessor selection,
-field cache identity for instance versus static access, null-receiver
-exception routing, and fallback-before-mutation. The stacked phase-9
-array-return carrier fix must remain present.
+Review must confirm descriptor-exact IR typing, interface lookup and virtual
+JNI-family selection, nonvirtual receiver/class/method-ID ordering,
+null-receiver exception routing, and fallback-before-mutation. The stacked
+phase-9 array-return and phase-10 field regressions must remain present.
 
-Review 必须确认描述符精确的 IR typing 与 JNI accessor 选择、实例和静态访问的
-字段缓存身份、null receiver 异常路由，以及 mutation 前 fallback。堆叠基线中的
-phase-9 数组返回 carrier 修复必须保留。
+Review 必须确认描述符精确的 IR typing、接口 lookup 与 virtual JNI family 选择、
+nonvirtual receiver/class/method-ID 顺序、null receiver 异常路由，以及 mutation
+前 fallback。堆叠基线中的 phase-9 数组返回与 phase-10 字段回归必须保留。
 
 ## (d) Review preconditions / Review 前置条件
 
-1. Compare against `cursor/ir-phase9-sol-review-6d81` at `0e323da…`, not
-   `master`, the unfixed phase-9 branch, or the Fable review branch.
-   必须基于 `cursor/ir-phase9-sol-review-6d81` 的 `0e323da…` 比较，不得改用
-   `master`、未修复的 phase-9 分支或 Fable review 分支。
+1. Compare against `cursor/ir-compiler-phase10-6d81` at `b8cdb8e…`, not
+   `master` or the docs-only review branches.
+   必须基于 `cursor/ir-compiler-phase10-6d81` 的 `b8cdb8e…` 比较，不得改用
+   `master` 或 docs-only review 分支。
 2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 47
-   plus `CodegenModeTest` 2, total 49; zero skipped, failures, or errors.
+   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 53
+   plus `CodegenModeTest` 2, total 55; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。记录结果为 47 + 2，共 49 个测试；跳过、失败、错误均为零。
+   XML 计数。记录结果为 53 + 2，共 55 个测试；跳过、失败、错误均为零。
 3. With g++ and JNI headers present, require
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to remain
    unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit. Recorded result: the 50-method smoke
+   retained generated translation unit. Recorded result: the 59-method smoke
    and independent syntax check both exited zero.
    当 g++ 与 JNI headers 存在时，必须确认
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
    同一份生成 translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录
-   结果：50-method smoke 与独立语法检查均以零退出。
-4. Inspect generated C++ for exact `Int`, `Long`, and `Object` instance/static
-   accessor families and verify null get/put exits keep the NPE pending.
-   检查生成 C++ 是否使用精确的 `Int`、`Long` 与 `Object` 实例/静态 accessor
-   family，并确认 null get/put 异常出口保持 NPE pending。
-5. During conflict resolution, retain fallback-before-mutation, the phase-9
-   `jarray` cast, constructor-method exclusion, the `legacy` default, and all
-   existing snippets.
-   解决冲突时必须保留 mutation 前 fallback、phase-9 `jarray` 转换、构造器方法体
-   排除策略、`legacy` 默认值及全部现有 snippets。
+   结果：59-method smoke 与独立语法检查均以零退出。
+4. Inspect generated C++ for exact `Call[Int|Long|Object|Void]Method` and
+   `CallNonvirtual[Int|Long|Object|Void]Method` families. Verify the interface
+   argument count matches its descriptor and nonvirtual calls pass receiver,
+   declaring class, method ID, then descriptor arguments.
+   检查生成 C++ 是否使用精确的 `Call[Int|Long|Object|Void]Method` 与
+   `CallNonvirtual[Int|Long|Object|Void]Method` family。确认接口实参数量与描述符
+   一致，并确认 nonvirtual 调用依次传入 receiver、声明类、method ID 及描述符参数。
+5. Verify a null interface receiver takes the shared exceptional exit and keeps
+   the `NullPointerException` pending.
+   确认 null 接口 receiver 进入共享异常出口，并保持
+   `NullPointerException` pending。
+6. During conflict resolution, retain fallback-before-mutation, the phase-9
+   `jarray` cast, phase-10 field coverage, constructor-method exclusion, the
+   `legacy` default, and all existing snippets.
+   解决冲突时必须保留 mutation 前 fallback、phase-9 `jarray` 转换、phase-10
+   字段覆盖、构造器方法体排除策略、`legacy` 默认值及全部现有 snippets。
