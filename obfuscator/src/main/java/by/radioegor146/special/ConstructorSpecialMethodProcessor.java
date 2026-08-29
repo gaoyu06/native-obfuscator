@@ -501,7 +501,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
-        if (callIndexes.size() == 2) {
+        if (callIndexes.size() == 2
+                && constructor.instructions.get(nextExecutable).getOpcode()
+                != Opcodes.RETURN) {
             int prefixExitSuccessor = firstExecutableIndex(
                     constructor, callIndexes.get(0) + 1);
             if (isImmediatePrefixReturn(
