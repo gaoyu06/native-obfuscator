@@ -15,6 +15,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+Result: `BUILD SUCCESSFUL` (98 tests, 0 skipped, 0 failures, 0 errors).
+
 Focused phase-19 coverage includes all six operations, typed shift operands,
 shift-count masking, logical-right-shift emission, a wrapping left-shift case,
 and the generated C++ syntax smoke test.
@@ -23,5 +25,7 @@ and the generated C++ syntax smoke test.
 
 The current-master `IntegerLoopKernel.run(I)J` and
 `RecursionKernel.recurse(IJ)J` methods are compiled with `--codegen=ir`.
-Admission evidence and fallback-log checks are recorded in
-`docs/architecture/ir-phase19-status.md`.
+The transpile command exits zero, the log has no per-method fallback entry,
+and both generated functions carry direct-IR markers. Admission evidence is
+recorded in `docs/architecture/ir-phase19-status.md`; no timing benchmark was
+run.

@@ -2189,7 +2189,7 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("(jlong) ((uint64_t)"));
         assertTrue(cpp.contains("<< ((uint32_t)"));
         assertTrue(cpp.contains("& 63)"));
-        assertEquals(-2L, Long.MAX_VALUE << 1);
+        assertEquals(-2L, Long.MAX_VALUE << 65);
     }
 
     @Test
@@ -4900,7 +4900,7 @@ public class IrCompilerTest {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "wrappingLongShift", "()J", null, null);
         method.instructions.add(new LdcInsnNode(Long.MAX_VALUE));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 65));
         method.instructions.add(new InsnNode(Opcodes.LSHL));
         method.instructions.add(new InsnNode(Opcodes.LRETURN));
         method.maxLocals = 0;

@@ -26,10 +26,37 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+Result on 2026-08-29: `BUILD SUCCESSFUL`. Gradle's JUnit XML reports:
+
+```text
+IrCompilerTest: tests=93, skipped=0, failures=0, errors=0
+CodegenModeTest: tests=5, skipped=0, failures=0, errors=0
+Total: 98 tests, 0 skipped, 0 failures, 0 errors
+```
+
 The phase-19 tests cover all six operations, the `I64` value plus `I32` count
 shape, `count & 0x3f`, logical versus arithmetic right shift, and a
-`Long.MAX_VALUE << 1` wrapping case. The generated C++ smoke translation unit
-also includes the new operations.
+`Long.MAX_VALUE << 65` masking and wrapping case. The generated C++ smoke
+translation unit also includes the new operations and passed its
+`g++ -std=c++17 -fsyntax-only` gate.
+
+### Current-master benchmark-kernel admission
+
+The current-master benchmark JAR was passed through the CLI with
+`--codegen=ir` and `benchmarks/whitelist.txt`. The transpile command exited
+zero. Its complete log contains no `IR codegen unsupported` or
+`falling back to legacy` entry. Generated sources contain direct-IR markers
+for both previously rejected methods:
+
+```text
+IR codegen: benchmarks/kernels/IntegerLoopKernel.run(I)J
+IR codegen: benchmarks/kernels/RecursionKernel.recurse(IJ)J
+```
+
+The integer-loop source emits `value >>> 17` through a `uint64_t` right shift
+with `& 63`; the recursion source emits its recursive result mix through
+`uint64_t` `^`. This was an admission check, not a timing run:
+`:obfuscator:bench` was not re-run and no performance samples are reported.
 
 ## Ship-readiness / 交付准备度
 
