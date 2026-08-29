@@ -77,8 +77,8 @@ The constructor split now covers these related prefix shapes:
   a float argument, whose leaves are declared float-argument loads,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
-  at most one `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` level for a double
-  argument, whose two leaves are declared double-argument loads, `DCONST_0`,
+  a tree of at most two `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` levels for
+  a double argument, whose leaves are declared double-argument loads, `DCONST_0`,
   `DCONST_1`, `LDC` of `Double`, or one `DNEG` over a direct declared
   double-argument load;
   int-family constants; or one `INEG` over a direct declared int-family
@@ -212,17 +212,17 @@ One additional family is reduced to that same shared-join form:
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
-- A double call argument may instead contain at most one `DADD`, `DSUB`,
-  `DMUL`, `DDIV`, or `DREM` level. A double leaf must be a matching
+- A double call argument may instead contain a tree of at most two `DADD`,
+  `DSUB`, `DMUL`, `DDIV`, or `DREM` levels. A double leaf must be a matching
   declared-argument `DLOAD`, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or
   one `DNEG` whose sole operand is a matching declared-argument `DLOAD`.
-  This proof has its own one-level binary budget, which `DNEG` does not
-  consume: nested double binaries, extra-local double loads, `DNEG` of a
-  constant, double `DNEG`, and `DNEG` of an extra-local or computed value
-  remain rejected, as do computed reference inputs. The admitted arithmetic
-  stays in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
-  signed-zero, negate, and other double semantics without reproducing double
-  arithmetic in C++.
+  This proof has its own two-level binary budget, which `DNEG` does not
+  consume: three-or-more nested double binaries, extra-local double loads,
+  `DNEG` of a constant, double `DNEG`, and `DNEG` of an extra-local or
+  computed value remain rejected, as do computed reference inputs. The
+  admitted arithmetic stays in the retained bytecode prefix, preserving JVM
+  divide-by-zero, NaN, signed-zero, negate, and other double semantics without
+  reproducing double arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -292,7 +292,7 @@ normalizing the suffixes to one copied join:
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
 trees deeper than four levels, long binary expression trees deeper than four
-levels, double expression trees deeper than the single admitted binary level,
+levels, double expression trees deeper than the two admitted binary levels,
 other unlisted long or double operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
@@ -862,10 +862,10 @@ Synthetic bytecode unit tests in
   `DNEG` over a declared double `DLOAD` remains in the retained prefix,
   rewrites to one hidden bridge, passes JVM verification, and matches plain
   Java through the complete CMake/g++ JNI transform.
-- `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps nested
-  double binaries, extra-local double operands, and unsafe `DNEG` forms
-  fail-closed without constructor or hidden-method mutation. Computed
-  reference inputs remain outside this admission increment.
+- `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
+  binaries at three-or-more levels, extra-local double operands, and unsafe
+  `DNEG` forms fail-closed without constructor or hidden-method mutation.
+  Computed reference inputs remain outside this admission increment.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -970,6 +970,13 @@ Synthetic bytecode unit tests in
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
   two-level float trees with outer and inner `FDIV` positions and a two-sided
   `FADD` tree. The retained prefix executes every float operation, all paths
+  share one hidden bridge, rewritten Java 8 classes verify, and the complete
+  CMake/g++ JNI transform matches plain Java.
+- `admitsTwoLevelNestedDoubleChainInputs`,
+  `rewrittenTwoLevelNestedDoubleChainInputsPassJvmVerification`, and
+  `twoLevelNestedDoubleChainInputsCompileAndRunWithJavaParity` cover bounded
+  two-level double trees with outer and inner `DDIV` positions and a two-sided
+  `DADD` tree. The retained prefix executes every double operation, all paths
   share one hidden bridge, rewritten Java 8 classes verify, and the complete
   CMake/g++ JNI transform matches plain Java.
 - `admitsThreeLevelNestedFloatChainInputs`,
