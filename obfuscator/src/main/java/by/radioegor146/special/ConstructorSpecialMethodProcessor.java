@@ -44,6 +44,7 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
+    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 1;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2194,11 +2195,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Restricts bounded multi-call forms to calls whose complete operand
      * sequence is visible locally: a direct receiver ALOAD followed by direct
-     * declared-argument loads, int-family constants, one INEG over a direct
-     * declared int-family argument load, or an admitted int binary tree of at
-     * most four levels over those int-family leaves. The identical-copy and
-     * distinct-suffix forms may accept a direct alias load only when their
-     * separate receiver-frame proof succeeds.
+     * declared-argument loads, one leaf-only LADD over proven long inputs,
+     * int-family constants, one INEG over a direct declared int-family argument
+     * load, or an admitted int binary tree of at most four levels over those
+     * int-family leaves. The identical-copy and distinct-suffix forms may
+     * accept a direct alias load only when their separate receiver-frame proof
+     * succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2248,12 +2250,73 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 input, expected, declaredArguments)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        if (expected.getSort() == Type.LONG) {
+            return previousProvenLongChainOperand(
+                    constructor, inputIndex, declaredArguments,
+                    MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS);
+        }
         if (!isIntFamily(expected)) {
             return null;
         }
         return previousProvenIntChainOperand(
                 constructor, inputIndex, declaredArguments,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
+    }
+
+    /**
+     * Proves one LADD whose operands are non-recursive long leaves. The
+     * separate one-level budget prevents the int-family depth bound from
+     * admitting nested long arithmetic.
+     */
+    private static Integer previousProvenLongChainOperand(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments,
+            int remainingBinaryLevels) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != Opcodes.LADD
+                || remainingBinaryLevels == 0) {
+            return null;
+        }
+        Integer beforeRight = previousProvenLongChainLeaf(
+                constructor,
+                previousExecutableIndex(constructor, inputIndex - 1),
+                declaredArguments);
+        if (beforeRight == null) {
+            return null;
+        }
+        return previousProvenLongChainLeaf(
+                constructor, beforeRight, declaredArguments);
+    }
+
+    /**
+     * Proves one non-recursive long leaf: a declared LLOAD, LCONST_0/1, or an
+     * LDC whose constant is a Long.
+     */
+    private static Integer previousProvenLongChainLeaf(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isDirectDeclaredArgumentLoad(
+                input, Type.LONG_TYPE, declaredArguments)
+                || isLongConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        return null;
+    }
+
+    private static boolean isLongConstant(AbstractInsnNode input) {
+        int opcode = input.getOpcode();
+        return opcode == Opcodes.LCONST_0
+                || opcode == Opcodes.LCONST_1
+                || opcode == Opcodes.LDC
+                && input instanceof LdcInsnNode
+                && ((LdcInsnNode) input).cst instanceof Long;
     }
 
     /**
