@@ -6,12 +6,12 @@ Reviewed base: `5a6f6097524c1fe42cd82be2425f5e6736667688`
 
 ## Verdict / 结论
 
-**Accept (docs-only review note), subject to the required focused rerun below.**
-No compiler defect was found in the complete phase-18 diff. This review does
-not claim JDK 17 runtime or product support.
+**Accept (docs-only review note).** No compiler defect was found in the
+complete phase-18 diff, and the required focused rerun passed. This review
+does not claim JDK 17 runtime or product support.
 
-**接受（仅增加审查文档），但仍须完成下述聚焦测试复跑。** 对 phase 18
-完整差异的审查未发现编译器缺陷。本审查不声明 JDK 17 runtime 或产品支持。
+**接受（仅增加审查文档）。** 对 phase 18 完整差异的审查未发现编译器缺陷，
+且要求的聚焦测试复跑已通过。本审查不声明 JDK 17 runtime 或产品支持。
 
 ## Review evidence / 审查证据
 
@@ -66,10 +66,27 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --console=plain
 ```
 
-Result: pending the independent rerun. Counts will be read from the generated
-JUnit XML rather than copied from the author report.
+Independent result on 2026-08-29: `BUILD SUCCESSFUL`; all seven Gradle tasks
+were executed.
 
-结果：等待独立复跑。数量将直接读取生成的 JUnit XML，不复制作者报告。
+Counts read from the generated JUnit XML:
+
+```text
+IrCompilerTest: tests=88, skipped=0, failures=0, errors=0
+CodegenModeTest: tests=4, skipped=0, failures=0, errors=0
+Total: 92 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The assertion-based g++ syntax gate ran (0.421 s). Its generated translation
+unit contained exactly 151 `JNICALL` functions. A separate
+`g++ -std=c++17 -fsyntax-only` invocation against that unit also exited zero
+with empty diagnostics.
+
+2026-08-29 独立复跑结果为 `BUILD SUCCESSFUL`，七个 Gradle task 均实际执行。
+生成的 JUnit XML 显示 `IrCompilerTest` 88 个、`CodegenModeTest` 4 个，
+合计 92 个测试，0 skipped、0 failures、0 errors。断言式 g++ 语法门槛实际
+运行（0.421 s）；生成单元含恰好 151 个 `JNICALL` function。另行对该单元
+执行 `g++ -std=c++17 -fsyntax-only` 同样以 0 退出且诊断为空。
 
 ## Ship-readiness / 交付准备度
 
@@ -91,7 +108,7 @@ JUnit XML rather than copied from the author report.
 - **(d) Integration / 集成:** Stack only on
   `cursor/ir-compiler-phase18-6d81-a7ae`; preserve `legacy` as the default and
   do not merge or rebase onto the sibling JDK 17 runtime-fix stack. The focused
-  GCC/G++ rerun is required before the verdict is final. /
+  GCC/G++ rerun completed with 92/92 tests passing. /
   仅堆叠在 `cursor/ir-compiler-phase18-6d81-a7ae`；保持 `legacy` 默认值，
-  不合并或 rebase 到同级 JDK 17 runtime-fix 分支。结论最终生效前必须完成
-  GCC/G++ 聚焦复跑。
+  不合并或 rebase 到同级 JDK 17 runtime-fix 分支。GCC/G++ 聚焦复跑已完成，
+  92/92 个测试通过。
