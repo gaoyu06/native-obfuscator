@@ -145,6 +145,12 @@ public final class IrCppEmitter {
             throw new IllegalStateException(
                     "JNI IR instructions require a method emission context");
         }
+        if (instruction instanceof IrNodes.StringConst) {
+            return emitStringConst((IrNodes.StringConst) instruction, context);
+        }
+        if (instruction instanceof IrNodes.ClassConst) {
+            return emitClassConst(method, block, (IrNodes.ClassConst) instruction, context);
+        }
         if (instruction instanceof IrNodes.IntDivRem) {
             return emitIntDivRem(method, block, (IrNodes.IntDivRem) instruction, context);
         }
@@ -460,6 +466,27 @@ public final class IrCppEmitter {
         statements.add(new CppAst.If(overflow,
                 new CppAst.Block(Collections.<CppAst.Statement>singletonList(overflowResult)),
                 new CppAst.Block(Collections.<CppAst.Statement>singletonList(ordinaryResult))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitStringConst(IrNodes.StringConst constant,
+                                                   MethodContext context) {
+        int stringId = context.getCachedStrings().getId(constant.getValue());
+        return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                variable(constant.getResult()),
+                new CppAst.Cast("jobject", array("cstrings", stringId))));
+    }
+
+    private List<CppAst.Statement> emitClassConst(IrMethod method, IrBlock block,
+                                                  IrNodes.ClassConst constant,
+                                                  MethodContext context) {
+        int classId = context.getCachedClasses().getId(constant.getClassName());
+        List<CppAst.Statement> statements = emitClassCache(method, block, classId, context,
+                constant.getClassName());
+        statements.add(new CppAst.If(new CppAst.Unary("!", array("cclasses", classId)),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        statements.add(new CppAst.Assignment(variable(constant.getResult()),
+                new CppAst.Cast("jobject", array("cclasses", classId))));
         return statements;
     }
 

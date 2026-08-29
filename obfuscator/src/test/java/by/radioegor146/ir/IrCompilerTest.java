@@ -7,6 +7,7 @@ import by.radioegor146.NativeObfuscator;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
+import by.radioegor146.source.ClassSourceBuilder;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -36,7 +37,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -660,6 +664,140 @@ public class IrCompilerTest {
                         .processMethod(context));
 
         assertEquals(Opcodes.FALOAD, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void lowersStringLdcThroughExistingModifiedUtf8StringPool() throws Exception {
+        MethodNode method = stringLdcMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        List<IrNodes.StringConst> constants = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.StringConst.class::isInstance)
+                .map(IrNodes.StringConst.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(Arrays.asList("", "ascii", "héllo世界", "nul\0inside"),
+                constants.stream().map(IrNodes.StringConst::getValue)
+                        .collect(Collectors.toList()));
+        assertTrue(constants.stream()
+                .allMatch(constant -> constant.getResult().getType() == IrType.REFERENCE));
+        assertTrue(ir.toString().contains("ldc_string \"nul\\0inside\""));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("= (jobject) cstrings["));
+        assertTrue(cpp.contains("env->CallStaticIntMethod"));
+        assertTrue(cpp.contains("env->GetStringLength"));
+        for (IrNodes.StringConst constant : constants) {
+            assertTrue(obfuscator.getCachedStrings().getCache()
+                    .containsKey(constant.getValue()));
+        }
+
+        Path directory = Files.createTempDirectory("ir-ldc-string-pool");
+        String cppFile;
+        try (ClassSourceBuilder builder = new ClassSourceBuilder(
+                directory, "example/Math", 0, obfuscator.getStringPool())) {
+            builder.addHeader(obfuscator.getCachedStrings().size(),
+                    obfuscator.getCachedClasses().size(),
+                    obfuscator.getCachedMethods().size(),
+                    obfuscator.getCachedFields().size());
+            builder.addInstructions(context.output.toString());
+            builder.registerMethods(obfuscator.getCachedStrings(),
+                    obfuscator.getCachedClasses(), context.nativeMethods.toString(),
+                    Collections.emptyList());
+            cppFile = builder.getCppFilename();
+        }
+        String generated = new String(Files.readAllBytes(directory.resolve(cppFile)),
+                StandardCharsets.UTF_8);
+        assertEquals(obfuscator.getCachedStrings().size(),
+                countOccurrences(generated, "env->NewStringUTF("));
+        assertTrue(generated.contains("env->NewStringUTF(((char *)(string_pool + "));
+        assertTrue(obfuscator.getStringPool().build().contains("-64, -128"),
+                "embedded NUL must use the modified-UTF-8 C0 80 encoding");
+    }
+
+    @Test
+    public void lowersObjectAndArrayClassLdcThroughExistingClassCache() {
+        MethodNode method = classLdcMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        List<IrNodes.ClassConst> constants = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.ClassConst.class::isInstance)
+                .map(IrNodes.ClassConst.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(Arrays.asList("java/lang/String", "example/Fixture", "[I",
+                        "[Ljava/lang/String;"),
+                constants.stream().map(IrNodes.ClassConst::getClassName)
+                        .collect(Collectors.toList()));
+        assertTrue(constants.stream()
+                .allMatch(constant -> constant.getResult().getType() == IrType.REFERENCE));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertEquals(4, obfuscator.getCachedClasses().size());
+        assertEquals(2, countOccurrences(cpp, "env->FindClass("));
+        assertTrue(cpp.contains("utils::find_class_wo_static"));
+        assertTrue(cpp.contains("= (jobject) cclasses["));
+        int arrayLookup = cpp.indexOf("env->FindClass(");
+        int pendingException = cpp.indexOf("env->ExceptionCheck()", arrayLookup);
+        int materialization = cpp.indexOf("= (jobject) cclasses[", arrayLookup);
+        assertTrue(arrayLookup >= 0 && pendingException > arrayLookup
+                && materialization > pendingException);
+        assertFalse(cpp.contains("env->ExceptionClear()"));
+    }
+
+    @Test
+    public void lowersWideLongLdcThroughLongConst() {
+        IrMethod ir = frontend.build("example/Math", longLdcMethod());
+        List<IrNodes.LongConst> constants = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.LongConst.class::isInstance)
+                .map(IrNodes.LongConst.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(Arrays.asList(0x1_0000_0000L, -1L),
+                constants.stream().map(IrNodes.LongConst::getValue)
+                        .collect(Collectors.toList()));
+        assertTrue(constants.stream()
+                .allMatch(constant -> constant.getResult().getType() == IrType.I64));
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("4294967296LL"));
+        assertTrue(cpp.contains("-1LL"));
+    }
+
+    @Test
+    public void rejectsPrimitiveClassLdcBeforeMutation() {
+        MethodNode method = primitiveClassLdcMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void rejectsHandleLdcAfterAdmittedPhaseFifteenConstantsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseFifteenLdcMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.LDC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -1584,6 +1722,7 @@ public class IrCompilerTest {
                 addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
                 staticInvokeMethod(), virtualInvokeMethod(), bitwiseShiftMethod(),
                 unaryMethod(), intArrayMethod(), stringLengthMethod(),
+                stringLdcMethod(), classLdcMethod(), longLdcMethod(),
                 arrayBoundsCatchMethod("catchBounds", "java/lang/ArrayIndexOutOfBoundsException"),
                 arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
                 explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null),
@@ -1772,6 +1911,14 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->GetIntArrayRegion"));
         assertTrue(source.contains("env->SetIntArrayRegion"));
         assertTrue(source.contains("env->GetStringLength"));
+        assertTrue(source.contains("IR codegen: example/Math.ldcStrings()I"));
+        assertTrue(source.contains("= (jobject) cstrings["));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.ldcClasses()Ljava/lang/Class;"));
+        assertTrue(source.contains("= (jobject) cclasses["));
+        assertTrue(source.contains("IR codegen: example/Math.ldcLongs()J"));
+        assertTrue(source.contains("4294967296LL"));
+        assertTrue(source.contains("-1LL"));
         assertTrue(source.contains("caught_exception = env->ExceptionOccurred();"));
         assertTrue(source.contains("env->ExceptionClear();"));
         assertTrue(source.contains("env->IsInstanceOf"));
@@ -2488,6 +2635,88 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 0;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode stringLdcMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "ldcStrings", "()I", null, null);
+        method.instructions.add(new LdcInsnNode(""));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        method.instructions.add(new LdcInsnNode("ascii"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/Math", "consumeString", "(Ljava/lang/String;)I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new LdcInsnNode("héllo世界"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new LdcInsnNode("nul\0inside"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode classLdcMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "ldcClasses", "()Ljava/lang/Class;", null, null);
+        method.instructions.add(new LdcInsnNode(Type.getObjectType("java/lang/String")));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(Type.getObjectType("example/Fixture")));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(Type.getType("[I")));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(Type.getType("[Ljava/lang/String;")));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode longLdcMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "ldcLongs", "()J", null, null);
+        method.instructions.add(new LdcInsnNode(0x1_0000_0000L));
+        method.instructions.add(new LdcInsnNode(-1L));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode primitiveClassLdcMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "primitiveClass", "()Ljava/lang/Class;", null, null);
+        method.instructions.add(new LdcInsnNode(Type.INT_TYPE));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseFifteenLdcMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseFifteenLdc", "()V", null, null);
+        method.instructions.add(new LdcInsnNode(""));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(Type.getObjectType("java/lang/String")));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(0x1_0000_0000L));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 0));
+        method.instructions.add(new LdcInsnNode(new Handle(Opcodes.H_INVOKESTATIC,
+                "example/Bootstrap", "target", "()V", false)));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
         return method;
     }
 

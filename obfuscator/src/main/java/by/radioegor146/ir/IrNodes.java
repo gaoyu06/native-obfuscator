@@ -165,6 +165,62 @@ public final class IrNodes {
         }
     }
 
+    public static final class StringConst implements IrInstruction {
+        private final IrValue result;
+        private final String value;
+        private final int bytecodeOffset;
+
+        public StringConst(IrValue result, String value, int bytecodeOffset) {
+            this.result = requireReference(result, "result");
+            this.value = Objects.requireNonNull(value, "value");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getValue() {
+            return value;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    /**
+     * An object or array class literal. Primitive class literals are rejected
+     * by the frontend because they require wrapper {@code TYPE} field lookup.
+     */
+    public static final class ClassConst implements IrInstruction {
+        private final IrValue result;
+        private final String className;
+        private final int bytecodeOffset;
+
+        public ClassConst(IrValue result, String className, int bytecodeOffset) {
+            this.result = requireReference(result, "result");
+            this.className = requireClassName(className);
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class GetField implements IrInstruction {
         private final IrValue result;
         private final String owner;

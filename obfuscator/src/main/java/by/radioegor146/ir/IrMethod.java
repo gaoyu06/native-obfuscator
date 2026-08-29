@@ -147,6 +147,16 @@ public final class IrMethod {
             return constant.getResult() + ":" + constant.getResult().getType()
                     + " = dconst 0x" + Long.toHexString(constant.getRawBits());
         }
+        if (instruction instanceof IrNodes.StringConst) {
+            IrNodes.StringConst constant = (IrNodes.StringConst) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = ldc_string " + quote(constant.getValue());
+        }
+        if (instruction instanceof IrNodes.ClassConst) {
+            IrNodes.ClassConst constant = (IrNodes.ClassConst) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = ldc_class " + constant.getClassName();
+        }
         if (instruction instanceof IrNodes.NullReference) {
             IrNodes.NullReference constant = (IrNodes.NullReference) instruction;
             return constant.getResult() + ":" + constant.getResult().getType()
@@ -326,5 +336,14 @@ public final class IrMethod {
             return "throw " + ((IrNodes.Throw) terminator).getException();
         }
         throw new IllegalStateException("Unknown IR terminator " + terminator.getClass());
+    }
+
+    private String quote(String value) {
+        return "\"" + value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t")
+                .replace("\0", "\\0") + "\"";
     }
 }

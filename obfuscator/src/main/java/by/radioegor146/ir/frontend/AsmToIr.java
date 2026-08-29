@@ -272,8 +272,10 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.LDC_INSN:
                         Object constant = ((LdcInsnNode) node).cst;
-                        supported = constant instanceof Integer || constant instanceof Float
-                                || constant instanceof Double;
+                        supported = constant instanceof Integer || constant instanceof Long
+                                || constant instanceof Float || constant instanceof Double
+                                || constant instanceof String
+                                || isSupportedClassConstant(constant);
                         break;
                     case AbstractInsnNode.JUMP_INSN:
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
@@ -812,11 +814,20 @@ public final class AsmToIr {
                 if (constant instanceof Integer) {
                     pushConstant(irMethod, block, state, (Integer) constant,
                             instruction.getOriginalIndex());
+                } else if (constant instanceof Long) {
+                    pushLongConstant(irMethod, block, state, (Long) constant,
+                            instruction.getOriginalIndex());
                 } else if (constant instanceof Float) {
                     pushFloatConstant(irMethod, block, state, (Float) constant,
                             instruction.getOriginalIndex());
                 } else if (constant instanceof Double) {
                     pushDoubleConstant(irMethod, block, state, (Double) constant,
+                            instruction.getOriginalIndex());
+                } else if (constant instanceof String) {
+                    pushStringConstant(irMethod, block, state, (String) constant,
+                            instruction.getOriginalIndex());
+                } else if (isSupportedClassConstant(constant)) {
+                    pushClassConstant(irMethod, block, state, (Type) constant,
                             instruction.getOriginalIndex());
                 } else {
                     throw unsupported("Unsupported LDC constant", instruction);
@@ -1298,6 +1309,28 @@ public final class AsmToIr {
         return result;
     }
 
+    private IrValue pushStringConstant(IrMethod method, IrBlock block, ValueState state,
+                                       String value, int offset) {
+        IrValue result = method.newInstructionValue(IrType.REFERENCE);
+        block.addInstruction(new IrNodes.StringConst(result, value, offset));
+        if (state != null) {
+            state.stack.add(result);
+        }
+        return result;
+    }
+
+    private IrValue pushClassConstant(IrMethod method, IrBlock block, ValueState state,
+                                      Type type, int offset) {
+        IrValue result = method.newInstructionValue(IrType.REFERENCE);
+        String className = type.getSort() == Type.OBJECT
+                ? type.getInternalName() : type.getDescriptor();
+        block.addInstruction(new IrNodes.ClassConst(result, className, offset));
+        if (state != null) {
+            state.stack.add(result);
+        }
+        return result;
+    }
+
     private IrValue blockBinary(IrMethod method, IrBlock block,
                                 IrNodes.Binary.Operation operation,
                                 IrValue left, IrValue right, int offset) {
@@ -1378,13 +1411,23 @@ public final class AsmToIr {
         if (constant instanceof Integer) {
             return IrType.I32;
         }
+        if (constant instanceof Long) {
+            return IrType.I64;
+        }
         if (constant instanceof Float) {
             return IrType.F32;
         }
         if (constant instanceof Double) {
             return IrType.F64;
         }
+        if (constant instanceof String || isSupportedClassConstant(constant)) {
+            return IrType.REFERENCE;
+        }
         throw new IllegalArgumentException("Unsupported LDC constant " + constant);
+    }
+
+    private static boolean isSupportedClassConstant(Object constant) {
+        return constant instanceof Type && isReference((Type) constant);
     }
 
     private static boolean isSupportedFieldDescriptor(String descriptor) {
