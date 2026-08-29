@@ -1,5 +1,7 @@
 package by.radioegor146.ir;
 
+import org.objectweb.asm.Type;
+
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,10 +124,10 @@ public final class IrNodes {
 
         public GetField(IrValue result, String owner, String name, String descriptor,
                         IrValue receiver, int bytecodeOffset, int sourceLine) {
-            this.result = requireI32(result, "result");
             this.owner = Objects.requireNonNull(owner, "owner");
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.result = requireType(result, fieldType(this.descriptor), "result");
             this.receiver = requireReference(receiver, "receiver");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
@@ -177,7 +179,7 @@ public final class IrNodes {
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
             this.receiver = requireReference(receiver, "receiver");
-            this.value = requireI32(value, "value");
+            this.value = requireType(value, fieldType(this.descriptor), "value");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -227,10 +229,10 @@ public final class IrNodes {
 
         public GetStaticField(IrValue result, String owner, String name, String descriptor,
                               int bytecodeOffset, int sourceLine) {
-            this.result = requireI32(result, "result");
             this.owner = Objects.requireNonNull(owner, "owner");
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            this.result = requireType(result, fieldType(this.descriptor), "result");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -275,7 +277,7 @@ public final class IrNodes {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
-            this.value = requireI32(value, "value");
+            this.value = requireType(value, fieldType(this.descriptor), "value");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -1329,6 +1331,26 @@ public final class IrNodes {
 
     private static IrValue requireReference(IrValue value, String name) {
         return requireType(value, IrType.REFERENCE, name);
+    }
+
+    private static IrType fieldType(String descriptor) {
+        Type type;
+        try {
+            type = Type.getType(descriptor);
+        } catch (IllegalArgumentException malformedDescriptor) {
+            throw new IllegalArgumentException("Invalid field descriptor " + descriptor,
+                    malformedDescriptor);
+        }
+        if (type.getSort() == Type.INT) {
+            return IrType.I32;
+        }
+        if (type.getSort() == Type.LONG) {
+            return IrType.I64;
+        }
+        if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
+            return IrType.REFERENCE;
+        }
+        throw new IllegalArgumentException("Unsupported field descriptor " + descriptor);
     }
 
     private static String requireClassName(String className) {

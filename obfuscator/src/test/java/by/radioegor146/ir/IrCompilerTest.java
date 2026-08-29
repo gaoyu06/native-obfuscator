@@ -433,8 +433,92 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsNonIntStaticFieldBeforeMutation() {
-        MethodNode method = unsupportedStaticReferenceFieldMethod();
+    public void lowersInstanceIntLongReferenceAndArrayFieldRoundTrips() {
+        assertFieldRoundTrip(instanceFieldRoundTripMethod(
+                        "instanceIntField", "I", Opcodes.ILOAD, Opcodes.IRETURN),
+                IrType.I32, "GetIntField", "SetIntField");
+        assertFieldRoundTrip(instanceFieldRoundTripMethod(
+                        "instanceLongField", "J", Opcodes.LLOAD, Opcodes.LRETURN),
+                IrType.I64, "GetLongField", "SetLongField");
+        String objectCpp = assertFieldRoundTrip(instanceFieldRoundTripMethod(
+                        "instanceObjectField", "Ljava/lang/Object;",
+                        Opcodes.ALOAD, Opcodes.ARETURN),
+                IrType.REFERENCE, "GetObjectField", "SetObjectField");
+        String arrayCpp = assertFieldRoundTrip(instanceFieldRoundTripMethod(
+                        "instanceArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
+                IrType.REFERENCE, "GetObjectField", "SetObjectField");
+
+        assertFalse(objectCpp.contains("GetIntField"));
+        assertFalse(objectCpp.contains("SetIntField"));
+        assertTrue(arrayCpp.contains("return (jarray) v"));
+    }
+
+    @Test
+    public void lowersStaticIntLongReferenceAndArrayFieldRoundTrips() {
+        assertFieldRoundTrip(staticFieldRoundTripMethod(
+                        "staticIntField", "I", Opcodes.ILOAD, Opcodes.IRETURN),
+                IrType.I32, "GetStaticIntField", "SetStaticIntField");
+        assertFieldRoundTrip(staticFieldRoundTripMethod(
+                        "staticLongField", "J", Opcodes.LLOAD, Opcodes.LRETURN),
+                IrType.I64, "GetStaticLongField", "SetStaticLongField");
+        String objectCpp = assertFieldRoundTrip(staticFieldRoundTripMethod(
+                        "staticObjectField", "Ljava/lang/Object;",
+                        Opcodes.ALOAD, Opcodes.ARETURN),
+                IrType.REFERENCE, "GetStaticObjectField", "SetStaticObjectField");
+        String arrayCpp = assertFieldRoundTrip(staticFieldRoundTripMethod(
+                        "staticArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
+                IrType.REFERENCE, "GetStaticObjectField", "SetStaticObjectField");
+
+        assertFalse(objectCpp.contains("GetStaticIntField"));
+        assertFalse(objectCpp.contains("SetStaticIntField"));
+        assertTrue(arrayCpp.contains("return (jarray) v"));
+    }
+
+    @Test
+    public void nullReceiverInstanceFieldAccessUsesExceptionalExit() {
+        String getCpp = compileToCpp(nullReceiverGetFieldMethod(), 0);
+        int getNullCheck = getCpp.indexOf("if (arg0 == nullptr)");
+        int getThrow = getCpp.indexOf("utils::throw_re", getNullCheck);
+        int getExit = getCpp.indexOf("return 0;", getThrow);
+        assertTrue(getNullCheck >= 0 && getThrow > getNullCheck && getExit > getThrow);
+        assertTrue(getCpp.contains("env->GetLongField"));
+        assertFalse(getCpp.contains("env->ExceptionClear()"));
+
+        String putCpp = compileToCpp(nullReceiverPutFieldMethod(), 0);
+        int putNullCheck = putCpp.indexOf("if (arg0 == nullptr)");
+        int putThrow = putCpp.indexOf("utils::throw_re", putNullCheck);
+        int putExit = putCpp.indexOf("return;", putThrow);
+        assertTrue(putNullCheck >= 0 && putThrow > putNullCheck && putExit > putThrow);
+        assertTrue(putCpp.contains("env->SetObjectField"));
+        assertFalse(putCpp.contains("env->ExceptionClear()"));
+    }
+
+    @Test
+    public void rejectsOtherPrimitiveFieldSortsBeforeMutation() {
+        for (String descriptor : new String[]{"Z", "B", "C", "S", "F", "D"}) {
+            MethodNode method = unsupportedPrimitiveFieldMethod(descriptor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+            UnsupportedIrConstructException error = assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                            .processMethod(context));
+
+            assertEquals(Opcodes.GETSTATIC, error.getOpcode());
+            assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+            assertEquals("", context.output.toString());
+            assertEquals("", context.nativeMethods.toString());
+            assertEquals(0, obfuscator.getCachedClasses().size());
+            assertEquals(0, obfuscator.getCachedStrings().size());
+            assertEquals(0, obfuscator.getCachedFields().size());
+            assertEquals(0, obfuscator.getCachedMethods().size());
+        }
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseTenFieldsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseTenFieldsMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
@@ -448,6 +532,7 @@ public class IrCompilerTest {
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
         assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
         assertEquals(0, obfuscator.getCachedFields().size());
         assertEquals(0, obfuscator.getCachedMethods().size());
     }
@@ -949,7 +1034,24 @@ public class IrCompilerTest {
                 staticVoidLongInvokeMethod(), returnAllocatedObjectMethod(),
                 returnNullMethod(), referenceNullBranchMethod("ifNull", Opcodes.IFNULL),
                 referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL),
-                popUnusedCategoryOneInvokeResultMethod(), returnAllocatedObjectArrayMethod()
+                popUnusedCategoryOneInvokeResultMethod(), returnAllocatedObjectArrayMethod(),
+                instanceFieldRoundTripMethod(
+                        "instanceIntField", "I", Opcodes.ILOAD, Opcodes.IRETURN),
+                instanceFieldRoundTripMethod(
+                        "instanceLongField", "J", Opcodes.LLOAD, Opcodes.LRETURN),
+                instanceFieldRoundTripMethod("instanceObjectField",
+                        "Ljava/lang/Object;", Opcodes.ALOAD, Opcodes.ARETURN),
+                instanceFieldRoundTripMethod(
+                        "instanceArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
+                staticFieldRoundTripMethod(
+                        "staticIntField", "I", Opcodes.ILOAD, Opcodes.IRETURN),
+                staticFieldRoundTripMethod(
+                        "staticLongField", "J", Opcodes.LLOAD, Opcodes.LRETURN),
+                staticFieldRoundTripMethod("staticObjectField",
+                        "Ljava/lang/Object;", Opcodes.ALOAD, Opcodes.ARETURN),
+                staticFieldRoundTripMethod(
+                        "staticArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
+                nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -1038,6 +1140,14 @@ public class IrCompilerTest {
         assertTrue(source.contains(
                 "IR codegen: example/Math.returnAllocatedObjectArray(I)[Ljava/lang/Object;"));
         assertTrue(source.contains("return (jarray) v"));
+        assertTrue(source.contains("env->GetLongField"));
+        assertTrue(source.contains("env->SetLongField"));
+        assertTrue(source.contains("env->GetObjectField"));
+        assertTrue(source.contains("env->SetObjectField"));
+        assertTrue(source.contains("env->GetStaticLongField"));
+        assertTrue(source.contains("env->SetStaticLongField"));
+        assertTrue(source.contains("env->GetStaticObjectField"));
+        assertTrue(source.contains("env->SetStaticObjectField"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
         assertTrue(source.contains("uint64_t"));
         assertTrue(source.contains("(jlong)"));
@@ -1079,6 +1189,42 @@ public class IrCompilerTest {
         return owner;
     }
 
+    private String assertFieldRoundTrip(MethodNode method, IrType expectedType,
+                                        String getAccessor, String setAccessor) {
+        IrMethod ir = frontend.build("example/Math", method);
+        IrInstruction get = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(instruction -> instruction instanceof IrNodes.GetField
+                        || instruction instanceof IrNodes.GetStaticField)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrInstruction put = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(instruction -> instruction instanceof IrNodes.PutField
+                        || instruction instanceof IrNodes.PutStaticField)
+                .findFirst().orElseThrow(AssertionError::new);
+        IrValue putValue = put instanceof IrNodes.PutField
+                ? ((IrNodes.PutField) put).getValue()
+                : ((IrNodes.PutStaticField) put).getValue();
+        assertEquals(expectedType, get.getResult().getType());
+        assertEquals(expectedType, putValue.getType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("env->" + getAccessor));
+        assertTrue(cpp.contains("env->" + setAccessor));
+        assertEquals(1, obfuscator.getCachedFields().size());
+        return cpp;
+    }
+
+    private String compileToCpp(MethodNode method, int methodId) {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, methodId, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+        return context.output.toString();
+    }
+
     private MethodNode incrementFieldMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, 0,
                 "increment", "()V", null, null);
@@ -1110,16 +1256,72 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode unsupportedStaticReferenceFieldMethod() {
+    private MethodNode instanceFieldRoundTripMethod(String name, String descriptor,
+                                                    int loadOpcode, int returnOpcode) {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedStaticReference", "()I", null, null);
+                name, "(Lexample/Math;" + descriptor + ")" + descriptor, null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(loadOpcode, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", name, descriptor));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", name, descriptor));
+        method.instructions.add(new InsnNode(returnOpcode));
+        method.maxLocals = "J".equals(descriptor) ? 3 : 2;
+        method.maxStack = "J".equals(descriptor) ? 3 : 2;
+        return method;
+    }
+
+    private MethodNode staticFieldRoundTripMethod(String name, String descriptor,
+                                                  int loadOpcode, int returnOpcode) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(" + descriptor + ")" + descriptor, null, null);
+        method.instructions.add(new VarInsnNode(loadOpcode, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", name, descriptor));
         method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
-                "example/Math", "object", "Ljava/lang/Object;"));
-        method.instructions.add(new InsnNode(Opcodes.POP));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+                "example/Math", name, descriptor));
+        method.instructions.add(new InsnNode(returnOpcode));
+        method.maxLocals = "J".equals(descriptor) ? 2 : 1;
+        method.maxStack = "J".equals(descriptor) ? 2 : 1;
+        return method;
+    }
+
+    private MethodNode nullReceiverGetFieldMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "nullReceiverGetField", "(Lexample/Math;)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "longValue", "J"));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode nullReceiverPutFieldMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "nullReceiverPutField",
+                "(Lexample/Math;Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "objectValue", "Ljava/lang/Object;"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedPrimitiveFieldMethod(String descriptor) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedPrimitiveField", "()V", null, null);
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "unsupported", descriptor));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 0;
-        method.maxStack = 1;
+        method.maxStack = 2;
         return method;
     }
 
@@ -1263,6 +1465,46 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxLocals = 1;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseTenFieldsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseTenFields",
+                "(Lexample/Math;JLjava/lang/Object;[I)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "longValue", "J"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "longValue", "J"));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "objectValue", "Ljava/lang/Object;"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "objectValue", "Ljava/lang/Object;"));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", "staticLongValue", "J"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "staticLongValue", "J"));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 4));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", "staticArrayValue", "[I"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "staticArrayValue", "[I"));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 4));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "unsupportedFloat", "F"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 5;
+        method.maxStack = 3;
         return method;
     }
 

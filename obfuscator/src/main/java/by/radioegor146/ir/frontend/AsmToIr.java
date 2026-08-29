@@ -282,7 +282,7 @@ public final class AsmToIr {
                         supported = (opcode == Opcodes.GETFIELD || opcode == Opcodes.PUTFIELD
                                 || opcode == Opcodes.GETSTATIC
                                 || opcode == Opcodes.PUTSTATIC)
-                                && "I".equals(field.desc);
+                                && isSupportedFieldDescriptor(field.desc);
                         break;
                     case AbstractInsnNode.METHOD_INSN:
                         supported = isSupportedInvoke((MethodInsnNode) node);
@@ -495,14 +495,14 @@ public final class AsmToIr {
             }
         } else if (opcode == Opcodes.GETFIELD) {
             popType(stack, IrType.REFERENCE, instruction);
-            stack.add(IrType.I32);
+            stack.add(fieldType(((FieldInsnNode) node).desc));
         } else if (opcode == Opcodes.PUTFIELD) {
-            popType(stack, IrType.I32, instruction);
+            popType(stack, fieldType(((FieldInsnNode) node).desc), instruction);
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.GETSTATIC) {
-            stack.add(IrType.I32);
+            stack.add(fieldType(((FieldInsnNode) node).desc));
         } else if (opcode == Opcodes.PUTSTATIC) {
-            popType(stack, IrType.I32, instruction);
+            popType(stack, fieldType(((FieldInsnNode) node).desc), instruction);
         } else if (node instanceof MethodInsnNode) {
             MethodInsnNode invoke = (MethodInsnNode) node;
             Type[] arguments = Type.getArgumentTypes(invoke.desc);
@@ -885,27 +885,28 @@ public final class AsmToIr {
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
             } else if (node instanceof FieldInsnNode) {
                 FieldInsnNode field = (FieldInsnNode) node;
+                IrType fieldType = fieldType(field.desc);
                 if (opcode == Opcodes.GETFIELD) {
                     IrValue receiver = pop(state, IrType.REFERENCE, instruction);
-                    IrValue result = irMethod.newInstructionValue(IrType.I32);
+                    IrValue result = irMethod.newInstructionValue(fieldType);
                     block.addInstruction(new IrNodes.GetField(result, field.owner, field.name,
                             field.desc, receiver, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
                     state.stack.add(result);
                 } else if (opcode == Opcodes.PUTFIELD) {
-                    IrValue value = pop(state, IrType.I32, instruction);
+                    IrValue value = pop(state, fieldType, instruction);
                     IrValue receiver = pop(state, IrType.REFERENCE, instruction);
                     block.addInstruction(new IrNodes.PutField(field.owner, field.name,
                             field.desc, receiver, value, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
                 } else if (opcode == Opcodes.GETSTATIC) {
-                    IrValue result = irMethod.newInstructionValue(IrType.I32);
+                    IrValue result = irMethod.newInstructionValue(fieldType);
                     block.addInstruction(new IrNodes.GetStaticField(result, field.owner,
                             field.name, field.desc, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
                     state.stack.add(result);
                 } else if (opcode == Opcodes.PUTSTATIC) {
-                    IrValue value = pop(state, IrType.I32, instruction);
+                    IrValue value = pop(state, fieldType, instruction);
                     block.addInstruction(new IrNodes.PutStaticField(field.owner, field.name,
                             field.desc, value, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
@@ -1204,6 +1205,29 @@ public final class AsmToIr {
             return IrType.REFERENCE;
         }
         throw new IllegalArgumentException("Unsupported JVM carrier type " + type);
+    }
+
+    private static boolean isSupportedFieldDescriptor(String descriptor) {
+        try {
+            fieldType(descriptor);
+            return true;
+        } catch (IllegalArgumentException malformedOrUnsupportedDescriptor) {
+            return false;
+        }
+    }
+
+    private static IrType fieldType(String descriptor) {
+        Type type = Type.getType(descriptor);
+        if (type.getSort() == Type.INT) {
+            return IrType.I32;
+        }
+        if (type.getSort() == Type.LONG) {
+            return IrType.I64;
+        }
+        if (isReference(type)) {
+            return IrType.REFERENCE;
+        }
+        throw new IllegalArgumentException("Unsupported field descriptor " + descriptor);
     }
 
     private static boolean isSupportedInvoke(MethodInsnNode invoke) {

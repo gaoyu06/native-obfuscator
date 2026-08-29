@@ -543,11 +543,12 @@ public final class IrCppEmitter {
         CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
                 field.getDescriptor(), context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
-        statements.add(nullCheck(method, field.getReceiver(), "GETFIELD Int npe",
+        statements.add(nullCheck(method, field.getReceiver(),
+                "GETFIELD " + fieldCarrier(field.getDescriptor()) + " npe",
                 field.getSourceLine(), context, block));
         statements.add(new CppAst.Assignment(variable(field.getResult()),
-                memberCall("env", "GetIntField", expression(field.getReceiver()),
-                        array("cfields", slots.memberId))));
+                memberCall("env", fieldAccessor(true, false, field.getDescriptor()),
+                        expression(field.getReceiver()), array("cfields", slots.memberId))));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -558,11 +559,13 @@ public final class IrCppEmitter {
         CacheSlots slots = cacheField(method, field.getOwner(), field.getName(),
                 field.getDescriptor(), context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
-        statements.add(nullCheck(method, field.getReceiver(), "PUTFIELD Int npe",
+        statements.add(nullCheck(method, field.getReceiver(),
+                "PUTFIELD " + fieldCarrier(field.getDescriptor()) + " npe",
                 field.getSourceLine(), context, block));
         statements.add(new CppAst.ExpressionStatement(
-                memberCall("env", "SetIntField", expression(field.getReceiver()),
-                        array("cfields", slots.memberId), expression(field.getValue()))));
+                memberCall("env", fieldAccessor(false, false, field.getDescriptor()),
+                        expression(field.getReceiver()), array("cfields", slots.memberId),
+                        expression(field.getValue()))));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -574,8 +577,8 @@ public final class IrCppEmitter {
                 field.getDescriptor(), true, context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         statements.add(new CppAst.Assignment(variable(field.getResult()),
-                memberCall("env", "GetStaticIntField", array("cclasses", slots.classId),
-                        array("cfields", slots.memberId))));
+                memberCall("env", fieldAccessor(true, true, field.getDescriptor()),
+                        array("cclasses", slots.classId), array("cfields", slots.memberId))));
         statements.add(exceptionCheck(method, block));
         return statements;
     }
@@ -587,10 +590,30 @@ public final class IrCppEmitter {
                 field.getDescriptor(), true, context, block);
         List<CppAst.Statement> statements = new ArrayList<>(slots.initialization);
         statements.add(new CppAst.ExpressionStatement(memberCall("env",
-                "SetStaticIntField", array("cclasses", slots.classId),
-                array("cfields", slots.memberId), expression(field.getValue()))));
+                fieldAccessor(false, true, field.getDescriptor()),
+                array("cclasses", slots.classId), array("cfields", slots.memberId),
+                expression(field.getValue()))));
         statements.add(exceptionCheck(method, block));
         return statements;
+    }
+
+    private String fieldAccessor(boolean get, boolean staticField, String descriptor) {
+        return (get ? "Get" : "Set") + (staticField ? "Static" : "")
+                + fieldCarrier(descriptor) + "Field";
+    }
+
+    private String fieldCarrier(String descriptor) {
+        Type type = Type.getType(descriptor);
+        if (type.getSort() == Type.INT) {
+            return "Int";
+        }
+        if (type.getSort() == Type.LONG) {
+            return "Long";
+        }
+        if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
+            return "Object";
+        }
+        throw new IllegalArgumentException("Unsupported field descriptor " + descriptor);
     }
 
     private List<CppAst.Statement> emitInvoke(IrMethod method, IrBlock block,
