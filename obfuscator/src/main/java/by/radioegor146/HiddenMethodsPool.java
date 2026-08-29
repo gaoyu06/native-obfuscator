@@ -177,6 +177,10 @@ public class HiddenMethodsPool {
         return companionClasses.get(ownerName);
     }
 
+    public boolean isCompanionClass(ClassNode classNode) {
+        return companionClasses.containsValue(classNode);
+    }
+
     private static String sha256(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(

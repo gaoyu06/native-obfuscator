@@ -467,10 +467,10 @@ public class NativeObfuscator {
                 }
             });
 
-            // Hidden MethodHandle trampolines are ordinary symbolic call targets from the
-            // generated native code. Keep them loadable by the transformed application's
-            // class loader on every platform, including HOTSPOT. HOTSPOT additionally embeds
-            // them in the native library to preserve the existing eager DefineClass path.
+            // Hidden helpers are ordinary symbolic call targets from the generated native
+            // code, so every helper remains in the output jar. Generic trampolines also keep
+            // the existing eager DefineClass path. Application-dependent condy companions
+            // must instead be loaded from the jar by the transformed class's loader.
             for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
                 ClassWriter classWriter = new SafeClassWriter(metadataReader,
                         ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -483,6 +483,9 @@ public class NativeObfuscator {
             }
             if (platform != Platform.ANDROID) {
                 for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
+                    if (hiddenMethodsPool.isCompanionClass(hiddenClass)) {
+                        continue;
+                    }
                     String hiddenClassFileName = "data_" + Util.escapeCppNameString(hiddenClass.name.replace('/', '_'));
 
                     cMakeBuilder.addClassFile("output/" + hiddenClassFileName + ".hpp");
