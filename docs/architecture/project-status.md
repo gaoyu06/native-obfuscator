@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing leaf-only `DADD`
-[#229](https://github.com/gaoyu06/native-obfuscator/pull/229)
-(parent re-ran 339/339: 332 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateDaddSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#228](https://github.com/gaoyu06/native-obfuscator/pull/228)
-four-level nested float tree. Active process:
+Last updated after landing leaf-only `DSUB`/`DMUL`
+[#230](https://github.com/gaoyu06/native-obfuscator/pull/230)
+(parent re-ran 342/342: 335 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateDsubDmulSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#229](https://github.com/gaoyu06/native-obfuscator/pull/229)
+leaf-only `DADD` tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -238,12 +238,15 @@ legacy。不能当成 JDK 支持矩阵。
   `FDIV`.
   [#229](https://github.com/gaoyu06/native-obfuscator/pull/229) admits
   one leaf-only `DADD` over declared double loads / double constants.
+  [#230](https://github.com/gaoyu06/native-obfuscator/pull/230) admits
+  leaf-only `DSUB` and `DMUL` over the same double leaves.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (five-or-more nested int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries, extra-local float operands,
-  remaining double leftovers beyond leaf-only `DADD`, reference computed inputs),
+  remaining double leftovers beyond leaf-only `DADD`/`DSUB`/`DMUL`,
+  reference computed inputs),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -405,6 +408,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Three-level nested float chain inputs (#227) | 332 tests (`IrCompilerTest` 325 + `CodegenModeTest` 7). Parent re-ran 332/332 including `threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Four-level nested float chain inputs (#228) | 335 tests (`IrCompilerTest` 328 + `CodegenModeTest` 7). Parent re-ran 335/335 including `fourLevelNestedFloatChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `DADD` double chain inputs (#229) | 339 tests (`IrCompilerTest` 332 + `CodegenModeTest` 7). Parent re-ran 339/339 including `threeImmediateDaddSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Leaf-only `DSUB`/`DMUL` double chain inputs (#230) | 342 tests (`IrCompilerTest` 335 + `CodegenModeTest` 7). Parent re-ran 342/342 including `threeImmediateDsubDmulSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -457,7 +461,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries, extra-local
   float operands, remaining double leftovers beyond leaf-only
-  `DADD`, extras still unassigned
+  `DADD`/`DSUB`/`DMUL`, extras still unassigned
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
@@ -476,9 +480,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #229 (leaf-only
-  `DADD`). /
-  落地 #229 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #230 (leaf-only
+  `DSUB`/`DMUL`). /
+  落地 #230 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
