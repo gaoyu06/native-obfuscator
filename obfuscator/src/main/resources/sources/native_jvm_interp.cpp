@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <limits>
+#include <new>
 
 namespace native_jvm::interp {
     namespace {
@@ -124,6 +125,53 @@ namespace native_jvm::interp {
             return true;
         }
 
+        bool valid_side_tables(const method_desc &method) noexcept {
+            if ((method.class_table_len != 0 &&
+                    method.class_table == nullptr) ||
+                    (method.constructor_table_len != 0 &&
+                            method.constructor_table == nullptr)) {
+                return false;
+            }
+            for (std::uint32_t index = 0;
+                 index < method.class_table_len; ++index) {
+                if (method.class_table[index] == nullptr ||
+                        method.class_table[index][0] == '\0') {
+                    return false;
+                }
+            }
+            for (std::uint32_t index = 0;
+                 index < method.constructor_table_len; ++index) {
+                const constructor_ref &constructor =
+                        method.constructor_table[index];
+                if (constructor.class_index >= method.class_table_len ||
+                        constructor.descriptor == nullptr ||
+                        constructor.descriptor[0] == '\0' ||
+                        (constructor.argument_count != 0 &&
+                                constructor.argument_types == nullptr)) {
+                    return false;
+                }
+                std::uint32_t slots = 0;
+                for (std::uint16_t argument = 0;
+                     argument < constructor.argument_count; ++argument) {
+                    switch (constructor.argument_types[argument]) {
+                        case value_kind::i32:
+                        case value_kind::reference:
+                            ++slots;
+                            break;
+                        case value_kind::i64:
+                            slots += 2;
+                            break;
+                        default:
+                            return false;
+                    }
+                }
+                if (slots != constructor.argument_slots) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         jthrowable create_exception(JNIEnv *env, const char *type,
                                     const char *message) noexcept {
             if (env == nullptr) {
@@ -196,6 +244,19 @@ namespace native_jvm::interp {
             current_frame.pending_exception = exception;
             return exception_dispatch_result::pending;
         }
+
+        exception_dispatch_result dispatch_jni_exception(
+                const method_desc &method, frame &current_frame,
+                JNIEnv *env, std::uint32_t instruction_pc,
+                jthrowable exception, std::uint32_t &pc,
+                std::uint16_t &sp) noexcept {
+            if (exception == nullptr) {
+                return exception_dispatch_result::pending;
+            }
+            env->ExceptionClear();
+            return dispatch_exception(method, current_frame, env,
+                    instruction_pc, exception, pc, sp);
+        }
     }
 
     void store_long(std::int32_t *slots, std::int64_t value) noexcept {
@@ -215,7 +276,8 @@ namespace native_jvm::interp {
         if (method.isa_version != ISA_VERSION || method.code == nullptr ||
                 method.code_len == 0 || current_frame.locals == nullptr ||
                 current_frame.stack == nullptr ||
-                result_count != 1U || !valid_exception_table(method)) {
+                result_count != 1U || !valid_exception_table(method) ||
+                !valid_side_tables(method)) {
             return execution_result::invalid_stream;
         }
 
@@ -285,6 +347,183 @@ namespace native_jvm::interp {
                     }
                     current_frame.ref_locals[local] =
                             current_frame.ref_stack[--sp];
+                    break;
+                }
+                case opcode::dup:
+                    if (current_frame.ref_stack == nullptr || sp == 0 ||
+                            sp >= method.max_stack) {
+                        return execution_result::invalid_stream;
+                    }
+                    current_frame.ref_stack[sp] =
+                            current_frame.ref_stack[sp - 1];
+                    ++sp;
+                    break;
+                case opcode::new_: {
+                    std::uint16_t class_index;
+                    if (!read_u16(method, pc, class_index) ||
+                            class_index >= method.class_table_len ||
+                            current_frame.ref_stack == nullptr ||
+                            sp >= method.max_stack || env == nullptr) {
+                        return execution_result::invalid_stream;
+                    }
+                    jclass target_class =
+                            env->FindClass(method.class_table[class_index]);
+                    if (target_class == nullptr) {
+                        jthrowable exception = env->ExceptionOccurred();
+                        exception_dispatch_result dispatch =
+                                dispatch_jni_exception(
+                                        method, current_frame, env,
+                                        instruction_pc, exception, pc, sp);
+                        if (dispatch ==
+                                exception_dispatch_result::handled) {
+                            continue;
+                        }
+                        return dispatch ==
+                                exception_dispatch_result::pending
+                                ? execution_result::pending_exception
+                                : execution_result::invalid_stream;
+                    }
+                    jobject instance = env->AllocObject(target_class);
+                    jthrowable exception = env->ExceptionOccurred();
+                    env->DeleteLocalRef(target_class);
+                    if (instance == nullptr || exception != nullptr) {
+                        if (instance != nullptr) {
+                            env->DeleteLocalRef(instance);
+                        }
+                        exception_dispatch_result dispatch =
+                                dispatch_jni_exception(
+                                        method, current_frame, env,
+                                        instruction_pc, exception, pc, sp);
+                        if (dispatch ==
+                                exception_dispatch_result::handled) {
+                            continue;
+                        }
+                        return dispatch ==
+                                exception_dispatch_result::pending
+                                ? execution_result::pending_exception
+                                : execution_result::invalid_stream;
+                    }
+                    current_frame.ref_stack[sp++] = instance;
+                    break;
+                }
+                case opcode::invokespecial: {
+                    std::uint16_t constructor_index;
+                    if (!read_u16(method, pc, constructor_index) ||
+                            constructor_index >=
+                                    method.constructor_table_len ||
+                            current_frame.ref_stack == nullptr ||
+                            env == nullptr) {
+                        return execution_result::invalid_stream;
+                    }
+                    const constructor_ref &constructor =
+                            method.constructor_table[constructor_index];
+                    if (sp <= constructor.argument_slots) {
+                        return execution_result::invalid_stream;
+                    }
+                    std::uint32_t receiver_position =
+                            static_cast<std::uint32_t>(sp) -
+                            constructor.argument_slots - 1;
+                    jobject receiver =
+                            current_frame.ref_stack[receiver_position];
+
+                    jclass target_class = env->FindClass(
+                            method.class_table[constructor.class_index]);
+                    if (target_class == nullptr) {
+                        sp = static_cast<std::uint16_t>(receiver_position);
+                        jthrowable exception = env->ExceptionOccurred();
+                        exception_dispatch_result dispatch =
+                                dispatch_jni_exception(
+                                        method, current_frame, env,
+                                        instruction_pc, exception, pc, sp);
+                        if (dispatch ==
+                                exception_dispatch_result::handled) {
+                            continue;
+                        }
+                        return dispatch ==
+                                exception_dispatch_result::pending
+                                ? execution_result::pending_exception
+                                : execution_result::invalid_stream;
+                    }
+                    jmethodID constructor_id = env->GetMethodID(
+                            target_class, "<init>", constructor.descriptor);
+                    if (constructor_id == nullptr) {
+                        jthrowable exception = env->ExceptionOccurred();
+                        env->DeleteLocalRef(target_class);
+                        sp = static_cast<std::uint16_t>(receiver_position);
+                        exception_dispatch_result dispatch =
+                                dispatch_jni_exception(
+                                        method, current_frame, env,
+                                        instruction_pc, exception, pc, sp);
+                        if (dispatch ==
+                                exception_dispatch_result::handled) {
+                            continue;
+                        }
+                        return dispatch ==
+                                exception_dispatch_result::pending
+                                ? execution_result::pending_exception
+                                : execution_result::invalid_stream;
+                    }
+
+                    jvalue *arguments = constructor.argument_count == 0
+                            ? nullptr
+                            : new (std::nothrow)
+                                    jvalue[constructor.argument_count]();
+                    if (constructor.argument_count != 0 &&
+                            arguments == nullptr) {
+                        env->DeleteLocalRef(target_class);
+                        return execution_result::invalid_stream;
+                    }
+                    std::uint32_t slot = receiver_position + 1;
+                    for (std::uint16_t argument = 0;
+                         argument < constructor.argument_count; ++argument) {
+                        switch (constructor.argument_types[argument]) {
+                            case value_kind::i32:
+                                arguments[argument].i =
+                                        current_frame.stack[slot++];
+                                break;
+                            case value_kind::i64:
+                                arguments[argument].j =
+                                        static_cast<jlong>(
+                                                long_from_unsigned(long_bits(
+                                                        current_frame.stack +
+                                                        slot)));
+                                slot += 2;
+                                break;
+                            case value_kind::reference:
+                                arguments[argument].l =
+                                        current_frame.ref_stack[slot++];
+                                break;
+                            default:
+                                delete[] arguments;
+                                env->DeleteLocalRef(target_class);
+                                return execution_result::invalid_stream;
+                        }
+                    }
+                    if (slot != sp) {
+                        delete[] arguments;
+                        env->DeleteLocalRef(target_class);
+                        return execution_result::invalid_stream;
+                    }
+                    env->CallNonvirtualVoidMethodA(
+                            receiver, target_class, constructor_id, arguments);
+                    jthrowable exception = env->ExceptionOccurred();
+                    delete[] arguments;
+                    env->DeleteLocalRef(target_class);
+                    sp = static_cast<std::uint16_t>(receiver_position);
+                    if (exception != nullptr) {
+                        exception_dispatch_result dispatch =
+                                dispatch_jni_exception(
+                                        method, current_frame, env,
+                                        instruction_pc, exception, pc, sp);
+                        if (dispatch ==
+                                exception_dispatch_result::handled) {
+                            continue;
+                        }
+                        return dispatch ==
+                                exception_dispatch_result::pending
+                                ? execution_result::pending_exception
+                                : execution_result::invalid_stream;
+                    }
                     break;
                 }
                 case opcode::lpush: {

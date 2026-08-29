@@ -10,13 +10,16 @@ import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -80,6 +83,9 @@ public final class InterpreterMethodEmitter {
     public static final int IFNULL = 50;
     public static final int IFNONNULL = 51;
     public static final int ATHROW = 52;
+    public static final int DUP = 53;
+    public static final int NEW = 54;
+    public static final int INVOKESPECIAL = 55;
 
     private InterpreterMethodEmitter() {
     }
@@ -100,11 +106,12 @@ public final class InterpreterMethodEmitter {
         Map<LabelNode, Integer> labelOffsets = new IdentityHashMap<>();
         int codeLength = 0;
         boolean expandsIinc = false;
+        boolean provableReferenceTop = false;
         for (AbstractInsnNode instruction : method.instructions) {
             if (instruction instanceof LabelNode) {
                 labelOffsets.put((LabelNode) instruction, codeLength);
             }
-            int size = instructionSize(instruction);
+            int size = instructionSize(instruction, provableReferenceTop);
             if (size < 0) {
                 return null;
             }
@@ -113,11 +120,30 @@ public final class InterpreterMethodEmitter {
                 return null;
             }
             expandsIinc |= instruction instanceof IincInsnNode;
+            provableReferenceTop = updateProvableReferenceTop(
+                    instruction, provableReferenceTop);
+        }
+
+        SideTables sideTables = new SideTables();
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof TypeInsnNode) {
+                if (sideTables.addClass(
+                        ((TypeInsnNode) instruction).desc) < 0) {
+                    return null;
+                }
+            } else if (instruction instanceof MethodInsnNode) {
+                MethodInsnNode invocation = (MethodInsnNode) instruction;
+                if (sideTables.addConstructor(
+                        invocation.owner, invocation.desc) < 0) {
+                    return null;
+                }
+            }
         }
 
         ByteArrayOutputStream code = new ByteArrayOutputStream(codeLength);
         for (AbstractInsnNode instruction : method.instructions) {
-            if (!emit(instruction, labelOffsets, code, codeLength)) {
+            if (!emit(instruction, labelOffsets, code, codeLength,
+                    sideTables)) {
                 return null;
             }
         }
@@ -143,7 +169,11 @@ public final class InterpreterMethodEmitter {
         int maxStack = method.maxStack + (expandsIinc ? 2 : 0);
         return new CompiledMethod(code.toByteArray(), maxStack,
                 method.maxLocals, exceptionHandlers.toArray(
-                new ExceptionHandler[exceptionHandlers.size()]));
+                new ExceptionHandler[exceptionHandlers.size()]),
+                sideTables.classes.toArray(new String[sideTables.classes.size()]),
+                sideTables.constructors.toArray(
+                        new ConstructorReference[
+                                sideTables.constructors.size()]));
     }
 
     private static boolean hasOnlySupportedArguments(String descriptor) {
@@ -161,7 +191,8 @@ public final class InterpreterMethodEmitter {
                 sort == Type.OBJECT || sort == Type.ARRAY;
     }
 
-    private static int instructionSize(AbstractInsnNode instruction) {
+    private static int instructionSize(AbstractInsnNode instruction,
+                                       boolean provableReferenceTop) {
         int opcode = instruction.getOpcode();
         if (opcode < 0 || opcode == Opcodes.NOP) {
             return 0;
@@ -185,6 +216,8 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ARETURN:
                 case Opcodes.ATHROW:
                     return 1;
+                case Opcodes.DUP:
+                    return provableReferenceTop ? 1 : -1;
                 default:
                     return arithmeticOpcode(opcode) >= 0 ? 1 : -1;
             }
@@ -217,12 +250,22 @@ public final class InterpreterMethodEmitter {
         if (instruction instanceof JumpInsnNode) {
             return branchOpcode(opcode) >= 0 ? 5 : -1;
         }
+        if (instruction instanceof TypeInsnNode) {
+            TypeInsnNode type = (TypeInsnNode) instruction;
+            return opcode == Opcodes.NEW && type.desc != null &&
+                    !type.desc.isEmpty() ? 3 : -1;
+        }
+        if (instruction instanceof MethodInsnNode) {
+            return isSupportedConstructorInvocation(
+                    (MethodInsnNode) instruction) ? 3 : -1;
+        }
         return -1;
     }
 
     private static boolean emit(AbstractInsnNode instruction,
                                 Map<LabelNode, Integer> labelOffsets,
-                                ByteArrayOutputStream code, int codeLength) {
+                                ByteArrayOutputStream code, int codeLength,
+                                SideTables sideTables) {
         int opcode = instruction.getOpcode();
         if (opcode < 0 || opcode == Opcodes.NOP) {
             return true;
@@ -256,6 +299,9 @@ public final class InterpreterMethodEmitter {
                     return true;
                 case Opcodes.ATHROW:
                     code.write(ATHROW);
+                    return true;
+                case Opcodes.DUP:
+                    code.write(DUP);
                     return true;
                 default:
                     int interpretedOpcode = arithmeticOpcode(opcode);
@@ -305,7 +351,58 @@ public final class InterpreterMethodEmitter {
             writeI32(code, target);
             return true;
         }
+        if (instruction instanceof TypeInsnNode) {
+            int index = sideTables.classIndexes.get(
+                    ((TypeInsnNode) instruction).desc);
+            code.write(NEW);
+            writeU16(code, index);
+            return true;
+        }
+        if (instruction instanceof MethodInsnNode) {
+            MethodInsnNode invocation = (MethodInsnNode) instruction;
+            Integer index = sideTables.constructorIndexes.get(
+                    constructorKey(invocation.owner, invocation.desc));
+            if (index == null) {
+                return false;
+            }
+            code.write(INVOKESPECIAL);
+            writeU16(code, index);
+            return true;
+        }
         return false;
+    }
+
+    private static boolean updateProvableReferenceTop(
+            AbstractInsnNode instruction, boolean previous) {
+        if (instruction instanceof LabelNode) {
+            return false;
+        }
+        int opcode = instruction.getOpcode();
+        if (opcode < 0 || opcode == Opcodes.NOP) {
+            return previous;
+        }
+        return opcode == Opcodes.NEW || opcode == Opcodes.ALOAD ||
+                opcode == Opcodes.ACONST_NULL ||
+                (opcode == Opcodes.DUP && previous);
+    }
+
+    private static boolean isSupportedConstructorInvocation(
+            MethodInsnNode invocation) {
+        if (invocation.getOpcode() != Opcodes.INVOKESPECIAL ||
+                invocation.itf || !"<init>".equals(invocation.name) ||
+                invocation.owner == null || invocation.owner.isEmpty()) {
+            return false;
+        }
+        try {
+            return Type.getReturnType(invocation.desc).getSort() == Type.VOID &&
+                    hasOnlySupportedArguments(invocation.desc);
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
+    private static String constructorKey(String owner, String descriptor) {
+        return owner + '\0' + descriptor;
     }
 
     private static void emitIntConstant(ByteArrayOutputStream code, int value) {
@@ -452,18 +549,69 @@ public final class InterpreterMethodEmitter {
         output.write((int) ((value >>> 56) & 0xff));
     }
 
+    private static final class SideTables {
+        private final List<String> classes = new ArrayList<>();
+        private final Map<String, Integer> classIndexes =
+                new LinkedHashMap<>();
+        private final List<ConstructorReference> constructors =
+                new ArrayList<>();
+        private final Map<String, Integer> constructorIndexes =
+                new LinkedHashMap<>();
+
+        private int addClass(String className) {
+            Integer existing = classIndexes.get(className);
+            if (existing != null) {
+                return existing;
+            }
+            if (classes.size() >= 0x10000) {
+                return -1;
+            }
+            int index = classes.size();
+            classes.add(className);
+            classIndexes.put(className, index);
+            return index;
+        }
+
+        private int addConstructor(String owner, String descriptor) {
+            String key = constructorKey(owner, descriptor);
+            Integer existing = constructorIndexes.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            if (constructors.size() >= 0x10000) {
+                return -1;
+            }
+            int classIndex = addClass(owner);
+            if (classIndex < 0) {
+                return -1;
+            }
+            Type[] arguments = Type.getArgumentTypes(descriptor);
+            int index = constructors.size();
+            constructors.add(new ConstructorReference(
+                    classIndex, descriptor, arguments));
+            constructorIndexes.put(key, index);
+            return index;
+        }
+    }
+
     public static final class CompiledMethod {
         private final byte[] code;
         private final int maxStack;
         private final int maxLocals;
         private final ExceptionHandler[] exceptionHandlers;
+        private final String[] classes;
+        private final ConstructorReference[] constructors;
 
         private CompiledMethod(byte[] code, int maxStack, int maxLocals,
-                               ExceptionHandler[] exceptionHandlers) {
+                               ExceptionHandler[] exceptionHandlers,
+                               String[] classes,
+                               ConstructorReference[] constructors) {
             this.code = code;
             this.maxStack = maxStack;
             this.maxLocals = maxLocals;
             this.exceptionHandlers = exceptionHandlers;
+            this.classes = classes;
+            this.constructors = constructors;
         }
 
         public byte[] getCode() {
@@ -480,6 +628,49 @@ public final class InterpreterMethodEmitter {
 
         public ExceptionHandler[] getExceptionHandlers() {
             return exceptionHandlers.clone();
+        }
+
+        public String[] getClasses() {
+            return classes.clone();
+        }
+
+        public ConstructorReference[] getConstructors() {
+            return constructors.clone();
+        }
+    }
+
+    public static final class ConstructorReference {
+        private final int classIndex;
+        private final String descriptor;
+        private final Type[] argumentTypes;
+        private final int argumentSlots;
+
+        private ConstructorReference(int classIndex, String descriptor,
+                                     Type[] argumentTypes) {
+            this.classIndex = classIndex;
+            this.descriptor = descriptor;
+            this.argumentTypes = argumentTypes.clone();
+            int slots = 0;
+            for (Type argument : argumentTypes) {
+                slots += argument.getSize();
+            }
+            this.argumentSlots = slots;
+        }
+
+        public int getClassIndex() {
+            return classIndex;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public Type[] getArgumentTypes() {
+            return argumentTypes.clone();
+        }
+
+        public int getArgumentSlots() {
+            return argumentSlots;
         }
     }
 

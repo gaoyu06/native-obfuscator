@@ -30,15 +30,20 @@ public class InterpreterRuntimeTest {
                         "#define INTERPRETER_TEST_JNI_H\n" +
                         "#include <cstring>\n" +
                         "using jint = int;\n" +
+                        "using jlong = long long;\n" +
                         "using jboolean = unsigned char;\n" +
                         "constexpr jint JNI_OK = 0;\n" +
                         "constexpr jboolean JNI_TRUE = 1;\n" +
                         "enum class test_object_kind {\n" +
-                        "    object, throwable, arithmetic, null_pointer, class_object\n" +
+                        "    object, allocated, throwable, arithmetic, null_pointer, class_object\n" +
                         "};\n" +
                         "struct _jobject {\n" +
-                        "    explicit _jobject(test_object_kind value = test_object_kind::object) : kind(value) {}\n" +
+                        "    explicit _jobject(test_object_kind value = test_object_kind::object) :\n" +
+                        "            kind(value), constructor_i(0), constructor_j(0), constructor_l(nullptr) {}\n" +
                         "    test_object_kind kind;\n" +
+                        "    jint constructor_i;\n" +
+                        "    jlong constructor_j;\n" +
+                        "    _jobject *constructor_l;\n" +
                         "};\n" +
                         "struct _jthrowable : _jobject {\n" +
                         "    explicit _jthrowable(test_object_kind value = test_object_kind::throwable) : _jobject(value) {}\n" +
@@ -50,19 +55,76 @@ public class InterpreterRuntimeTest {
                         "using jobject = _jobject *;\n" +
                         "using jthrowable = _jthrowable *;\n" +
                         "using jclass = _jclass *;\n" +
+                        "struct _jmethodID {\n" +
+                        "    const char *descriptor;\n" +
+                        "    jclass owner;\n" +
+                        "};\n" +
+                        "using jmethodID = _jmethodID *;\n" +
+                        "union jvalue {\n" +
+                        "    jint i;\n" +
+                        "    jlong j;\n" +
+                        "    jobject l;\n" +
+                        "};\n" +
                         "class JNIEnv {\n" +
                         "public:\n" +
                         "    JNIEnv() : pending_(nullptr), generated_(),\n" +
                         "            arithmetic_class_(\"java/lang/ArithmeticException\"),\n" +
                         "            null_pointer_class_(\"java/lang/NullPointerException\"),\n" +
-                        "            throwable_class_(\"java/lang/Throwable\") {}\n" +
+                        "            throwable_class_(\"java/lang/Throwable\"),\n" +
+                        "            widget_class_(\"example/Widget\"),\n" +
+                        "            throwing_class_(\"example/Throwing\"),\n" +
+                        "            allocation_failure_class_(\"example/AllocationFailure\"),\n" +
+                        "            allocated_(test_object_kind::allocated), method_{} {}\n" +
                         "    jclass FindClass(const char *name) {\n" +
                         "        if (std::strcmp(name, arithmetic_class_.name) == 0) return &arithmetic_class_;\n" +
                         "        if (std::strcmp(name, null_pointer_class_.name) == 0) return &null_pointer_class_;\n" +
                         "        if (std::strcmp(name, throwable_class_.name) == 0) return &throwable_class_;\n" +
+                        "        if (std::strcmp(name, widget_class_.name) == 0) return &widget_class_;\n" +
+                        "        if (std::strcmp(name, throwing_class_.name) == 0) return &throwing_class_;\n" +
+                        "        if (std::strcmp(name, allocation_failure_class_.name) == 0) return &allocation_failure_class_;\n" +
                         "        generated_.kind = test_object_kind::throwable;\n" +
                         "        pending_ = &generated_;\n" +
                         "        return nullptr;\n" +
+                        "    }\n" +
+                        "    jobject AllocObject(jclass type) {\n" +
+                        "        if (type == &allocation_failure_class_) {\n" +
+                        "            generated_.kind = test_object_kind::throwable;\n" +
+                        "            pending_ = &generated_;\n" +
+                        "            return nullptr;\n" +
+                        "        }\n" +
+                        "        allocated_ = _jobject(test_object_kind::allocated);\n" +
+                        "        return &allocated_;\n" +
+                        "    }\n" +
+                        "    jmethodID GetMethodID(jclass owner, const char *name,\n" +
+                        "                          const char *descriptor) {\n" +
+                        "        if (std::strcmp(name, \"<init>\") != 0) {\n" +
+                        "            generated_.kind = test_object_kind::throwable;\n" +
+                        "            pending_ = &generated_;\n" +
+                        "            return nullptr;\n" +
+                        "        }\n" +
+                        "        method_.descriptor = descriptor;\n" +
+                        "        method_.owner = owner;\n" +
+                        "        return &method_;\n" +
+                        "    }\n" +
+                        "    void CallNonvirtualVoidMethodA(jobject receiver, jclass owner,\n" +
+                        "                                   jmethodID method,\n" +
+                        "                                   const jvalue *arguments) {\n" +
+                        "        if (owner == &throwing_class_) {\n" +
+                        "            generated_.kind = test_object_kind::throwable;\n" +
+                        "            pending_ = &generated_;\n" +
+                        "            return;\n" +
+                        "        }\n" +
+                        "        if (receiver == nullptr || method == nullptr || method->owner != owner) {\n" +
+                        "            generated_.kind = test_object_kind::null_pointer;\n" +
+                        "            pending_ = &generated_;\n" +
+                        "            return;\n" +
+                        "        }\n" +
+                        "        if (std::strcmp(method->descriptor,\n" +
+                        "                        \"(IJLjava/lang/Object;)V\") == 0) {\n" +
+                        "            receiver->constructor_i = arguments[0].i;\n" +
+                        "            receiver->constructor_j = arguments[1].j;\n" +
+                        "            receiver->constructor_l = arguments[2].l;\n" +
+                        "        }\n" +
                         "    }\n" +
                         "    jint ThrowNew(jclass type, const char *) {\n" +
                         "        generated_.kind = std::strcmp(type->name, arithmetic_class_.name) == 0\n" +
@@ -90,6 +152,11 @@ public class InterpreterRuntimeTest {
                         "    _jclass arithmetic_class_;\n" +
                         "    _jclass null_pointer_class_;\n" +
                         "    _jclass throwable_class_;\n" +
+                        "    _jclass widget_class_;\n" +
+                        "    _jclass throwing_class_;\n" +
+                        "    _jclass allocation_failure_class_;\n" +
+                        "    _jobject allocated_;\n" +
+                        "    _jmethodID method_;\n" +
                         "};\n" +
                         "#endif\n").getBytes(StandardCharsets.UTF_8));
         Files.write(directory.resolve("runtime_test.cpp"),
@@ -115,6 +182,8 @@ public class InterpreterRuntimeTest {
                 "using native_jvm::interp::exception_handler;\n" +
                 "using native_jvm::interp::frame;\n" +
                 "using native_jvm::interp::method_desc;\n" +
+                "using native_jvm::interp::constructor_ref;\n" +
+                "using native_jvm::interp::value_kind;\n" +
                 "\n" +
                 "static const std::uint8_t add_code[] = { 2,0,0, 2,1,0, 4, 19 };\n" +
                 "static const method_desc add_method = { 4, 2, 2, add_code, sizeof(add_code) };\n" +
@@ -199,6 +268,66 @@ public class InterpreterRuntimeTest {
                 "    { 0,4,13,\"java/lang/ArithmeticException\" }\n" +
                 "};\n" +
                 "static const method_desc typed_athrow_method = { 4, 1, 2, typed_athrow_code, sizeof(typed_athrow_code), typed_athrow_handlers, 2 };\n" +
+                "static const char *const widget_classes[] = { \"example/Widget\" };\n" +
+                "static const value_kind widget_arguments[] = {\n" +
+                "    value_kind::i32, value_kind::i64, value_kind::reference\n" +
+                "};\n" +
+                "static const constructor_ref widget_constructors[] = {\n" +
+                "    { 0, \"(IJLjava/lang/Object;)V\", widget_arguments, 3, 4 }\n" +
+                "};\n" +
+                "static const std::uint8_t new_widget_code[] = {\n" +
+                "    54,0,0, 53, 1,7,0,0,0,\n" +
+                "    30,8,7,6,5,4,3,2,1, 47,0,0, 55,0,0, 49\n" +
+                "};\n" +
+                "static const method_desc new_widget_method = {\n" +
+                "    4, 6, 1, new_widget_code, sizeof(new_widget_code),\n" +
+                "    nullptr, 0, widget_classes, 1, widget_constructors, 1\n" +
+                "};\n" +
+                "static const char *const throwing_classes[] = { \"example/Throwing\" };\n" +
+                "static const constructor_ref throwing_constructors[] = {\n" +
+                "    { 0, \"()V\", nullptr, 0, 0 }\n" +
+                "};\n" +
+                "static const std::uint8_t throwing_constructor_code[] = {\n" +
+                "    54,0,0, 53, 55,0,0, 49,\n" +
+                "    48,0,0, 46, 49\n" +
+                "};\n" +
+                "static const exception_handler throwing_constructor_handlers[] = {\n" +
+                "    { 0,7,8,nullptr }\n" +
+                "};\n" +
+                "static const method_desc caught_constructor_method = {\n" +
+                "    4, 2, 1, throwing_constructor_code, sizeof(throwing_constructor_code),\n" +
+                "    throwing_constructor_handlers, 1,\n" +
+                "    throwing_classes, 1, throwing_constructors, 1\n" +
+                "};\n" +
+                "static const method_desc unmatched_constructor_method = {\n" +
+                "    4, 2, 1, throwing_constructor_code, 8,\n" +
+                "    nullptr, 0, throwing_classes, 1, throwing_constructors, 1\n" +
+                "};\n" +
+                "static const char *const allocation_failure_classes[] = {\n" +
+                "    \"example/AllocationFailure\"\n" +
+                "};\n" +
+                "static const std::uint8_t allocation_failure_code[] = {\n" +
+                "    54,0,0, 49\n" +
+                "};\n" +
+                "static const method_desc allocation_failure_method = {\n" +
+                "    4, 1, 0, allocation_failure_code, sizeof(allocation_failure_code),\n" +
+                "    nullptr, 0, allocation_failure_classes, 1, nullptr, 0\n" +
+                "};\n" +
+                "static const std::uint8_t invalid_new_index_code[] = {\n" +
+                "    54,1,0, 49\n" +
+                "};\n" +
+                "static const method_desc invalid_new_index_method = {\n" +
+                "    4, 1, 0, invalid_new_index_code, sizeof(invalid_new_index_code),\n" +
+                "    nullptr, 0, widget_classes, 1, nullptr, 0\n" +
+                "};\n" +
+                "static const std::uint8_t invalid_constructor_index_code[] = {\n" +
+                "    54,0,0, 53, 55,1,0, 49\n" +
+                "};\n" +
+                "static const method_desc invalid_constructor_index_method = {\n" +
+                "    4, 2, 0, invalid_constructor_index_code,\n" +
+                "    sizeof(invalid_constructor_index_code), nullptr, 0,\n" +
+                "    widget_classes, 1, widget_constructors, 1\n" +
+                "};\n" +
                 "\n" +
                 "static bool run_binary(const method_desc &method,\n" +
                 "                       std::int32_t a, std::int32_t b,\n" +
@@ -400,6 +529,85 @@ public class InterpreterRuntimeTest {
                 "           f.pending_exception == exception;\n" +
                 "}\n" +
                 "\n" +
+                "static bool run_new_widget(jobject constructor_reference) {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[6] = {};\n" +
+                "    jobject ref_locals[1] = { constructor_reference };\n" +
+                "    jobject ref_stack[6] = {};\n" +
+                "    jobject result = nullptr;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_l(\n" +
+                "                   new_widget_method, f, &result, &env) ==\n" +
+                "                   execution_result::success &&\n" +
+                "           result != nullptr &&\n" +
+                "           result->kind == test_object_kind::allocated &&\n" +
+                "           result->constructor_i == 7 &&\n" +
+                "           result->constructor_j ==\n" +
+                "                   INT64_C(0x0102030405060708) &&\n" +
+                "           result->constructor_l == constructor_reference &&\n" +
+                "           f.pending_exception == nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_caught_constructor() {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    jobject ref_locals[1] = {};\n" +
+                "    jobject ref_stack[2] = {};\n" +
+                "    jobject result = reinterpret_cast<jobject>(1);\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_l(\n" +
+                "                   caught_constructor_method, f, &result,\n" +
+                "                   &env) == execution_result::success &&\n" +
+                "           result == nullptr && f.pending_exception == nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_unmatched_constructor() {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    jobject ref_locals[1] = {};\n" +
+                "    jobject ref_stack[2] = {};\n" +
+                "    jobject result = nullptr;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_l(\n" +
+                "                   unmatched_constructor_method, f, &result,\n" +
+                "                   &env) == execution_result::pending_exception &&\n" +
+                "           f.pending_exception != nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_failed_allocation() {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[1] = {};\n" +
+                "    jobject ref_locals[1] = {};\n" +
+                "    jobject ref_stack[1] = {};\n" +
+                "    jobject result = nullptr;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_l(\n" +
+                "                   allocation_failure_method, f, &result,\n" +
+                "                   &env) == execution_result::pending_exception &&\n" +
+                "           f.pending_exception != nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static execution_result run_reference_status(\n" +
+                "        const method_desc &method) {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    jobject ref_locals[1] = {};\n" +
+                "    jobject ref_stack[2] = {};\n" +
+                "    jobject result = nullptr;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_l(\n" +
+                "            method, f, &result, &env);\n" +
+                "}\n" +
+                "\n" +
                 "int main() {\n" +
                 "    _jobject object_storage;\n" +
                 "    jobject object = &object_storage;\n" +
@@ -503,6 +711,14 @@ public class InterpreterRuntimeTest {
                 "    if (!run_typed_athrow(&null_pointer, 11)) return 59;\n" +
                 "    if (!run_typed_athrow(nullptr, 11)) return 60;\n" +
                 "    if (!run_typed_athrow_miss(&throwable)) return 61;\n" +
+                "    if (!run_new_widget(object)) return 62;\n" +
+                "    if (!run_caught_constructor()) return 63;\n" +
+                "    if (!run_unmatched_constructor()) return 64;\n" +
+                "    if (!run_failed_allocation()) return 65;\n" +
+                "    if (run_reference_status(invalid_new_index_method) !=\n" +
+                "            execution_result::invalid_stream) return 66;\n" +
+                "    if (run_reference_status(invalid_constructor_index_method) !=\n" +
+                "            execution_result::invalid_stream) return 67;\n" +
                 "    return 0;\n" +
                 "}\n";
     }

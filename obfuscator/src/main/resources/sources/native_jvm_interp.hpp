@@ -61,7 +61,10 @@ namespace native_jvm::interp {
         areturn = 49,
         ifnull = 50,
         ifnonnull = 51,
-        athrow = 52
+        athrow = 52,
+        dup = 53,
+        new_ = 54,
+        invokespecial = 55
     };
 
     enum class execution_result : std::uint8_t {
@@ -77,6 +80,20 @@ namespace native_jvm::interp {
         const char *catch_type;
     };
 
+    enum class value_kind : std::uint8_t {
+        i32 = 1,
+        i64 = 2,
+        reference = 3
+    };
+
+    struct constructor_ref {
+        std::uint16_t class_index;
+        const char *descriptor;
+        const value_kind *argument_types;
+        std::uint16_t argument_count;
+        std::uint16_t argument_slots;
+    };
+
     struct method_desc {
         std::uint16_t isa_version;
         std::uint16_t max_stack;
@@ -85,6 +102,10 @@ namespace native_jvm::interp {
         std::uint32_t code_len;
         const exception_handler *exception_table = nullptr;
         std::uint32_t exception_table_len = 0;
+        const char *const *class_table = nullptr;
+        std::uint32_t class_table_len = 0;
+        const constructor_ref *constructor_table = nullptr;
+        std::uint32_t constructor_table_len = 0;
     };
 
     struct frame {

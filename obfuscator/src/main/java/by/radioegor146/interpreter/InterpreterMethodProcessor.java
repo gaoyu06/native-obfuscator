@@ -41,6 +41,11 @@ public final class InterpreterMethodProcessor {
         InterpreterMethodEmitter.ExceptionHandler[] exceptionHandlers =
                 compiled.getExceptionHandlers();
         appendExceptionTable(context, dataName, exceptionHandlers);
+        String[] classes = compiled.getClasses();
+        appendClassTable(context, dataName, classes);
+        InterpreterMethodEmitter.ConstructorReference[] constructors =
+                compiled.getConstructors();
+        appendConstructorTable(context, dataName, constructors);
         context.output.append("static const native_jvm::interp::method_desc ")
                 .append(dataName)
                 .append("_method = { ")
@@ -53,6 +58,14 @@ public final class InterpreterMethodProcessor {
                 .append(exceptionHandlers.length == 0
                         ? "nullptr" : dataName + "_exceptions")
                 .append(", ").append(exceptionHandlers.length)
+                .append(", ")
+                .append(classes.length == 0
+                        ? "nullptr" : dataName + "_classes")
+                .append(", ").append(classes.length)
+                .append(", ")
+                .append(constructors.length == 0
+                        ? "nullptr" : dataName + "_constructors")
+                .append(", ").append(constructors.length)
                 .append(" };\n\n");
 
         context.output.append(MethodProcessor.CPP_TYPES[context.ret.getSort()])
@@ -195,6 +208,79 @@ public final class InterpreterMethodProcessor {
             context.output.append(" },\n");
         }
         context.output.append("};\n");
+    }
+
+    private static void appendClassTable(MethodContext context,
+                                         String dataName,
+                                         String[] classes) {
+        if (classes.length == 0) {
+            return;
+        }
+        context.output.append("static const char *const ")
+                .append(dataName).append("_classes[] = { ");
+        for (int i = 0; i < classes.length; i++) {
+            if (i != 0) {
+                context.output.append(", ");
+            }
+            context.output.append(context.getStringPool().get(classes[i]));
+        }
+        context.output.append(" };\n");
+    }
+
+    private static void appendConstructorTable(
+            MethodContext context, String dataName,
+            InterpreterMethodEmitter.ConstructorReference[] constructors) {
+        for (int i = 0; i < constructors.length; i++) {
+            Type[] arguments = constructors[i].getArgumentTypes();
+            if (arguments.length == 0) {
+                continue;
+            }
+            context.output.append(
+                    "static const native_jvm::interp::value_kind ")
+                    .append(dataName).append("_constructor_").append(i)
+                    .append("_arguments[] = { ");
+            for (int argument = 0; argument < arguments.length; argument++) {
+                if (argument != 0) {
+                    context.output.append(", ");
+                }
+                context.output.append(
+                        "native_jvm::interp::value_kind::")
+                        .append(valueKind(arguments[argument]));
+            }
+            context.output.append(" };\n");
+        }
+        if (constructors.length == 0) {
+            return;
+        }
+        context.output.append(
+                "static const native_jvm::interp::constructor_ref ")
+                .append(dataName).append("_constructors[] = {\n");
+        for (int i = 0; i < constructors.length; i++) {
+            InterpreterMethodEmitter.ConstructorReference constructor =
+                    constructors[i];
+            Type[] arguments = constructor.getArgumentTypes();
+            context.output.append("    { ")
+                    .append(constructor.getClassIndex()).append(", ")
+                    .append(context.getStringPool().get(
+                            constructor.getDescriptor())).append(", ")
+                    .append(arguments.length == 0
+                            ? "nullptr"
+                            : dataName + "_constructor_" + i + "_arguments")
+                    .append(", ").append(arguments.length)
+                    .append(", ").append(constructor.getArgumentSlots())
+                    .append(" },\n");
+        }
+        context.output.append("};\n");
+    }
+
+    private static String valueKind(Type type) {
+        if (type.getSort() == Type.LONG) {
+            return "i64";
+        }
+        if (isReference(type)) {
+            return "reference";
+        }
+        return "i32";
     }
 
     private static int[] toUnsignedInts(byte[] code) {

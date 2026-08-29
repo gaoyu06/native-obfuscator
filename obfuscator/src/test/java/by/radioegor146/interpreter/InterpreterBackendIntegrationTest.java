@@ -67,12 +67,12 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(16, occurrences(generated, "_interp_code[]"));
+        assertEquals(17, occurrences(generated, "_interp_code[]"));
         assertEquals(7, occurrences(generated,
                 "native_jvm::interp::execute_i("));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_j("));
-        assertEquals(3, occurrences(generated,
+        assertEquals(4, occurrences(generated,
                 "native_jvm::interp::execute_l("));
         assertTrue(generated.contains(
                         "native_jvm::interp::store_long(interp_locals + 2"),
@@ -85,6 +85,12 @@ public class InterpreterBackendIntegrationTest {
                 "array descriptors must use the JNI array carrier");
         assertTrue(generated.contains("_interp_exceptions[]"),
                 "an admitted try/catch method must emit an exception table");
+        assertTrue(generated.contains("_interp_classes[]"),
+                "an admitted allocation must emit a class side table");
+        assertTrue(generated.contains("_interp_constructors[]"),
+                "an admitted constructor call must emit a method side table");
+        assertTrue(generated.contains("54, 0, 0, 53, 55, 0, 0, 49"),
+                "NEW, reference DUP, constructor call, and ARETURN must use appended opcodes");
         assertTrue(generated.contains(
                         "env->Throw(interp_frame.pending_exception);"),
                 "an unhandled interpreter exception must propagate through JNI");
@@ -125,7 +131,7 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(16, occurrences(generated, "_interp_code[]"));
+        assertEquals(17, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
                         "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
                 "unsupported I2L must use the active IR codegen");
@@ -139,6 +145,28 @@ public class InterpreterBackendIntegrationTest {
                 ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
                 "InterpreterFixture", null, "java/lang/Object", null);
+
+        MethodVisitor constructor = writer.visitMethod(
+                Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        constructor.visitCode();
+        constructor.visitVarInsn(Opcodes.ALOAD, 0);
+        constructor.visitMethodInsn(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false);
+        constructor.visitInsn(Opcodes.RETURN);
+        constructor.visitMaxs(0, 0);
+        constructor.visitEnd();
+
+        MethodVisitor create = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "create", "()LInterpreterFixture;", null, null);
+        create.visitCode();
+        create.visitTypeInsn(Opcodes.NEW, "InterpreterFixture");
+        create.visitInsn(Opcodes.DUP);
+        create.visitMethodInsn(Opcodes.INVOKESPECIAL,
+                "InterpreterFixture", "<init>", "()V", false);
+        create.visitInsn(Opcodes.ARETURN);
+        create.visitMaxs(0, 0);
+        create.visitEnd();
 
         MethodVisitor add = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,

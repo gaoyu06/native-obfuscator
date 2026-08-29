@@ -10,8 +10,10 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -150,6 +152,88 @@ public class InterpreterMethodEmitterTest {
         assertEquals(52, InterpreterMethodEmitter.ATHROW);
         assertArrayEquals(bytes(47, 0, 0, 52), compiled.getCode());
         assertEquals(0, compiled.getExceptionHandlers().length);
+    }
+
+    @Test
+    public void emitsNewReferenceDupAndConstructorInvocationGolden() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "create",
+                "(IJLjava/lang/Object;)Lexample/Widget;", null, null);
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.NEW, "example/Widget"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "example/Widget", "<init>",
+                "(IJLjava/lang/Object;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxStack = 6;
+        method.maxLocals = 4;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertEquals(53, InterpreterMethodEmitter.DUP);
+        assertEquals(54, InterpreterMethodEmitter.NEW);
+        assertEquals(55, InterpreterMethodEmitter.INVOKESPECIAL);
+        assertArrayEquals(bytes(
+                54, 0, 0,
+                53,
+                2, 0, 0,
+                31, 1, 0,
+                47, 3, 0,
+                55, 0, 0,
+                49), compiled.getCode());
+        assertArrayEquals(new String[]{"example/Widget"},
+                compiled.getClasses());
+        InterpreterMethodEmitter.ConstructorReference[] constructors =
+                compiled.getConstructors();
+        assertEquals(1, constructors.length);
+        assertEquals(0, constructors[0].getClassIndex());
+        assertEquals("(IJLjava/lang/Object;)V",
+                constructors[0].getDescriptor());
+        assertEquals(4, constructors[0].getArgumentSlots());
+        assertEquals(3, constructors[0].getArgumentTypes().length);
+    }
+
+    @Test
+    public void rejectsUnprovableIntegerDupWithoutMutation() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "duplicateInt", "()I", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 0;
+        AbstractInsnNode[] original = method.instructions.toArray();
+
+        assertNull(InterpreterMethodEmitter.tryCompile(owner(), method));
+        assertArrayEquals(original, method.instructions.toArray());
+    }
+
+    @Test
+    public void rejectsInstanceNonConstructorAndUnsupportedConstructorTypes() {
+        MethodNode instance = new MethodNode(
+                Opcodes.ACC_PUBLIC, "create", "()Ljava/lang/Object;",
+                null, null);
+        instance.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        instance.instructions.add(new InsnNode(Opcodes.ARETURN));
+        instance.maxStack = 1;
+        assertNull(InterpreterMethodEmitter.tryCompile(owner(), instance));
+
+        MethodNode nonConstructor = constructorMethod("helper", "()V");
+        assertNull(InterpreterMethodEmitter.tryCompile(
+                owner(), nonConstructor));
+
+        MethodNode unsupportedType = constructorMethod("<init>", "(F)V");
+        assertNull(InterpreterMethodEmitter.tryCompile(
+                owner(), unsupportedType));
     }
 
     @Test
@@ -543,6 +627,23 @@ public class InterpreterMethodEmitterTest {
         owner.access = Opcodes.ACC_PUBLIC;
         owner.name = "InterpreterFixture";
         return owner;
+    }
+
+    private static MethodNode constructorMethod(String name,
+                                                String descriptor) {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "create", "()Ljava/lang/Object;", null, null);
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.NEW, "example/Widget"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "example/Widget", name,
+                descriptor, false));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxStack = 2;
+        method.maxLocals = 0;
+        return method;
     }
 
     private static byte[] bytes(int... values) {
