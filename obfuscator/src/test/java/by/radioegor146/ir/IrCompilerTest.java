@@ -1313,6 +1313,43 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsAndRewritesIdenticalSuffixCopiesWithMethodEndAthrowHandler() {
+        ClassNode owner = constructorOwner(
+                "example/IdenticalCopiesMethodEndCatch",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                identicalSuffixCopiesWithMethodEndAthrowHandler(
+                        owner.name, owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(II)V", nativeBody.desc);
+        assertEquals(1, nativeBody.tryCatchBlocks.size());
+        assertTryCatchLabelsBelongTo(
+                nativeBody, nativeBody.tryCatchBlocks.get(0));
+        assertEquals(Opcodes.ATHROW,
+                realOpcodes(nativeBody).get(
+                        realOpcodes(nativeBody).size() - 1));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1L, distinctHiddenBridgeCount(constructor));
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.ATHROW));
+        assertTrue(context.output.toString().contains("goto IR_CATCH_"));
+    }
+
+    @Test
     public void admitsAndRewritesIdenticalSuffixCopiesWithRelocatedPrefixHandler() {
         ClassNode owner = constructorOwner(
                 "example/IdenticalCopiesRelocatedCatch",
@@ -2132,6 +2169,87 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;III)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void admitsAndRewritesPathIdSuffixTryCatchWithMethodEndAthrowHandler() {
+        ClassNode owner = constructorOwner(
+                "example/TwoSuffixMethodEndCatch",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                rejectedTwoDifferentSuffixConstructor(
+                        owner.name, owner.superName, "exception-table");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(II)V", nativeBody.desc);
+        assertEquals(Arrays.asList(Opcodes.ILOAD, Opcodes.IFNE),
+                realOpcodes(nativeBody).subList(0, 2));
+        assertEquals(1, nativeBody.tryCatchBlocks.size());
+        assertTryCatchLabelsBelongTo(
+                nativeBody, nativeBody.tryCatchBlocks.get(0));
+        assertEquals(Opcodes.ATHROW,
+                realOpcodes(nativeBody).get(
+                        realOpcodes(nativeBody).size() - 1));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(2, hiddenBridgeCallCount(constructor));
+        assertEquals(1L, distinctHiddenBridgeCount(constructor));
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.ATHROW));
+        assertEquals(
+                "(Ljava/lang/Object;II)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
+    public void rejectsUnsafeMethodEndHandlerBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedUnsafeMethodEndCatch",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                rejectedTwoDifferentSuffixConstructor(
+                        owner.name, owner.superName, "exception-table");
+        TryCatchBlockNode original = constructor.tryCatchBlocks.get(0);
+        AbstractInsnNode throwInstruction =
+                original.handler.getNext();
+        constructor.instructions.insertBefore(
+                throwInstruction, new InsnNode(Opcodes.NOP));
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
+        assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertSame(original, constructor.tryCatchBlocks.get(0));
+        assertTrue(context.proxyMethod == null);
     }
 
     @Test
@@ -3566,8 +3684,7 @@ public class IrCompilerTest {
 
     @Test
     public void rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation() {
-        for (String shape :
-                Arrays.asList("branch", "exception-table")) {
+        for (String shape : Collections.singletonList("branch")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedTwoSuffix"
                             + shape.replace("-", ""),
@@ -6081,6 +6198,94 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native distinct-suffix catch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void pathIdMethodEndHandlerCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the method-end catch runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the method-end catch runtime test");
+
+        String ownerName = "example/MethodEndCatchRuntime";
+        String baseName = "example/MethodEndCatchRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-method-end-catch-run");
+        Path inputJar = directory.resolve("method-end-catch.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMethodEndHandlerDistinctMultiSuperJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-jar", inputJar.toString()));
+        javaResult.check("plain method-end catch Java run");
+        assertEquals(
+                "4" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "2" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(2, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1L, distinctHiddenBridgeCount(
+                transformedConstructor));
+        assertTrue(transformedConstructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.POP));
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.IDIV));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("method-end catch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("method-end catch CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Method-end catch native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native method-end catch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -12707,6 +12912,38 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMethodEndHandlerDistinctMultiSuperJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                methodEndHandlerTwoDistinctSuffixConstructor(
+                        ownerName, baseName, false));
+        owner.methods.add(
+                suffixOnlyDistinctMultiSuperTryCatchMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createRelocatedPrefixHandlerDistinctMultiSuperJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -14565,6 +14802,19 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode identicalSuffixCopiesWithMethodEndAthrowHandler(
+            String owner, String superName) {
+        MethodNode method =
+                identicalSuffixCopiesWithTryCatchConstructor(
+                        owner, superName, "suffix-only");
+        LabelNode handler = method.tryCatchBlocks.get(0).handler;
+        AbstractInsnNode pop = handler.getNext();
+        AbstractInsnNode returnInstruction = pop.getNext();
+        method.instructions.set(pop, new InsnNode(Opcodes.ATHROW));
+        method.instructions.remove(returnInstruction);
+        return method;
+    }
+
     private void appendIdenticalTryCatchSuffix(
             MethodNode method, String owner,
             LabelNode suffixStart, LabelNode suffixEnd,
@@ -14910,6 +15160,58 @@ public class IrCompilerTest {
                 start, spanSuffixes ? secondEnd : firstEnd, handler,
                 "java/lang/ArithmeticException"));
         method.maxLocals = 4;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode methodEndHandlerTwoDistinctSuffixConstructor(
+            String owner, String superName, boolean rethrow) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(II)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(handler);
+        if (rethrow) {
+            method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.POP));
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+        }
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler,
+                "java/lang/ArithmeticException"));
+        method.maxLocals = 3;
         method.maxStack = 3;
         return method;
     }

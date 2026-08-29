@@ -51,7 +51,8 @@ The constructor split now covers these related prefix shapes:
   every chain call and again at the normalized join; and
 - exception tables whose protected range and handler are wholly in the
   canonical final identical suffix copy, plus canonical-suffix ranges targeting
-  one of the proven isolated prefix handlers; and
+  one of the proven isolated prefix handlers or one proven isolated handler
+  tail immediately after the canonical suffix; and
 - between two and eight reachable direct this/super calls whose separate
   nonempty suffixes end in `RETURN` and contain at least two CFG-distinct
   ranges, when every call consumes the original receiver through direct
@@ -146,8 +147,8 @@ One additional family is reduced to that same shared-join form:
   bytecode-order copy.
 - A try/catch entry is accepted when all three labels are before the first
   chain call, or when its protected range is wholly in the canonical final copy
-  and its suffix-owned handler is one isolated `POP; RETURN` or safe
-  `ASTORE n; RETURN` tail after the normal suffix return. A protected range
+  and its suffix-owned handler is one of the six proven isolated return or
+  rethrow forms in a tail after the normal suffix return. A protected range
   wholly in that canonical copy may instead target one of the already-proven
   isolated prefix handlers. The noncanonical copies may not own any table
   labels, so normalization never leaves dangling entries.
@@ -199,7 +200,8 @@ normalizing the suffixes to one copied join:
   three labels are before the first chain call, or when all three labels are
   wholly inside one proven nonempty suffix range. A protected range wholly
   inside one suffix may also target one of the already-proven isolated prefix
-  handlers; the handler and optional isolated return block are relocated with
+  handlers or one proven isolated handler tail immediately after the last
+  suffix; the handler and optional isolated return block are relocated with
   that suffix table.
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
   Any suffix may contain one unary `IFxx` over a direct declared int-family
@@ -215,18 +217,19 @@ normalizing the suffixes to one copied join:
   accesses are rejected. A suffix may load a prefix-assigned extra only when
   the extra has one exact compatible primitive/reference carrier on every path
   that reaches any hidden-bridge invocation. The suffix ranges may not overlap,
-  and the final range must end at method end. A path-id set may contain an
-  identical pair when at least one suffix CFG differs. Each repeated range
-  keeps its own path id; it is not merged into a copied join. Fully identical
-  straight-line copies continue to use the existing one-join normalization
-  above because that proof runs before path selection.
+  and the final normal range must end at method end or immediately before the
+  one isolated handler tail. The tail is not another path-id suffix. A path-id
+  set may contain an identical pair when at least one suffix CFG differs. Each
+  repeated range keeps its own path id; it is not merged into a copied join.
+  Fully identical straight-line copies continue to use the existing one-join
+  normalization above because that proof runs before path selection.
 - The independent IR method appends one `int` parameter. It first branches on
   that path id, then contains every proven suffix instruction range. Two paths
   retain the existing `IFNE` dispatch. Three or more paths use a `TABLESWITCH`
   over the exact `0..n-1` range and an explicit `ACONST_NULL; ATHROW` default.
   A wholly-in-one-suffix try/catch entry is cloned with that range and owned by
-  this independent body. A proven isolated prefix handler and its optional
-  return block are appended to that body before its table is copied.
+  this independent body. A proven isolated prefix or method-end handler and its
+  optional return block are appended to that body before its table is copied.
   Prefix-only entries stay on the bytecode wrapper.
   The source constructor retains its prefix and every chain call; each path
   loads the receiver, declared arguments, and proven extras in packed
@@ -248,8 +251,8 @@ two-call shared-join post-chain IF/switch forms, zero-call paths, unreachable
 candidates, unproven or suffix-only extra-local accesses, and path-selected
 per-call suffix sets above the bounded eight-call rule also remain rejected.
 Multi-call tables remain rejected when their labels mix prefix and suffix,
-span suffixes, cover a chain call, use a handler after the last suffix, or use
-an unproven prefix handler. For identical-copy normalization, any suffix table
+span suffixes, cover a chain call, use an unsafe handler after the last suffix,
+or use an unproven prefix handler. For identical-copy normalization, any suffix table
 must be wholly in the canonical final copy; tables in discarded copies and
 cross-copy ranges remain rejected. All-identical suffix sets that do not match
 that normalizer, non-identity `ASTORE 0` outside the exact single-call,
@@ -365,13 +368,16 @@ Try/catch entries are classified independently and fail closed:
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
 - Six exact mixed sequences are admitted when `start` and `end` are suffix
-  labels and `handler` is a prefix label: `POP; RETURN`,
+  labels and `handler` is either a prefix label or the start of one isolated
+  tail immediately after the last suffix: `POP; RETURN`,
   `POP; GOTO ret`, `ASTORE n; RETURN`, `ASTORE n; GOTO ret`, `ATHROW`, and
-  `ASTORE n; ALOAD n; ATHROW`, where `ret` is a prefix label whose first
-  executable instruction is `RETURN`.
+  `ASTORE n; ALOAD n; ATHROW`, where `ret` stays in the same isolated prefix
+  or method-end region and its first executable instruction is `RETURN`.
   Stack-map frames may separate the executable nodes. In every form the
-  preceding executable instruction before `handler` must be `GOTO`, no jump or
-  switch may target `handler`, and `handler` may not delimit a protected range.
+  preceding executable instruction before a prefix `handler` must be `GOTO`.
+  A method-end handler must follow a non-fallthrough instruction and be
+  reachable only as an exception target. No jump or switch may target either
+  kind of `handler`, and `handler` may not delimit a protected range.
 - For either `GOTO ret` form, the handler's `GOTO` must be the only jump or
   switch target edge to `ret`; `ret` may not delimit a protected range, serve
   as an exception handler, or have a fallthrough predecessor.
@@ -385,25 +391,27 @@ Try/catch entries are classified independently and fail closed:
   prefix `GOTO`-to-rethrow variants remain rejected.
 - `createNativeBody` appends the isolated handler and optional return block to
   the suffix clone and preserves the original exception-table edge.
-  `postProcess` omits both dead prefix blocks from the bytecode wrapper.
+  `postProcess` omits the dead prefix or method-end blocks from the bytecode
+  wrapper. A method-end tail is never treated as another path-id suffix.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
 - For the bounded two-to-eight-call path-selected form, an all-suffix entry is
   admitted only when start, end, and handler all belong to the same proven
   suffix range. It is remapped into the independent IR body as that range is
   appended. A start/end pair in one such suffix may instead target any of the
-  same exact isolated prefix-handler forms above. That handler and its optional
-  isolated return block are cloned into the independent body, while the table
-  and handler are omitted from the wrapper. Entries spanning two suffixes,
-  covering a chain call, or placing a handler after the final suffix fail
-  before constructor mutation.
+  same exact isolated prefix- or method-end-handler forms above. That handler
+  and its optional isolated return block are cloned into the independent body,
+  while the table and handler are omitted from the wrapper. Entries spanning
+  two suffixes, covering a chain call, or using an unproven method-end handler
+  fail before constructor mutation.
 - For both the path-selected form and identical-copy normalization, an entry
   whose three labels all precede the first chain call stays entirely in the
-  retained wrapper. Identical-copy normalization admits no suffix entry because
-  its earlier copies are removed.
-- Relocatable suffix-range/prefix-handler entries are admitted for single-super
-  and bounded two-to-eight path-id distinct-suffix constructors. They remain
-  rejected for identical-copy normalization.
+  retained wrapper. Identical-copy normalization admits suffix entries only for
+  the canonical copy because its earlier copies are removed.
+- Relocatable suffix-range/prefix-handler entries are admitted for single-super,
+  bounded two-to-eight path-id distinct-suffix constructors, and canonical
+  identical-copy suffixes. The post-suffix method-end form is admitted only for
+  path-id suffixes and the canonical identical-copy suffix.
 - Every other mixed placement is rejected, including a prefix protected range
   with a suffix handler and any suffix protected range with a prefix handler
   that does not match one of the six proven isolated handler forms.
@@ -666,6 +674,8 @@ Synthetic bytecode unit tests in
 - `admitsAndRewritesIdenticalSuffixCopiesWithSuffixOnlyTryCatch` proves a table
   wholly in the canonical final copy is cloned into the one IR body and omitted
   from the normalized one-bridge wrapper.
+- `admitsAndRewritesIdenticalSuffixCopiesWithMethodEndAthrowHandler` extends
+  that canonical-copy proof to an exact method-end `ATHROW` handler.
 - `admitsAndRewritesIdenticalSuffixCopiesWithRelocatedPrefixHandler` proves a
   canonical protected range may target the existing isolated `POP; RETURN`
   prefix-handler form, which is appended to the same IR body and removed from
@@ -688,6 +698,11 @@ Synthetic bytecode unit tests in
 - `admitsWhollyInOneSuffixTryCatchOnTwoDistinctSuffixes` proves that a table
   owned by one suffix is cloned into the path-id-dispatched IR body and omitted
   from the wrapper.
+- `admitsAndRewritesPathIdSuffixTryCatchWithMethodEndAthrowHandler` proves that
+  a one-suffix range may target an isolated `ATHROW` tail after the final
+  suffix; the tail is cloned into the IR body and omitted from both wrappers.
+- `rejectsUnsafeMethodEndHandlerBeforeMutation` keeps an extra-work tail
+  fail-closed before hidden-method allocation or constructor mutation.
 - `rejectsCrossSuffixAndChainCoveringMultiSuperTryCatchBeforeMutation` checks
   both a table whose labels span suffixes and a protected range covering a
   chain call without allocating a hidden method.
@@ -708,10 +723,14 @@ Synthetic bytecode unit tests in
   exercises normal and caught `IDIV` paths plus the sibling path id through the
   complete CMake/g++ JNI transform under `java -Xverify:all`, requiring
   identical stdout.
+- `pathIdMethodEndHandlerCompileAndRunWithJavaParity` exercises a method-end
+  `POP; RETURN` handler on normal, caught `IDIV`, and sibling path-id cases
+  through the complete CMake/g++ JNI transform under
+  `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `rejectsUnprovenThreeDistinctSuffixShapesBeforeMutation` and
   `rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation` keep
-  standalone-`GOTO`, skip-super, method-end-handler exception-table, and
-  unproven suffix-only extra-local variants fail-closed.
+  standalone-`GOTO`, skip-super, and unproven suffix-only extra-local variants
+  fail-closed.
 - `admitsMultipleSuperWithImmediateSeparateReturns` proves that an immediate
   `RETURN` after each of exactly two chain calls creates a `RETURN`-only native
   body and normalizes to one retained wrapper join and one hidden bridge.
