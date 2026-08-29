@@ -57,15 +57,25 @@ public final class IrMethod {
     }
 
     public IrValue addParameter(IrType type, String debugName, String cppParameterName) {
+        return addParameter(type, debugName, cppParameterName, null);
+    }
+
+    public IrValue addParameter(IrType type, String debugName, String cppParameterName,
+                                String referenceDescriptor) {
         IrValue value = new IrValue(nextValueId++, type, IrValue.Kind.PARAMETER,
-                debugName, cppParameterName);
+                debugName, cppParameterName, referenceDescriptor);
         parameters.add(value);
         return value;
     }
 
     public IrValue newInstructionValue(IrType type) {
+        return newInstructionValue(type, null);
+    }
+
+    public IrValue newInstructionValue(IrType type, String referenceDescriptor) {
         int id = nextValueId++;
-        return new IrValue(id, type, IrValue.Kind.INSTRUCTION, "v" + id, null);
+        return new IrValue(id, type, IrValue.Kind.INSTRUCTION, "v" + id, null,
+                referenceDescriptor);
     }
 
     public IrBlock addBlock() {
@@ -216,12 +226,20 @@ public final class IrMethod {
         if (instruction instanceof IrNodes.NewArray) {
             IrNodes.NewArray array = (IrNodes.NewArray) instruction;
             return array.getResult() + ":" + array.getResult().getType()
-                    + " = newarray int " + array.getLength();
+                    + " = newarray " + array.getArrayType().getDisplayName()
+                    + " " + array.getLength();
         }
         if (instruction instanceof IrNodes.NewObjectArray) {
             IrNodes.NewObjectArray array = (IrNodes.NewObjectArray) instruction;
             return array.getResult() + ":" + array.getResult().getType()
                     + " = anewarray " + array.getComponentType() + " " + array.getLength();
+        }
+        if (instruction instanceof IrNodes.MultiNewArray) {
+            IrNodes.MultiNewArray array = (IrNodes.MultiNewArray) instruction;
+            return array.getResult() + ":" + array.getResult().getType()
+                    + " = multianewarray " + array.getDescriptor() + " "
+                    + array.getDimensions().stream().map(Object::toString)
+                    .collect(Collectors.joining(", "));
         }
         if (instruction instanceof IrNodes.ArrayLength) {
             IrNodes.ArrayLength length = (IrNodes.ArrayLength) instruction;
@@ -230,15 +248,14 @@ public final class IrMethod {
         }
         if (instruction instanceof IrNodes.ArrayLoad) {
             IrNodes.ArrayLoad load = (IrNodes.ArrayLoad) instruction;
-            String mnemonic = load.getElementType() == IrType.I32 ? "iaload" : "aaload";
-            return load.getResult() + ":" + load.getResult().getType() + " = " + mnemonic + " "
+            return load.getResult() + ":" + load.getResult().getType() + " = "
+                    + load.getArrayType().getLoadMnemonic() + " "
                     + load.getArray() + ", " + load.getIndex();
         }
         if (instruction instanceof IrNodes.ArrayStore) {
             IrNodes.ArrayStore store = (IrNodes.ArrayStore) instruction;
-            String mnemonic = store.getElementType() == IrType.I32 ? "iastore" : "aastore";
-            return mnemonic + " " + store.getArray() + ", " + store.getIndex() + ", "
-                    + store.getValue();
+            return store.getArrayType().getStoreMnemonic() + " " + store.getArray()
+                    + ", " + store.getIndex() + ", " + store.getValue();
         }
         if (instruction instanceof IrNodes.StringLength) {
             IrNodes.StringLength length = (IrNodes.StringLength) instruction;

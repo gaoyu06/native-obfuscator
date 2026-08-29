@@ -109,6 +109,19 @@ public final class CppAst {
         }
     }
 
+    public static final class InitializerList implements Expression {
+        private final List<Expression> values;
+
+        public InitializerList(List<Expression> values) {
+            this.values = immutableExpressions(values);
+        }
+
+        @Override
+        public String render() {
+            return "{ " + renderArguments(values) + " }";
+        }
+    }
+
     public static final class ArrayAccess implements Expression {
         private final String array;
         private final int index;
@@ -225,6 +238,25 @@ public final class CppAst {
         @Override
         public String render() {
             return function + "(" + renderArguments(arguments) + ")";
+        }
+    }
+
+    public static final class TemplateCall implements Expression {
+        private final String function;
+        private final int templateArgument;
+        private final List<Expression> arguments;
+
+        public TemplateCall(String function, int templateArgument,
+                            List<Expression> arguments) {
+            this.function = qualifiedIdentifier(function);
+            this.templateArgument = templateArgument;
+            this.arguments = immutableExpressions(arguments);
+        }
+
+        @Override
+        public String render() {
+            return function + "<" + templateArgument + ">("
+                    + renderArguments(arguments) + ")";
         }
     }
 

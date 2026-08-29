@@ -20,6 +20,7 @@ import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.MultiANewArrayInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -247,10 +248,8 @@ public final class AsmToIr {
                                 || isFloatingUnaryOp(opcode)
                                 || isFloatingCompareOp(opcode)
                                 || isConversionOp(opcode)
-                                || opcode == Opcodes.IALOAD
-                                || opcode == Opcodes.AALOAD
-                                || opcode == Opcodes.IASTORE
-                                || opcode == Opcodes.AASTORE
+                                || isArrayLoad(opcode)
+                                || isArrayStore(opcode)
                                 || opcode == Opcodes.ARRAYLENGTH
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
@@ -263,7 +262,7 @@ public final class AsmToIr {
                     case AbstractInsnNode.INT_INSN:
                         supported = opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH
                                 || opcode == Opcodes.NEWARRAY
-                                && ((IntInsnNode) node).operand == Opcodes.T_INT;
+                                && primitiveArrayType(((IntInsnNode) node).operand) != null;
                         break;
                     case AbstractInsnNode.VAR_INSN:
                         supported = opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
@@ -310,6 +309,10 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.METHOD_INSN:
                         supported = isSupportedInvoke((MethodInsnNode) node);
+                        break;
+                    case AbstractInsnNode.MULTIANEWARRAY_INSN:
+                        supported = isSupportedMultiANewArray(
+                                (MultiANewArrayInsnNode) node);
                         break;
                     default:
                         supported = false;
@@ -545,6 +548,12 @@ public final class AsmToIr {
         } else if (opcode == Opcodes.ANEWARRAY) {
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.REFERENCE);
+        } else if (opcode == Opcodes.MULTIANEWARRAY) {
+            MultiANewArrayInsnNode multiArray = (MultiANewArrayInsnNode) node;
+            for (int dimension = 0; dimension < multiArray.dims; dimension++) {
+                popType(stack, IrType.I32, instruction);
+            }
+            stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.CHECKCAST) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.REFERENCE);
@@ -554,20 +563,12 @@ public final class AsmToIr {
         } else if (opcode == Opcodes.ARRAYLENGTH) {
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
-        } else if (opcode == Opcodes.IALOAD) {
+        } else if (isArrayLoad(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
-            stack.add(IrType.I32);
-        } else if (opcode == Opcodes.AALOAD) {
-            popType(stack, IrType.I32, instruction);
-            popType(stack, IrType.REFERENCE, instruction);
-            stack.add(IrType.REFERENCE);
-        } else if (opcode == Opcodes.IASTORE) {
-            popType(stack, IrType.I32, instruction);
-            popType(stack, IrType.I32, instruction);
-            popType(stack, IrType.REFERENCE, instruction);
-        } else if (opcode == Opcodes.AASTORE) {
-            popType(stack, IrType.REFERENCE, instruction);
+            stack.add(arrayType(opcode).getElementType());
+        } else if (isArrayStore(opcode)) {
+            popType(stack, arrayType(opcode).getElementType(), instruction);
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.ATHROW) {
@@ -785,12 +786,14 @@ public final class AsmToIr {
         IrValue[] locals = new IrValue[method.maxLocals];
         int local = 0;
         if (!shape.staticMethod) {
-            locals[local++] = irMethod.addParameter(IrType.REFERENCE, "this", "obj");
+            locals[local++] = irMethod.addParameter(IrType.REFERENCE, "this", "obj",
+                    "L" + irMethod.getOwner() + ";");
         }
         Type[] arguments = Type.getArgumentTypes(method.desc);
         for (int i = 0; i < arguments.length; i++) {
             locals[local] = irMethod.addParameter(irType(arguments[i]),
-                    "arg" + i, "arg" + i);
+                    "arg" + i, "arg" + i,
+                    isReference(arguments[i]) ? arguments[i].getDescriptor() : null);
             local += arguments[i].getSize();
         }
         return locals;
@@ -1028,26 +1031,46 @@ public final class AsmToIr {
                         instruction.getOriginalIndex()));
                 state.stack.add(result);
             } else if (node instanceof TypeInsnNode && opcode == Opcodes.NEW) {
-                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE,
+                        "L" + ((TypeInsnNode) node).desc + ";");
                 block.addInstruction(new IrNodes.NewObject(result,
                         ((TypeInsnNode) node).desc, instruction.getOriginalIndex()));
                 state.stack.add(result);
             } else if (opcode == Opcodes.NEWARRAY) {
                 IrValue length = pop(state, IrType.I32, instruction);
-                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
-                block.addInstruction(new IrNodes.NewArray(result, length,
+                IrNodes.ArrayType arrayType =
+                        primitiveArrayType(((IntInsnNode) node).operand);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE,
+                        arrayType.getArrayDescriptor());
+                block.addInstruction(new IrNodes.NewArray(result, length, arrayType,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
             } else if (node instanceof TypeInsnNode && opcode == Opcodes.ANEWARRAY) {
                 IrValue length = pop(state, IrType.I32, instruction);
-                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                String componentType = ((TypeInsnNode) node).desc;
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE,
+                        arrayDescriptor(componentType));
                 block.addInstruction(new IrNodes.NewObjectArray(result, length,
-                        ((TypeInsnNode) node).desc, instruction.getOriginalIndex(),
+                        componentType, instruction.getOriginalIndex(),
+                        instruction.getSourceLine()));
+                state.stack.add(result);
+            } else if (node instanceof MultiANewArrayInsnNode) {
+                MultiANewArrayInsnNode multiArray = (MultiANewArrayInsnNode) node;
+                List<IrValue> dimensions = new ArrayList<>(
+                        Collections.nCopies(multiArray.dims, (IrValue) null));
+                for (int dimension = multiArray.dims - 1; dimension >= 0; dimension--) {
+                    dimensions.set(dimension, pop(state, IrType.I32, instruction));
+                }
+                IrValue result = irMethod.newInstructionValue(
+                        IrType.REFERENCE, multiArray.desc);
+                block.addInstruction(new IrNodes.MultiNewArray(result, multiArray.desc,
+                        dimensions, instruction.getOriginalIndex(),
                         instruction.getSourceLine()));
                 state.stack.add(result);
             } else if (node instanceof TypeInsnNode && opcode == Opcodes.CHECKCAST) {
                 IrValue operand = pop(state, IrType.REFERENCE, instruction);
-                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE,
+                        referenceDescriptor(((TypeInsnNode) node).desc));
                 block.addInstruction(new IrNodes.CheckCast(result, operand,
                         ((TypeInsnNode) node).desc, instruction.getOriginalIndex(),
                         instruction.getSourceLine()));
@@ -1064,38 +1087,31 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.ArrayLength(result, array,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
-            } else if (opcode == Opcodes.IALOAD) {
+            } else if (isArrayLoad(opcode)) {
                 IrValue index = pop(state, IrType.I32, instruction);
                 IrValue array = pop(state, IrType.REFERENCE, instruction);
-                IrValue result = irMethod.newInstructionValue(IrType.I32);
-                block.addInstruction(new IrNodes.ArrayLoad(result, array, index,
+                IrNodes.ArrayType arrayType = arrayType(opcode);
+                String referenceDescriptor = arrayType == IrNodes.ArrayType.REFERENCE
+                        ? arrayComponentDescriptor(array.getReferenceDescriptor()) : null;
+                IrValue result = irMethod.newInstructionValue(
+                        arrayType.getElementType(), referenceDescriptor);
+                block.addInstruction(new IrNodes.ArrayLoad(result, array, index, arrayType,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
-            } else if (opcode == Opcodes.AALOAD) {
+            } else if (isArrayStore(opcode)) {
+                IrNodes.ArrayType arrayType = arrayType(opcode);
+                IrValue value = pop(state, arrayType.getElementType(), instruction);
                 IrValue index = pop(state, IrType.I32, instruction);
                 IrValue array = pop(state, IrType.REFERENCE, instruction);
-                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
-                block.addInstruction(new IrNodes.ArrayLoad(result, array, index,
-                        instruction.getOriginalIndex(), instruction.getSourceLine()));
-                state.stack.add(result);
-            } else if (opcode == Opcodes.IASTORE) {
-                IrValue value = pop(state, IrType.I32, instruction);
-                IrValue index = pop(state, IrType.I32, instruction);
-                IrValue array = pop(state, IrType.REFERENCE, instruction);
-                block.addInstruction(new IrNodes.ArrayStore(array, index, value,
-                        instruction.getOriginalIndex(), instruction.getSourceLine()));
-            } else if (opcode == Opcodes.AASTORE) {
-                IrValue value = pop(state, IrType.REFERENCE, instruction);
-                IrValue index = pop(state, IrType.I32, instruction);
-                IrValue array = pop(state, IrType.REFERENCE, instruction);
-                block.addInstruction(new IrNodes.ArrayStore(array, index, value,
+                block.addInstruction(new IrNodes.ArrayStore(array, index, value, arrayType,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
             } else if (node instanceof FieldInsnNode) {
                 FieldInsnNode field = (FieldInsnNode) node;
                 IrType fieldType = fieldType(field.desc);
                 if (opcode == Opcodes.GETFIELD) {
                     IrValue receiver = pop(state, IrType.REFERENCE, instruction);
-                    IrValue result = irMethod.newInstructionValue(fieldType);
+                    IrValue result = irMethod.newInstructionValue(fieldType,
+                            fieldType == IrType.REFERENCE ? field.desc : null);
                     block.addInstruction(new IrNodes.GetField(result, field.owner, field.name,
                             field.desc, receiver, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
@@ -1107,7 +1123,8 @@ public final class AsmToIr {
                             field.desc, receiver, value, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
                 } else if (opcode == Opcodes.GETSTATIC) {
-                    IrValue result = irMethod.newInstructionValue(fieldType);
+                    IrValue result = irMethod.newInstructionValue(fieldType,
+                            fieldType == IrType.REFERENCE ? field.desc : null);
                     block.addInstruction(new IrNodes.GetStaticField(result, field.owner,
                             field.name, field.desc, instruction.getOriginalIndex(),
                             instruction.getSourceLine()));
@@ -1140,7 +1157,8 @@ public final class AsmToIr {
                         ? pop(state, IrType.REFERENCE, instruction) : null;
                 Type returnType = Type.getReturnType(invoke.desc);
                 IrValue result = returnType.getSort() == Type.VOID ? null
-                        : irMethod.newInstructionValue(irType(returnType));
+                        : irMethod.newInstructionValue(irType(returnType),
+                        isReference(returnType) ? returnType.getDescriptor() : null);
                 block.addInstruction(new IrNodes.Invoke(result, invokeKind(opcode),
                         invoke.owner, invoke.name, invoke.desc, receiver, arguments,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
@@ -1380,7 +1398,8 @@ public final class AsmToIr {
 
     private IrValue pushStringConstant(IrMethod method, IrBlock block, ValueState state,
                                        String value, int offset) {
-        IrValue result = method.newInstructionValue(IrType.REFERENCE);
+        IrValue result = method.newInstructionValue(
+                IrType.REFERENCE, "Ljava/lang/String;");
         block.addInstruction(new IrNodes.StringConst(result, value, offset));
         if (state != null) {
             state.stack.add(result);
@@ -1390,7 +1409,8 @@ public final class AsmToIr {
 
     private IrValue pushClassConstant(IrMethod method, IrBlock block, ValueState state,
                                       Type type, int offset) {
-        IrValue result = method.newInstructionValue(IrType.REFERENCE);
+        IrValue result = method.newInstructionValue(
+                IrType.REFERENCE, "Ljava/lang/Class;");
         String className = type.getSort() == Type.OBJECT
                 ? type.getInternalName() : type.getDescriptor();
         block.addInstruction(new IrNodes.ClassConst(result, className, offset));
@@ -1599,6 +1619,100 @@ public final class AsmToIr {
 
     private static boolean isReference(Type type) {
         return type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY;
+    }
+
+    private static boolean isArrayLoad(int opcode) {
+        return opcode >= Opcodes.IALOAD && opcode <= Opcodes.SALOAD;
+    }
+
+    private static boolean isArrayStore(int opcode) {
+        return opcode >= Opcodes.IASTORE && opcode <= Opcodes.SASTORE;
+    }
+
+    private static IrNodes.ArrayType arrayType(int opcode) {
+        switch (opcode) {
+            case Opcodes.IALOAD:
+            case Opcodes.IASTORE:
+                return IrNodes.ArrayType.INT;
+            case Opcodes.LALOAD:
+            case Opcodes.LASTORE:
+                return IrNodes.ArrayType.LONG;
+            case Opcodes.FALOAD:
+            case Opcodes.FASTORE:
+                return IrNodes.ArrayType.FLOAT;
+            case Opcodes.DALOAD:
+            case Opcodes.DASTORE:
+                return IrNodes.ArrayType.DOUBLE;
+            case Opcodes.AALOAD:
+            case Opcodes.AASTORE:
+                return IrNodes.ArrayType.REFERENCE;
+            case Opcodes.BALOAD:
+            case Opcodes.BASTORE:
+                return IrNodes.ArrayType.BOOLEAN_OR_BYTE;
+            case Opcodes.CALOAD:
+            case Opcodes.CASTORE:
+                return IrNodes.ArrayType.CHAR;
+            case Opcodes.SALOAD:
+            case Opcodes.SASTORE:
+                return IrNodes.ArrayType.SHORT;
+            default:
+                throw new IllegalArgumentException("Not an array access opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.ArrayType primitiveArrayType(int atype) {
+        switch (atype) {
+            case Opcodes.T_BOOLEAN:
+                return IrNodes.ArrayType.BOOLEAN;
+            case Opcodes.T_BYTE:
+                return IrNodes.ArrayType.BYTE;
+            case Opcodes.T_CHAR:
+                return IrNodes.ArrayType.CHAR;
+            case Opcodes.T_SHORT:
+                return IrNodes.ArrayType.SHORT;
+            case Opcodes.T_INT:
+                return IrNodes.ArrayType.INT;
+            case Opcodes.T_FLOAT:
+                return IrNodes.ArrayType.FLOAT;
+            case Opcodes.T_LONG:
+                return IrNodes.ArrayType.LONG;
+            case Opcodes.T_DOUBLE:
+                return IrNodes.ArrayType.DOUBLE;
+            default:
+                return null;
+        }
+    }
+
+    private static boolean isSupportedMultiANewArray(MultiANewArrayInsnNode array) {
+        if (array.desc == null || array.desc.isEmpty() || array.dims < 1) {
+            return false;
+        }
+        try {
+            Type type = Type.getType(array.desc);
+            if (type.getSort() != Type.ARRAY || array.dims > type.getDimensions()) {
+                return false;
+            }
+            Type element = type.getElementType();
+            return element.getSort() >= Type.BOOLEAN
+                    && element.getSort() <= Type.DOUBLE
+                    || element.getSort() == Type.OBJECT;
+        } catch (IllegalArgumentException malformedDescriptor) {
+            return false;
+        }
+    }
+
+    private static String referenceDescriptor(String internalNameOrDescriptor) {
+        return internalNameOrDescriptor.startsWith("[")
+                ? internalNameOrDescriptor : "L" + internalNameOrDescriptor + ";";
+    }
+
+    private static String arrayDescriptor(String componentType) {
+        return "[" + referenceDescriptor(componentType);
+    }
+
+    private static String arrayComponentDescriptor(String descriptor) {
+        return descriptor != null && descriptor.startsWith("[")
+                ? descriptor.substring(1) : null;
     }
 
     private static IrType irType(Type type) {

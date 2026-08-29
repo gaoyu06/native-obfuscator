@@ -24,6 +24,12 @@ public class CodegenModeTest {
     }
 
     @Test
+    public void cliStillAcceptsExplicitLegacyAfterIrPhaseEighteen() throws Exception {
+        assertEquals(CodegenMode.LEGACY,
+                parseCodegen("input.jar", "output", "--codegen=legacy"));
+    }
+
+    @Test
     public void methodProcessingConvenienceDefaultRemainsLegacy() {
         MethodNode constructor = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", "()V", null, null);

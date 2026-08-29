@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -163,6 +164,10 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.NewObjectArray) {
             return emitNewObjectArray(method, block,
                     (IrNodes.NewObjectArray) instruction, context);
+        }
+        if (instruction instanceof IrNodes.MultiNewArray) {
+            return emitMultiNewArray(method, block,
+                    (IrNodes.MultiNewArray) instruction, context);
         }
         if (instruction instanceof IrNodes.ArrayLength) {
             return emitArrayLength(method, block, (IrNodes.ArrayLength) instruction, context);
@@ -516,20 +521,77 @@ public final class IrCppEmitter {
                                                 IrNodes.NewArray array,
                                                 MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
+        IrNodes.ArrayType arrayType = array.getArrayType();
         List<CppAst.Statement> negativeLength = new ArrayList<>();
         negativeLength.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
                 Arrays.asList(variable("env"),
                         pool(context.getStringPool().getOffset(
                                 "java/lang/NegativeArraySizeException")),
                         pool(context.getStringPool().getOffset(
-                                "NEWARRAY Int array size < 0")),
+                                "NEWARRAY " + arrayType.getDisplayName() + " array size < 0")),
                         new CppAst.IntLiteral(array.getSourceLine())))));
         negativeLength.addAll(exceptionalExit(method, block));
         statements.add(new CppAst.If(new CppAst.Binary(expression(array.getLength()), "<",
                 new CppAst.IntLiteral(0)), new CppAst.Block(negativeLength), null));
         statements.add(new CppAst.Assignment(variable(array.getResult()),
                 new CppAst.Cast("jobject",
-                        memberCall("env", "NewIntArray", expression(array.getLength())))));
+                        memberCall("env", "New" + arrayType.getJniCarrier() + "Array",
+                                expression(array.getLength())))));
+        CppAst.Expression failed = new CppAst.Binary(
+                new CppAst.Binary(expression(array.getResult()), "==",
+                        new CppAst.NullLiteral()),
+                "||",
+                new CppAst.Binary(memberCall("env", "ExceptionCheck"), "!=",
+                        new CppAst.IntLiteral(0)));
+        statements.add(new CppAst.If(failed,
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitMultiNewArray(IrMethod method, IrBlock block,
+                                                     IrNodes.MultiNewArray array,
+                                                     MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        for (int dimension = 0; dimension < array.getDimensions().size(); dimension++) {
+            List<CppAst.Statement> negative = new ArrayList<>();
+            negative.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                    Arrays.asList(variable("env"),
+                            pool(context.getStringPool().getOffset(
+                                    "java/lang/NegativeArraySizeException")),
+                            pool(context.getStringPool().getOffset(
+                                    "MULTIANEWARRAY dimension " + dimension + " size < 0")),
+                            new CppAst.IntLiteral(array.getSourceLine())))));
+            negative.addAll(exceptionalExit(method, block));
+            statements.add(new CppAst.If(new CppAst.Binary(
+                    expression(array.getDimensions().get(dimension)), "<",
+                    new CppAst.IntLiteral(0)), new CppAst.Block(negative), null));
+        }
+
+        Type arrayType = Type.getType(array.getDescriptor());
+        Type elementType = arrayType.getElementType();
+        List<CppAst.Expression> dimensions = new ArrayList<>();
+        for (IrValue dimension : array.getDimensions()) {
+            dimensions.add(expression(dimension));
+        }
+        List<CppAst.Expression> arguments = new ArrayList<>();
+        arguments.add(variable("env"));
+        if (elementType.getSort() == Type.OBJECT) {
+            arguments.add(variable("classloader"));
+        }
+        arguments.add(new CppAst.IntLiteral(arrayType.getDimensions()));
+        arguments.add(new CppAst.IntLiteral(array.getDimensions().size()));
+        arguments.add(pool(context.getStringPool().getOffset(
+                elementType.getSort() == Type.OBJECT
+                        ? elementType.getInternalName() : elementType.getDescriptor())));
+        arguments.add(new CppAst.IntLiteral(array.getSourceLine()));
+        arguments.add(new CppAst.InitializerList(dimensions));
+
+        CppAst.Expression allocation = elementType.getSort() == Type.OBJECT
+                ? new CppAst.Call("utils::create_multidim_array", arguments)
+                : new CppAst.TemplateCall("utils::create_multidim_array_value",
+                elementType.getSort(), arguments);
+        statements.add(new CppAst.Assignment(variable(array.getResult()),
+                new CppAst.Cast("jobject", allocation)));
         CppAst.Expression failed = new CppAst.Binary(
                 new CppAst.Binary(expression(array.getResult()), "==",
                         new CppAst.NullLiteral()),
@@ -594,22 +656,32 @@ public final class IrCppEmitter {
                                                  IrNodes.ArrayLoad load,
                                                  MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
-        boolean reference = load.getElementType() == IrType.REFERENCE;
+        IrNodes.ArrayType arrayType = load.getArrayType();
+        boolean reference = arrayType == IrNodes.ArrayType.REFERENCE;
         statements.add(nullCheck(method, load.getArray(),
-                reference ? "AALOAD npe" : "IALOAD npe",
+                arrayType.getLoadMnemonic().toUpperCase(Locale.ROOT) + " npe",
                 load.getSourceLine(), context, block));
-        String temporary = (reference ? "aaload" : "iaload") + arrayTemporaryId++;
+        String temporary = arrayType.getLoadMnemonic() + arrayTemporaryId++;
         List<CppAst.Statement> scoped = new ArrayList<>();
         if (reference) {
             scoped.add(new CppAst.Declaration("jobject", temporary,
                     memberCall("env", "GetObjectArrayElement",
                             new CppAst.Cast("jobjectArray", expression(load.getArray())),
                             expression(load.getIndex()))));
+        } else if (arrayType == IrNodes.ArrayType.BOOLEAN_OR_BYTE) {
+            scoped.add(new CppAst.Declaration("jint", temporary,
+                    new CppAst.Cast("jint", new CppAst.Call("utils::baload",
+                            Arrays.asList(variable("env"),
+                                    new CppAst.Cast("jarray",
+                                            expression(load.getArray())),
+                                    expression(load.getIndex()))))));
         } else {
-            scoped.add(new CppAst.Declaration("jint", temporary, new CppAst.IntLiteral(0)));
+            String jniType = arrayJniType(arrayType);
+            scoped.add(new CppAst.Declaration(jniType, temporary,
+                    new CppAst.IntLiteral(0)));
             scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"),
-                    true, "GetIntArrayRegion", Arrays.asList(
-                            new CppAst.Cast("jintArray", expression(load.getArray())),
+                    true, "Get" + arrayType.getJniCarrier() + "ArrayRegion", Arrays.asList(
+                            new CppAst.Cast(jniType + "Array", expression(load.getArray())),
                             expression(load.getIndex()), new CppAst.IntLiteral(1),
                             new CppAst.Unary("&", variable(temporary))))));
         }
@@ -623,9 +695,10 @@ public final class IrCppEmitter {
                                                   IrNodes.ArrayStore store,
                                                   MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
-        boolean reference = store.getElementType() == IrType.REFERENCE;
+        IrNodes.ArrayType arrayType = store.getArrayType();
+        boolean reference = arrayType == IrNodes.ArrayType.REFERENCE;
         statements.add(nullCheck(method, store.getArray(),
-                reference ? "AASTORE npe" : "IASTORE npe",
+                arrayType.getStoreMnemonic().toUpperCase(Locale.ROOT) + " npe",
                 store.getSourceLine(), context, block));
         List<CppAst.Statement> scoped = new ArrayList<>();
         if (reference) {
@@ -633,19 +706,37 @@ public final class IrCppEmitter {
                     "SetObjectArrayElement",
                     new CppAst.Cast("jobjectArray", expression(store.getArray())),
                     expression(store.getIndex()), expression(store.getValue()))));
+        } else if (arrayType == IrNodes.ArrayType.BOOLEAN_OR_BYTE) {
+            scoped.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::bastore",
+                    Arrays.asList(variable("env"),
+                            new CppAst.Cast("jarray", expression(store.getArray())),
+                            expression(store.getIndex()), expression(store.getValue())))));
         } else {
-            String temporary = "iastore" + arrayTemporaryId++;
-            scoped.add(new CppAst.Declaration("jint", temporary,
-                    expression(store.getValue())));
+            String temporary = arrayType.getStoreMnemonic() + arrayTemporaryId++;
+            String jniType = arrayJniType(arrayType);
+            CppAst.Expression value = expression(store.getValue());
+            if (arrayType == IrNodes.ArrayType.BOOLEAN) {
+                value = new CppAst.Cast(jniType, new CppAst.Binary(
+                        new CppAst.Cast("uint32_t", value), "&",
+                        new CppAst.IntLiteral(1)));
+            } else if (arrayType.getElementType() == IrType.I32
+                    && arrayType != IrNodes.ArrayType.INT) {
+                value = new CppAst.Cast(jniType, value);
+            }
+            scoped.add(new CppAst.Declaration(jniType, temporary, value));
             scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"),
-                    true, "SetIntArrayRegion", Arrays.asList(
-                            new CppAst.Cast("jintArray", expression(store.getArray())),
+                    true, "Set" + arrayType.getJniCarrier() + "ArrayRegion", Arrays.asList(
+                            new CppAst.Cast(jniType + "Array", expression(store.getArray())),
                             expression(store.getIndex()), new CppAst.IntLiteral(1),
                             new CppAst.Unary("&", variable(temporary))))));
         }
         scoped.add(exceptionCheck(method, block));
         statements.add(new CppAst.Block(scoped));
         return statements;
+    }
+
+    private String arrayJniType(IrNodes.ArrayType arrayType) {
+        return "j" + arrayType.getJniCarrier().toLowerCase(Locale.ROOT);
     }
 
     private List<CppAst.Statement> emitStringLength(IrMethod method, IrBlock block,

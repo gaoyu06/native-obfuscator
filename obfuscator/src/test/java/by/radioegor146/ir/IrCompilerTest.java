@@ -24,6 +24,7 @@ import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.MultiANewArrayInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
@@ -386,7 +387,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FALOAD, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
@@ -648,7 +649,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FALOAD, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -663,7 +664,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FALOAD, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -934,7 +935,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -1147,7 +1148,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FALOAD, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -1412,7 +1413,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -1508,7 +1509,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -1531,6 +1532,154 @@ public class IrCompilerTest {
                 && dispatch > exceptionCheck);
         assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
         assertTrue(cpp.contains("env->Throw(caught_exception);"));
+    }
+
+    @Test
+    public void lowersEveryPrimitiveNewArrayAndLoadStoreRoundTripWithExactJniFamily() {
+        int[] atypes = {
+                Opcodes.T_BOOLEAN, Opcodes.T_BYTE, Opcodes.T_CHAR, Opcodes.T_SHORT,
+                Opcodes.T_INT, Opcodes.T_FLOAT, Opcodes.T_LONG, Opcodes.T_DOUBLE
+        };
+        Type[] elementTypes = {
+                Type.BOOLEAN_TYPE, Type.BYTE_TYPE, Type.CHAR_TYPE, Type.SHORT_TYPE,
+                Type.INT_TYPE, Type.FLOAT_TYPE, Type.LONG_TYPE, Type.DOUBLE_TYPE
+        };
+        IrNodes.ArrayType[] arrayTypes = {
+                IrNodes.ArrayType.BOOLEAN, IrNodes.ArrayType.BYTE,
+                IrNodes.ArrayType.CHAR, IrNodes.ArrayType.SHORT,
+                IrNodes.ArrayType.INT, IrNodes.ArrayType.FLOAT,
+                IrNodes.ArrayType.LONG, IrNodes.ArrayType.DOUBLE
+        };
+        String[] carriers = {
+                "Boolean", "Byte", "Char", "Short", "Int", "Float", "Long", "Double"
+        };
+
+        for (int i = 0; i < atypes.length; i++) {
+            MethodNode method = primitiveArrayRoundTripMethod(
+                    "roundTrip" + carriers[i], atypes[i], elementTypes[i]);
+            IrMethod ir = frontend.build("example/Math", method);
+            IrNodes.NewArray allocation = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.NewArray.class::isInstance)
+                    .map(IrNodes.NewArray.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            IrNodes.ArrayStore store = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.ArrayStore.class::isInstance)
+                    .map(IrNodes.ArrayStore.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            IrNodes.ArrayLoad load = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.ArrayLoad.class::isInstance)
+                    .map(IrNodes.ArrayLoad.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertEquals(arrayTypes[i], allocation.getArrayType());
+            assertEquals(arrayTypes[i], store.getArrayType());
+            assertEquals(arrayTypes[i], load.getArrayType());
+            assertEquals(arrayTypes[i].getElementType(), load.getResult().getType());
+
+            String cpp = compileToCpp(method, i);
+            assertTrue(cpp.contains("env->New" + carriers[i] + "Array(arg0)"));
+            assertTrue(cpp.contains("env->Get" + carriers[i] + "ArrayRegion"));
+            assertTrue(cpp.contains("env->Set" + carriers[i] + "ArrayRegion"));
+            assertTrue(cpp.contains(arrayJniType(carriers[i])));
+            assertFalse(cpp.contains("cstack"));
+        }
+    }
+
+    @Test
+    public void keepsBooleanAndByteArrayJniFamiliesDistinct() {
+        String booleanCpp = compileToCpp(primitiveArrayRoundTripMethod(
+                "booleanArray", Opcodes.T_BOOLEAN, Type.BOOLEAN_TYPE), 0);
+        String byteCpp = compileToCpp(primitiveArrayRoundTripMethod(
+                "byteArray", Opcodes.T_BYTE, Type.BYTE_TYPE), 1);
+
+        assertTrue(booleanCpp.contains("NewBooleanArray"));
+        assertTrue(booleanCpp.contains("GetBooleanArrayRegion"));
+        assertTrue(booleanCpp.contains("SetBooleanArrayRegion"));
+        assertFalse(booleanCpp.contains("ByteArray"));
+        assertTrue(booleanCpp.contains("(uint32_t) arg1 & 1"));
+
+        assertTrue(byteCpp.contains("NewByteArray"));
+        assertTrue(byteCpp.contains("GetByteArrayRegion"));
+        assertTrue(byteCpp.contains("SetByteArrayRegion"));
+        assertFalse(byteCpp.contains("BooleanArray"));
+        assertTrue(byteCpp.contains("(jbyte) arg1"));
+    }
+
+    @Test
+    public void rejectsNegativeLengthForEveryPrimitiveNewArrayWithPendingException() {
+        int[] atypes = {
+                Opcodes.T_BOOLEAN, Opcodes.T_BYTE, Opcodes.T_CHAR, Opcodes.T_SHORT,
+                Opcodes.T_INT, Opcodes.T_FLOAT, Opcodes.T_LONG, Opcodes.T_DOUBLE
+        };
+        for (int i = 0; i < atypes.length; i++) {
+            MethodNode method = newPrimitiveArrayCatchMethod(
+                    "catchNegativePrimitive" + i, atypes[i]);
+            String cpp = compileToCpp(method, i);
+            int guard = cpp.indexOf("arg0 < 0");
+            int throwCall = cpp.indexOf("utils::throw_re", guard);
+            int dispatch = cpp.indexOf("goto IR_CATCH_0;", throwCall);
+            int allocation = cpp.indexOf("env->New", dispatch);
+            assertTrue(guard >= 0 && throwCall > guard && dispatch > throwCall
+                    && allocation > dispatch);
+            assertTrue(cpp.contains("java/lang/NegativeArraySizeException")
+                    || cpp.contains("string_pool + "));
+        }
+    }
+
+    @Test
+    public void lowersRectangularPrimitiveAndReferenceMultianewarray() {
+        String intCpp = compileToCpp(multiArrayMethod(
+                "newIntMatrix", "[[I", 2), 0);
+        assertTrue(intCpp.contains("utils::create_multidim_array_value<5>("));
+        assertTrue(intCpp.contains("{ arg0, arg1 }"));
+        assertTrue(intCpp.contains("return (jarray)"));
+
+        String stringCpp = compileToCpp(multiArrayMethod(
+                "newStringMatrix", "[[Ljava/lang/String;", 2), 1);
+        assertTrue(stringCpp.contains("utils::create_multidim_array(env, classloader"));
+        assertTrue(stringCpp.contains("{ arg0, arg1 }"));
+
+        String[] primitiveDescriptors = {"[[Z", "[[B", "[[C", "[[S",
+                "[[I", "[[F", "[[J", "[[D"};
+        for (int i = 0; i < primitiveDescriptors.length; i++) {
+            IrMethod ir = frontend.build("example/Math", multiArrayMethod(
+                    "multiPrimitive" + i, primitiveDescriptors[i], 2));
+            assertTrue(ir.toString().contains(
+                    "multianewarray " + primitiveDescriptors[i]));
+        }
+    }
+
+    @Test
+    public void checksEveryMultianewarrayDimensionBeforeAllocation() {
+        MethodNode method = multiArrayNegativeCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertArrayExceptionEdge(ir, IrNodes.MultiNewArray.class,
+                "java/lang/NegativeArraySizeException");
+
+        String cpp = compileToCpp(method, 0);
+        int firstGuard = cpp.indexOf("arg0 < 0");
+        int secondGuard = cpp.indexOf("arg1 < 0");
+        int allocation = cpp.indexOf("utils::create_multidim_array_value<5>");
+        assertTrue(firstGuard >= 0 && secondGuard > firstGuard && allocation > secondGuard);
+        assertEquals(2, countOccurrences(cpp, "utils::throw_re"));
+        assertTrue(cpp.contains("goto IR_CATCH_0;"));
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseEighteenArraysBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseEighteenArraysMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
     @Test
@@ -2138,6 +2287,25 @@ public class IrCompilerTest {
                 referenceArrayBoundsCatchMethod(false),
                 referenceArrayBoundsCatchMethod(true),
                 wrongTypeReferenceArrayStoreCatchMethod(),
+                primitiveArrayRoundTripMethod(
+                        "smokeBooleanArray", Opcodes.T_BOOLEAN, Type.BOOLEAN_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeByteArray", Opcodes.T_BYTE, Type.BYTE_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeCharArray", Opcodes.T_CHAR, Type.CHAR_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeShortArray", Opcodes.T_SHORT, Type.SHORT_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeIntArray", Opcodes.T_INT, Type.INT_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeFloatArray", Opcodes.T_FLOAT, Type.FLOAT_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeLongArray", Opcodes.T_LONG, Type.LONG_TYPE),
+                primitiveArrayRoundTripMethod(
+                        "smokeDoubleArray", Opcodes.T_DOUBLE, Type.DOUBLE_TYPE),
+                multiArrayMethod("smokeIntMatrix", "[[I", 2),
+                multiArrayMethod("smokeStringMatrix", "[[Ljava/lang/String;", 2),
+                multiArrayNegativeCatchMethod(),
                 nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod(),
                 intFieldConstructor(), floatingFieldConstructor(),
                 referenceFieldConstructor()
@@ -2153,6 +2321,7 @@ public class IrCompilerTest {
                 + "#include <cstdint>\n"
                 + "#include <cmath>\n"
                 + "#include <cstring>\n"
+                + "#include <initializer_list>\n"
                 + "#include <mutex>\n"
                 + "#include <unordered_set>\n"
                 + "namespace native_jvm {\n"
@@ -2161,6 +2330,11 @@ public class IrCompilerTest {
                 + "jclass find_class_wo_static(JNIEnv *, jobject, jstring);\n"
                 + "jclass get_class_from_object(JNIEnv *, jobject);\n"
                 + "jobject get_classloader_from_class(JNIEnv *, jclass);\n"
+                + "jobjectArray create_multidim_array(JNIEnv *, jobject, jint, jint, "
+                + "const char *, int, std::initializer_list<jint>);\n"
+                + "template <int sort> jarray create_multidim_array_value("
+                + "JNIEnv *, jint, jint, const char *, int, "
+                + "std::initializer_list<jint>);\n"
                 + "}\n"
                 + "namespace classes { namespace smoke {\n"
                 + "char *string_pool;\n"
@@ -2314,6 +2488,17 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.catchNegativeAaload"));
         assertTrue(source.contains("IR codegen: example/Math.catchUpperAaload"));
         assertTrue(source.contains("IR codegen: example/Math.catchArrayStore"));
+        for (String carrier : Arrays.asList(
+                "Boolean", "Byte", "Char", "Short", "Int", "Float", "Long", "Double")) {
+            assertTrue(source.contains("env->New" + carrier + "Array"));
+            assertTrue(source.contains("env->Get" + carrier + "ArrayRegion"));
+            assertTrue(source.contains("env->Set" + carrier + "ArrayRegion"));
+        }
+        assertTrue(source.contains("IR codegen: example/Math.smokeIntMatrix"));
+        assertTrue(source.contains("utils::create_multidim_array_value<5>"));
+        assertTrue(source.contains("IR codegen: example/Math.smokeStringMatrix"));
+        assertTrue(source.contains("utils::create_multidim_array(env, classloader"));
+        assertTrue(source.contains("IR codegen: example/Math.catchNegativeMultiArray"));
         assertTrue(source.contains("uint32_t bits = 0x80000000U"));
         assertTrue(source.contains("uint64_t bits = 0x7ff8000000001234ULL"));
         assertTrue(source.contains("jfloat"));
@@ -2392,6 +2577,10 @@ public class IrCompilerTest {
             position += needle.length();
         }
         return count;
+    }
+
+    private String arrayJniType(String carrier) {
+        return "j" + carrier.toLowerCase(Locale.ROOT);
     }
 
     private byte[] writeClass(ClassNode classNode) {
@@ -3001,17 +3190,25 @@ public class IrCompilerTest {
     private MethodNode invokedynamicMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "dynamic", "()I", null, null);
+        appendUnsupportedInvokeDynamic(method, "()I");
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private void appendUnsupportedInvokeDynamic(MethodNode method) {
+        appendUnsupportedInvokeDynamic(method, "()V");
+    }
+
+    private void appendUnsupportedInvokeDynamic(MethodNode method, String descriptor) {
         Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, "example/Bootstrap",
                 "bootstrap",
                 "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
                         + "Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
                 false);
         method.instructions.add(new InvokeDynamicInsnNode(
-                "dynamic", "()I", bootstrap));
-        method.instructions.add(new InsnNode(Opcodes.IRETURN));
-        method.maxLocals = 0;
-        method.maxStack = 1;
-        return method;
+                "dynamic", descriptor, bootstrap));
     }
 
     private MethodNode stringLdcMethod() {
@@ -3222,7 +3419,7 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.FCONST_0));
         method.instructions.add(new InsnNode(Opcodes.FCONST_1));
         method.instructions.add(new InsnNode(Opcodes.FADD));
-        method.instructions.add(new InsnNode(Opcodes.FALOAD));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 2;
@@ -3355,9 +3552,7 @@ public class IrCompilerTest {
         method.instructions.add(nonNull);
         method.instructions.add(new InsnNode(Opcodes.LCONST_0));
         method.instructions.add(new InsnNode(Opcodes.POP2));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxLocals = 1;
@@ -3400,7 +3595,7 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
                 "example/Math", "unsupportedFloat", "F"));
         method.instructions.add(new InsnNode(Opcodes.POP));
-        method.instructions.add(new InsnNode(Opcodes.FALOAD));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 5;
         method.maxStack = 3;
@@ -3421,7 +3616,7 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
                 "example/Base", "superInt", "(I)I", false));
         method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
-        method.instructions.add(new InsnNode(Opcodes.FALOAD));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
@@ -3493,7 +3688,7 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
                 "example/PrimitiveTarget", "identityDouble", "(D)D", false));
         method.instructions.add(new VarInsnNode(Opcodes.DSTORE, 7));
-        method.instructions.add(new InsnNode(Opcodes.FALOAD));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 9;
         method.maxStack = 4;
@@ -3931,9 +4126,7 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.LCONST_0));
         method.instructions.add(new InsnNode(Opcodes.POP2));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
         method.maxStack = 3;
@@ -3976,9 +4169,7 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.FCONST_0));
         method.instructions.add(new InsnNode(Opcodes.POP2));
 
-        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        appendUnsupportedInvokeDynamic(method);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 0;
         method.maxStack = 6;
@@ -4007,6 +4198,113 @@ public class IrCompilerTest {
                 "java/lang/NegativeArraySizeException"));
         method.maxLocals = 3;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode primitiveArrayRoundTripMethod(
+            String name, int atype, Type elementType) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, Type.getMethodDescriptor(elementType, Type.INT_TYPE, elementType),
+                null, null);
+        int arrayLocal = 1 + elementType.getSize();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, atype));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, arrayLocal));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, arrayLocal));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new VarInsnNode(elementType.getOpcode(Opcodes.ILOAD), 1));
+        method.instructions.add(new InsnNode(elementType.getOpcode(Opcodes.IASTORE)));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, arrayLocal));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(elementType.getOpcode(Opcodes.IALOAD)));
+        method.instructions.add(new InsnNode(elementType.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = arrayLocal + 1;
+        method.maxStack = 2 + elementType.getSize();
+        return method;
+    }
+
+    private MethodNode newPrimitiveArrayCatchMethod(String name, int atype) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(I)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, atype));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -18));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NegativeArraySizeException"));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode multiArrayMethod(String name, String descriptor, int dimensions) {
+        Type[] arguments = new Type[dimensions];
+        Arrays.fill(arguments, Type.INT_TYPE);
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, Type.getMethodDescriptor(Type.getType(descriptor), arguments),
+                null, null);
+        for (int dimension = 0; dimension < dimensions; dimension++) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, dimension));
+        }
+        method.instructions.add(new MultiANewArrayInsnNode(descriptor, dimensions));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = dimensions;
+        method.maxStack = dimensions;
+        return method;
+    }
+
+    private MethodNode multiArrayNegativeCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchNegativeMultiArray", "(II)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MultiANewArrayInsnNode("[[I", 2));
+        method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, -19));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NegativeArraySizeException"));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseEighteenArraysMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseEighteenArrays", "()V", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BOOLEAN));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new MultiANewArrayInsnNode("[[I", 2));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new MultiANewArrayInsnNode(
+                "[[Ljava/lang/String;", 2));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        appendUnsupportedInvokeDynamic(method);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
         return method;
     }
 

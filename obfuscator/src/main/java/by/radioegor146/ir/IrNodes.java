@@ -689,15 +689,105 @@ public final class IrNodes {
         }
     }
 
+    /**
+     * JVM array element kind. {@code BALOAD}/{@code BASTORE} serve both byte
+     * and boolean arrays, so their kind is resolved from the verifier-known
+     * array descriptor when available and otherwise remains runtime-polymorphic.
+     */
+    public enum ArrayType {
+        BOOLEAN("boolean", "Boolean", IrType.I32, "baload", "bastore", "[Z"),
+        BYTE("byte", "Byte", IrType.I32, "baload", "bastore", "[B"),
+        BOOLEAN_OR_BYTE("boolean_or_byte", null, IrType.I32,
+                "baload", "bastore", null),
+        CHAR("char", "Char", IrType.I32, "caload", "castore", "[C"),
+        SHORT("short", "Short", IrType.I32, "saload", "sastore", "[S"),
+        INT("int", "Int", IrType.I32, "iaload", "iastore", "[I"),
+        FLOAT("float", "Float", IrType.F32, "faload", "fastore", "[F"),
+        LONG("long", "Long", IrType.I64, "laload", "lastore", "[J"),
+        DOUBLE("double", "Double", IrType.F64, "daload", "dastore", "[D"),
+        REFERENCE("reference", "Object", IrType.REFERENCE,
+                "aaload", "aastore", null);
+
+        private final String displayName;
+        private final String jniCarrier;
+        private final IrType elementType;
+        private final String loadMnemonic;
+        private final String storeMnemonic;
+        private final String arrayDescriptor;
+
+        ArrayType(String displayName, String jniCarrier, IrType elementType,
+                  String loadMnemonic, String storeMnemonic, String arrayDescriptor) {
+            this.displayName = displayName;
+            this.jniCarrier = jniCarrier;
+            this.elementType = elementType;
+            this.loadMnemonic = loadMnemonic;
+            this.storeMnemonic = storeMnemonic;
+            this.arrayDescriptor = arrayDescriptor;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public String getJniCarrier() {
+            if (jniCarrier == null) {
+                throw new IllegalStateException(
+                        "Runtime-polymorphic byte/boolean array has no single JNI carrier");
+            }
+            return jniCarrier;
+        }
+
+        public IrType getElementType() {
+            return elementType;
+        }
+
+        public String getLoadMnemonic() {
+            return loadMnemonic;
+        }
+
+        public String getStoreMnemonic() {
+            return storeMnemonic;
+        }
+
+        public String getArrayDescriptor() {
+            if (arrayDescriptor == null) {
+                throw new IllegalStateException(
+                        "This array kind has no single JVM array descriptor");
+            }
+            return arrayDescriptor;
+        }
+
+        public ArrayType resolveByteOrBoolean(String descriptor) {
+            if (this != BOOLEAN_OR_BYTE) {
+                return this;
+            }
+            if ("[Z".equals(descriptor)) {
+                return BOOLEAN;
+            }
+            if ("[B".equals(descriptor)) {
+                return BYTE;
+            }
+            return this;
+        }
+    }
+
     public static final class NewArray implements IrInstruction {
         private final IrValue result;
         private final IrValue length;
+        private final ArrayType arrayType;
         private final int bytecodeOffset;
         private final int sourceLine;
 
-        public NewArray(IrValue result, IrValue length, int bytecodeOffset, int sourceLine) {
+        public NewArray(IrValue result, IrValue length, ArrayType arrayType,
+                        int bytecodeOffset, int sourceLine) {
             this.result = requireReference(result, "result");
             this.length = requireI32(length, "length");
+            this.arrayType = Objects.requireNonNull(arrayType, "arrayType");
+            if (arrayType == ArrayType.REFERENCE
+                    || arrayType == ArrayType.BOOLEAN_OR_BYTE) {
+                throw new IllegalArgumentException(
+                        "NEWARRAY requires one concrete primitive array type");
+            }
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -709,6 +799,10 @@ public final class IrNodes {
 
         public IrValue getLength() {
             return length;
+        }
+
+        public ArrayType getArrayType() {
+            return arrayType;
         }
 
         @Override
@@ -763,6 +857,57 @@ public final class IrNodes {
         }
     }
 
+    public static final class MultiNewArray implements IrInstruction {
+        private final IrValue result;
+        private final String descriptor;
+        private final List<IrValue> dimensions;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public MultiNewArray(IrValue result, String descriptor, List<IrValue> dimensions,
+                             int bytecodeOffset, int sourceLine) {
+            this.result = requireReference(result, "result");
+            this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
+            if (descriptor.isEmpty()) {
+                throw new IllegalArgumentException("descriptor must not be empty");
+            }
+            Objects.requireNonNull(dimensions, "dimensions");
+            if (dimensions.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "MULTIANEWARRAY requires at least one dimension");
+            }
+            List<IrValue> checkedDimensions = new ArrayList<>();
+            for (IrValue dimension : dimensions) {
+                checkedDimensions.add(requireI32(dimension, "dimension"));
+            }
+            this.dimensions = Collections.unmodifiableList(checkedDimensions);
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public String getDescriptor() {
+            return descriptor;
+        }
+
+        public List<IrValue> getDimensions() {
+            return dimensions;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
     public static final class ArrayLength implements IrInstruction {
         private final IrValue result;
         private final IrValue array;
@@ -799,12 +944,15 @@ public final class IrNodes {
         private final IrValue result;
         private final IrValue array;
         private final IrValue index;
+        private final ArrayType arrayType;
         private final int bytecodeOffset;
         private final int sourceLine;
 
-        public ArrayLoad(IrValue result, IrValue array, IrValue index, int bytecodeOffset,
-                         int sourceLine) {
-            this.result = requireArrayElement(result, "result");
+        public ArrayLoad(IrValue result, IrValue array, IrValue index, ArrayType arrayType,
+                         int bytecodeOffset, int sourceLine) {
+            this.arrayType = Objects.requireNonNull(arrayType, "arrayType")
+                    .resolveByteOrBoolean(array.getReferenceDescriptor());
+            this.result = requireType(result, this.arrayType.getElementType(), "result");
             this.array = requireReference(array, "array");
             this.index = requireI32(index, "index");
             this.bytecodeOffset = bytecodeOffset;
@@ -828,6 +976,10 @@ public final class IrNodes {
             return result.getType();
         }
 
+        public ArrayType getArrayType() {
+            return arrayType;
+        }
+
         @Override
         public int getBytecodeOffset() {
             return bytecodeOffset;
@@ -842,14 +994,17 @@ public final class IrNodes {
         private final IrValue array;
         private final IrValue index;
         private final IrValue value;
+        private final ArrayType arrayType;
         private final int bytecodeOffset;
         private final int sourceLine;
 
-        public ArrayStore(IrValue array, IrValue index, IrValue value, int bytecodeOffset,
-                          int sourceLine) {
+        public ArrayStore(IrValue array, IrValue index, IrValue value, ArrayType arrayType,
+                          int bytecodeOffset, int sourceLine) {
             this.array = requireReference(array, "array");
             this.index = requireI32(index, "index");
-            this.value = requireArrayElement(value, "value");
+            this.arrayType = Objects.requireNonNull(arrayType, "arrayType")
+                    .resolveByteOrBoolean(array.getReferenceDescriptor());
+            this.value = requireType(value, this.arrayType.getElementType(), "value");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -873,6 +1028,10 @@ public final class IrNodes {
 
         public IrType getElementType() {
             return value.getType();
+        }
+
+        public ArrayType getArrayType() {
+            return arrayType;
         }
 
         @Override
@@ -1631,15 +1790,6 @@ public final class IrNodes {
 
     private static IrValue requireReference(IrValue value, String name) {
         return requireType(value, IrType.REFERENCE, name);
-    }
-
-    private static IrValue requireArrayElement(IrValue value, String name) {
-        IrValue result = Objects.requireNonNull(value, name);
-        if (result.getType() != IrType.I32 && result.getType() != IrType.REFERENCE) {
-            throw new IllegalArgumentException(name + " must be i32 or ref, got "
-                    + result.getType());
-        }
-        return result;
     }
 
     private static IrType requireFloatingType(IrValue value, String name) {

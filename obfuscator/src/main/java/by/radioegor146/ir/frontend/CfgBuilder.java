@@ -258,11 +258,12 @@ public final class CfgBuilder {
         int opcode = node.getOpcode();
         return opcode == Opcodes.IDIV || opcode == Opcodes.IREM
                 || opcode == Opcodes.NEW || opcode == Opcodes.NEWARRAY
-                || opcode == Opcodes.ANEWARRAY
+                || opcode == Opcodes.ANEWARRAY || opcode == Opcodes.MULTIANEWARRAY
                 || opcode == Opcodes.CHECKCAST || opcode == Opcodes.INSTANCEOF
-                || opcode == Opcodes.ARRAYLENGTH || opcode == Opcodes.IALOAD
-                || opcode == Opcodes.AALOAD || opcode == Opcodes.IASTORE
-                || opcode == Opcodes.AASTORE || opcode == Opcodes.GETFIELD
+                || opcode == Opcodes.ARRAYLENGTH
+                || opcode >= Opcodes.IALOAD && opcode <= Opcodes.SALOAD
+                || opcode >= Opcodes.IASTORE && opcode <= Opcodes.SASTORE
+                || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.GETSTATIC
                 || opcode == Opcodes.PUTSTATIC || opcode == Opcodes.INVOKESTATIC
                 || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE
