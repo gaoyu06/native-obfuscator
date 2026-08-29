@@ -56,9 +56,9 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load, plus one `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
-  `ISHL`, `ISHR`, or `IUSHR` whose two operands are each one of those
-  already-proven int-family inputs).
+  argument load, plus a tree of at most two `IADD`, `ISUB`, `IMUL`, `IAND`,
+  `IOR`, `IXOR`, `ISHL`, `ISHR`, or `IUSHR` levels whose leaves are each one
+  of those already-proven int-family inputs).
 
 ## Current rule
 
@@ -137,13 +137,14 @@ One additional family is reduced to that same shared-join form:
   argument with a matching JVM carrier; `ICONST_M1` through `ICONST_5`,
   `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
   or exactly one `INEG` over a direct `ILOAD` of a declared int-family
-  constructor argument. An int-family argument may also be exactly one `IADD`,
-  `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, or `IUSHR` whose
-  left and right operands are independently one of those direct loads,
-  constants, or single-load `INEG` forms. The operand proof is leaf-only, so
-  neither operand may itself be a binary expression. Shift-count masking is
-  not reproduced by this proof: the admitted shift remains in the retained
-  bytecode prefix and therefore keeps JVM shift semantics.
+  constructor argument. An int-family argument may also have at most two
+  levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
+  or `IUSHR`. Each outer operand may be one admitted inner binary whose two
+  operands are direct loads, constants, or single-load `INEG` forms. The inner
+  proof is leaf-only and does not recurse, so a third binary level is rejected.
+  Shift-count masking is not reproduced by this proof: every admitted shift
+  remains in the retained bytecode prefix and therefore keeps JVM shift
+  semantics.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -191,11 +192,11 @@ normalizing the suffixes to one copied join:
   parameters and packed extras. It therefore does not reuse a live extra slot,
   receiver slot, or category-2 parameter slot.
 
-Extra-local or aliased chain inputs, nested binary expressions (including
-nested bitwise and shift forms), `IDIV`, `IREM`, other binary arithmetic,
-`IINC`, non-int-family constants, non-`Integer` `LDC`, fields, method calls,
-stack duplication, computed or rewritten receivers, or any other unlisted
-input remain rejected. Distinct joins, other conditional or switch forms,
+Extra-local or aliased chain inputs, binary expression trees deeper than two
+levels, `IDIV`, `IREM`, other binary arithmetic, `IINC`, non-int-family
+constants, non-`Integer` `LDC`, fields, method calls, stack duplication,
+computed or rewritten receivers, or any other unlisted input remain rejected.
+Distinct joins, other conditional or switch forms,
 unproven condition/switch-key loads, computed keys, escaping switch targets,
 labels or control flow in a copied suffix, nonempty exception tables for the
 post-chain forms, zero-call paths, unreachable candidates, unproven or
@@ -563,6 +564,16 @@ Synthetic bytecode unit tests in
   `ISHL`, `ISHR`, and `IUSHR` paths through plain Java and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical
   stdout while the retained shift bytecode keeps JVM count masking.
+- `admitsThreeImmediateReturnsWithNestedProvenChainInputs` checks two-level
+  trees for every admitted non-trapping int binary family, retains their
+  arithmetic in the bytecode prefix, and keeps the existing three-call,
+  one-join hidden-bridge shape.
+- `rewrittenThreeImmediateNestedInputsPassJvmVerification` selects the
+  positive, negative, and zero paths of a Java 8 constructor with nested
+  `IADD` input and reaches the unresolved bridge only after JVM verification.
+- `threeImmediateNestedInputsCompileAndRunWithJavaParity` exercises those
+  three paths through plain Java and the complete CMake/g++ JNI transform
+  under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies` proves that
   three instruction-identical `ICONST_4; POP; RETURN` copies normalize to two
   retained `GOTO`s, one canonical suffix, and one hidden bridge while retaining
@@ -635,8 +646,8 @@ Synthetic bytecode unit tests in
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
-  arithmetic, bitwise, or shift binary opcode using an extra local, nested
-  forms of each admitted binary opcode, trapping `IDIV`, a rewritten `ASTORE 0`
+  arithmetic, bitwise, or shift binary opcode using an extra local, a
+  three-level nested binary input, trapping `IDIV`, a rewritten `ASTORE 0`
   receiver, a standalone-`GOTO` suffix, a zero-call return, skip-super paths,
   and nonempty exception tables before mutation. Other multi-call negatives
   still cover try/catch spanning a chain
