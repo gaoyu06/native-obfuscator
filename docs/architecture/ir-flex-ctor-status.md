@@ -52,6 +52,10 @@ It also classifies writes to reference/array constructor-argument locals:
   initialized receiver while another prefix-only alias carries
   `uninitializedThis` through the chain call. The bridge has no general way to
   forward that alias or reconstruct receiver identity for the suffix.
+- Prefix stores into **non-parameter** locals that the suffix later reads
+  are not forwarded by the hidden bridge. Those constructors still fail
+  IR dataflow (`Read of a local not defined on every incoming edge`) and
+  fall back. That is the next constructor leftover after #160/#161.
 
 Other guards remain unchanged:
 

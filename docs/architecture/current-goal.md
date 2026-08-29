@@ -53,12 +53,12 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #159 (preprocessor-lowerable `invokedynamic`) include at least:
-   `LDC` of `ConstantDynamic` (condy) and raw MethodHandle / MethodType `LDC`
-   that is not part of an admitted indy lowering,
-   remaining constructor-split rejects (prefix branch into suffix,
-   multiple this/super, try/catch across the split, prefix `ASTORE 0`),
-   and `jsr` / `ret`.
+   `master` after #161 (proven `ConstantDynamic` plus raw MethodHandle /
+   MethodType `LDC`) include at least: remaining constructor-split rejects
+   (prefix branch into suffix, multiple this/super, try/catch across the
+   split, prefix `ASTORE 0`), leftover prefix locals that the suffix reads
+   but the bridge does not forward, unsafe/unproven condy shapes (stay
+   reject-before-mutation), and `jsr` / `ret` (obsolete; reject is fine).
    This list is not a complete JVM inventory.
 2. **Do not flip `--codegen` off `legacy`** until those supported methods
    no longer need fallback. The default flip is reversible and comes

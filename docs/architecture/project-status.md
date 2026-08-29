@@ -1,10 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after landing constructor prefix parameter `ASTORE`
-[#160](https://github.com/gaoyu06/native-obfuscator/pull/160)
-(parent re-ran 123/123 including the forwarded-result harness)
-on the post-[#159](https://github.com/gaoyu06/native-obfuscator/pull/159)
-indy tree. Active process:
+Last updated after landing proven `ConstantDynamic` plus raw
+MethodHandle / MethodType `LDC`
+[#161](https://github.com/gaoyu06/native-obfuscator/pull/161)
+(focused suite recorded 128/128: 121 `IrCompilerTest` + 7
+`CodegenModeTest`, including nested string condy and raw `MethodType`
+harnesses) on the post-[#160](https://github.com/gaoyu06/native-obfuscator/pull/160)
+constructor-prefix tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -38,10 +40,13 @@ legacy。不能当成 JDK 支持矩阵。
   [#159](https://github.com/gaoyu06/native-obfuscator/pull/159) admits
   preprocessor-lowerable `invokedynamic` (string concat, lambda
   metafactory, `ObjectMethods.bootstrap`) via a method copy.
-  `ConstantDynamic` `LDC` still falls back. Unsupported methods fall
-  back per-method. Rejected constructors are restored
-  from the original class bytes so indy preprocessor markers are not left in
-  output.
+  [#161](https://github.com/gaoyu06/native-obfuscator/pull/161) admits
+  proven static `ConstantDynamic` `LDC` through a one-time cached
+  resolver, plus raw `MethodHandle` / `MethodType` `LDC`. Unsafe condy
+  shapes (non-static, varargs, interface-owner, malformed) stay
+  reject-before-mutation. Unsupported methods fall back per-method.
+  Rejected constructors are restored from the original class bytes so
+  indy preprocessor markers are not left in output.
   [#146](https://github.com/gaoyu06/native-obfuscator/pull/146) admits
   prefix-local branches (every target still in the prefix) so a JEP 513-style
   prologue like `if (...) throw; super(...)` can split. Prefix + this/super
@@ -141,6 +146,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | IR monitors / synchronized (#158) | 118 tests (`IrCompilerTest` 111 + `CodegenModeTest` 7). Parent re-ran 118/118 including `executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable` | Complete IR coverage or a default flip |
 | IR `invokedynamic` (#159) | 121 tests (`IrCompilerTest` 114 + `CodegenModeTest` 7). Parent re-ran 121/121 including `executesStringConcatIndyThroughIrWhenToolchainAvailable` | Complete indy/condy coverage or a default flip |
 | Constructor prefix parameter `ASTORE` (#160) | 123 tests (`IrCompilerTest` 116 + `CodegenModeTest` 7). Parent re-ran 123/123 including `prefixReferenceParameterAstoreCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
+| IR proven `ConstantDynamic` + raw MH/MT `LDC` (#161) | 128 tests (`IrCompilerTest` 121 + `CodegenModeTest` 7). Branch recorded nested string condy and raw `MethodType` compile-and-run harnesses | Complete condy coverage or a default flip |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -185,9 +191,11 @@ tree. Close them as superseded, do not merge.
 Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
-  `ConstantDynamic` / leftover raw MethodHandle `LDC`,
   leftover constructor-split rejects (`ASTORE 0`, prefix→suffix branch,
-  try/catch across the split, multiple this/super), and `jsr` / `ret`.
+  try/catch across the split, multiple this/super), prefix-written
+  extras the suffix reads that the hidden bridge does not yet forward,
+  and `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
+  subroutines). Unsafe condy shapes stay fail-closed.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
@@ -199,8 +207,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #160 (ctor prefix
-  parameter `ASTORE`). / 落地 #160 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #161 (proven
+  condy + raw MH/MT `LDC`). / 落地 #161 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
