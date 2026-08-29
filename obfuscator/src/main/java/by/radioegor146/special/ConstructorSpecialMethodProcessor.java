@@ -1102,7 +1102,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Restricts the 3+-return normalization to calls whose complete operand
      * sequence is visible locally: ALOAD 0 followed by direct declared-argument
      * loads, int-family constants, one INEG over a direct declared int-family
-     * argument load, or one IADD, ISUB, or IMUL of two such int-family inputs.
+     * argument load, or one admitted int binary operation over two such
+     * int-family inputs.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1159,7 +1160,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || opcode == Opcodes.IMUL
                 || opcode == Opcodes.IAND
                 || opcode == Opcodes.IOR
-                || opcode == Opcodes.IXOR) {
+                || opcode == Opcodes.IXOR
+                || opcode == Opcodes.ISHL
+                || opcode == Opcodes.ISHR
+                || opcode == Opcodes.IUSHR) {
             Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, inputIndex - 1),
@@ -1176,8 +1180,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one non-recursive int-family input. Deliberately excluding IADD,
-     * ISUB, IMUL, IAND, IOR, and IXOR here keeps the admitted binary
-     * expression to exactly one level.
+     * ISUB, IMUL, IAND, IOR, IXOR, ISHL, ISHR, and IUSHR here keeps the
+     * admitted binary expression to exactly one level.
      */
     private static Integer previousProvenIntChainOperand(
             MethodNode constructor, int inputIndex,

@@ -44,8 +44,9 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load, plus one `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, or `IXOR`
-  whose two operands are each one of those already-proven int-family inputs).
+  argument load, plus one `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
+  `ISHL`, `ISHR`, or `IUSHR` whose two operands are each one of those
+  already-proven int-family inputs).
 
 ## Current rule
 
@@ -125,10 +126,12 @@ One additional family is reduced to that same shared-join form:
   `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
   or exactly one `INEG` over a direct `ILOAD` of a declared int-family
   constructor argument. An int-family argument may also be exactly one `IADD`,
-  `ISUB`, `IMUL`, `IAND`, `IOR`, or `IXOR` whose left and right operands are
-  independently one of those direct loads, constants, or single-load `INEG`
-  forms. The operand proof is leaf-only, so neither operand may itself be a
-  binary expression.
+  `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, or `IUSHR` whose
+  left and right operands are independently one of those direct loads,
+  constants, or single-load `INEG` forms. The operand proof is leaf-only, so
+  neither operand may itself be a binary expression. Shift-count masking is
+  not reproduced by this proof: the admitted shift remains in the retained
+  bytecode prefix and therefore keeps JVM shift semantics.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -139,7 +142,7 @@ One additional family is reduced to that same shared-join form:
   once behind one hidden bridge.
 
 Three-or-more calls with extra-local or aliased chain inputs, nested binary
-expressions (including nested bitwise forms), `IDIV`, `IREM`, shifts, other
+expressions (including nested bitwise and shift forms), `IDIV`, `IREM`, other
 binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
 fields, method calls, stack duplication, computed or rewritten receivers, or
 any other unlisted input remain rejected. Distinct joins, other conditional or
@@ -393,6 +396,17 @@ Synthetic bytecode unit tests in
 - `threeImmediateBitwiseSuperReturnsCompileAndRunWithJavaParity` selects the
   `IAND`, `IOR`, and `IXOR` paths through plain Java and the complete CMake/g++
   JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithShiftProvenChainInputs` applies the same
+  leaf-only proof to `ISHL`, `ISHR`, and `IUSHR` paths; it retains all three
+  shift opcodes and chain calls, two shared-join `GOTO`s, and one hidden
+  bridge.
+- `rewrittenThreeImmediateShiftSuperReturnsPassJvmVerification` serializes and
+  loads the rewritten owner and hidden class, then selects all three shift
+  paths up to the unresolved bridge after JVM verification.
+- `threeImmediateShiftSuperReturnsCompileAndRunWithJavaParity` selects the
+  `ISHL`, `ISHR`, and `IUSHR` paths through plain Java and the complete
+  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical
+  stdout while the retained shift bytecode keeps JVM count masking.
 - `admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies` proves that
   three instruction-identical `ICONST_4; POP; RETURN` copies normalize to two
   retained `GOTO`s, one canonical suffix, and one hidden bridge while retaining
@@ -438,8 +452,8 @@ Synthetic bytecode unit tests in
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
-  arithmetic or bitwise binary opcode using an extra local, nested forms of
-  each admitted binary opcode, trapping `IDIV`, a rewritten `ASTORE 0`
+  arithmetic, bitwise, or shift binary opcode using an extra local, nested
+  forms of each admitted binary opcode, trapping `IDIV`, a rewritten `ASTORE 0`
   receiver, non-identical post-call work, a branched suffix, a zero-call
   return, skip-super paths, and nonempty exception tables before mutation.
   Other multi-call negatives still cover try/catch spanning a chain call and
@@ -458,9 +472,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 190 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 193 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 197 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 200 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
