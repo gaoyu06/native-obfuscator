@@ -53,8 +53,9 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #158 (monitors / synchronized) include at least:
-   `invokedynamic` and `LDC` of MethodHandle / MethodType / ConstantDynamic,
+   `master` after #159 (preprocessor-lowerable `invokedynamic`) include at least:
+   `LDC` of `ConstantDynamic` (condy) and raw MethodHandle / MethodType `LDC`
+   that is not part of an admitted indy lowering,
    remaining constructor-split rejects (prefix branch into suffix,
    multiple this/super, try/catch across the split, prefix `ASTORE` of
    forwarded refs), and `jsr` / `ret`.

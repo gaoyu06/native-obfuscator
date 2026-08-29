@@ -1,10 +1,10 @@
 # Project status on master / master 现状
 
-Last updated after landing IR monitors / synchronized methods
-[#158](https://github.com/gaoyu06/native-obfuscator/pull/158)
-(parent re-ran 118/118 including the executed monitor harness)
-on the post-[#157](https://github.com/gaoyu06/native-obfuscator/pull/157)
-`IF_ACMP` tree. Active process:
+Last updated after landing IR `invokedynamic` admission
+[#159](https://github.com/gaoyu06/native-obfuscator/pull/159)
+(parent re-ran 121/121 including the executed string-concat indy harness)
+on the post-[#158](https://github.com/gaoyu06/native-obfuscator/pull/158)
+monitors tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -34,8 +34,12 @@ legacy。不能当成 JDK 支持矩阵。
   `==` / `!=`).
   [#158](https://github.com/gaoyu06/native-obfuscator/pull/158) admits
   `monitorenter` / `monitorexit` and synchronized methods (JNI
-  `MonitorEnter` / `MonitorExit`, LIFO pairing check). Unsupported
-  methods fall back per-method. Rejected constructors are restored
+  `MonitorEnter` / `MonitorExit`, LIFO pairing check).
+  [#159](https://github.com/gaoyu06/native-obfuscator/pull/159) admits
+  preprocessor-lowerable `invokedynamic` (string concat, lambda
+  metafactory, `ObjectMethods.bootstrap`) via a method copy.
+  `ConstantDynamic` `LDC` still falls back. Unsupported methods fall
+  back per-method. Rejected constructors are restored
   from the original class bytes so indy preprocessor markers are not left in
   output.
   [#146](https://github.com/gaoyu06/native-obfuscator/pull/146) admits
@@ -131,6 +135,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | IR `LCMP` (#153; Fable accept #156) | 112 tests (`IrCompilerTest` 105 + `CodegenModeTest` 7). Fable re-ran 112/112. Compiled-and-executed long-compare harness included | Complete IR coverage or a default flip |
 | IR `IF_ACMPEQ` / `IF_ACMPNE` (#157) | 114 tests (`IrCompilerTest` 107 + `CodegenModeTest` 7). Parent re-ran 114/114 including `executesReferenceCompareSemanticsWhenToolchainAvailable` | Complete IR coverage or a default flip |
 | IR monitors / synchronized (#158) | 118 tests (`IrCompilerTest` 111 + `CodegenModeTest` 7). Parent re-ran 118/118 including `executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable` | Complete IR coverage or a default flip |
+| IR `invokedynamic` (#159) | 121 tests (`IrCompilerTest` 114 + `CodegenModeTest` 7). Parent re-ran 121/121 including `executesStringConcatIndyThroughIrWhenToolchainAvailable` | Complete indy/condy coverage or a default flip |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -175,7 +180,7 @@ tree. Close them as superseded, do not merge.
 Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
-  `invokedynamic` / condy / MethodHandle
+  `ConstantDynamic` / leftover raw MethodHandle `LDC`,
   `LDC`, monitors / synchronized, leftover constructor-split rejects,
   `jsr` / `ret`.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
@@ -189,8 +194,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #158 (monitors).
-  / 落地 #158（监视器 / synchronized）之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #159 (indy).
+  / 落地 #159（可降解 invokedynamic）之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
