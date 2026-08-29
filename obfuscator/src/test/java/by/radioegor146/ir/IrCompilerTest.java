@@ -1660,18 +1660,124 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsMultipleSuperDiamondWithPrefixAstoreZero() {
+    public void admitsAndRewritesMultipleSuperDiamondWithReceiverAlias()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/MultiReceiverStoreBase");
+        base.version = Opcodes.V1_8;
         ClassNode owner = constructorOwner(
-                "example/MultiReceiverStore", "example/MultiSuperBase");
+                "example/MultiReceiverStore", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "original", "I", null, null));
+        MethodNode constructor = multipleSuperDiamondWithAstoreZero(
+                owner.name, owner.superName);
+        owner.methods.add(constructor);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(ILjava/lang/Class;)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(variableIndexes(
+                constructor, Opcodes.ASTORE).contains(0));
+        List<MethodInsnNode> chainCalls = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && base.name.equals(invoke.owner))
+                .collect(Collectors.toList());
+        assertEquals(2, chainCalls.size());
+        for (MethodInsnNode call : chainCalls) {
+            AbstractInsnNode receiver = call.getPrevious();
+            while (receiver != null
+                    && receiver.getOpcode() != Opcodes.ALOAD) {
+                receiver = receiver.getPrevious();
+            }
+            assertTrue(receiver instanceof VarInsnNode);
+            assertEquals(2, ((VarInsnNode) receiver).var);
+        }
+        MethodInsnNode bridge = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Class;)V", bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(owner.name),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ILOAD, argument.getOpcode());
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(0, ((VarInsnNode) argument).var);
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg1;"));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> rewritten = loader.define(writeClass(owner));
+        for (int value : new int[]{7, -5}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> rewritten.getConstructor(int.class)
+                            .newInstance(value));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+    }
+
+    @Test
+    public void rejectsSharedJoinDiamondWhenOneCallUsesOverwrittenReceiverBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/UnsafeMultiReceiverStore",
+                "example/MultiSuperBase");
+        MethodNode constructor =
+                multipleSuperDiamondWithOneOverwrittenReceiver(
+                        owner.name, owner.superName);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        int instructionCount = constructor.instructions.size();
+        List<Integer> opcodes = realOpcodes(constructor);
+
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
-                () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                        owner, multipleSuperDiamondWithAstoreZero(
-                                owner.name, owner.superName)));
-        assertEquals(Opcodes.ASTORE, error.getOpcode());
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.INVOKESPECIAL, error.getOpcode());
         assertTrue(error.getMessage().contains(
-                "Constructor prefix ASTORE 0 does not provably preserve "
-                        + "the constructor receiver"));
+                "invoke this/super on the constructor receiver"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -4661,6 +4767,110 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void receiverAliasMultipleSuperDiamondCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the receiver-alias diamond runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the receiver-alias diamond runtime test");
+
+        String ownerName = "example/ReceiverAliasMultiSuperRuntime";
+        String baseName = "example/ReceiverAliasMultiSuperRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-receiver-alias-diamond-run");
+        Path inputJar = directory.resolve("receiver-alias-diamond.jar");
+        Path outputDirectory = directory.resolve("output");
+        createReceiverAliasMultipleSuperDiamondJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain receiver-alias diamond Java run");
+        assertEquals(
+                "7" + System.lineSeparator()
+                        + "-5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(variableIndexes(
+                transformedConstructor, Opcodes.ASTORE).contains(0));
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        MethodInsnNode bridge = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Object;"
+                        + "Ljava/lang/Object;Ljava/lang/Class;)V",
+                bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(ownerName),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(3, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious().getPrevious().getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(0, ((VarInsnNode) argument).var);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("receiver-alias diamond CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("receiver-alias diamond CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Receiver-alias diamond native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native receiver-alias diamond Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -11131,6 +11341,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createReceiverAliasMultipleSuperDiamondJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "original", "I", null, null));
+        owner.methods.add(receiverAliasMultipleSuperDiamondConstructor(
+                ownerName, baseName));
+        owner.methods.add(receiverAliasMultipleSuperDiamondMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createPostChainConditionalBranchJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -12799,6 +13039,43 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode receiverAliasMultipleSuperDiamondConstructor(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(ILjava/lang/Object;)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "original", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode postChainConditionalBranchConstructor(
             String owner, String superName) {
         return postChainIntCompareConstructor(
@@ -13076,6 +13353,31 @@ public class IrCompilerTest {
         }
         method.maxLocals = 3;
         return method;
+    }
+
+    private MethodNode multipleSuperDiamondWithOneOverwrittenReceiver(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDiamondWithAstoreZero(owner, superName);
+        MethodInsnNode secondCall = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .skip(1)
+                .findFirst().orElseThrow(AssertionError::new);
+        for (AbstractInsnNode receiver = secondCall.getPrevious();
+             receiver != null; receiver = receiver.getPrevious()) {
+            if (receiver instanceof VarInsnNode
+                    && receiver.getOpcode() == Opcodes.ALOAD
+                    && ((VarInsnNode) receiver).var == 2) {
+                ((VarInsnNode) receiver).var = 0;
+                return method;
+            }
+        }
+        throw new AssertionError("Second chain receiver was not found");
     }
 
     private MethodNode multipleSuperDiamondWithSkipPath(
@@ -14454,6 +14756,41 @@ public class IrCompilerTest {
         method.maxLocals = 1;
         method.maxStack = 4;
         return method;
+    }
+
+    private MethodNode receiverAliasMultipleSuperDiamondMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendReceiverAliasMultipleSuperDiamondPrint(
+                method, owner, 7, false);
+        appendReceiverAliasMultipleSuperDiamondPrint(
+                method, owner, -5, true);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private void appendReceiverAliasMultipleSuperDiamondPrint(
+            MethodNode method, String owner, int value, boolean nullOverwrite) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        method.instructions.add(nullOverwrite
+                ? new InsnNode(Opcodes.ACONST_NULL)
+                : new LdcInsnNode("OVERWRITTEN"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                "(ILjava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "original", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
     }
 
     private MethodNode twoDifferentSuffixMain(String owner) {
