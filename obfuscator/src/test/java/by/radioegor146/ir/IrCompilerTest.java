@@ -2515,7 +2515,7 @@ public class IrCompilerTest {
         assertTrue(monitorInstructions.get(0) instanceof IrNodes.MonitorEnter);
         assertTrue(monitorInstructions.get(1) instanceof IrNodes.MonitorExit);
         assertTrue(explicitIr.toString().contains("monitorenter %arg0"));
-        assertTrue(explicitIr.toString().contains("monitorexit %arg0"));
+        assertTrue(explicitIr.toString().contains("monitorexit %v"));
 
         MethodNode caught = nullMonitorCatchMethod();
         IrMethod caughtIr = frontend.build("example/Math", caught);
