@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing leaf-only `LDIV`/`LREM` long chain inputs
-[#217](https://github.com/gaoyu06/native-obfuscator/pull/217)
-(parent re-ran 301/301: 294 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateLdivLremSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#216](https://github.com/gaoyu06/native-obfuscator/pull/216)
-leaf-only long shift tree. Active process:
+Last updated after landing one `LNEG` over a declared long `LLOAD`
+[#218](https://github.com/gaoyu06/native-obfuscator/pull/218)
+(parent re-ran 304/304: 297 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateLnegSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#217](https://github.com/gaoyu06/native-obfuscator/pull/217)
+leaf-only `LDIV`/`LREM` tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -208,11 +208,13 @@ legacy。不能当成 JDK 支持矩阵。
   [#217](https://github.com/gaoyu06/native-obfuscator/pull/217) admits
   leaf-only `LDIV`/`LREM` as long chain-call inputs
   (trapping stays in the retained prefix).
+  [#218](https://github.com/gaoyu06/native-obfuscator/pull/218) admits
+  one `LNEG` over a declared long `LLOAD` as a long leaf.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
-  (five-or-more nested int binaries, nested/`LNEG`/other
-  long computed inputs, float/double/reference computed inputs),
+  (five-or-more nested int binaries, nested long
+  computed inputs, float/double/reference computed inputs),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -362,6 +364,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Leaf-only `LAND`/`LOR`/`LXOR` long chain inputs (#215) | 295 tests (`IrCompilerTest` 288 + `CodegenModeTest` 7). Parent re-ran 295/295 including `threeImmediateLongBitwiseSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `LSHL`/`LSHR`/`LUSHR` long chain inputs (#216) | 298 tests (`IrCompilerTest` 291 + `CodegenModeTest` 7). Parent re-ran 298/298 including `threeImmediateLongShiftSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `LDIV`/`LREM` long chain inputs (#217) | 301 tests (`IrCompilerTest` 294 + `CodegenModeTest` 7). Parent re-ran 301/301 including `threeImmediateLdivLremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| One `LNEG` over a declared long `LLOAD` (#218) | 304 tests (`IrCompilerTest` 297 + `CodegenModeTest` 7). Parent re-ran 304/304 including `threeImmediateLnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -411,7 +414,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
   suffixes or cover a chain call,
   remaining multi-super shapes such as five-or-more nested
-  int binaries, nested/`LNEG`/other long
+  int binaries, nested long
   computed inputs, extras still unassigned
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
@@ -431,9 +434,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #217 (leaf-only
-  `LDIV`/`LREM` long chain inputs). /
-  落地 #217 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #218 (one `LNEG`
+  over a declared long `LLOAD`). /
+  落地 #218 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
