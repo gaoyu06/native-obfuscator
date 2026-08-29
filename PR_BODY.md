@@ -1,117 +1,105 @@
-# IR compiler phase 10 / IR 编译器第十阶段
+# IR phase 10 — Fable review / IR 编译器第十阶段 —— Fable 审阅
 
-Preferred base / 首选基线:
-`cursor/ir-phase9-sol-review-6d81`
-(`0e323da959d34f29b3c3cede206e48aa96a4559e`).
-This is the reviewed phase-9 tip containing the array-return `jarray` carrier
-fix. / 这是包含数组返回 `jarray` carrier 修复的 phase-9 已审查 tip。
+Fable design review of the Sol implementation of phase 10 (typed instance and
+static field access for exact `I`, exact `J`, and object/array reference
+descriptors in the Java bytecode → typed CFG IR → C++/JNI compiler).
 
-## Summary / 摘要
+对第十阶段 Sol 实现的 Fable 设计审阅（Java 字节码 → typed CFG IR → C++/JNI
+编译路径中，实例与静态字段访问对精确 `I`、精确 `J` 及对象/数组引用描述符的支持）。
 
-Phase 10 adds typed instance and static field access to the optional Java
-bytecode → typed CFG IR → C++/JNI compiler. Exact `I`, exact `J`, and object or
-array reference fields now use their matching JNI carriers and accessors. The
-default remains `legacy`.
+Review base / 审阅基线:
+`cursor/ir-phase9-sol-review-6d81` at
+`0e323da959d34f29b3c3cede206e48aa96a4559e` (reviewed phase-9 tip with the
+array-return `jarray` carrier fix). Phase-10 tip reviewed:
+`b8cdb8efb09c135e7d119249f48feba22cf7e8f4`.
+必须基于 `cursor/ir-phase9-sol-review-6d81` 的 `0e323da…` 比较，而非 `master`。
 
-第十阶段为可选的 Java 字节码 → typed CFG IR → C++/JNI 编译路径增加 typed 实例与
-静态字段访问。精确 `I`、精确 `J` 以及对象或数组引用字段分别使用匹配的 JNI
-carrier 与 accessor。默认值仍为 `legacy`。
+Full write-up / 完整报告: `docs/architecture/ir-phase10-fable-review.md`.
 
-## (a) Change scope / 本次改动范围
+**Verdict / 结论: accept-with-nits（接受，有小瑕疵）.**
+No compiler code changed on this review branch — no correctness blocker was
+found. / 本审阅分支未改动任何编译器代码：未发现正确性阻塞项。
 
-- Admits `GETFIELD`, `PUTFIELD`, `GETSTATIC`, and `PUTSTATIC` for exact `I`,
-  exact `J`, and object/array field descriptors.
-- Maps `I` to `IrType.I32` / `jint`, `J` to `IrType.I64` / `jlong`, and
-  object/array descriptors to `IrType.REFERENCE` / `jobject`; there is no
-  implicit integer widening for field access.
-- Selects `Get/Set[Static]IntField`, `Get/Set[Static]LongField`, or
-  `Get/Set[Static]ObjectField` from the descriptor while retaining the existing
-  `CachedFieldInfo`, `cfields`, `GetFieldID`, and `GetStaticFieldID` paths.
-- Routes a null instance receiver through the block exceptional exit with
-  `NullPointerException` pending.
-- Rejects field sorts `Z`, `B`, `C`, `S`, `F`, and `D` during frontend
-  admission. They remain per-method fallback cases.
-- Adds instance/static get+put round-trips for `I`, `J`, object references, and
-  `[I` fields; null-receiver and fallback-before-mutation regressions; and all
-  new methods to the retained g++ translation unit.
-- Preserves the phase-9 array-return regression and `jarray` boundary cast,
-  constructor-method exclusion, `legacy` default, and every existing snippet.
+## (a) What was reviewed / 审阅范围
 
-- 为精确 `I`、精确 `J` 及对象/数组字段描述符接纳 `GETFIELD`、`PUTFIELD`、
-  `GETSTATIC` 与 `PUTSTATIC`。
-- 将 `I` 映射到 `IrType.I32` / `jint`，将 `J` 映射到 `IrType.I64` /
-  `jlong`，将对象/数组描述符映射到 `IrType.REFERENCE` / `jobject`；字段访问
-  不进行隐式整数拓宽。
-- 根据描述符选择 `Get/Set[Static]IntField`、`Get/Set[Static]LongField` 或
-  `Get/Set[Static]ObjectField`，并保留现有 `CachedFieldInfo`、`cfields`、
-  `GetFieldID` 与 `GetStaticFieldID` 路径。
-- 实例字段接收者为 null 时，在 `NullPointerException` 保持 pending 的情况下走
-  当前 block 的异常出口。
-- 在 frontend 准入阶段拒绝 `Z`、`B`、`C`、`S`、`F` 与 `D` 字段 sort；这些
-  情况继续按方法 fallback。
-- 新增实例/静态 `I`、`J`、对象引用及 `[I` 字段的 get+put round-trip，
-  null-receiver 与 mutation 前 fallback 回归，并将全部新方法加入保留的 g++
-  translation unit。
-- 保留 phase-9 数组返回回归与 `jarray` 边界转换、构造器方法体排除、
-  `legacy` 默认值及全部现有 snippets。
+- `GETFIELD`/`PUTFIELD`/`GETSTATIC`/`PUTSTATIC` for exact `I`, exact `J`, and
+  object/array descriptors, and the descriptor→`IrType` map
+  (`I→I32`, `J→I64`, object/array→`REFERENCE`) consulted at admission, at the
+  abstract stack effect, at lowering, and at `IrNodes` node construction.
+- Matching JNI accessor selection: `Get/Set[Static]IntField`,
+  `Get/Set[Static]LongField`, `Get/Set[Static]ObjectField` (arrays use the
+  `Object` family).
+- Null instance receiver → block exceptional exit with `NullPointerException`
+  left pending (no `ExceptionClear`).
+- The six other primitive field sorts (`Z`,`B`,`C`,`S`,`F`,`D`) still rejected.
+- Reject-before-mutation for unsupported descriptors.
+- Phase-9 array-return `jarray` carrier cast retained (and interoperating with a
+  phase-10 array field read).
+- Default codegen mode stays `legacy`.
+
+- `GETFIELD`/`PUTFIELD`/`GETSTATIC`/`PUTSTATIC` 对精确 `I`、精确 `J` 及对象/数组
+  描述符的支持，以及描述符→`IrType` 映射（`I→I32`、`J→I64`、对象/数组→
+  `REFERENCE`）在准入、抽象栈效果、lowering 与 `IrNodes` 节点构造四处的一致性。
+- JNI accessor 选择：`Get/Set[Static]{Int,Long,Object}Field`（数组走 `Object`）。
+- 实例接收者为 null → 走块异常出口且 `NullPointerException` 保持 pending
+  （无 `ExceptionClear`）。
+- 其余六种 primitive 字段 sort（`Z`,`B`,`C`,`S`,`F`,`D`）仍被拒。
+- 不支持描述符的变更前回退。
+- phase-9 数组返回 `jarray` carrier 转换保留（并与 phase-10 数组字段读取协同）。
+- 默认代码生成模式仍为 `legacy`。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
 **No / 否。**
 
-Phase 10 remains a partial, opt-in compiler slice. Unsupported bytecodes and
-descriptors still fall back, including the six other primitive field sorts,
-float/double operations, `MULTIANEWARRAY`, non-`int` primitive array
-operations, `INVOKEINTERFACE`, invokedynamic, non-constructor
-`INVOKESPECIAL`, constructor method bodies, and category-two stack
-manipulation. Focused unit and C++ syntax evidence does not replace
-supported-platform native runtime-parity gates.
+Phase 10 remains a partial, opt-in compiler slice. Unsupported descriptors and
+bytecodes still fall back per method, including the six other primitive field
+sorts, float/double operations, and the other constructs already documented as
+out of scope. Focused unit tests plus g++ syntax evidence do not replace
+runtime-parity gates on supported platforms. This review makes no production
+claim; it only reports code-generation correctness for the field slice.
 
-第十阶段仍是部分、可选的编译器增量。不支持的字节码与描述符仍会 fallback，包括
-其余六种 primitive 字段 sort、float/double 操作、`MULTIANEWARRAY`、非 `int`
-primitive array 操作、`INVOKEINTERFACE`、invokedynamic、非构造器
-`INVOKESPECIAL`、构造器方法体及 category-two stack manipulation。聚焦单测与
-C++ 语法证据不能替代受支持平台上的 native 运行时等价性门禁。
+第十阶段仍是部分、可选的编译器增量。不支持的描述符与字节码仍按方法回退，包括其余
+六种 primitive 字段 sort、float/double 操作及其它已记录为范围外的构造。聚焦单测与
+g++ 语法证据不能替代受支持平台上的运行时等价性门禁。本审阅不作上线结论，仅报告字段
+增量的代码生成正确性。
 
 ## (c) Is review required? / 上线前是否需要 review？
 
 **Yes / 是。**
 
-Review must confirm descriptor-exact IR typing and JNI accessor selection,
-field cache identity for instance versus static access, null-receiver
-exception routing, and fallback-before-mutation. The stacked phase-9
-array-return carrier fix must remain present.
+A reviewer must confirm descriptor-exact IR typing and JNI accessor selection,
+the instance-versus-static field cache identity, null-receiver exception routing
+with the NPE left pending, reject-before-mutation, and that the stacked phase-9
+array-return carrier fix remains present.
 
-Review 必须确认描述符精确的 IR typing 与 JNI accessor 选择、实例和静态访问的
-字段缓存身份、null receiver 异常路由，以及 mutation 前 fallback。堆叠基线中的
-phase-9 数组返回 carrier 修复必须保留。
+Review 必须确认描述符精确的 IR typing 与 JNI accessor 选择、实例与静态访问的字段
+缓存身份、null 接收者异常路由（NPE 保持 pending）、变更前回退，以及堆叠基线中的
+phase-9 数组返回 carrier 修复是否保留。
 
-## (d) Review preconditions / Review 前置条件
+## (d) Review evidence / 审阅证据
 
-1. Compare against `cursor/ir-phase9-sol-review-6d81` at `0e323da…`, not
-   `master`, the unfixed phase-9 branch, or the Fable review branch.
-   必须基于 `cursor/ir-phase9-sol-review-6d81` 的 `0e323da…` 比较，不得改用
-   `master`、未修复的 phase-9 分支或 Fable review 分支。
-2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 47
-   plus `CodegenModeTest` 2, total 49; zero skipped, failures, or errors.
-   使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。记录结果为 47 + 2，共 49 个测试；跳过、失败、错误均为零。
-3. With g++ and JNI headers present, require
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to remain
-   unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit. Recorded result: the 50-method smoke
-   and independent syntax check both exited zero.
-   当 g++ 与 JNI headers 存在时，必须确认
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   同一份生成 translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录
-   结果：50-method smoke 与独立语法检查均以零退出。
-4. Inspect generated C++ for exact `Int`, `Long`, and `Object` instance/static
-   accessor families and verify null get/put exits keep the NPE pending.
-   检查生成 C++ 是否使用精确的 `Int`、`Long` 与 `Object` 实例/静态 accessor
-   family，并确认 null get/put 异常出口保持 NPE pending。
-5. During conflict resolution, retain fallback-before-mutation, the phase-9
-   `jarray` cast, constructor-method exclusion, the `legacy` default, and all
-   existing snippets.
-   解决冲突时必须保留 mutation 前 fallback、phase-9 `jarray` 转换、构造器方法体
-   排除策略、`legacy` 默认值及全部现有 snippets。
+- Compared against `cursor/ir-phase9-sol-review-6d81` at `0e323da…`, not
+  `master`. / 基于 `0e323da…` 比较，而非 `master`。
+- Re-ran the focused Gradle command with `CC=gcc CXX=g++` and read the JUnit XML:
+  `IrCompilerTest` **47**, `CodegenModeTest` **2**, total **49**; **0** skipped,
+  **0** failures, **0** errors. / 以 `CC=gcc CXX=g++` 重跑聚焦命令并核对 JUnit
+  XML：47 + 2 = 49，跳过/失败/错误均为 0。
+- `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran (not skipped,
+  `time="0.282"`, empty g++ output); independently recompiled the exact
+  generated translation unit (`g++ -std=c++17 -fsyntax-only`, 98 090 bytes,
+  exit 0). / 该 g++ 冒烟真实运行（未跳过），并独立重编生成翻译单元（退出 0）。
+- Read the emitted C++ from the g++-accepted file: `GetLongField`/`SetLongField`,
+  `GetObjectField`/`SetObjectField`, their `Static` counterparts, the
+  null-receiver `throw_re` exits with no `ExceptionClear`, and the `[I` field
+  read via `GetObjectField` returned through `return (jarray) v…`. / 从被 g++
+  接受的文件中阅读生成 C++：Long/Object 及其 Static accessor、无 `ExceptionClear`
+  的 null-receiver 出口，以及经 `GetObjectField` 读取 `[I` 并以 `(jarray)` 返回。
+
+Nits (non-blocking) / 小瑕疵（不阻塞）: the descriptor→carrier map is duplicated
+across `AsmToIr.fieldType`, `IrNodes.fieldType`, and `IrCppEmitter.fieldCarrier`
+(agree today, must stay in sync); `fieldCarrier` lacks the malformed-descriptor
+guard its sibling has; field-id lookup is emitted before the receiver null check
+(JVM-invisible); plus the carried-forward prior-phase nits. / 描述符→carrier
+映射重复于三处（今日一致，须同步）；`fieldCarrier` 缺少畸形描述符保护；字段 id
+查找发射于空检查之前（JVM 不可见）；以及沿用既往阶段的小瑕疵。
