@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-29. PRs
-#1–#77 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#83 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -103,6 +103,20 @@ SDK 路线新增 [#72](https://github.com/gaoyu06/native-obfuscator/pull/72)，�
 另记录独立向量核对 4/4、C ABI probe 11/11。generated-library verifier 还记录
 2 个 SHA-256 向量、4 个 HMAC 向量、9 个 `MessageDigest` case、5 个 equality
 case、5 个 string vector 与 4 个 concatenation，且未运行 HMAC benchmark。
+Direct-IR 路线随后新增 [#78](https://github.com/gaoyu06/native-obfuscator/pull/78)：
+它叠加在 #73 上，为 exact `I`、exact `J`、object/array reference 与 `V`
+carrier 加入 `INVOKEINTERFACE` 和非构造器 `INVOKESPECIAL`。构造器方法体仍排除，
+默认仍为 legacy；其记录为 53 + 2 = 55 个测试与 59-method g++ 烟测。
+[#82](https://github.com/gaoyu06/native-obfuscator/pull/82) 是 Sol 的纯文档
+**accept** 审阅，[#83](https://github.com/gaoyu06/native-obfuscator/pull/83)
+是 Fable 的纯文档 **accept** 审阅；两者均记录 55/55，均不是上线就绪结论。
+SDK 路线新增叠加在 #72 上的 [#80](https://github.com/gaoyu06/native-obfuscator/pull/80)：
+它加入 AES-256-GCM，使用 NIST CAVP 向量，内嵌 tiny-AES-c，记录 13/13，且未运行
+AES benchmark。[#81](https://github.com/gaoyu06/native-obfuscator/pull/81)
+是首选 AES tip：Sol 审阅结论为 **PASS with one correctness fix**，修复 32-bit
+目标上 `plaintext.size + 16` 溢出并返回 `NO_SDK_SIZE_OVERFLOW_V1`，记录
+13/13、先认证后解密及固定长度 tag 的 constant-work 比较，同时明确 tiny-AES-c
+并非 side-channel hardened。它优先于未修复的 #80，但仍不是已交付 SDK。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -194,10 +208,27 @@ suite comprises 8 generated fixtures, 2 `StringPoolTest`, 2
 independent vector check and 11/11 C ABI probe. Its generated-library verifier
 records 2 SHA-256 vectors, 4 HMAC vectors, 9 `MessageDigest` cases, 5 equality
 cases, 5 string vectors, and 4 concatenations; no HMAC benchmark was run.
+[PR #78](https://github.com/gaoyu06/native-obfuscator/pull/78), stacked on
+#73, then adds `INVOKEINTERFACE` and non-constructor `INVOKESPECIAL` for exact
+`I`, exact `J`, object/array references, and `V`. Constructor bodies remain
+excluded and legacy remains the default. It records 53 + 2 = 55 tests and a
+59-method g++ smoke. [#82](https://github.com/gaoyu06/native-obfuscator/pull/82)
+is Sol's documentation-only **accept** review and
+[#83](https://github.com/gaoyu06/native-obfuscator/pull/83) is Fable's
+documentation-only **accept** review; both record 55/55 and neither is a
+ship-readiness finding. In the SDK lane,
+[#80](https://github.com/gaoyu06/native-obfuscator/pull/80), stacked on #72,
+adds AES-256-GCM with NIST CAVP vectors, vendored tiny-AES-c, a 13/13 suite,
+and no AES benchmark. [#81](https://github.com/gaoyu06/native-obfuscator/pull/81)
+is the preferred AES tip: Sol records **PASS with one correctness fix**, fixing
+32-bit `plaintext.size + 16` overflow with `NO_SDK_SIZE_OVERFLOW_V1`, 13/13,
+authenticate-before-decrypt ordering, and constant-work comparison of the
+fixed-length tag. It also records that tiny-AES-c is not side-channel hardened.
+#81 is preferred over unfixed #80, but it is not a shipped SDK.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#77 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#83 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -211,9 +242,12 @@ phase 9；#70 修复并接受其数组返回边界，且仍是首选 tip，但�
 #71 又仅审阅未修复的 #66 tip。#73 叠加在 #70 上，仍是部分、opt-in 且默认
 legacy 的 phase 10；#76 的 accept-with-nits 与 #77 的 PASS 均只是纯文档审阅，
 不构成上线批准。#68 仍是 opt-in evaluator 扩展，#69 的 accept 审阅也不是上线
-批准。#72/#75 仍是 review-stage HMAC SDK surface/审阅，而不是已交付 SDK。
+批准。#78 仍是部分、opt-in、默认 legacy 的 phase 11，#82/#83 的纯文档 accept
+均不是上线批准。#72/#75 仍是 review-stage HMAC SDK surface/审阅；#80 的
+AES-256-GCM 实现并非已交付 SDK，首选 #81 虽修复输出长度溢出并记录 PASS，仍明确
+不是上线批准，且 tiny-AES-c 并非 side-channel hardened。
 
-**No.** PRs #1–#77 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#83 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -230,8 +264,12 @@ but is not ship approval, while #71 reviews only the unfixed #66 tip. #73 is
 stacked on #70 and remains a partial, opt-in, legacy-default phase 10; #76's
 accept-with-nits and #77's PASS are documentation-only reviews, not ship
 approval. #68 remains an opt-in evaluator extension, and #69's accept review
-is likewise not ship approval. #72/#75 remain a review-stage HMAC SDK
-surface/review, not a shipped SDK.
+is likewise not ship approval. #78 remains a partial, opt-in, legacy-default
+phase 11, and #82/#83's documentation-only accept reviews are not ship
+approval. #72/#75 remain a review-stage HMAC SDK surface/review. #80's
+AES-256-GCM implementation is not a shipped SDK; preferred #81 fixes the
+output-length overflow and records PASS, but explicitly is not ship approval,
+and tiny-AES-c is not side-channel hardened.
 
 ### (c) 上线前是否需要 review / Is review required?
 
@@ -272,10 +310,15 @@ boundaries rather than generalized.
    `PR_BODY.md` 与 `docs/sdk/v1-status.md`、#75 的
    `docs/sdk/hmac-sha256-review.md`、#73 的
    `docs/architecture/ir-phase10-status.md`、#76 的
-   `docs/architecture/ir-phase10-fable-review.md`，以及 #77 的
-   `docs/architecture/ir-phase10-review.md`。
+   `docs/architecture/ir-phase10-fable-review.md`、#77 的
+   `docs/architecture/ir-phase10-review.md`、#78 的
+   `docs/architecture/ir-phase11-status.md`、#82 的
+   `docs/architecture/ir-phase11-review.md`、#83 的
+   `docs/architecture/ir-phase11-fable-review.md`、#80 的双语
+   `PR_BODY.md` 与 `docs/sdk/v1-status.md`，以及 #81 的
+   `docs/sdk/aes-256-gcm-review.md`。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#77 claims.
+   named branch documents for the new #44–#83 claims.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -380,27 +423,54 @@ boundaries rather than generalized.
    47 + 2 = 49 tests plus a 50-method g++ smoke are recorded. #76 is a
    documentation-only **accept-with-nits** review and #77 a documentation-only
    **PASS** review; both record 49/49 and neither is a ship-readiness finding.
-8. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+8. #78 叠加在 #73 上，为 exact `I`、exact `J`、object/array reference 与 `V`
+   carrier 加入 `INVOKEINTERFACE` 和非构造器 `INVOKESPECIAL`；构造器方法体仍
+   排除，默认仍为 legacy，记录 53 + 2 = 55 个测试及 59-method g++ 烟测。
+   #82 与 #83 分别是 Sol 与 Fable 的纯文档 **accept** 审阅，均记录 55/55，
+   均不是上线就绪结论。 #78 is stacked on #73 and adds `INVOKEINTERFACE` and
+   non-constructor `INVOKESPECIAL` for exact `I`, exact `J`, object/array
+   references, and `V`; constructor bodies remain excluded, legacy remains
+   the default, and 53 + 2 = 55 tests plus a 59-method g++ smoke are recorded.
+   #82 and #83 are respectively Sol's and Fable's documentation-only
+   **accept** reviews, both record 55/55, and neither is a ship-readiness
+   finding.
+9. #80 叠加在 #72 上，加入以 NIST CAVP 向量验证、内嵌 tiny-AES-c 的
+   AES-256-GCM，记录 13/13 且未运行 AES benchmark。#81 是包含编译器修复的
+   首选 AES tip：其 **PASS with one correctness fix** 修复 32-bit
+   `plaintext.size + 16` 溢出并返回 `NO_SDK_SIZE_OVERFLOW_V1`，记录 13/13、
+   authenticate-before-decrypt 与固定长度 tag 的 constant-work 比较，并说明
+   tiny-AES-c 并非 side-channel hardened。#81 优先于未修复 #80；两者均不是
+   已交付 SDK。 #80 is stacked on #72 and adds AES-256-GCM checked against
+   NIST CAVP vectors with vendored tiny-AES-c, records 13/13, and runs no AES
+   benchmark. #81 is the preferred AES tip containing the compiler fix: its
+   **PASS with one correctness fix** fixes 32-bit `plaintext.size + 16`
+   overflow with `NO_SDK_SIZE_OVERFLOW_V1`, records 13/13,
+   authenticate-before-decrypt, and constant-work fixed-length tag comparison,
+   and notes that tiny-AES-c is not side-channel hardened. #81 is preferred
+   over unfixed #80; neither is a shipped SDK.
+10. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
-   #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 的
+   #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 →
+   #78 → #82/#83 的
    direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上）、
    #34 → #53 的 benchmark 与叠加
    在 #57 上的独立 #59 后续测量、#42 → #44 → #48 → #50 的独立 evaluator
    实验、#57/#61 与 #68/#69 ISA/review sibling、SDK #12 → #15 → #46 →
-   #72 → #75、compatibility #6 → #9 → #14 → #41，以及 options brief
-   … → #67 → #74 → 本 PR 分别继续。
+   #72 → #75 → #80 → #81（首选 AES tip）、compatibility #6 → #9 → #14 →
+   #41，以及 options brief … → #74 → #79 → 本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
    blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-   #70/#71 → #73 → #76/#77 direct-IR coverage/review lane, with #73 stacked
-   only on preferred, fixed #70,
+   #70/#71 → #73 → #76/#77 → #78 → #82/#83 direct-IR coverage/review lane,
+   with #73 stacked only on preferred, fixed #70,
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
    the #42 → #44 → #48 → #50 evaluator experiment with #57/#61 and #68/#69
    as ISA/review siblings,
-   SDK #12 → #15 → #46 → #72 → #75, compatibility #6 → #9 → #14 → #41, and
-   options briefs … → #67 → #74 → this PR continue as separate lanes.
+   SDK #12 → #15 → #46 → #72 → #75 → #80 → #81 (the preferred AES tip),
+   compatibility #6 → #9 → #14 → #41, and options briefs … → #74 → #79 →
+   this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
@@ -410,6 +480,14 @@ boundaries rather than generalized.
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) cleanly stacks `NativeStrings` length/hash/concat on #12 without copying the general benchmark harness. [#72](https://github.com/gaoyu06/native-obfuscator/pull/72) adds review-stage `NativePrimitives.hmacSha256` and `no_sdk_hmac_sha256_v1` using RFC 2104 plus the in-tree SHA-256, records published vectors and 13/13 tests, and runs no HMAC benchmark. [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) is the docs-only **PASS** review with 1/1 focused, 13/13 full-suite, 4/4 independent-vector, and 11/11 C-ABI checks. Neither is a shipped SDK. #46's local diagnostic remeasurement was slower than Java; the status document explicitly says this is not portable and not a speedup claim. The #12 → #15 → #46 → #72 → #75 lane remains draft. | The product surface, embedding and provider/update policy, target matrix, Zig execution, broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and release security sign-off remain unresolved. |
 | Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs; and [#28](https://github.com/gaoyu06/native-obfuscator/pull/28) adds opt-in link-only publication of the transformed JAR and shared library without the generated C++ tree. | The implementation remains an open draft stack, default off, and integer-only. The three source-tree reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) recovered both compared trees fully; the shared-library-only run in [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) then recovered `add`, `sumTo`, and `mix` fully from the published `.so` without the C++ tree. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
 | Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. [#50](https://github.com/gaoyu06/native-obfuscator/pull/50), stacked on evaluator artifact [#48](https://github.com/gaoyu06/native-obfuscator/pull/48), records the same four full scores after recovery was committed before source/oracle scoring. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 and #50 use valid live direct-IR and shared-evaluator subjects; both full recoveries mean requirement 7 is not met. | A materially different lowering is needed: not another encoding tweak, not straight-line readable native output of the source algorithm, and not a decodable evaluator blob shipped with its evaluator. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
+
+Current additions after the table's inherited wave-12 entries: the direct-IR
+lane continues #73 → #76/#77 → #78 → #82/#83. #78 records phase 11's two
+new invoke families, 55 focused tests, and a 59-method g++ smoke; both reviews
+accept it without establishing ship-readiness. The SDK lane continues #72 →
+#75 → #80 → #81; #81 is the preferred AES tip because it contains the
+`NO_SDK_SIZE_OVERFLOW_V1` correctness fix absent from #80. Neither AES draft is
+a shipped SDK, and tiny-AES-c is not side-channel hardened.
 
 ### Reader-eval evidence
 
@@ -499,13 +577,13 @@ wait for a live-kernel reader. The next reader-bar design must not leave the
 source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
 design. Wider opt-in direct-IR coverage/review in #45 → #47 → #51 → #54 →
-#56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 (with #73 based only
-on preferred, fixed #70), the #34 → #53 benchmark lane plus #59
+#56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 → #78 → #82/#83
+(with #73 based only on preferred, fixed #70), the #34 → #53 benchmark lane plus #59
 stacked on #57, the separate #42 → #44 → #48 → #50 evaluator experiment with
 #57/#61 and #68/#69 as ISA/review siblings, the SDK #12 → #15 → #46 → #72 →
-#75 and
+#75 → #80 → #81, with #81 preferred over unfixed #80, and
 compatibility #6 → #9 → #14 → #41 stacks, and options briefs
-… → #67 → #74 → this PR continue as separate engineering lanes.
+… → #74 → #79 → this PR continue as separate engineering lanes.
 
 #### Other product decisions
 
@@ -567,7 +645,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#71](https://github.com/gaoyu06/native-obfuscator/pull/71) →
    [#73](https://github.com/gaoyu06/native-obfuscator/pull/73) →
    [#76](https://github.com/gaoyu06/native-obfuscator/pull/76) /
-   [#77](https://github.com/gaoyu06/native-obfuscator/pull/77). Rebase after
+   [#77](https://github.com/gaoyu06/native-obfuscator/pull/77) →
+   [#78](https://github.com/gaoyu06/native-obfuscator/pull/78) →
+   [#82](https://github.com/gaoyu06/native-obfuscator/pull/82) /
+   [#83](https://github.com/gaoyu06/native-obfuscator/pull/83). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
    away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
@@ -597,6 +678,11 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    records 49 tests plus a 50-method g++ smoke. #76 and #77 are parallel
    documentation-only reviews of #73: #76 records **accept-with-nits** and
    49/49; #77 records **PASS** and 49/49. None is a ship-readiness finding.
+   #78 is based on #73 and adds interface and non-constructor special invokes
+   for exact `I`, exact `J`, references, and `V`; constructor bodies remain
+   excluded, legacy remains default, and it records 55 tests plus a 59-method
+   smoke. #82 and #83 are parallel documentation-only **accept** reviews with
+   55/55. Neither is a ship-readiness finding.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -640,13 +726,20 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) →
    [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) →
    [#72](https://github.com/gaoyu06/native-obfuscator/pull/72) →
-   [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) after resolving
+   [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) →
+   [#80](https://github.com/gaoyu06/native-obfuscator/pull/80) →
+   [#81](https://github.com/gaoyu06/native-obfuscator/pull/81) after resolving
    the same #6 launcher overlap and retargeting the clean #46 delta over the
    reviewed SDK base. The Fable accept-with-nits review is not the human
    product/security approval listed above; #46's local slower-than-Java result
    is not a portable release gate. #72 adds the review-stage HMAC API/C ABI and
    no HMAC benchmark; #75's documentation-only **PASS**, including its 13/13
-   suite and 11/11 C ABI probe, is not a shipped-product decision.
+   suite and 11/11 C ABI probe, is not a shipped-product decision. #80 adds
+   NIST-CAVP-checked AES-256-GCM with vendored tiny-AES-c, records 13/13, and
+   runs no AES benchmark. Prefer #81 because its **PASS with one correctness
+   fix** includes the `NO_SDK_SIZE_OVERFLOW_V1` output-length fix absent from
+   #80. #81 still is not a shipped SDK, and tiny-AES-c is not side-channel
+   hardened.
 6. Land [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) first, then
    review the interpreter implementation stack in order:
    [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) →
@@ -721,6 +814,11 @@ parallel, but their order within each arrowed stack must be preserved.
   g++ smoke, while `Z`/`B`/`C`/`S`/`F`/`D` and the broader documented gaps
   still fall back. #76 and #77 are documentation-only reviews with 49/49;
   neither makes the phase ship-ready.
+- #78 remains an opt-in, partial phase 11 on #73. It adds interface and
+  non-constructor special invokes only for exact `I`, exact `J`, references,
+  and `V`; constructor bodies remain excluded and legacy remains default. Its
+  55 tests and 59-method smoke, and #82/#83's documentation-only **accept**
+  reviews with 55/55, do not make it ship-ready.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -729,6 +827,12 @@ parallel, but their order within each arrowed stack must be preserved.
   (both 0 failed/0 skipped), the 8 + 2 + 2 + 1 suite breakdown, 4/4
   independent-vector, and 11/11 C-ABI checks, but it is not a shipped SDK and
   no HMAC benchmark was run.
+- #80's AES-256-GCM SDK surface remains review-stage. It records NIST CAVP
+  vectors, vendored tiny-AES-c, 13/13, and no AES benchmark. #81 is preferred
+  because it fixes 32-bit `plaintext.size + 16` overflow with
+  `NO_SDK_SIZE_OVERFLOW_V1`; its PASS, authenticate-before-decrypt ordering,
+  and constant-work fixed-length tag comparison do not make it a shipped SDK.
+  tiny-AES-c is not side-channel hardened.
 - #10's one local checksum-correct run shows the current transpiled-JNI path
   much slower than plain HotSpot for all three exact kernels: median ratios are
   about 18× for the integer loop, 23× for string concat/hash, and 199× for
@@ -746,7 +850,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#77 are still open drafts. `master` contains none of their work.
+- PRs #1–#83 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -775,6 +879,10 @@ not the union of claims from draft branches:
    loader behavior as appropriate. Review #72's RFC 2104 construction,
    input-size/JNI exception contracts, C ABI, vector provenance, and generated
    packaging; #75's PASS does not replace product/security approval. Test all
+   AES changes from preferred #81 rather than unfixed #80, retaining the
+   `NO_SDK_SIZE_OVERFLOW_V1` check. Review authenticate-before-decrypt, the
+   fixed-length tag comparison, nonce-uniqueness policy, NIST vector
+   provenance, and tiny-AES-c's lack of side-channel hardening. Test all
    tier-1 targets and loaders
    (including Zig only if supported), and complete fuzzing, sanitizer,
    allocation, concurrency, license/provenance, SBOM, vulnerability/update,

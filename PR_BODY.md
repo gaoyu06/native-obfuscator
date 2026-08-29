@@ -1,18 +1,17 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Stacks the documentation-only maintainer brief on draft PR #74 and adds
-#72/#73/#75/#76/#77 using only claims in their named branch documents. It
-preserves the #66/#70/#71 phase-9 story, #53's `N/A` evaluator timing,
-#37/#50's unmet requirement 7, and the complete written engineering goal. #70,
-which contains the reviewed `jarray`-return compiler fix, remains the preferred
-phase-9 tip and is #73's base.
+Stacks the documentation-only maintainer brief on draft PR #79 and adds
+#78/#80/#81/#82/#83 using only claims in their named branch documents. It
+preserves #79's phase-9/10, HMAC, evaluator-I64, benchmark, reader, and complete
+written-goal conclusions. #81, which contains the reviewed output-length
+compiler fix, is preferred over unfixed #80; #70 remains preferred over
+unfixed #66.
 
-在草稿 PR #74 的基础上，将仅文档的维护者简报加入 #72/#73/#75/#76/#77，
-且仅采用其指定分支文档记录的声明。同时保留 #66/#70/#71 的 phase-9 叙事、
-#53 的 evaluator timing `N/A`、#37/#50 对 requirement 7 未满足的结论，以及
-完整书面工程目标。包含已审阅 `jarray` 返回编译器修复的 #70 仍是首选
-phase-9 tip，也是 #73 的 base。
+在草稿 PR #79 的基础上，将仅文档的维护者简报加入 #78/#80/#81/#82/#83，
+且仅采用其指定分支文档记录的声明。同时保留 #79 的 phase-9/10、HMAC、
+evaluator-I64、benchmark、reader 与完整书面工程目标结论。包含已审阅输出长度
+编译器修复的 #81 优先于未修复 #80；#70 仍优先于未修复 #66。
 
 ## (a) Change scope / 本次改动范围
 
@@ -57,22 +56,39 @@ phase-9 tip，也是 #73 的 base。
 - Add #76, Fable's documentation-only **accept-with-nits** review of #73, and
   #77, Sol's documentation-only **PASS** review. Both record 49/49; neither is
   a ship-readiness finding.
+- Add #78 on #73: `INVOKEINTERFACE` and non-constructor `INVOKESPECIAL` for
+  exact `I`, exact `J`, object/array references, and `V`. Constructor bodies
+  remain excluded and legacy remains default. It records 53 + 2 = 55 tests
+  and a 59-method g++ smoke.
+- Add #82, Sol's documentation-only **accept** review of #78, and #83,
+  Fable's documentation-only **accept** review. Both record 55/55; neither is
+  a ship-readiness finding.
+- Add #80 on #72: AES-256-GCM checked against NIST CAVP vectors with vendored
+  tiny-AES-c. It records 13/13 and no AES benchmark.
+- Add #81 as the preferred AES tip. Sol records **PASS with one correctness
+  fix**: 32-bit `plaintext.size + 16` overflow now returns
+  `NO_SDK_SIZE_OVERFLOW_V1`. It records 13/13, authenticate-before-decrypt,
+  and constant-work comparison of the fixed-length tag. tiny-AES-c is not
+  side-channel hardened. #81 is preferred over unfixed #80 and is not a
+  shipped SDK.
 - Keep #53 unchanged in meaning: eval fell back on `USHR`, so its evaluator
   median remains `N/A`. Do not back-fill it from #59, #68, or any later work.
 - Keep #37 and #50 as full recoveries of all four methods from their valid
   live subjects; requirement 7 remains unmet.
 - Preserve the lanes:
   - direct IR: #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-    #70/#71 → #73 → #76/#77, with #73 based only on preferred, fixed #70;
+    #70/#71 → #73 → #76/#77 → #78 → #82/#83, with #73 based only on
+    preferred, fixed #70;
   - evaluator: #42 → #44 → #48 → #50, #57/#61, #68/#69;
   - benchmark: #34 → #53, with #59 stacked on #57;
-  - SDK: #12 → #15 → #46 → #72 → #75;
+  - SDK: #12 → #15 → #46 → #72 → #75 → #80 → #81, with #81 the preferred
+    AES tip;
   - compatibility: #6 → #9 → #14 → #41;
-  - options: … → #67 → #74 → this branch.
+  - options: … → #74 → #79 → this branch.
 - Preserve the complete written engineering goal. Option A remains only the
   v1 product recommendation.
 - Update only `docs/architecture/goal-status-and-options.md` and this bilingual
-  PR body. PRs #1–#77 remain open drafts; `master` remains `e7ca4c8`.
+  PR body. PRs #1–#83 remain open drafts; `master` remains `e7ca4c8`.
 
 - 新增 #66 的仍为 opt-in 的 direct-IR phase 9：`ARETURN`、`ACONST_NULL`、
   `IFNULL`/`IFNONNULL` 与 category-one `POP`。`POP2` 仍逐方法 fallback，
@@ -110,21 +126,35 @@ phase-9 tip，也是 #73 的 base。
   47 + 2 = 49 个测试及 50-method g++ 烟测。
 - 新增 #76（Fable 对 #73 的纯文档 **accept-with-nits** 审阅）与 #77（Sol 的
   纯文档 **PASS** 审阅）。两者均记录 49/49，均不是上线就绪结论。
+- 新增叠加在 #73 上的 #78：为 exact `I`、exact `J`、object/array reference
+  与 `V` 加入 `INVOKEINTERFACE` 和非构造器 `INVOKESPECIAL`。构造器方法体仍
+  排除，默认仍为 legacy；记录 53 + 2 = 55 个测试及 59-method g++ 烟测。
+- 新增 #82（Sol 对 #78 的纯文档 **accept** 审阅）与 #83（Fable 的纯文档
+  **accept** 审阅）。两者均记录 55/55，均不是上线就绪结论。
+- 新增叠加在 #72 上的 #80：以 NIST CAVP 向量验证、内嵌 tiny-AES-c 的
+  AES-256-GCM；记录 13/13，且未运行 AES benchmark。
+- 新增首选 AES tip #81。Sol 记录 **PASS with one correctness fix**：32-bit
+  `plaintext.size + 16` 溢出现在返回 `NO_SDK_SIZE_OVERFLOW_V1`。来源记录
+  13/13、authenticate-before-decrypt 与固定长度 tag 的 constant-work 比较；
+  tiny-AES-c 并非 side-channel hardened。#81 优先于未修复 #80，且不是已交付
+  SDK。
 - 保持 #53 原意不变：eval 因 `USHR` fallback，故其 evaluator 中位数仍为
   `N/A`。不得用 #59、#68 或任何后续工作回填。
 - 保留 #37 与 #50：两者均从各自有效 live 样本完整恢复四个方法，因此
   requirement 7 仍未满足。
 - 保持各路线：
   - direct IR：#45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-    #70/#71 → #73 → #76/#77，其中 #73 仅基于首选且含修复的 #70；
+    #70/#71 → #73 → #76/#77 → #78 → #82/#83，其中 #73 仅基于首选且含
+    修复的 #70；
   - evaluator：#42 → #44 → #48 → #50、#57/#61、#68/#69；
   - benchmark：#34 → #53，另有叠加在 #57 上的 #59；
-  - SDK：#12 → #15 → #46 → #72 → #75；
+  - SDK：#12 → #15 → #46 → #72 → #75 → #80 → #81，其中 #81 为首选
+    AES tip；
   - compatibility：#6 → #9 → #14 → #41；
-  - options：… → #67 → #74 → 本分支。
+  - options：… → #74 → #79 → 本分支。
 - 保留完整书面工程目标；A 仅为 v1 产品建议。
 - 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
-  PR #1–#77 仍均为 open draft；`master` 仍为 `e7ca4c8`。
+  PR #1–#83 仍均为 open draft；`master` 仍为 `e7ca4c8`。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线
 
@@ -137,7 +167,10 @@ the unfixed tip. #73 is based on preferred #70 but remains partial, opt-in, and
 legacy-default; #76/#77 are documentation reviews, not ship approval. #68
 remains a narrow opt-in evaluator slice, and #69 is a scoped review rather than
 release approval. #72/#75 remain a review-stage HMAC SDK surface/review, not a
-shipped SDK. #53 still has no evaluator timing, and #68 adds no benchmark
+shipped SDK. #78 remains partial, opt-in, and legacy-default; #82/#83 are
+documentation reviews, not ship approval. #80/#81 remain a review-stage AES
+surface/review, not a shipped SDK; even preferred, fixed #81 records that
+tiny-AES-c is not side-channel hardened. #53 still has no evaluator timing, and #68 adds no benchmark
 numbers. #37 and #50 fully recovered all four methods from valid live subjects,
 so requirement 7 remains unmet.
 
@@ -146,7 +179,10 @@ legacy/direct。#66 仍部分；#70 修复一项正确性问题并接受其审�
 批准；#71 审阅的是未修复 tip。#73 基于首选 #70，但仍部分、opt-in 且默认
 legacy；#76/#77 是文档审阅，不是上线批准。#68 仍是窄范围 opt-in evaluator
 slice，#69 只是限定范围审阅而非发布批准。#72/#75 仍是 review-stage HMAC SDK
-接口/审阅，而不是已交付 SDK。#53 仍没有 evaluator timing，#68 不新增 benchmark
+接口/审阅，而不是已交付 SDK。#78 仍部分、opt-in 且默认 legacy；#82/#83 是文档
+审阅而非上线批准。#80/#81 仍是 review-stage AES 接口/审阅，而不是已交付 SDK；
+即使是首选且含修复的 #81，也记录 tiny-AES-c 并非 side-channel hardened。
+#53 仍没有 evaluator timing，#68 不新增 benchmark
 数字。#37 与 #50 均从有效 live 样本完整恢复四个方法，因此 requirement 7 仍未满足。
 
 ## (c) Is review required? / 上线前是否需要 review
@@ -157,13 +193,17 @@ Each implementation stack still requires independent code review, post-rebase
 verification, supported-platform/JDK CI, native runtime-parity checks, and
 applicable product/release approval. Review must retain #70's array-return fix
 and must not treat #71 as evidence that the unfixed tip contains that fix.
-Phase-10 review must start from #73 on #70, and HMAC still needs product and
-security approval beyond #75's technical PASS.
+Phase-10 review must start from #73 on #70. Phase 11 must retain constructor
+body exclusion and the legacy default. HMAC still needs product and security
+approval beyond #75's technical PASS; AES review must start from fixed #81,
+not unfixed #80.
 
 每条实现栈仍需独立代码审查、rebase 后复测、受支持平台/JDK CI、native runtime
 parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的数组返回修复，且不得
 把 #71 当作未修复 tip 已包含该修复的证据。Phase-10 审阅必须从叠加在 #70 上的
-#73 开始；HMAC 在 #75 的技术 PASS 之外仍需产品与安全审批。
+#73 开始。Phase 11 必须保留构造器方法体排除与 legacy 默认值。HMAC 在 #75 的
+技术 PASS 之外仍需产品与安全审批；AES 审阅必须从含修复 #81 开始，而非未修复
+#80。
 
 ## (d) Review preconditions / review 的前置条件
 
@@ -201,9 +241,24 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    documentation-only **accept-with-nits** and 49/49 result. Use #77's
    `docs/architecture/ir-phase10-review.md` only for its documentation-only
    **PASS** and 49/49 result. Neither is a ship-readiness finding.
-10. Keep #53's evaluator median `N/A`; do not back-fill it. Keep #37/#50 as
+10. Use #78's `docs/architecture/ir-phase11-status.md` for
+   `INVOKEINTERFACE`, non-constructor `INVOKESPECIAL`, the exact
+   `I`/`J`/reference/`V` carrier boundary, constructor-body exclusion, legacy
+   default, 53 + 2 = 55 tests, and the 59-method g++ smoke.
+11. Use #82's `docs/architecture/ir-phase11-review.md` only for Sol's
+   documentation-only **accept** and 55/55. Use #83's
+   `docs/architecture/ir-phase11-fable-review.md` only for Fable's
+   documentation-only **accept** and 55/55. Neither is ship-ready.
+12. Use #80's bilingual `PR_BODY.md` and `docs/sdk/v1-status.md` for NIST CAVP
+   vectors, vendored tiny-AES-c, 13/13, and no AES benchmark.
+13. Use #81's `docs/sdk/aes-256-gcm-review.md` for **PASS with one correctness
+   fix**, the 32-bit `plaintext.size + 16` overflow fix returning
+   `NO_SDK_SIZE_OVERFLOW_V1`, 13/13, authenticate-before-decrypt,
+   constant-work fixed-length tag comparison, and the tiny-AES-c
+   side-channel boundary. Prefer #81 over unfixed #80; it is not a shipped SDK.
+14. Keep #53's evaluator median `N/A`; do not back-fill it. Keep #37/#50 as
    evidence that requirement 7 is unmet.
-11. Keep the complete written goal and all listed lanes. Option A remains only
+15. Keep the complete written goal and all listed lanes. Option A remains only
    the v1 product recommendation.
 
 中文核对项：
@@ -241,8 +296,23 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    **accept-with-nits** 与 49/49；#77 仅以
    `docs/architecture/ir-phase10-review.md` 为准，保留纯文档 **PASS** 与
    49/49。两者均不是上线就绪结论。
-10. 保持 #53 的 evaluator 中位数为 `N/A`，不得回填；保留 #37/#50 作为
+10. 以 #78 的 `docs/architecture/ir-phase11-status.md` 为准：保留
+   `INVOKEINTERFACE`、非构造器 `INVOKESPECIAL`、exact `I`/`J`/reference/`V`
+   carrier 边界、构造器方法体排除、legacy 默认值、53 + 2 = 55 个测试及
+   59-method g++ 烟测。
+11. #82 仅以 `docs/architecture/ir-phase11-review.md` 为准，保留 Sol 的纯文档
+   **accept** 与 55/55；#83 仅以
+   `docs/architecture/ir-phase11-fable-review.md` 为准，保留 Fable 的纯文档
+   **accept** 与 55/55。两者均不是上线就绪结论。
+12. 以 #80 的双语 `PR_BODY.md` 与 `docs/sdk/v1-status.md` 为准：保留 NIST
+   CAVP 向量、内嵌 tiny-AES-c、13/13 与不运行 AES benchmark 的边界。
+13. 以 #81 的 `docs/sdk/aes-256-gcm-review.md` 为准：保留 **PASS with one
+   correctness fix**、32-bit `plaintext.size + 16` 溢出返回
+   `NO_SDK_SIZE_OVERFLOW_V1` 的修复、13/13、authenticate-before-decrypt、
+   固定长度 tag 的 constant-work 比较，以及 tiny-AES-c 的 side-channel 边界。
+   #81 优先于未修复 #80，且不是已交付 SDK。
+14. 保持 #53 的 evaluator 中位数为 `N/A`，不得回填；保留 #37/#50 作为
    requirement 7 未满足的证据。
-11. 保留完整书面目标与所有已列路线；A 仅为 v1 产品建议。
+15. 保留完整书面目标与所有已列路线；A 仅为 v1 产品建议。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
