@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing identical-copy prefix extras
-[#206](https://github.com/gaoyu06/native-obfuscator/pull/206)
-(parent re-ran 267/267: 260 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity`)
-on the post-[#205](https://github.com/gaoyu06/native-obfuscator/pull/205)
-identical-copy alias tree. Active process:
+Last updated after landing leftover inventory
+[#207](https://github.com/gaoyu06/native-obfuscator/pull/207)
+(measurement only on post-[#206](https://github.com/gaoyu06/native-obfuscator/pull/206)
+`42e52c0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+0 leftovers). Parent-verified focused suite through #206 remains
+267/267 (260 `IrCompilerTest` + 7 `CodegenModeTest`). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -319,6 +319,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Two-level nested chain inputs (#197) | 239 tests (`IrCompilerTest` 232 + `CodegenModeTest` 7). Parent re-ran 239/239 including `threeImmediateNestedInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `IDIV`/`IREM` chain inputs (#198) | 242 tests (`IrCompilerTest` 235 + `CodegenModeTest` 7). Parent re-ran 242/242 including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#198 leftover inventory (#199) | Measurement only on `4214d74`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Post-#206 leftover inventory (#207) | Measurement only on `42e52c0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Proven multi-super catch tables (#200) | 249 tests (`IrCompilerTest` 242 + `CodegenModeTest` 7). Parent re-ran 249/249 including `prefixOnlyMultiSuperTryCatchCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Relocated prefix handlers on distinct suffixes (#201) | 252 tests (`IrCompilerTest` 245 + `CodegenModeTest` 7). Parent re-ran 252/252 including `relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Single-chain receiver-alias forwarding (#202) | 254 tests (`IrCompilerTest` 247 + `CodegenModeTest` 7). Parent re-ran 254/254 including `receiverAliasForwardingCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
@@ -379,9 +380,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#199](https://github.com/gaoyu06/native-obfuscator/pull/199),
-  measured on post-#198 `4214d74`) observed 0 leftovers; that is not
-  coverage-complete. #191 remains the earlier post-#190 snapshot.
+  ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
+  measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
+  coverage-complete. #199 remains the earlier post-#198 snapshot.
+  #191 remains the earlier post-#190 snapshot.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
@@ -393,9 +395,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #206 (identical-copy
-  prefix extras). /
-  落地 #206 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #207 (post-#206
+  leftover inventory). /
+  落地 #207 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

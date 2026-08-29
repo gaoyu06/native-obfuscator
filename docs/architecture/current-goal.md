@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #206 (identical-copy prefix extras)
+   `master` after #207 (post-#206 leftover inventory)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -66,10 +66,10 @@ The goal is complete only when all of the following are true:
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
    (obsolete; reject is fine). In-tree ClassicTest / JDK fixture
-   admission (#199 measurement on post-#198 `4214d74`) observed no
-   leftover methods; that is not a complete JVM inventory. #191 remains
-   the earlier post-#190 snapshot; #181 remains the earlier post-#180
-   snapshot.
+   admission (#207 measurement on post-#206 `42e52c0`) observed no
+   leftover methods; that is not a complete JVM inventory. #199 remains
+   the earlier post-#198 snapshot; #191 remains the earlier post-#190
+   snapshot; #181 remains the earlier post-#180 snapshot.
 2. **Do not flip `--codegen` off `legacy`** until those supported methods
    no longer need fallback. The default flip is reversible and comes
    *after* coverage, not before.
