@@ -4,10 +4,10 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 200` on 2026-08-29. PRs
-#1–#107 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#117 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. This refresh carries the brief
-through PR #107; the previous brief [#106](https://github.com/gaoyu06/native-obfuscator/pull/106)
-covered work through #103. Results below are evidence recorded on the named
+through PR #117; the previous brief [#111](https://github.com/gaoyu06/native-obfuscator/pull/111)
+covered work through #107. Results below are evidence recorded on the named
 branch, not invented merge, review, or CI results.
 
 PRs [#1](https://github.com/gaoyu06/native-obfuscator/pull/1) and
@@ -208,38 +208,62 @@ JDK 17/21 语料上的 opcode **95**（`SWAP`）。Krakatau fixture 仍因缺少
 成为 #99 tip 上的诚实测量（现由 #107 接替）；#97 保留为 #90 tip 的基线
 记录。#97 测量的是 #90，#103 测量的是 #99，两者都不是覆盖率门槛。
 
-本次刷新再纳入三个新草稿，并以 [#106](https://github.com/gaoyu06/native-obfuscator/pull/106)
-（覆盖至 #103 的上一份 options brief）为叠加基础。
-[#104](https://github.com/gaoyu06/native-obfuscator/pull/104) 叠加在 #99
-（`f46c3eae`）上，将仍为 opt-in 的 IR phase 16 扩展至主导剩余 fallback 的
-category-one 栈重排与引用数组操作：`SWAP` 在完整栈型校验（两个操作数均须
-为单槽；任一为 `I64`/`F64` 即在 opcode 95 拒绝）后仅交换既有 SSA 值、不产生
-IR 指令或 JNI 调用；`AALOAD`/`AASTORE` 经 `GetObjectArrayElement`/
-`SetObjectArrayElement` 降低，null 数组走 pending `NullPointerException`，
-JNI 边界检查经 `ExceptionCheck` 路由 pending
-`ArrayIndexOutOfBoundsException`，`AASTORE` 的组件兼容性检查保留 JNI 抛出的
-pending `ArrayStoreException`。retained `int[]` 切片之外的 `NEWARRAY`、
-`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍 fallback，默认仍为
-legacy。其状态记录 78 + 2 = **80** 个聚焦测试及未跳过的 128-`JNICALL` g++
-烟测。**#104 现为首选 direct-IR 实现 tip**，优先于 #99；#99 仍优先于
-#95，#95 仍优先于 #90。
-[#105](https://github.com/gaoyu06/native-obfuscator/pull/105) 是 Sol 对
-phase-16 #104 的纯文档独立审阅，记录结论 **accept**、无编译器改动、
-80/80、未跳过的 128-`JNICALL` g++ 烟测及独立 syntax-only 检查；它不是
-编译器修复，也不是上线就绪结论。
-[#107](https://github.com/gaoyu06/native-obfuscator/pull/107) 是叠加在
-#104（`dbfeb78`）上、仅测量的 IR admission 报告，复测与 #103（其测量对象
-为 #99 `f46c3eae`）相同的语料：Corpus A ClassicTest 记录 **108 / 102 IR /
-6 fallback / 0 constructor-left-Java**（ΔIR 相对 #103 为 **+5**）；
-Corpus B JDK 17 记录 **36 / 24 / 12 / 0**（ΔIR **+1**）；单独标注为 extra
-的 JDK 21 语料记录 **38 / 18 / 20 / 0**（ΔIR **+1**）。在 #99 上于 opcode
-95（`SWAP`）fallback 的 33 个方法，在 #104 上通过该指令后改在 opcode
-**93**（`DUP2_X1`）fallback；其余剩余 fallback 首因为 `NEWARRAY` ×2、
-`MULTIANEWARRAY` ×2 与一处按日志记录为类型不匹配拒绝的 `ISTORE`（opcode
-54）×1。Krakatau fixture 仍因缺少 `krak2` 被跳过；未编译 native 库，不作
-行为/E2E 声明。**#107 取代 #103 成为当前 IR tip 上的诚实测量**；#103 保留
-为 #99 tip 的基线记录。#97 测量的是 #90，#103 测量的是 #99，#107 测量的是
-#104，三者都不是覆盖率门槛。
+本次刷新再纳入十个新草稿，并以 [#111](https://github.com/gaoyu06/native-obfuscator/pull/111)
+（覆盖至 #107 的上一份 options brief）为叠加基础。
+[#108](https://github.com/gaoyu06/native-obfuscator/pull/108) 叠加在 #104
+（`dbfeb78`）上，将仍为 opt-in 的 IR phase 17 扩展至合法 `DUP2`、`DUP_X2`、
+`DUP2_X1`、`DUP2_X2` 与 `POP2` 的全部形式；在共享 pre-mutation category 校验后
+仅调整 SSA 栈变换，不产生 JNI 调用或 C++ 局部变量，illegal category mix 在
+mutation 前拒绝；在 phase 16 测得的 `SWAP` 后跟 `DUP2_X1` 序列现可编译，
+未扩展的 `NEWARRAY` 形式、`MULTIANEWARRAY` 与 invokedynamic 仍 fallback，默认仍为
+legacy。其状态记录 82 + 3 = **85** 个聚焦测试及未跳过的 140-`JNICALL` g++ 烟测。
+#108（`5a6f609`）是首选 phase-17 tip，也是后续兄弟分支的共同分叉基线。
+[#109](https://github.com/gaoyu06/native-obfuscator/pull/109) 是 Sol 对
+phase-17 #108 的纯文档独立审阅，记录结论 **accept**、无编译器改动、85/85、
+未跳过的 140-`JNICALL` g++ 烟测及独立 syntax-only 检查；它不是编译器修复，也不是
+上线就绪结论。
+[#110](https://github.com/gaoyu06/native-obfuscator/pull/110) 是叠加在 #108
+（`5a6f609`）上、仅测量的 IR admission 报告，复测与 #107 相同的语料：Corpus A
+ClassicTest 记录 **108 / 104 IR / 4 fallback / 0 constructor-left-Java**（ΔIR
+相对 #107 为 **+2**）；Corpus B JDK 17 记录 **36 / 36 IR / 0 fallback / 0**
+（ΔIR **+12**）；单独标注为 extra 的 JDK 21 语料记录 **38 / 36 IR / 2 fallback /
+0**（ΔIR **+18**）。此前在 #107 上记录的 33 个 `DUP2_X1` fallback 中有 **32 个
+转为 IR**，另 1 个 JDK 21 方法在 `ASTORE` 处因局部变量类型不匹配拒绝；剩余 fallback
+首因为 `NEWARRAY` ×2、`MULTIANEWARRAY` ×2 及局部类型不匹配的 `ISTORE`/`ASTORE` 各 1。
+#110 仅测量编译接纳率（admission），未编译 native 库，跳过行为 E2E；**接纳率不等于行为正确性，
+不得将 36/36 JDK 17 IR 解读为 “支持 JDK 17”**。
+[#112](https://github.com/gaoyu06/native-obfuscator/pull/112) 叠加在 #108
+（`5a6f609`）上，对 #6 的五个 JDK 17 E2E 用例做 opt-in IR 行为测量：**36/36 接纳，
+5/5 CMake 成功编译链接，但 0/5 运行时正常通过**（全部 5 个 native 运行崩溃，exit 1）。
+实测崩溃（非虚构）为：`InvokeDynamicLambdaE2E`、`NestPrivateAccessE2E` 与
+`RecordSemanticsE2E` 均抛出调用不存在的 `native.magic.1.*` 类的 `BootstrapMethodError` /
+`ClassNotFoundException`，`MethodHandlesE2E` 抛出 `NoSuchMethodError: invokeExact`，
+`SealedHierarchyE2E` 抛出 `PermittedSubclasses` 数组为 null 的 NPE。
+在 #108 基础上分叉出两组同基线兄弟编译器分支（尚未合并）：
+1. 数组扩展路线：[#114](https://github.com/gaoyu06/native-obfuscator/pull/114) 叠加在
+   #108 上，将仍为 opt-in 的 IR phase 18 扩展至全部 8 种 primitive `NEWARRAY` atype、
+   对应 primitive `*ALOAD`/`*ASTORE`，以及矩形 primitive/reference `MULTIANEWARRAY`；
+   `[Z` 与 `[B` 在已知 descriptor 时走精确 Boolean/Byte JNI family，模糊 carrier 保留既有
+   discriminator；负长度转为 pending `NegativeArraySizeException` 并走异常出口；invokedynamic
+   与 condy 仍 fallback，默认仍为 legacy；作者记录 88 + 4 = **92** 个聚焦测试及未跳过的
+   151-`JNICALL` g++ 烟测。**#114 是首选 phase-18 数组实现 tip**。[#116](https://github.com/gaoyu06/native-obfuscator/pull/116)
+   是 Sol 对 #114 的纯文档独立审阅，记录结论 **accept**、无编译器改动、92/92、151-`JNICALL` g++ 烟测及独立
+   syntax-only 检查；目前未见 #114 的 Fable 审阅 PR（可能仍在审阅中）。
+2. JDK 17 运行时修复路线：[#113](https://github.com/gaoyu06/native-obfuscator/pull/113) 叠加在
+   #108 上，修复 #112 记录的五个用例崩溃：保留输入 classfile major version（Java 8 floor）、
+   支持 `TypeDescriptor` bootstrap、将 indy preprocessor marker 视作 intrinsic lowering 而非调用
+   不存在的类，以及引入 generated Java trampoline 处理 `MethodHandle.invokeExact`/`invoke`；作者报告
+   五个用例 36/36 IR、5/5 CMake、5/5 stdout parity。但 Sol 在 [#115](https://github.com/gaoyu06/native-obfuscator/pull/115)
+   审阅中发现两项缺陷并予以修复（**reject+fix**）：（1）原共享 Object 简化 trampoline 丢失
+   `invokeExact` 严格 `MethodType` 检查，改为在调用方自身类注入保留精确 descriptor 与方法名的 caller-local
+   trampoline；（2）被拒 `<init>` 原残留 indy marker 调用，改为从原始类字节码恢复原始构造器。Sol 在修复后
+   复跑 89/89 聚焦测试及五个用例 36/36 IR、5/5 CMake、5/5 stdout parity。**#115 现为首选 JDK 17 运行时修复 tip**
+   （优先于未修复的 #113）。[#117](https://github.com/gaoyu06/native-obfuscator/pull/117) 是 Fable 对 #115 的
+   纯文档独立审阅，记录结论 **accept**、无编译器改动、89/89 聚焦测试；**Fable 审阅未复跑那五个 native fixture**。
+   五用例在单个 Linux VM 上的 stdout 一致**不代表“支持 JDK 17”**，CLI 默认仍为 `legacy`。
+不得自动合并 #114 与 #115；两者均从 #108 分叉，属于同级兄弟分支，须由人工决策下一编译器 tip 与合并顺序。
+#107 取代 #103 成为 phase-16 tip 上的诚实测量，#110 成为 phase-17 tip 上的诚实接纳率测量，#112 记录 phase-17 上的运行时崩溃事实。
+#97 测的是 #90，#103 测的是 #99，#107 测的是 #104，#110 测的是 #108，均非覆盖率门槛。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -464,51 +488,91 @@ replaced #97 as the honest measurement on the then-current #99 tip (since
 superseded by #107); #97 stays on record as the #90-tip baseline. #97
 measured #90 and #103 measured #99, and neither is a coverage gate.
 
-This refresh folds in three further drafts and stacks on
-[#106](https://github.com/gaoyu06/native-obfuscator/pull/106), the previous
-options brief through #103.
-[#104](https://github.com/gaoyu06/native-obfuscator/pull/104), stacked on #99
-(`f46c3eae`), extends still-opt-in IR phase 16 with the category-one stack
-reorder and reference-array operations that dominated the remaining measured
-fallback: `SWAP` validates both operands in the complete stack-type pass
-(each must be single-slot; either operand being `I64` or `F64` rejects the
-method at opcode 95) and then only exchanges the two existing SSA values,
-creating no IR instruction, temporary, or JNI call; `AALOAD`/`AASTORE` lower
-to `GetObjectArrayElement`/`SetObjectArrayElement`, with a null array taking
-the pending-`NullPointerException` exceptional exit, the JNI bounds check
-routed as a pending `ArrayIndexOutOfBoundsException` via `ExceptionCheck`,
-and `AASTORE`'s component-compatibility check leaving the JNI-raised
-`ArrayStoreException` pending. `NEWARRAY` forms outside the retained `int[]`
-slice, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back,
-and legacy remains the default. Its status records 78 + 2 = **80** focused
-tests and an unskipped 128-`JNICALL` g++ smoke. **#104 is now the preferred
-direct-IR implementation tip**, ahead of #99; #99 remains preferred over #95
-and #95 over #90.
-[#105](https://github.com/gaoyu06/native-obfuscator/pull/105) is Sol's
-documentation-only independent review of phase-16 #104; it records an
-**accept** verdict, no compiler change, 80/80, the unskipped 128-`JNICALL`
+This refresh folds in ten further drafts and stacks on
+[#111](https://github.com/gaoyu06/native-obfuscator/pull/111), the previous
+options brief through #107.
+[#108](https://github.com/gaoyu06/native-obfuscator/pull/108), stacked on #104
+(`dbfeb78`), extends still-opt-in IR phase 17 with every JVM-legal form of
+`DUP2`, `DUP_X2`, `DUP2_X1`, `DUP2_X2`, and `POP2` as category-aware SSA
+stack transforms; shared pre-mutation category checks reject illegal mixes
+before mutation, creating no IR instruction, temporary, or JNI call. The
+measured #107 pattern (`SWAP` followed by `DUP2_X1`) now compiles, while
+unexpanded `NEWARRAY` forms, `MULTIANEWARRAY`, and `invokedynamic` still fall
+back and legacy remains the default. It records 82 + 3 = **85** focused tests
+and an unskipped 140-`JNICALL` g++ smoke. #108 (`5a6f609`) is the preferred
+phase-17 tip and the common fork base for subsequent sibling work.
+[#109](https://github.com/gaoyu06/native-obfuscator/pull/109) is Sol's
+documentation-only independent review of phase-17 #108; it records an
+**accept** verdict, no compiler change, 85/85, the unskipped 140-`JNICALL`
 g++ smoke, and an independent syntax-only check. It is not a compiler fix
 and not a ship-readiness finding.
-[#107](https://github.com/gaoyu06/native-obfuscator/pull/107) is a
-measurement-only IR admission report stacked on #104 (`dbfeb78`) that reruns
-the same corpora as #103 (which measured #99 at `f46c3eae`): Corpus A
-ClassicTest recorded **108 / 102 IR / 6 fallback /
-0 constructor-left-Java** (ΔIR versus #103 **+5**); Corpus B JDK 17 recorded
-**36 / 24 / 12 / 0** (ΔIR **+1**); the separately labeled extra JDK 21
-corpus recorded **38 / 18 / 20 / 0** (ΔIR **+1**). The 33 methods whose
-first unsupported opcode on #99 was 95 (`SWAP`) pass that instruction on
-#104 and now fall back at opcode **93** (`DUP2_X1`); the other remaining
-first fallback reasons are `NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and one
-`ISTORE` (opcode 54) rejected for the logged type mismatch. The Krakatau
-fixture was again skipped because `krak2` was missing; no native library was
-compiled and no behavioral/E2E claim is made. **#107 replaces #103 as the
-honest measurement on the current IR tip**; #103 stays on record as the
-#99-tip baseline. #97 measured #90, #103 measured #99, and #107 measured
-#104; none is a coverage gate.
+[#110](https://github.com/gaoyu06/native-obfuscator/pull/110) is a
+measurement-only IR admission report stacked on #108 (`5a6f609`) that reruns
+the same corpora as #107: Corpus A ClassicTest recorded **108 / 104 IR /
+4 fallback / 0 constructor-left-Java** (ΔIR versus #107 **+2**); Corpus B
+JDK 17 recorded **36 / 36 IR / 0 fallback / 0** (ΔIR **+12**); the separately
+labeled extra JDK 21 corpus recorded **38 / 36 IR / 2 fallback / 0**
+(ΔIR **+18**). Of 33 prior `DUP2_X1` fallbacks on #107, **32 became IR**,
+while one JDK 21 method failed at `ASTORE` (local-type mismatch); leftover
+fallbacks are `NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and local-type mismatches
+at `ISTORE`/`ASTORE` ×1 each. #110 is compile admission only, native build
+was skipped, and no behavioral E2E is claimed: **admission is not behavioral
+correctness, and 36/36 JDK 17 admission must not be read as “JDK 17 is supported”**.
+[#112](https://github.com/gaoyu06/native-obfuscator/pull/112) is a
+measurement-only IR-mode behavioral E2E report stacked on #108 (`5a6f609`):
+on the five JDK 17 fixtures from #6, it records **36/36 IR admission, 5/5 CMake
+builds/links, but 0/5 normal runtime exits** (all five native runs crashed,
+exiting 1). Observed crashes (not invented): `InvokeDynamicLambdaE2E`,
+`NestPrivateAccessE2E`, and `RecordSemanticsE2E` crashed with
+`BootstrapMethodError` / `ClassNotFoundException` calling nonexistent
+`native.magic.1.*` classes; `MethodHandlesE2E` crashed with
+`NoSuchMethodError: invokeExact`; and `SealedHierarchyE2E` crashed with an NPE
+from a null `PermittedSubclasses` array.
+Two sibling compiler stacks diverged from #108 (`5a6f609`) and are not yet merged:
+1. Array expansion stack: [#114](https://github.com/gaoyu06/native-obfuscator/pull/114),
+   stacked on #108, extends still-opt-in IR phase 18 with all eight primitive
+   `NEWARRAY` atypes, matching primitive `*ALOAD`/`*ASTORE`, and rectangular
+   primitive/reference `MULTIANEWARRAY`. Known `[Z` and `[B` descriptors select
+   exact Boolean/Byte JNI families, while imprecise carriers retain the
+   runtime discriminator; negative array sizes yield pending
+   `NegativeArraySizeException` and take exceptional exits; `invokedynamic`
+   and condy still fall back, and legacy remains the default. Its author records
+   88 + 4 = **92** focused tests and an unskipped 151-`JNICALL` g++ smoke.
+   **#114 is the preferred phase-18 array implementation tip**.
+   [#116](https://github.com/gaoyu06/native-obfuscator/pull/116) is Sol's
+   documentation-only independent review of #114 recording an **accept**
+   verdict, no compiler change, 92/92, the unskipped 151-`JNICALL` g++ smoke,
+   and an independent syntax-only check. Fable's review of #114 may still be
+   in flight (no Fable review PR is visible).
+2. JDK 17 runtime repair stack: [#113](https://github.com/gaoyu06/native-obfuscator/pull/113),
+   stacked on #108, addresses the five fixture crashes from #112: preserves
+   input classfile major versions (Java 8 floor), accepts `TypeDescriptor`
+   bootstraps, lowers indy markers as intrinsics instead of calling nonexistent
+   classes, and generates Java trampolines for `MethodHandle.invokeExact`/`invoke`.
+   Author reported 36/36 IR, 5/5 CMake, and 5/5 stdout parity on the five fixtures.
+   However, Sol's review in [#115](https://github.com/gaoyu06/native-obfuscator/pull/115)
+   rejected #113 as submitted and fixed two defects (**reject+fix**): (1) shared
+   Object-simplified trampolines dropped exact `MethodType` checks for
+   `invokeExact`, fixed by injecting caller-local trampolines preserving exact
+   descriptors and method names; (2) rejected constructors retained indy markers,
+   fixed by restoring original constructors from class bytes before write-out.
+   Sol re-ran focused tests (89 pass) and the five fixtures: 36/36 IR, 5/5 CMake,
+   5/5 stdout parity. **#115 is the preferred JDK 17 runtime-fix tip** (preferred
+   over unfixed #113). [#117](https://github.com/gaoyu06/native-obfuscator/pull/117)
+   is Fable's documentation-only independent review of #115 recording an **accept**
+   verdict, no compiler change, and 89/89 focused tests; **Fable did NOT re-run
+   the five native fixtures**. Five fixtures matching stdout on one Linux VM does
+   not constitute “JDK 17 supported”; the CLI default remains `legacy`.
+Do not recommend merging #114 and #115 automatically; they diverged from #108.
+A human must choose the next compiler tip and merge order.
+#107 replaced #103 as the honest measurement on phase 16, #110 is the honest
+admission measurement on phase 17, and #112 records the phase-17 behavioral
+crash evidence. #97 measured #90, #103 measured #99, #107 measured #104, and
+#110 measured #108; none is a coverage gate.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#107 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#117 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -534,7 +598,7 @@ pass 与 #94 的 accept 均为 #90 的纯文档审阅，不改编译器，也不
 #92 是叠加在 #89 上、仅测量的六方法 5/6 接纳率，不代表生产 IR 覆盖率，
 也不是上线批准。#95 将仍为 opt-in 的 phase 14 扩展至标量 `F`/`D`，但基元
 数组（含 `[F`/`[D`）、`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍
-fallback，默认仍为 legacy；它仍部分、不是上线批准。#96 与 #100 只是此前的
+fallback，默认仍为 legacy；它仍部分、不是上线批准。#96、#100 与 #111 只是此前的
 options brief。#97 是叠加在 #90（而非 #95）上、仅测量的 admission 报告：
 108/69、36/20 与 extra 的 38/15 都只是这些 JAR 上的接纳计数，未编译
 native、无行为 E2E，不代表生产覆盖率，也不是上线批准。#98 的 Sol accept
@@ -550,12 +614,27 @@ Long 的 `LDC`，但 primitive Class LDC、`Handle`/`MethodType`/condy、数组�
 `AALOAD`/`AASTORE`，但 retained `int[]` 切片之外的 `NEWARRAY`、
 `MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍 fallback，默认仍为
 legacy；它是首选 direct-IR 实现 tip，但仍部分、不是上线批准。#105 的 Sol
-accept 是 #104 的纯文档审阅，不是编译器修复，也不是上线批准。#106 只是
-上一份 options brief。#107 是叠加在 #104（而非 #99）上、仅测量的
+accept 是 #104 的纯文档审阅，不是编译器修复，也不是上线批准。#106 与 #111 只是
+此前的 options brief。#107 是叠加在 #104（而非 #99）上、仅测量的
 admission 报告：108/102、36/24 与 extra 的 38/18 都只是这些 JAR 上的接纳
 计数，未编译 native、无行为 E2E，不代表生产覆盖率，也不是上线批准。
+#108 将仍为 opt-in 的 phase 17 扩展至 `DUP2` 族与 `POP2`，但原始数组、
+`MULTIANEWARRAY` 与 invokedynamic 仍 fallback，默认仍为 legacy；它是首选
+phase-17 tip，但仍部分、不是上线批准。#109 的 Sol accept 是 #108 的纯文档审阅，
+不是上线批准。#110 是叠加在 #108 上的 admission 报告：108/104、36/36 与 extra
+的 38/36 只是编译接纳计数，未编译 native 且跳过行为 E2E，绝对不代表生产覆盖率，
+不得当作 “支持 JDK 17”。#112 在 #108 上实测五个 JDK 17 用例：36/36 接纳且 5/5 CMake
+编译成功，但运行时 0/5（全部 5 个 native 崩溃退出 1），证明接纳率不等于正确性。
+同基线兄弟分支中，#114 为 opt-in IR 增加 primitive `NEWARRAY`、load/store 与
+`MULTIANEWARRAY`，作者聚焦测试 92/92，默认仍为 legacy，未合入 JDK 17 运行时修复，
+并非上线就绪；#116 是 #114 的 Sol 纯文档 accept 审阅（92/92），不是上线批准。
+#113 修复 #112 的五个运行时崩溃，但被 Sol #115 驳回并修复（reject+fix）；首选
+#115 修复 invokeExact caller-local trampoline 与被拒构造器回退，五个用例跑通 5/5，
+但 5 个用例仅为单个 Linux VM 证据，默认仍为 legacy，不是产品级支持声明；#117 是
+Fable 对 #115 的纯文档 accept 审阅（89/89 聚焦测试，未复跑五个 native 用例），同样
+不是上线批准。
 
-**No.** PRs #1–#107 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#117 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -590,7 +669,7 @@ approval. #92 is a measurement-only six-method 5/6 admission report stacked on
 still-opt-in phase 14 to scalar `F`/`D`, but primitive arrays (including
 `[F`/`[D`), `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall
 back and legacy remains the default; it remains partial and is not ship
-approval. #96 and #100 are only the earlier options briefs. #97 is a
+approval. #96, #100, and #111 are only the earlier options briefs. #97 is a
 measurement-only admission report on #90
 (not #95): its 108/69, 36/20, and extra 38/15 rows are admission counts on
 those JARs only, with no native compile and no behavioral E2E; it is not
@@ -609,37 +688,64 @@ E2E; it is not production coverage and not ship approval. #104 extends
 still-opt-in phase 16 to `SWAP` and `AALOAD`/`AASTORE`, but `NEWARRAY` forms
 outside the retained `int[]` slice, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and
 `invokedynamic` still fall back and legacy remains the default; it is the
-preferred direct-IR implementation tip yet remains partial and is not ship
+preferred direct-IR implementation tip for phase 16 yet remains partial and is not ship
 approval. #105's Sol accept is a documentation-only review of #104, not a
-compiler fix and not ship approval. #106 is only the previous options brief.
+compiler fix and not ship approval. #106 and #111 are only the previous options briefs.
 #107 is a measurement-only admission report on #104 (not #99): its 108/102,
 36/24, and extra 38/18 rows are admission counts on those JARs only, with no
 native compile and no behavioral E2E; it is not production coverage and not
 ship approval.
+#108 extends still-opt-in phase 17 to the `DUP2` family and `POP2`, but primitive
+arrays, `MULTIANEWARRAY`, and `invokedynamic` still fall back, legacy remains the default,
+and it remains partial and not ship-ready; it is the preferred phase-17 tip.
+#109's Sol accept is a documentation-only review of #108 and is not ship approval.
+#110 is a measurement-only admission report on #108: its 108/104, 36/36, and extra 38/36
+rows are admission counts on those JARs only, with no native compile and skipped behavioral
+E2E; it is not production coverage and must not be read as “JDK 17 supported”.
+#112 measures five JDK 17 fixtures on #108: 36/36 admit and 5/5 CMake builds pass, but 0/5
+normal runtime exits (all five native runs crashed, exiting 1), showing admission is not correctness.
+On the sibling compiler stacks on #108: #114 adds primitive `NEWARRAY`, load/store, and
+`MULTIANEWARRAY` with 92/92 focused tests, leaves legacy default, does not include JDK 17
+runtime fixes, and is not ship-ready; #116 is Sol's docs-only accept review (92/92) and not
+ship approval. #113 attempts to repair #112's five crashes but was rejected and fixed by
+Sol in #115 (reject+fix); preferred #115 fixes invokeExact caller-local trampolines and
+rejected-constructor restore, achieving 5/5 parity on the five fixtures, but five fixtures on one
+Linux VM is not a product support claim and legacy remains default; #117 is Fable's docs-only
+accept review of #115 (89/89 focused tests, did NOT re-run the five native fixtures) and is
+not ship approval.
 
 ### (c) 上线前是否需要 review / Is review required?
 
 **Yes / 是。** 每个实现 PR 均需独立代码审查、rebase 后复测及适用的产品/发布
-审批。本文中的 benchmark、reader 与 #92/#97/#103/#107 的 admission 测量结论
+审批。本文中的 benchmark、reader 与 #92/#97/#103/#107/#110/#112 的 admission 与 E2E 测量结论
 也必须按其记录的 kernel、artifact、语料和方法边界审查，不能外推；#92 的合成
-5/6、#97、#103 与 #107 的真实 fixture 比例都不得当作生产覆盖率门槛。#97
-测量的是 #90 tip，#103 测量的是 #99 tip，#107 测量的是 #104 tip；不得把
-任一份的数字归到其他 tip 名下。#98/#101（对 #95）、#102（对 #99）与 #105
-（对 #104）只是纯文档审阅，不替代维护者处置；Fable 在
-phase-15 切片上两次被策略拦截，该切片只有 Sol 一份独立审阅。
+5/6、#97、#103、#107 与 #110 的真实 fixture 比例都不得当作生产覆盖率门槛，
+#110 的 36/36 JDK 17 接纳率不等于正确性（#112 证实 0/5 运行时崩溃）。#97
+测量的是 #90 tip，#103 测量的是 #99 tip，#107 测量的是 #104 tip，#110 测量的是 #108 tip；不得把
+任一份的数字归到其他 tip 名下。#98/#101（对 #95）、#102（对 #99）、#105
+（对 #104）、#109（对 #108）、#116（对 #114）与 #117（对 #115）只是纯文档审阅，不替代维护者处置；Fable 在
+phase-15 切片上两次被策略拦截，该切片只有 Sol 一份独立审阅；#114 的 Fable 审阅若未见 PR 则可能仍在进行中；
+#117 的 Fable 审阅未复跑五个 native fixture。
+JDK 17 运行时修复必须优先选择含正确性修复的 **#115**，而非未修的 #113；
+同基线兄弟分支 #114 与 #115 均基于 #108 分叉，不得自动合并，必须由人工决策下一编译器 tip 与合并顺序。
 
 **Yes.** Each implementation PR still needs independent code review, post-rebase
 verification, and applicable product/release approval. Benchmark, reader, and
-#92's/#97's/#103's/#107's admission-measurement claims must also be reviewed
+#92's/#97's/#103's/#107's/#110's/#112's admission and E2E measurement claims must also be reviewed
 within their recorded kernel, artifact, corpus, and method boundaries rather
-than generalized; neither #92's synthetic 5/6 nor #97's, #103's, or #107's
-real-fixture fractions is a production coverage gate. #97 measured the #90
-tip, #103 measured the #99 tip, and #107 measured the #104 tip; no report's
+than generalized; neither #92's synthetic 5/6 nor #97's, #103's, #107's, or #110's
+real-fixture fractions is a production coverage gate, and #110's 36/36 JDK 17 admission does not
+mean behavioral correctness (#112 proves 0/5 runtime crashes). #97 measured the #90
+tip, #103 measured the #99 tip, #107 measured the #104 tip, and #110 measured the #108 tip; no report's
 numbers may be attributed to another
-tip. #98/#101 (of #95), #102 (of #99), and #105 (of #104) are
+tip. #98/#101 (of #95), #102 (of #99), #105 (of #104), #109 (of #108), #116 (of #114), and #117 (of #115) are
 documentation-only reviews, not
 maintainer disposition; Fable was policy-blocked twice on the phase-15 slice,
-so that slice has only the single independent Sol review.
+so that slice has only the single independent Sol review; Fable's review of #114 may still be
+in flight (no Fable review PR is visible); Fable's review in #117 did not re-run the five native fixtures.
+For JDK 17 runtime repairs, **#115** is preferred over unfixed #113;
+sibling compiler stacks #114 and #115 both diverged from #108 and must not be merged automatically—a
+human must choose the next compiler tip and merge order.
 
 ### (d) review 的前置条件 / Review preconditions
 
@@ -697,12 +803,23 @@ so that slice has only the single independent Sol review.
    `docs/benchmarks/ir-admission-phase15-corpus-methods.tsv` 与
    `docs/measurement/ir-admission-phase15/measure.py`）、#104 的
    `docs/architecture/ir-phase16-status.md`、#105 的
-   `docs/architecture/ir-phase16-review.md`，以及 #107 的
+   `docs/architecture/ir-phase16-review.md`、#107 的
    `docs/benchmarks/ir-admission-phase16-corpus.md`（附方法级
    `docs/benchmarks/ir-admission-phase16-corpus-methods.tsv` 与
-   `docs/measurement/ir-admission-phase16/measure.py`）。
+   `docs/measurement/ir-admission-phase16/measure.py`）、#108 的
+   `docs/architecture/ir-phase17-status.md`、#109 的
+   `docs/architecture/ir-phase17-review.md`、#110 的
+   `docs/benchmarks/ir-admission-phase17-corpus.md`（附方法级
+   `docs/benchmarks/ir-admission-phase17-corpus-methods.tsv` 与
+   `docs/measurement/ir-admission-phase17/measure.py`）、#112 的
+   `docs/benchmarks/ir-jdk17-e2e-phase17.md`、#114 的
+   `docs/architecture/ir-phase18-status.md`、#116 的
+   `docs/reviews/ir-phase18-sol.md`、#113 的
+   `docs/architecture/ir-jdk17-runtime-fix.md`、#115 的
+   `docs/reviews/ir-jdk17-runtime-fix-sol.md`，以及 #117 的
+   `docs/reviews/ir-jdk17-runtime-fix-fable.md`。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#107 claims; #96, #100, and #106
+   named branch documents for the new #44–#117 claims; #96, #100, #106, and #111
    are the earlier options briefs, not new evidence sources.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
@@ -981,7 +1098,7 @@ so that slice has only the single independent Sol review.
    保留 JNI 抛出的 pending `ArrayStoreException`。retained `int[]` 切片之
    外的 `NEWARRAY`、`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍
    fallback，默认仍为 legacy，记录 78 + 2 = 80 个测试及未跳过的
-   128-`JNICALL` g++ 烟测。**#104 是首选 direct-IR 实现 tip**，但不是上线
+   128-`JNICALL` g++ 烟测。#104 是首选 phase-16 tip，但不是上线
    批准。#105 是 Sol 对 #104 的纯文档独立审阅，记录 **accept**、无编译器
    改动、80/80、未跳过的 128-`JNICALL` g++ 烟测及独立 syntax-only 检查。
    #107 叠加在 #104（`dbfeb78`）上、仅测量，复测 #103 的语料：Corpus A
@@ -990,8 +1107,8 @@ so that slice has only the single independent Sol review.
    （ΔIR +1）；在 #99 上于 opcode 95（`SWAP`）fallback 的 33 个方法现改在
    opcode 93（`DUP2_X1`）fallback，其余剩余首因为 `NEWARRAY` ×2、
    `MULTIANEWARRAY` ×2 与一处按日志记录为类型不匹配拒绝的 `ISTORE` ×1；
-   Krakatau 仍被跳过，未编译 native、无行为 E2E。#107 取代 #103 成为当前
-   IR tip 上的诚实测量，#103 保留为 #99 tip 基线；#97 测的是 #90，#103 测
+   Krakatau 仍被跳过，未编译 native、无行为 E2E。#107 取代 #103 成为 phase-16
+   tip 上的诚实测量，#103 保留为 #99 tip 基线；#97 测的是 #90，#103 测
    的是 #99，#107 测的是 #104，三者的比例都不是覆盖率门槛。 #104, stacked
    on #99 (`f46c3eae`), extends still-opt-in phase 16 with `SWAP` and
    `AALOAD`/`AASTORE`: `SWAP` validates both operands in the complete
@@ -1006,8 +1123,8 @@ so that slice has only the single independent Sol review.
    `ArrayStoreException` pending. `NEWARRAY` forms outside the retained
    `int[]` slice, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic`
    still fall back, legacy remains the default, and it records 78 + 2 = 80
-   tests plus an unskipped 128-`JNICALL` g++ smoke. **#104 is the preferred
-   direct-IR implementation tip** but not ship approval. #105 is Sol's
+   tests plus an unskipped 128-`JNICALL` g++ smoke. #104 is the preferred
+   phase-16 tip but not ship approval. #105 is Sol's
    documentation-only independent review of #104 recording **accept**, no
    compiler change, 80/80, the unskipped 128-`JNICALL` g++ smoke, and an
    independent syntax-only check. #107 is measurement-only, stacked on #104
@@ -1019,57 +1136,117 @@ so that slice has only the single independent Sol review.
    `NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and one `ISTORE` rejected for the
    logged type mismatch. The Krakatau fixture was again skipped, and no
    native compile or behavioral E2E was run. #107 replaces #103 as the
-   honest measurement on the current IR tip, with #103 retained as the
+   honest measurement on the phase-16 tip, with #103 retained as the
    #99-tip baseline; #97 measured #90, #103 measured #99, and #107 measured
    #104, and no fraction is a coverage gate.
-15. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+15. #108 叠加在 #104（`dbfeb78`）上，将仍为 opt-in 的 phase 17 扩展至 JVM 合法
+   `DUP2`、`DUP_X2`、`DUP2_X1`、`DUP2_X2` 与 `POP2` 的全部形式：在栈遍历中按
+   合法分类变换 SSA 操作数，禁止非法 category mix 并提前拒绝；在 #104 上测得的
+   `SWAP` 紧随 `DUP2_X1` 路径现可完整降低，未支持的原始数组形式、`MULTIANEWARRAY` 与
+   invokedynamic 仍 fallback，默认仍为 legacy。其记录为 82 + 3 = 85 个测试及未跳过的
+   140-`JNICALL` g++ 烟测。**#108 是首选 phase-17 tip**。#109 是 Sol 对 #108 的纯文档
+   独立审阅，记录 **accept**、无编译器改动、85/85、140-`JNICALL` g++ 烟测及独立 syntax-only 检查。
+   #110 叠加在 #108（`5a6f609`）上、仅测量，复测与 #107 相同的语料：Corpus A ClassicTest
+   记录 108/104/4/0（ΔIR +2），Corpus B JDK 17 记录 36/36/0/0（ΔIR +12），单独标注的
+   extra JDK 21 语料记录 38/36/2/0（ΔIR +18）；此前 33 个 `DUP2_X1` fallback 中有 32 个转为 IR，
+   剩余 fallback 为 `NEWARRAY` ×2、`MULTIANEWARRAY` ×2 及类型不匹配的 `ISTORE`/`ASTORE` 各 1。
+   #110 仅为编译接纳计数，跳过 native 编译与行为 E2E；接纳率不等于正确性，不得据此宣称支持 JDK 17。
+   #112 叠加在 #108 上实测五个 JDK 17 用例：36/36 接纳且 5/5 CMake 编译成功，但运行时 0/5
+   （全部 5 个 native 崩溃退出 1），实测崩溃为 indy 缺少 `native.magic.1.*` 类的 BME/CNFE、
+   `NoSuchMethodError: invokeExact` 与 `PermittedSubclasses` 数组为 null 的 NPE。
+   在 #108 之上存在两组同基线兄弟分支（尚未合并）：
+   （1）数组分支：#114 将 phase 18 扩展至全部 primitive `NEWARRAY`、load/store 与
+   `MULTIANEWARRAY`，记录 88 + 4 = 92 个测试及 151-`JNICALL` g++ 烟测；**#114 是首选 phase-18 数组 tip**；
+   #116 是 Sol 的纯文档 **accept** 审阅（92/92）；#114 的 Fable 审阅若无 PR 则可能仍在进行中。
+   （2）JDK 17 运行时修复分支：#113 尝试修复 #112 的 5 个崩溃；Sol 在 #115 中驳回并修复（**reject+fix**），
+   修复 caller-local `invokeExact` trampoline 与被拒构造器字节码恢复，Sol 实测 89/89 聚焦测试及
+   五个 JDK 17 用例 36/36 IR、5/5 CMake、5/5 stdout parity；**#115 是首选 JDK 17 运行时修复 tip**；
+   #117 是 Fable 对 #115 的纯文档 **accept** 审阅（89/89，未复跑五个 native fixture）。
+   五用例在单台 Linux VM 上跑通仍不构成“支持 JDK 17”，默认仍为 legacy。不得自动合并 #114 与 #115，须由人工决策。
+   #108, stacked on #104 (`dbfeb78`), extends still-opt-in phase 17 with every JVM-legal form of
+   `DUP2`, `DUP_X2`, `DUP2_X1`, `DUP2_X2`, and `POP2` as category-aware SSA stack transforms,
+   rejecting illegal category mixes before mutation; the measured #107 pattern (`SWAP` followed by
+   `DUP2_X1`) lowers cleanly, while unexpanded primitive arrays, `MULTIANEWARRAY`, and `invokedynamic`
+   still fall back with legacy default. It records 82 + 3 = 85 tests plus an unskipped 140-`JNICALL`
+   g++ smoke. **#108 is the preferred phase-17 tip**. #109 is Sol's documentation-only independent
+   review of #108 recording **accept**, no compiler change, 85/85, and the 140-`JNICALL` g++ smoke.
+   #110 is measurement-only on #108 (`5a6f609`) rerunning #107's corpora: Corpus A ClassicTest
+   records 108/104/4/0 (ΔIR +2), Corpus B JDK 17 records 36/36/0/0 (ΔIR +12), and the separately
+   labeled extra JDK 21 corpus records 38/36/2/0 (ΔIR +18); 32 of 33 prior `DUP2_X1` fallbacks became IR,
+   with remaining fallbacks at `NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and `ISTORE`/`ASTORE` type mismatches ×1 each.
+   #110 is compile admission only, skipped native builds and behavioral E2E; admission is not correctness,
+   and 36/36 JDK 17 admission must not be called JDK 17 support.
+   #112 measures five JDK 17 fixtures on #108: 36/36 admit and 5/5 CMake builds pass, but 0/5 normal runtime
+   exits (all five native runs crashed, exiting 1) due to missing `native.magic.1.*` BME/CNFE,
+   `NoSuchMethodError: invokeExact`, and null `PermittedSubclasses` NPE.
+   Two sibling compiler stacks diverged from #108 and are not yet merged:
+   (1) Array lane: #114 extends phase 18 to all primitive `NEWARRAY`, loads/stores, and `MULTIANEWARRAY`,
+   recording 88 + 4 = 92 tests and a 151-`JNICALL` g++ smoke; **#114 is the preferred phase-18 array tip**;
+   #116 is Sol's documentation-only **accept** review (92/92); Fable review of #114 may still be in flight
+   (no Fable review PR is visible).
+   (2) JDK 17 runtime repair lane: #113 attempts to fix #112's crashes; Sol rejected and fixed it in #115
+   (**reject+fix**), repairing caller-local `invokeExact` trampolines and rejected-constructor bytecode restoration,
+   with Sol reproducing 89/89 tests and five JDK 17 fixtures at 36/36 IR, 5/5 CMake, and 5/5 stdout parity;
+   **#115 is the preferred JDK 17 runtime-fix tip** (over unfixed #113); #117 is Fable's documentation-only
+   **accept** review of #115 (89/89, did NOT re-run the five native fixtures). Five fixtures on one Linux VM
+   does not constitute “JDK 17 supported”; legacy remains default. Do not merge #114 and #115 automatically;
+   a human must choose the merge order.
+16. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
    #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 →
    #78 → #82/#83 → #84 → #89/#88 → #90 → #93/#94 → #95 →
-   #98/#101 → #99 → #102 → #104 → #105 的
+   #98/#101 → #99 → #102 → #104 → #105 → #108 → #109 的
    direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上，#90 叠加在首选
    #89 上，#93/#94 是 #90 的纯文档审阅，#98/#101 是 #95 的纯文档审阅，
-   #102 是 #99 的纯文档审阅，#105 是 #104 的纯文档审阅，#104 叠加在 #99 上
-   并为首选实现 tip）、
+   #102 是 #99 的纯文档审阅，#105 是 #104 的纯文档审阅，#108 叠加在 #104 上并为首选
+   phase-17 tip，#109 是 #108 的纯文档审阅），以及自 #108 分叉出的两组未合并同基线兄弟分支：
+   （a）phase 18 数组路线 #114（首选 tip）与 #116（Sol accept 审阅）；
+   （b）JDK 17 运行时修复路线 #113、#115（首选 reject+fix tip）与 #117（Fable docs-only 审阅）；
    #34 → #53 的 benchmark 与叠加
    在 #57 上的独立 #59 后续测量、叠加在 #89 上、仅测量的 #92 合成 admission
    报告、叠加在 #90 上、仅测量的 #97 真实 fixture admission 报告、叠加在
-   #99 上、仅测量的 #103 真实 fixture admission 报告与叠加在 #104 上、仅
-   测量的 #107 真实 fixture admission 报告（首选 #107，其次 #103，再次
-   #97，再次 #92）、
+   #99 上、仅测量的 #103 真实 fixture admission 报告、叠加在 #104 上、仅
+   测量的 #107 真实 fixture admission 报告、叠加在 #108 上、仅测量的 #110 真实
+   fixture admission 报告与叠加在 #108 上的 #112 真实 fixture 行为 E2E 崩溃测量
+   （首选 #110 与 #112，其次 #107，再次 #103，再次 #97，再次 #92）、
    #42 → #44 → #48 → #50 的独立 evaluator
    实验、#57/#61、#68/#69 与 #85/#87 ISA/review sibling、SDK #12 → #15 → #46 →
    #72 → #75 → #80 → #81（首选 AES tip）、compatibility #6 → #9 → #14 →
    #41，以及 options brief … → #74 → #79 → #86 → #91 → #96 → #100 →
-   #106 → 本 PR 分别继续。
+   #106 → #111 → 本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
    blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
    #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88 → #90 →
-   #93/#94 → #95 → #98/#101 → #99 → #102 → #104 → #105 direct-IR
+   #93/#94 → #95 → #98/#101 → #99 → #102 → #104 → #105 → #108 → #109 direct-IR
    coverage/review lane,
    with #73 stacked only on preferred, fixed #70, #90 stacked on preferred #89,
    #93/#94 as documentation-only reviews of #90, #98/#101 as
    documentation-only reviews of #95, #102 as the documentation-only review of
-   #99, #105 as the documentation-only review of #104, and #104 stacked on
-   #99 as the preferred implementation tip,
+   #99, #105 as the documentation-only review of #104, #108 stacked on #104 as the preferred
+   phase-17 tip, and #109 as the documentation-only review of #108, plus the two unmerged
+   sibling branches diverged from #108:
+   (a) phase 18 array lane #114 (preferred tip) and #116 (Sol accept review);
+   (b) JDK 17 runtime fix lane #113, #115 (preferred reject+fix tip), and #117 (Fable docs-only review);
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
    the measurement-only #92 synthetic admission report stacked on #89, the
    measurement-only #97 real-fixture admission report stacked on #90, the
-   measurement-only #103 real-fixture admission report stacked on #99, and
-   the measurement-only #107 real-fixture admission report stacked on #104
-   (prefer #107, then #103, then #97, then #92),
+   measurement-only #103 real-fixture admission report stacked on #99, the
+   measurement-only #107 real-fixture admission report stacked on #104, the
+   measurement-only #110 real-fixture admission report stacked on #108, and the
+   measurement-only #112 real-fixture behavioral E2E crash report stacked on #108
+   (prefer #110 and #112, then #107, then #103, then #97, then #92),
    the #42 → #44 → #48 → #50 evaluator experiment with #57/#61, #68/#69,
    and #85/#87 as ISA/review siblings,
    SDK #12 → #15 → #46 → #72 → #75 → #80 → #81 (the preferred AES tip),
    compatibility #6 → #9 → #14 → #41, and options briefs … → #74 → #79 →
-   #86 → #91 → #96 → #100 → #106 → this PR continue as separate lanes.
+   #86 → #91 → #96 → #100 → #106 → #111 → this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
-| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), [#51](https://github.com/gaoyu06/native-obfuscator/pull/51), [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), and [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) form the still-opt-in phase-6/7 path. [#62](https://github.com/gaoyu06/native-obfuscator/pull/62) adds phase 8; [#63](https://github.com/gaoyu06/native-obfuscator/pull/63) and [#64](https://github.com/gaoyu06/native-obfuscator/pull/64) are its docs-only **accept** reviews. [#66](https://github.com/gaoyu06/native-obfuscator/pull/66) adds opt-in phase-9 `ARETURN`, `ACONST_NULL`, `IFNULL`/`IFNONNULL`, and category-one `POP`, records 44 focused tests and a 39-method g++ smoke, and leaves `POP2` on fallback and legacy as default. [#70](https://github.com/gaoyu06/native-obfuscator/pull/70) is the preferred phase-9 tip: it fixes the `jobject`/`jarray` array-return boundary and records **accept**, 45 tests, and a 40-method smoke. [#71](https://github.com/gaoyu06/native-obfuscator/pull/71) is a docs-only **accept-with-nits** review of unfixed #66 at `32ac47d`, records 44 tests, and lacks #70's fix. Stacked only on preferred #70, [#73](https://github.com/gaoyu06/native-obfuscator/pull/73) adds phase-10 instance/static field access for exact `I`, exact `J`, and object/array descriptors, records 49 focused tests and a 50-method g++ smoke, leaves six primitive sorts on fallback, and keeps legacy as default. [#76](https://github.com/gaoyu06/native-obfuscator/pull/76) is its docs-only **accept-with-nits** Fable review with 49/49; [#77](https://github.com/gaoyu06/native-obfuscator/pull/77) is its docs-only **PASS** Sol review with 49/49. The evaluator experiment #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) remains separate. [#57](https://github.com/gaoyu06/native-obfuscator/pull/57)/[#61](https://github.com/gaoyu06/native-obfuscator/pull/61) form one ISA/review sibling. Stacked on #57, [#68](https://github.com/gaoyu06/native-obfuscator/pull/68) adds the eight `0x23`–`0x2a` i64 operations with 31/31 focused tests and no benchmark numbers; [#69](https://github.com/gaoyu06/native-obfuscator/pull/69) is its docs-only **accept** review with 31/31 and records required shared-frontend/direct-IR integration. None establishes ship-readiness. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, broader object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
+| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), [#51](https://github.com/gaoyu06/native-obfuscator/pull/51), [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), and [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) form the still-opt-in phase-6/7 path. [#62](https://github.com/gaoyu06/native-obfuscator/pull/62) adds phase 8; [#63](https://github.com/gaoyu06/native-obfuscator/pull/63) and [#64](https://github.com/gaoyu06/native-obfuscator/pull/64) are its docs-only **accept** reviews. [#66](https://github.com/gaoyu06/native-obfuscator/pull/66) adds opt-in phase-9 `ARETURN`, `ACONST_NULL`, `IFNULL`/`IFNONNULL`, and category-one `POP`, records 44 focused tests and a 39-method g++ smoke, and leaves `POP2` on fallback and legacy as default. [#70](https://github.com/gaoyu06/native-obfuscator/pull/70) is the preferred phase-9 tip: it fixes the `jobject`/`jarray` array-return boundary and records **accept**, 45 tests, and a 40-method smoke. [#71](https://github.com/gaoyu06/native-obfuscator/pull/71) is a docs-only **accept-with-nits** review of unfixed #66 at `32ac47d`, records 44 tests, and lacks #70's fix. Stacked only on preferred #70, [#73](https://github.com/gaoyu06/native-obfuscator/pull/73) adds phase-10 instance/static field access for exact `I`, exact `J`, and object/array descriptors, records 49 focused tests and a 50-method g++ smoke, leaves six primitive sorts on fallback, and keeps legacy as default. [#76](https://github.com/gaoyu06/native-obfuscator/pull/76) is its docs-only **accept-with-nits** Fable review with 49/49; [#77](https://github.com/gaoyu06/native-obfuscator/pull/77) is its docs-only **PASS** Sol review with 49/49. [#78](https://github.com/gaoyu06/native-obfuscator/pull/78) adds phase 11 with 55 tests and a 59-method smoke; [#82](https://github.com/gaoyu06/native-obfuscator/pull/82)/[#83](https://github.com/gaoyu06/native-obfuscator/pull/83) are its docs-only **accept** reviews. [#84](https://github.com/gaoyu06/native-obfuscator/pull/84)/[#89](https://github.com/gaoyu06/native-obfuscator/pull/89) (preferred) add phase 12 constructors; [#88](https://github.com/gaoyu06/native-obfuscator/pull/88) is Fable's review. [#90](https://github.com/gaoyu06/native-obfuscator/pull/90) adds phase 13 `Z`/`B`/`C`/`S`; [#93](https://github.com/gaoyu06/native-obfuscator/pull/93)/[#94](https://github.com/gaoyu06/native-obfuscator/pull/94) are docs-only reviews. [#95](https://github.com/gaoyu06/native-obfuscator/pull/95) adds phase 14 scalar `F`/`D`; [#98](https://github.com/gaoyu06/native-obfuscator/pull/98)/[#101](https://github.com/gaoyu06/native-obfuscator/pull/101) are its reviews. [#99](https://github.com/gaoyu06/native-obfuscator/pull/99) adds phase 15 `LDC`; [#102](https://github.com/gaoyu06/native-obfuscator/pull/102) is Sol's review. [#104](https://github.com/gaoyu06/native-obfuscator/pull/104) adds phase 16 `SWAP`/`AALOAD`/`AASTORE`; [#105](https://github.com/gaoyu06/native-obfuscator/pull/105) is Sol's review. [#108](https://github.com/gaoyu06/native-obfuscator/pull/108) adds phase 17 `DUP2`/`POP2`; [#109](https://github.com/gaoyu06/native-obfuscator/pull/109) is Sol's review. Diverged from #108: [#114](https://github.com/gaoyu06/native-obfuscator/pull/114) adds phase 18 primitive arrays and `MULTIANEWARRAY` with [#116](https://github.com/gaoyu06/native-obfuscator/pull/116) Sol review; and [#113](https://github.com/gaoyu06/native-obfuscator/pull/113)/[#115](https://github.com/gaoyu06/native-obfuscator/pull/115) (preferred reject+fix tip)/[#117](https://github.com/gaoyu06/native-obfuscator/pull/117) address JDK 17 runtime repair. The evaluator experiment #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) remains separate with [#57](https://github.com/gaoyu06/native-obfuscator/pull/57)/[#61](https://github.com/gaoyu06/native-obfuscator/pull/61), [#68](https://github.com/gaoyu06/native-obfuscator/pull/68)/[#69](https://github.com/gaoyu06/native-obfuscator/pull/69), and [#85](https://github.com/gaoyu06/native-obfuscator/pull/85)/[#87](https://github.com/gaoyu06/native-obfuscator/pull/87) as ISA/review siblings. None establishes ship-readiness. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, broader object construction, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. #112 shows 0/5 runtime passes on JDK 17 fixtures at phase 17. |
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | [#41](https://github.com/gaoyu06/native-obfuscator/pull/41), stacked on #14, adds four ClassicTest fixtures compiled independently with `javac --release 25` (class-file major 69). Its status document records 24 total: 23 passed, 1 pre-existing `krak2` skip, 0 failed; each new fixture reached `OK` on `HOTSPOT`, `STD_JAVA`, and `ANDROID`. The full #6 → #9 → #14 → #41 stack remains draft. | #41 is not a blanket full-JDK-25 claim: it does not cover every language feature, library API, runtime mode, generated class shape, preview feature, or separate JDK 22–24 class file. `ConstantDynamic`, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence remain gaps. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) runs JVM, legacy, and IR tasks through the same harness. | [#53](https://github.com/gaoyu06/native-obfuscator/pull/53), stacked on #34, records `IrFriendlyIntKernel.run(I)I` local medians of 12,207,144.5 ns for JVM, 202,090,247.0 ns for legacy, and 11,311,481.5 ns for direct IR. Direct IR stayed on IR. Eval rejected `USHR` and used legacy fallback, so the evaluator median is `N/A` and no eval timing is claimed. Separately, [#59](https://github.com/gaoyu06/native-obfuscator/pull/59), stacked on #57, records 5/10 warmup/iterations, checksum 2,038,221,507, and JVM/legacy/direct-IR/evaluator-IR medians of 10,017,146.0 / 167,870,311.5 / 10,021,957.0 / 411,875,537.5 ns. Its target evaluator-data marker was present with no target-method or `IUSHR` fallback. Both are one-VM diagnostics, not portable results; #59 does not revise or back-fill #53. | JMH/forked baselines, confidence intervals, native-only isolation, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) cleanly stacks `NativeStrings` length/hash/concat on #12 without copying the general benchmark harness. [#72](https://github.com/gaoyu06/native-obfuscator/pull/72) adds review-stage `NativePrimitives.hmacSha256` and `no_sdk_hmac_sha256_v1` using RFC 2104 plus the in-tree SHA-256, records published vectors and 13/13 tests, and runs no HMAC benchmark. [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) is the docs-only **PASS** review with 1/1 focused, 13/13 full-suite, 4/4 independent-vector, and 11/11 C-ABI checks. Neither is a shipped SDK. #46's local diagnostic remeasurement was slower than Java; the status document explicitly says this is not portable and not a speedup claim. The #12 → #15 → #46 → #72 → #75 lane remains draft. | The product surface, embedding and provider/update policy, target matrix, Zig execution, broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and release security sign-off remain unresolved. |
@@ -1147,7 +1324,7 @@ constructor-left-Java on ClassicTest (ΔIR +28), 36 / 23 / 13 / 0 on JDK 17
 while #97 stays as the #90-tip baseline; neither fraction is a coverage gate,
 and no native compile or behavioral E2E was run.
 
-This refresh extends direct IR through #104 → #105 and the admission
+The prior wave extended direct IR through #104 → #105 and the admission
 evidence through #107. #104, stacked on #99 (`f46c3eae`), adds still-opt-in
 phase-16 `SWAP`, `AALOAD`, and `AASTORE`, the operations that dominated the
 remaining measured fallback. `SWAP` validates that both operands are
@@ -1161,21 +1338,56 @@ and `AASTORE`'s component-compatibility check leaves the JNI-raised
 `ArrayStoreException` pending. `NEWARRAY` forms outside the retained `int[]`
 slice, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back
 and legacy remains the default. It records 78 + 2 = 80 focused tests and an
-unskipped 128-`JNICALL` g++ smoke; it is the preferred direct-IR
+unskipped 128-`JNICALL` g++ smoke; it is the preferred phase-16
 implementation tip. #105 is Sol's documentation-only **accept** review of
 #104 with 80/80, no compiler change, the unskipped 128-`JNICALL` g++ smoke,
-and an independent syntax-only check. #106 is the previous options brief
-through #103 and is this brief's base. #107 is a measurement-only admission
+and an independent syntax-only check. #106 is the options brief
+through #103. #107 is a measurement-only admission
 report stacked on #104, not #99: on #103's corpora it records 108 / 102 IR /
 6 fallback / 0 constructor-left-Java on ClassicTest (ΔIR +5), 36 / 24 / 12 /
 0 on JDK 17 (ΔIR +1), and 38 / 18 / 20 / 0 on the extra JDK 21 corpus
 (ΔIR +1). The 33 methods that fell back at opcode 95 (`SWAP`) on #99 pass
 that instruction on #104 and now fall back at opcode 93 (`DUP2_X1`); the
 other remaining first fallback reasons are `NEWARRAY` ×2, `MULTIANEWARRAY`
-×2, and one `ISTORE` rejected for the logged type mismatch. #107 replaces
-#103 as the honest measurement on the current IR tip while #103 stays as the
+×2, and one `ISTORE` rejected for the logged type mismatch. #107 replaced
+#103 as the honest measurement on the phase-16 tip while #103 stays as the
 #99-tip baseline; neither fraction is a coverage gate, and no native compile
 or behavioral E2E was run.
+
+This refresh extends direct IR through #108 → #109, the admission evidence through #110,
+the behavioral E2E evidence through #112, and folds in the two unmerged sibling stacks
+on #108 (#114/#116 and #113/#115/#117). #108, stacked on #104 (`dbfeb78`), adds all legal forms
+of `DUP2`, `DUP_X2`, `DUP2_X1`, `DUP2_X2`, and `POP2` as category-aware SSA stack transforms,
+rejecting illegal category mixes before mutation; the measured #107 pattern (`SWAP` followed
+by `DUP2_X1`) lowers cleanly, while `NEWARRAY` forms outside `int[]`, `MULTIANEWARRAY`, and
+`invokedynamic` still fall back with legacy default. It records 82 + 3 = 85 tests and an
+unskipped 140-`JNICALL` g++ smoke; #108 is the preferred phase-17 tip. #109 is Sol's
+documentation-only **accept** review of #108 with 85/85, no compiler change, and an
+independent syntax-only check. #110 is a measurement-only admission report on #108 (`5a6f609`)
+rerunning #107's corpora: on ClassicTest 108 / 104 IR / 4 fallback / 0 constructor-left-Java
+(ΔIR +2), on JDK 17 36 / 36 IR / 0 fallback / 0 (ΔIR +12), and on extra JDK 21 38 / 36 IR /
+2 fallback / 0 (ΔIR +18). 32 of 33 prior `DUP2_X1` fallbacks became IR; remaining fallbacks are
+`NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and `ISTORE`/`ASTORE` type mismatches ×1 each. #110 is
+compile admission only, skipped native builds and behavioral E2E; admission is not behavioral correctness,
+and 36/36 JDK 17 admission must not be called JDK 17 support. #112 is a measurement-only IR-mode
+behavioral E2E report on #108: on #6's five JDK 17 fixtures, it records 36/36 IR admission, 5/5 CMake
+builds/links, but 0/5 normal runtime exits (all five native runs crashed, exiting 1) due to missing
+`native.magic.1.*` BME/CNFE, `NoSuchMethodError: invokeExact`, and null `PermittedSubclasses` NPE.
+From #108, two sibling compiler stacks diverged and remain unmerged:
+1. Phase 18 array lane: #114 adds still-opt-in primitive `NEWARRAY`, matching primitive `*ALOAD`/`*ASTORE`,
+   and rectangular primitive/reference `MULTIANEWARRAY` with Boolean/Byte JNI families, negative-size pending
+   `NegativeArraySizeException`, invokedynamic fallback, and legacy default, recording 88 + 4 = 92 tests
+   and an unskipped 151-`JNICALL` g++ smoke. #114 is the preferred phase-18 array tip. #116 is Sol's
+   documentation-only **accept** review of #114 with 92/92; Fable review of #114 may still be in flight
+   (no Fable review PR is visible).
+2. JDK 17 runtime repair lane: #113 addresses #112 fixture crashes; Sol reviewed #113 in #115 and rejected it
+   as submitted with code fixes (**reject+fix**), repairing caller-local `invokeExact` trampolines and restoring
+   original constructors on IR rejection; Sol reproduced 89/89 tests and five fixtures at 36/36 IR, 5/5 CMake,
+   and 5/5 stdout parity. #115 is the preferred JDK 17 runtime-fix tip (over unfixed #113). #117 is Fable's
+   documentation-only **accept** review of #115 with 89/89 focused tests (Fable did not re-run the five native
+   fixtures). Five fixtures on one VM does not mean JDK 17 supported; legacy remains default.
+Do not merge #114 and #115 automatically; a human must choose the merge order. #111 is the previous options brief
+through #107 and is this brief's base.
 
 ### Reader-eval evidence
 
@@ -1323,7 +1535,7 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#11](https://github.com/gaoyu06/native-obfuscator/pull/11), rebase #11 over
    #6/#10, and rerun both correctness and benchmark evidence. #11's mixed local
    result is not a speed gate.
-4. Merge the IR stack exactly
+4. Merge the IR stack through #108, then preserve the two diverged sibling stacks on #108:
    [#8](https://github.com/gaoyu06/native-obfuscator/pull/8) →
    [#13](https://github.com/gaoyu06/native-obfuscator/pull/13) →
    [#16](https://github.com/gaoyu06/native-obfuscator/pull/16) →
@@ -1362,9 +1574,17 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#99](https://github.com/gaoyu06/native-obfuscator/pull/99) →
    [#102](https://github.com/gaoyu06/native-obfuscator/pull/102) →
    [#104](https://github.com/gaoyu06/native-obfuscator/pull/104) →
-   [#105](https://github.com/gaoyu06/native-obfuscator/pull/105). Rebase after
-   #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
-   away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
+   [#105](https://github.com/gaoyu06/native-obfuscator/pull/105) →
+   [#108](https://github.com/gaoyu06/native-obfuscator/pull/108) →
+   [#109](https://github.com/gaoyu06/native-obfuscator/pull/109). Sibling branches diverged from #108:
+   - Sibling A (Phase 18 arrays): [#114](https://github.com/gaoyu06/native-obfuscator/pull/114) →
+     [#116](https://github.com/gaoyu06/native-obfuscator/pull/116).
+   - Sibling B (JDK 17 runtime repair): [#113](https://github.com/gaoyu06/native-obfuscator/pull/113) →
+     [#115](https://github.com/gaoyu06/native-obfuscator/pull/115) →
+     [#117](https://github.com/gaoyu06/native-obfuscator/pull/117).
+   Do not merge #114 and #115 automatically; a human maintainer must choose the merge order and next compiler tip.
+   Rebase after #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
+   away review fixes or treat #47/#51/#54/#56/#62/#108/#114/#115 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
    accept-with-nits review after Fable was policy-blocked and includes the
    array-component `FindClass` fix. #54 adds the still-opt-in phase-7
@@ -1449,10 +1669,34 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    `int[]` slice, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic`
    still fall back, legacy remains default, and it records 78 + 2 = 80 tests
    plus an unskipped 128-`JNICALL` g++ smoke. #104 is the preferred
-   direct-IR implementation tip. #105 is Sol's documentation-only **accept**
+   phase-16 tip. #105 is Sol's documentation-only **accept**
    review of #104 with 80/80, no compiler change, the unskipped
    128-`JNICALL` g++ smoke, and an independent syntax-only check. None is a
    ship-readiness finding.
+   #108 is based on #104 and adds still-opt-in phase-17 `DUP2` family and
+   `POP2`: all legal forms of `DUP2`, `DUP_X2`, `DUP2_X1`, `DUP2_X2`, and `POP2`
+   as category-aware SSA stack transforms, rejecting illegal category mixes before mutation;
+   `NEWARRAY` forms outside `int[]`, `MULTIANEWARRAY`, and `invokedynamic` still fall
+   back, legacy remains default, and it records 82 + 3 = 85 tests plus an
+   unskipped 140-`JNICALL` g++ smoke. #108 is the preferred phase-17 tip. #109 is Sol's
+   documentation-only **accept** review of #108 with 85/85, no compiler change, the
+   unskipped 140-`JNICALL` g++ smoke, and an independent syntax-only check. None is a
+   ship-readiness finding.
+   From #108, two sibling compiler stacks diverged and remain unmerged:
+   (a) Phase 18 array lane: #114 adds still-opt-in primitive `NEWARRAY`, matching
+   primitive `*ALOAD`/`*ASTORE`, and rectangular primitive/reference `MULTIANEWARRAY`
+   with Boolean/Byte JNI families, negative-size pending `NegativeArraySizeException`,
+   invokedynamic fallback, and legacy default, recording 88 + 4 = 92 tests and an
+   unskipped 151-`JNICALL` g++ smoke. #114 is the preferred phase-18 array tip.
+   #116 is Sol's documentation-only **accept** review of #114 with 92/92 and no compiler
+   change; Fable review of #114 may still be in flight (no Fable review PR is visible).
+   (b) JDK 17 runtime repair lane: #113 addresses #112 fixture crashes; Sol reviewed
+   #113 in #115 and rejected it as submitted with code fixes (**reject+fix**),
+   repairing caller-local `invokeExact` trampolines and restoring original constructors
+   on IR rejection; #115 is the preferred JDK 17 runtime-fix tip (over unfixed #113).
+   #117 is Fable's documentation-only **accept** review of #115 with 89/89 focused tests
+   (Fable did not re-run the five native fixtures).
+   Do not merge #114 and #115 automatically; a human must choose the merge order.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -1528,9 +1772,40 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    fall back at opcode 93 (`DUP2_X1`); the other remaining first fallback
    reasons are `NEWARRAY` ×2, `MULTIANEWARRAY` ×2, and one `ISTORE` rejected
    for the logged type mismatch. The Krakatau fixture was again skipped, and
-   no native compile or behavioral E2E was run. #107 replaces #103 as the
-   honest measurement on the current IR tip while #103 stays as the #99-tip
-   baseline; #97 measured #90, #103 measured #99, and #107 measured #104.
+   no native compile or behavioral E2E was run. #107 replaced #103 as the
+   honest measurement on the phase-16 tip while #103 stays as the #99-tip
+   baseline.
+   [#108](https://github.com/gaoyu06/native-obfuscator/pull/108) is the
+   compiler implementation of phase-17 `DUP2` family and `POP2` stacked on #104,
+   with Sol review [#109](https://github.com/gaoyu06/native-obfuscator/pull/109) (**accept**, 85/85).
+   #108 is the preferred phase-17 tip and the fork point for subsequent sibling branches.
+   [#110](https://github.com/gaoyu06/native-obfuscator/pull/110) is the
+   measurement-only admission report on #108 (`5a6f609`), rerunning #107's corpora:
+   ClassicTest 108 / 104 IR / 4 fallback / 0 constructor-left-Java (ΔIR +2),
+   JDK 17 36 / 36 IR / 0 fallback / 0 (ΔIR +12), and extra JDK 21 38 / 36 IR / 2 fallback / 0 (ΔIR +18).
+   32 of 33 prior `DUP2_X1` fallbacks became IR; remaining fallbacks are `NEWARRAY` ×2,
+   `MULTIANEWARRAY` ×2, and `ISTORE`/`ASTORE` type mismatches ×1 each. Skipped native
+   build and behavioral E2E; admission is not correctness, and 36/36 JDK 17 admission must not be
+   called JDK 17 support.
+   [#112](https://github.com/gaoyu06/native-obfuscator/pull/112) is the
+   measurement-only IR-mode behavioral E2E report on #108 on #6's five JDK 17 fixtures:
+   36/36 IR admission, 5/5 CMake builds/links, but 0/5 normal runtime exits (all five native runs
+   crashed, exiting 1) due to missing `native.magic.1.*` BME/CNFE, `NoSuchMethodError: invokeExact`,
+   and null `PermittedSubclasses` NPE.
+   From #108, two sibling compiler stacks diverged and are not yet merged:
+   - Sibling A (Phase 18 array lane): [#114](https://github.com/gaoyu06/native-obfuscator/pull/114)
+     adds primitive `NEWARRAY`, loads/stores, and `MULTIANEWARRAY` (92/92 tests, 151-`JNICALL` smoke);
+     [#116](https://github.com/gaoyu06/native-obfuscator/pull/116) is Sol's docs-only **accept** review (92/92);
+     Fable review of #114 may still be in flight (no Fable review PR is visible). #114 is the preferred phase-18 array tip.
+   - Sibling B (JDK 17 runtime repair lane): [#113](https://github.com/gaoyu06/native-obfuscator/pull/113)
+     addresses #112 fixture crashes; Sol reviewed #113 in [#115](https://github.com/gaoyu06/native-obfuscator/pull/115)
+     and rejected it as submitted with code fixes (**reject+fix**), repairing caller-local `invokeExact`
+     trampolines and constructor restore, reproducing 89/89 tests and five fixtures at 36/36 IR, 5/5 CMake,
+     and 5/5 stdout parity; **#115 is the preferred JDK 17 runtime-fix tip** (over unfixed #113).
+     [#117](https://github.com/gaoyu06/native-obfuscator/pull/117) is Fable's docs-only **accept** review
+     of #115 (89/89, did NOT re-run the five native fixtures).
+   Do not merge #114 and #115 automatically; a human must choose the merge order.
+   #97 measured #90, #103 measured #99, #107 measured #104, and #110 measured #108.
    None is a coverage gate or an implementation merge prerequisite, and no
    report's numbers may be attributed to another tip.
    Separately,
@@ -1677,8 +1952,7 @@ parallel, but their order within each arrowed stack must be preserved.
   ship-ready. #102 is Sol's documentation-only **accept** review with 75/75
   and no compiler change; Fable was policy-blocked twice on this slice, so
   #102 is the only independent review of it and no Fable verdict exists.
-- #104 remains an opt-in, partial phase 16 on #99 and is the preferred
-  direct-IR implementation tip. It admits `SWAP` (both operands validated as
+- #104 remains an opt-in, partial phase 16 on #99. It admits `SWAP` (both operands validated as
   single-slot, with `I64`/`F64` rejected at opcode 95 before mutation, and
   lowering that only exchanges the two existing SSA values) plus
   `AALOAD`/`AASTORE` via `GetObjectArrayElement`/`SetObjectArrayElement`
@@ -1690,13 +1964,31 @@ parallel, but their order within each arrowed stack must be preserved.
   documentation-only **accept** review with 80/80, no compiler change, and
   an independent syntax-only check; it is not a compiler fix or a
   ship-readiness finding.
+- #108 remains an opt-in, partial phase 17 on #104 and is the preferred phase-17 tip.
+  It admits all legal forms of `DUP2`, `DUP_X2`, `DUP2_X1`, `DUP2_X2`, and `POP2`
+  as category-aware SSA stack transforms, rejecting illegal category mixes before mutation;
+  the measured #107 pattern (`SWAP` followed by `DUP2_X1`) lowers cleanly, while
+  `NEWARRAY` forms outside `int[]`, `MULTIANEWARRAY`, and `invokedynamic` still fall
+  back with legacy default. Its 82 + 3 = 85 tests and unskipped 140-`JNICALL` g++
+  smoke do not make it ship-ready. #109 is Sol's documentation-only **accept** review
+  with 85/85, no compiler change, and an independent syntax-only check.
+- Sibling compiler branches on #108 remain unmerged:
+  (a) #114 extends phase 18 to all primitive `NEWARRAY`, loads/stores, and `MULTIANEWARRAY`
+  with 88 + 4 = 92 tests and a 151-`JNICALL` g++ smoke; it is the preferred phase-18 array tip.
+  #116 is Sol's docs-only **accept** review (92/92); Fable review may still be in flight (no PR visible).
+  (b) #113 addresses #112 fixture crashes; Sol reviewed #113 in #115 and rejected it as submitted
+  with code fixes (**reject+fix**), repairing caller-local `invokeExact` trampolines and constructor
+  restore, reproducing 89/89 tests and five fixtures at 5/5 parity; #115 is the preferred JDK 17
+  runtime-fix tip (over unfixed #113). #117 is Fable's docs-only **accept** review of #115 (89/89,
+  did NOT re-run the five native fixtures). Five fixtures on one VM does not mean JDK 17 supported.
+  Do not merge #114 and #115 automatically; a human must choose the merge order.
 - #92 is a measurement-only admission report on the #89 tip, not a coverage
   gate. Its two-class, six-method Java 8 corpus recorded 5 IR / 1 fallback (the
   `AdmissionTarget.unsupported(I)I` method at opcode 134, `I2F`, with `<clinit>`
   excluded). This 5/6 (83.3%) is synthetic and must not be generalized to
   production IR coverage; it changes no compiler code.
 - #97 is a measurement-only admission report on the #90 tip, not on #95,
-  #99, or #104, and not a coverage gate. It records 108 / 69 IR / 37 fallback /
+  #99, #104, or #108, and not a coverage gate. It records 108 / 69 IR / 37 fallback /
   2 constructor-left-Java on the checked-in ClassicTest fixtures,
   36 / 20 / 16 / 0 on the fetched JDK 17 E2E fixtures, and 38 / 15 / 23 / 0 on
   the separately labeled extra JDK 21 corpus. The dominant fallback opcode is
@@ -1727,10 +2019,31 @@ parallel, but their order within each arrowed stack must be preserved.
   (`DUP2_X1`); the other remaining first fallback reasons are `NEWARRAY` ×2,
   `MULTIANEWARRAY` ×2, and one `ISTORE` rejected for the logged type
   mismatch. The Krakatau fixture was again skipped; no native library was
-  compiled and no behavioral/E2E claim is made. #107 replaces #103 as the
-  honest measurement on the current IR tip while #103 stays as the #99-tip
-  baseline; #97 measured #90, #103 measured #99, and #107 measured #104, and
-  no fraction generalizes to production coverage.
+  compiled and no behavioral/E2E claim is made. #107 replaced #103 as the
+  honest measurement on the phase-16 tip while #103 stays as the #99-tip
+  baseline; #97 measured #90, #103 measured #99, #107 measured #104, and
+  #110 measured #108, and no fraction generalizes to production coverage.
+- #110 is a measurement-only admission report on the #108 tip (`5a6f609`)
+  and not a coverage gate. Rerunning #107's corpora, it records 108 / 104 IR /
+  4 fallback / 0 constructor-left-Java on ClassicTest (ΔIR +2 versus #107),
+  36 / 36 IR / 0 fallback / 0 on JDK 17 (ΔIR +12), and 38 / 36 IR / 2 fallback / 0
+  on the separately labeled extra JDK 21 corpus (ΔIR +18). Of 33 prior `DUP2_X1`
+  fallbacks on #107, 32 became IR, with one JDK 21 method failing at `ASTORE`
+  (local-type mismatch); remaining first fallbacks are `NEWARRAY` ×2,
+  `MULTIANEWARRAY` ×2, and `ISTORE`/`ASTORE` type mismatches ×1 each.
+  The Krakatau fixture was again skipped; native compilation was skipped and
+  no behavioral E2E is claimed. #110 replaces #107 as the honest admission measurement
+  on the phase-17 tip; admission is not behavioral correctness, and 36/36 JDK 17
+  admission must not be read as “JDK 17 is supported”.
+- #112 is a measurement-only IR-mode behavioral E2E report on the #108 tip (`5a6f609`)
+  testing the five JDK 17 fixtures from #6: 36/36 IR admission, 5/5 CMake build/link,
+  but 0/5 normal runtime exits (all five native runs crashed, exiting 1). Crashes:
+  `InvokeDynamicLambdaE2E`, `NestPrivateAccessE2E`, and `RecordSemanticsE2E`
+  crashed with `BootstrapMethodError` / `ClassNotFoundException` calling
+  `native.magic.1.*`; `MethodHandlesE2E` crashed with `NoSuchMethodError: invokeExact`;
+  and `SealedHierarchyE2E` crashed with an NPE from a null `PermittedSubclasses` array.
+  This proves admission does not equal behavioral correctness and confirms JDK 17
+  was not supported at phase 17.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -1762,7 +2075,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#107 are still open drafts. `master` contains none of their work.
+- PRs #1–#117 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -1788,20 +2101,23 @@ not the union of claims from draft branches:
    `POP2`/`DUP2*`, and `invokedynamic` still on fallback, #99 adds only
    the still-opt-in phase-15 String / object-array Class / Long `LDC` slice
    with primitive Class `LDC`, `MethodType`/`Handle`/`ConstantDynamic`,
-   arrays, `POP2`, and `invokedynamic` still on fallback, and #104 adds only
+   arrays, `POP2`, and `invokedynamic` still on fallback, #104 adds only
    the still-opt-in phase-16 `SWAP`/`AALOAD`/`AASTORE` slice with `NEWARRAY`
-   forms outside the retained `int[]` slice, `MULTIANEWARRAY`,
-   `POP2`/`DUP2*`, and `invokedynamic` still on fallback. #93/#94 are
-   documentation-only reviews of #90, #98/#101 of #95, #102 of #99, and #105
-   of #104, not
-   compiler fixes. Treat #92's synthetic
-   5/6 and #97's, #103's, and #107's real-fixture admission counts as scoped
-   evidence,
-   not coverage gates; #97 measured the #90 tip, #103 measured the #99
-   tip, and #107 measured the #104 tip, and no report's numbers may be
-   attributed to another tip. Prefer
-   #104 as the implementation tip, then #99, then #95, with #90 preferred
-   over its reviews.
+   forms outside `int[]`, `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic`
+   still on fallback, #108 adds only the still-opt-in phase-17 `DUP2` family and
+   `POP2` with primitive arrays, `MULTIANEWARRAY`, and `invokedynamic` still on
+   fallback, #114 adds phase-18 arrays but leaves invokedynamic on fallback and is
+   not merged with the runtime repair, and preferred #115 fixes JDK 17 indy/trampoline
+   runtimes on five fixtures but is not general JDK 17 support.
+   #93/#94 are documentation-only reviews of #90, #98/#101 of #95, #102 of #99,
+   #105 of #104, #109 of #108, #116 of #114, and #117 of #115 (which did not re-run
+   native fixtures), not compiler fixes. Treat #92's synthetic 5/6 and #97's, #103's,
+   #107's, and #110's real-fixture admission counts as scoped evidence, not coverage
+   gates, and remember #112 proved 0/5 runtime passes on #108 despite 36/36 admission.
+   #97 measured the #90 tip, #103 measured the #99 tip, #107 measured the #104 tip,
+   and #110 measured the #108 tip; no report's numbers may be attributed to another tip.
+   Prefer #108 as the phase-17 base tip, #114 as the phase-18 array tip, and #115 as the
+   JDK 17 runtime-fix tip (over unfixed #113). Do not merge #114 and #115 automatically.
 4. Replace the one-machine diagnostic benchmark with controlled repeated raw
    results, forked/JMH and native-only isolation where applicable, end-to-end
    cost data, and human-approved workload budgets. Either meet those budgets or
