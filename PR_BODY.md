@@ -55,12 +55,24 @@ g++ 语法，尚未执行可捕获异常的原生 fixture。代码检查确认 d
 
 ## (d) Verification / 验证
 
-The independent `CC=gcc CXX=g++` focused rerun is pending in this pre-test
-commit. The final revision will report counts from JUnit XML for
-`CodegenModeTest`, `IrCompilerTest`, and `InterpreterStreamStrategyTest`, and
-will state whether each toolchain-gated native test actually ran.
+The independent `CC=gcc CXX=g++` Gradle rerun used `--rerun-tasks` and passed
+**32/32**, with 0 skipped, failures, or errors: `CodegenModeTest` 4/4,
+`IrCompilerTest` 19/19, and `InterpreterStreamStrategyTest` 9/9. These counts
+come from the generated JUnit XML.
 
-本次独立 `CC=gcc CXX=g++` 聚焦重跑将在该 pre-test 提交之后执行。最终版本会从
-JUnit XML 记录 `CodegenModeTest`、`IrCompilerTest` 与
-`InterpreterStreamStrategyTest` 的真实计数，并确认每个受 toolchain 条件控制的
-原生测试是否实际运行。
+All three toolchain-gated tests actually ran: generated direct-IR C++ and
+`native_jvm_eval.cpp` passed g++ syntax checks, and the evaluator harness
+compiled, linked, and executed. The harness covered signed division/remainder,
+both zero-divisor pending exceptions, immediate exit before a second division,
+`Long.MIN_VALUE / -1 == Long.MIN_VALUE`, and remainder zero. Generated-source
+inspection also kept `divide(JJ)J` and `remainder(JJ)J` on `evaluate_i64`.
+
+独立 `CC=gcc CXX=g++` Gradle 重跑使用 `--rerun-tasks`，共 **32/32** 通过，
+0 skipped、0 failures、0 errors：`CodegenModeTest` 4/4、`IrCompilerTest`
+19/19、`InterpreterStreamStrategyTest` 9/9。以上计数来自生成的 JUnit XML。
+
+三个受 toolchain 条件控制的测试均实际运行：生成的 direct-IR C++ 与
+`native_jvm_eval.cpp` 通过 g++ 语法检查，evaluator harness 完成编译、链接与执行。
+harness 覆盖有符号除法/余数、两种零除数 pending exception、第二次除法前立即退出、
+`Long.MIN_VALUE / -1 == Long.MIN_VALUE` 及余数为零。生成源码检查也确认
+`divide(JJ)J` 与 `remainder(JJ)J` 保持在 `evaluate_i64` 路径。

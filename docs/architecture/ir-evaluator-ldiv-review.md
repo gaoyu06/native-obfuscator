@@ -43,16 +43,39 @@ No correctness defect was found, so this review changes no compiler code.
 
 ## Focused rerun
 
-The required independent `CC=gcc CXX=g++` rerun is intentionally not claimed
-in this pre-test review commit. The final review revision will record counts
-from the generated JUnit XML for:
+The required independent run used OpenJDK 21.0.10 and GCC/G++ 13.3.0:
 
-- `by.radioegor146.CodegenModeTest`;
-- `by.radioegor146.ir.IrCompilerTest`;
-- `by.radioegor146.ir.backend.InterpreterStreamStrategyTest`.
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.CodegenModeTest \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+```
 
-It will also verify that the toolchain-gated g++ syntax and linked evaluator
-harness tests were executed rather than skipped.
+Gradle reported `BUILD SUCCESSFUL`. The generated JUnit XML records:
+
+| Suite | Tests | Skipped | Failures | Errors |
+| --- | ---: | ---: | ---: | ---: |
+| `CodegenModeTest` | 4 | 0 | 0 | 0 |
+| `IrCompilerTest` | 19 | 0 | 0 | 0 |
+| `InterpreterStreamStrategyTest` | 9 | 0 | 0 | 0 |
+| **Total** | **32** | **0** | **0** | **0** |
+
+The three toolchain-gated test cases have ordinary successful `<testcase>`
+entries and no `<skipped>` child:
+
+- `IrCompilerTest.generatedCppPassesGppSyntaxCheckWhenToolchainAvailable`
+  syntax-checked generated direct-IR C++;
+- `InterpreterStreamStrategyTest.evaluatorTranslationUnitPassesGppSyntaxSmokeWhenAvailable`
+  syntax-checked `native_jvm_eval.cpp`;
+- `InterpreterStreamStrategyTest.sharedEvaluatorRunsAddAndSumToBlobsWhenToolchainAvailable`
+  compiled, linked, and ran the native harness. Its asserted output covers
+  signed `LDIV`/`LREM`, both zero-divisor exceptions, immediate exit before a
+  second divide, `Long.MIN_VALUE / -1 == Long.MIN_VALUE`, and remainder zero.
+
+The generated-source test also isolated `divide(JJ)J` and `remainder(JJ)J`,
+requiring evaluator data, `evaluate_i64`, and two `jlong` arguments in each
+method body.
 
 ## Findings
 
