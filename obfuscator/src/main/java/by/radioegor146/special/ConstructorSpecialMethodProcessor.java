@@ -1125,10 +1125,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a bounded multi-call form whose nonempty suffixes are pairwise
-     * different. A suffix may be straight-line or contain one proven
+     * Proves a bounded multi-call form whose nonempty suffixes contain at least
+     * two different CFGs. A suffix may be straight-line or contain one proven
      * int-family conditional or switch whose closed, forward CFG reaches only
-     * RETURN.
+     * RETURN. Repeated suffix CFGs remain separate path-id ranges.
      * Every call site keeps locally visible receiver/argument inputs, and
      * every complete path reaches RETURN after exactly one call. The
      * independent body receives one trailing int selector after any proven
@@ -1160,13 +1160,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
         }
+        boolean hasDistinctPair = false;
         for (int i = 0; i < suffixes.size(); i++) {
             for (int j = i + 1; j < suffixes.size(); j++) {
-                if (sameBoundedSuffix(
+                if (!sameBoundedSuffix(
                         constructor, suffixes.get(i), suffixes.get(j))) {
-                    return null;
+                    hasDistinctPair = true;
                 }
             }
+        }
+        if (!hasDistinctPair) {
+            return null;
         }
 
         for (AbstractInsnNode instruction : constructor.instructions) {
