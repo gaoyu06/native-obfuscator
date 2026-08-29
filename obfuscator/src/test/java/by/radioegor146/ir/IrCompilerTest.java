@@ -12747,12 +12747,10 @@ public class IrCompilerTest {
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
         method.instructions.add(new InsnNode(Opcodes.IDIV));
-        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
-        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
         method.instructions.add(new FieldInsnNode(
                 Opcodes.PUTFIELD, owner, "result", "I"));
         method.instructions.add(end);
@@ -12778,8 +12776,8 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.tryCatchBlocks.add(new TryCatchBlockNode(
                 start, end, handler, "java/lang/ArithmeticException"));
-        method.maxLocals = 4;
-        method.maxStack = 2;
+        method.maxLocals = 3;
+        method.maxStack = 3;
         return method;
     }
 
