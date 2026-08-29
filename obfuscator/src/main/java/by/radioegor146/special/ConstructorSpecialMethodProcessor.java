@@ -44,7 +44,7 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
-    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 1;
+    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 2;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2264,11 +2264,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one admitted long binary whose operands are non-recursive leaves,
-     * or one admitted unary leaf. Long shifts consume an int-family count leaf
-     * after their long value leaf; the other admitted binaries consume two long
-     * leaves. The separate one-level budget prevents the int-family depth bound
-     * from admitting nested long arithmetic.
+     * Proves a long operand with a bounded number of binary levels. Long shifts
+     * consume an int-family count leaf after their recursively proven long
+     * value; the other admitted binaries recursively prove both long operands.
+     * Every binary descent consumes one level from the separate long budget.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2279,23 +2278,23 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         int opcode = input.getOpcode();
-        if (opcode == Opcodes.LNEG) {
-            return previousProvenLongChainLeaf(
-                    constructor, inputIndex, declaredArguments);
-        }
         boolean longShift = opcode == Opcodes.LSHL
                 || opcode == Opcodes.LSHR
                 || opcode == Opcodes.LUSHR;
-        if ((opcode != Opcodes.LADD
-                && opcode != Opcodes.LSUB
-                && opcode != Opcodes.LMUL
-                && opcode != Opcodes.LDIV
-                && opcode != Opcodes.LREM
-                && opcode != Opcodes.LAND
-                && opcode != Opcodes.LOR
-                && opcode != Opcodes.LXOR
-                && !longShift)
-                || remainingBinaryLevels == 0) {
+        boolean longBinary = opcode == Opcodes.LADD
+                || opcode == Opcodes.LSUB
+                || opcode == Opcodes.LMUL
+                || opcode == Opcodes.LDIV
+                || opcode == Opcodes.LREM
+                || opcode == Opcodes.LAND
+                || opcode == Opcodes.LOR
+                || opcode == Opcodes.LXOR
+                || longShift;
+        if (!longBinary) {
+            return previousProvenLongChainLeaf(
+                    constructor, inputIndex, declaredArguments);
+        }
+        if (remainingBinaryLevels == 0) {
             return null;
         }
         if (longShift) {
@@ -2310,20 +2309,21 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     && !isIntFamilyConstant(count)) {
                 return null;
             }
-            return previousProvenLongChainLeaf(
+            return previousProvenLongChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, countIndex - 1),
-                    declaredArguments);
+                    declaredArguments, remainingBinaryLevels - 1);
         }
-        Integer beforeRight = previousProvenLongChainLeaf(
+        Integer beforeRight = previousProvenLongChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments);
+                declaredArguments, remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
-        return previousProvenLongChainLeaf(
-                constructor, beforeRight, declaredArguments);
+        return previousProvenLongChainOperand(
+                constructor, beforeRight, declaredArguments,
+                remainingBinaryLevels - 1);
     }
 
     /**
