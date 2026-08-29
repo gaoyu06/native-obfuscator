@@ -2149,6 +2149,50 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersLongBitwiseAndShiftFamilyWithTypedCountsAndMasking() {
+        IrMethod ir = frontend.build("example/Math", longBitwiseShiftMethod());
+        String pretty = ir.toString();
+        assertTrue(pretty.contains("land"));
+        assertTrue(pretty.contains("lor"));
+        assertTrue(pretty.contains("lxor"));
+        assertTrue(pretty.contains("lshl"));
+        assertTrue(pretty.contains("lshr"));
+        assertTrue(pretty.contains("lushr"));
+
+        List<IrNodes.LongShift> shifts = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.LongShift.class::isInstance)
+                .map(IrNodes.LongShift.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(3, shifts.size());
+        for (IrNodes.LongShift shift : shifts) {
+            assertEquals(IrType.I64, shift.getValue().getType());
+            assertEquals(IrType.I32, shift.getCount().getType());
+            assertEquals(IrType.I64, shift.getResult().getType());
+        }
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("(uint64_t) arg0 & (uint64_t) arg1"));
+        assertTrue(cpp.contains("(uint64_t) v3 | (uint64_t) arg1"));
+        assertTrue(cpp.contains("(uint64_t) v4 ^ (uint64_t) arg1"));
+        assertTrue(cpp.contains("(uint64_t) v5 << ((uint32_t) arg2 & 63)"));
+        assertTrue(cpp.contains("(int64_t) v6 >> ((uint32_t) arg2 & 63)"));
+        assertTrue(cpp.contains("(uint64_t) v7 >> ((uint32_t) arg2 & 63)"));
+    }
+
+    @Test
+    public void emitsWrappingLongLeftShiftThroughUnsignedCarrier() {
+        String cpp = emitter.emitBody(frontend.build(
+                "example/Math", wrappingLongShiftMethod()));
+
+        assertTrue(cpp.contains("9223372036854775807LL"));
+        assertTrue(cpp.contains("(jlong) ((uint64_t)"));
+        assertTrue(cpp.contains("<< ((uint32_t)"));
+        assertTrue(cpp.contains("& 63)"));
+        assertEquals(-2L, Long.MAX_VALUE << 65);
+    }
+
+    @Test
     public void numbersWideStackPhiSlotsByJvmSlotWidth() {
         IrMethod ir = frontend.build("example/Math", wideStackPhiMethod());
         IrBlock join = ir.getBlocks().stream()
@@ -2191,6 +2235,29 @@ public class IrCompilerTest {
         assertEquals(0, obfuscator.getCachedStrings().size());
         assertEquals(0, obfuscator.getCachedFields().size());
         assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
+    public void splitsReferenceAndIntReuseInTemporaryLocal() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "reuseTemporary", "()I", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 21));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertTrue(ir.toString().contains("return"));
+        assertEquals(1, method.maxLocals);
+        assertEquals(0, ((VarInsnNode) method.instructions.get(1)).var);
+        assertEquals(0, ((VarInsnNode) method.instructions.get(5)).var);
     }
 
     @Test
@@ -2247,7 +2314,8 @@ public class IrCompilerTest {
                 newNestedObjectArrayMethod(),
                 checkCastInstanceOfMethod("typeTest", "java/lang/String"),
                 checkCastInstanceOfMethod("arrayTypeTest", "[Ljava/lang/String;"),
-                checkCastCatchMethod(), longArithmeticMethod(), longConversionMethod(),
+                checkCastCatchMethod(), longArithmeticMethod(), longBitwiseShiftMethod(),
+                wrappingLongShiftMethod(), longConversionMethod(),
                 wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
                 virtualStringInvokeMethod(), staticStringInvokeMethod(),
                 staticVoidLongInvokeMethod(),
@@ -2528,6 +2596,10 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.arrayTypeTest"));
         assertTrue(source.contains("IR codegen: example/Math.catchCast"));
         assertTrue(source.contains("IR codegen: example/Math.longArithmetic(JJ)J"));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.longBitwiseShift(JJI)J"));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.wrappingLongShift()J"));
         assertTrue(source.contains("IR codegen: example/Math.longConversion(I)I"));
         assertTrue(source.contains("IR codegen: example/Math.widePhi(JI)J"));
         assertTrue(source.contains("IR codegen: example/Math.constructObject()I"));
@@ -4822,6 +4894,40 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.LRETURN));
         method.maxLocals = 6;
         method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode longBitwiseShiftMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longBitwiseShift", "(JJI)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LAND));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LOR));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LSHL));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LSHR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LUSHR));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 5;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode wrappingLongShiftMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "wrappingLongShift", "()J", null, null);
+        method.instructions.add(new LdcInsnNode(Long.MAX_VALUE));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 65));
+        method.instructions.add(new InsnNode(Opcodes.LSHL));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 3;
         return method;
     }
 

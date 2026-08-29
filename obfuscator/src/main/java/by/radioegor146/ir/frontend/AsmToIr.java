@@ -46,6 +46,7 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        method = splitReferenceAndIntTemporarySlots(method);
         MethodShape shape = validateMethodShape(method);
         CfgBuilder.Graph graph = cfgBuilder.build(method);
         validateInstructions(graph);
@@ -243,6 +244,7 @@ public final class AsmToIr {
                                 || isWideStackOperation(opcode)
                                 || isIntBinaryOp(opcode)
                                 || isLongBinaryOp(opcode)
+                                || isLongShiftOp(opcode)
                                 || isFloatingBinaryOp(opcode)
                                 || isIntDivRem(opcode)
                                 || isIntUnaryOp(opcode)
@@ -384,6 +386,95 @@ public final class AsmToIr {
         }
     }
 
+    private MethodNode splitReferenceAndIntTemporarySlots(MethodNode source) {
+        int parameterSlots = (source.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+        for (Type argument : Type.getArgumentTypes(source.desc)) {
+            parameterSlots += argument.getSize();
+        }
+
+        Map<Integer, List<IrType>> typesByLocal = new LinkedHashMap<>();
+        for (AbstractInsnNode node : source.instructions) {
+            IrType type = localInstructionType(node);
+            int local = localInstructionIndex(node);
+            if (type == null || local < parameterSlots) {
+                continue;
+            }
+            List<IrType> types = typesByLocal.computeIfAbsent(
+                    local, ignored -> new ArrayList<IrType>());
+            if (!types.contains(type)) {
+                types.add(type);
+            }
+        }
+
+        Map<Integer, IrType> primaryTypes = new HashMap<>();
+        Map<Integer, Integer> alternateSlots = new HashMap<>();
+        int nextLocal = source.maxLocals;
+        for (Map.Entry<Integer, List<IrType>> entry : typesByLocal.entrySet()) {
+            List<IrType> types = entry.getValue();
+            if (types.size() == 2
+                    && types.contains(IrType.I32)
+                    && types.contains(IrType.REFERENCE)) {
+                primaryTypes.put(entry.getKey(), types.get(0));
+                alternateSlots.put(entry.getKey(), nextLocal++);
+            }
+        }
+        if (alternateSlots.isEmpty()) {
+            return source;
+        }
+
+        MethodNode copy = new MethodNode(Opcodes.ASM9, source.access, source.name,
+                source.desc, source.signature,
+                source.exceptions.toArray(new String[source.exceptions.size()]));
+        source.accept(copy);
+        for (AbstractInsnNode node : copy.instructions) {
+            IrType type = localInstructionType(node);
+            int local = localInstructionIndex(node);
+            if (type == null || !alternateSlots.containsKey(local)
+                    || type == primaryTypes.get(local)) {
+                continue;
+            }
+            int alternate = alternateSlots.get(local);
+            if (node instanceof VarInsnNode) {
+                ((VarInsnNode) node).var = alternate;
+            } else {
+                ((IincInsnNode) node).var = alternate;
+            }
+        }
+        copy.maxLocals = nextLocal;
+        return copy;
+    }
+
+    private IrType localInstructionType(AbstractInsnNode node) {
+        int opcode = node.getOpcode();
+        if (opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
+                || node instanceof IincInsnNode) {
+            return IrType.I32;
+        }
+        if (opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE) {
+            return IrType.REFERENCE;
+        }
+        if (opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE) {
+            return IrType.I64;
+        }
+        if (opcode == Opcodes.FLOAD || opcode == Opcodes.FSTORE) {
+            return IrType.F32;
+        }
+        if (opcode == Opcodes.DLOAD || opcode == Opcodes.DSTORE) {
+            return IrType.F64;
+        }
+        return null;
+    }
+
+    private int localInstructionIndex(AbstractInsnNode node) {
+        if (node instanceof VarInsnNode) {
+            return ((VarInsnNode) node).var;
+        }
+        if (node instanceof IincInsnNode) {
+            return ((IincInsnNode) node).var;
+        }
+        return -1;
+    }
+
     private Map<CfgBuilder.Block, List<IrType>> computeStackTypes(
             CfgBuilder.Graph graph, Set<CfgBuilder.Block> reachable, MethodNode method,
             MethodShape shape) {
@@ -518,6 +609,10 @@ public final class AsmToIr {
             stack.add(IrType.I32);
         } else if (isLongBinaryOp(opcode)) {
             popType(stack, IrType.I64, instruction);
+            popType(stack, IrType.I64, instruction);
+            stack.add(IrType.I64);
+        } else if (isLongShiftOp(opcode)) {
+            popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I64, instruction);
             stack.add(IrType.I64);
         } else if (isFloatingBinaryOp(opcode)) {
@@ -979,6 +1074,11 @@ public final class AsmToIr {
                 IrValue left = pop(state, IrType.I64, instruction);
                 state.stack.add(blockLongBinary(irMethod, block, longBinaryOperation(opcode),
                         left, right, instruction.getOriginalIndex()));
+            } else if (isLongShiftOp(opcode)) {
+                IrValue count = pop(state, IrType.I32, instruction);
+                IrValue value = pop(state, IrType.I64, instruction);
+                state.stack.add(blockLongShift(irMethod, block, longShiftOperation(opcode),
+                        value, count, instruction.getOriginalIndex()));
             } else if (isFloatingBinaryOp(opcode)) {
                 IrType type = floatingType(opcode);
                 IrValue right = pop(state, type, instruction);
@@ -1483,6 +1583,14 @@ public final class AsmToIr {
                                     IrValue left, IrValue right, int offset) {
         IrValue result = method.newInstructionValue(IrType.I64);
         block.addInstruction(new IrNodes.LongBinary(result, operation, left, right, offset));
+        return result;
+    }
+
+    private IrValue blockLongShift(IrMethod method, IrBlock block,
+                                   IrNodes.LongShift.Operation operation,
+                                   IrValue value, IrValue count, int offset) {
+        IrValue result = method.newInstructionValue(IrType.I64);
+        block.addInstruction(new IrNodes.LongShift(result, operation, value, count, offset));
         return result;
     }
 
@@ -2022,7 +2130,12 @@ public final class AsmToIr {
     }
 
     private static boolean isLongBinaryOp(int opcode) {
-        return opcode == Opcodes.LADD || opcode == Opcodes.LSUB || opcode == Opcodes.LMUL;
+        return opcode == Opcodes.LADD || opcode == Opcodes.LSUB || opcode == Opcodes.LMUL
+                || opcode == Opcodes.LAND || opcode == Opcodes.LOR || opcode == Opcodes.LXOR;
+    }
+
+    private static boolean isLongShiftOp(int opcode) {
+        return opcode == Opcodes.LSHL || opcode == Opcodes.LSHR || opcode == Opcodes.LUSHR;
     }
 
     private static boolean isIntUnaryOp(int opcode) {
@@ -2063,8 +2176,27 @@ public final class AsmToIr {
                 return IrNodes.LongBinary.Operation.SUBTRACT;
             case Opcodes.LMUL:
                 return IrNodes.LongBinary.Operation.MULTIPLY;
+            case Opcodes.LAND:
+                return IrNodes.LongBinary.Operation.AND;
+            case Opcodes.LOR:
+                return IrNodes.LongBinary.Operation.OR;
+            case Opcodes.LXOR:
+                return IrNodes.LongBinary.Operation.XOR;
             default:
                 throw new IllegalArgumentException("Not a long binary opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.LongShift.Operation longShiftOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.LSHL:
+                return IrNodes.LongShift.Operation.SHL;
+            case Opcodes.LSHR:
+                return IrNodes.LongShift.Operation.SHR;
+            case Opcodes.LUSHR:
+                return IrNodes.LongShift.Operation.USHR;
+            default:
+                throw new IllegalArgumentException("Not a long shift opcode: " + opcode);
         }
     }
 

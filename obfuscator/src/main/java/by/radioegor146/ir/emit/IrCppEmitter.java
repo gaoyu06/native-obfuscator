@@ -132,6 +132,9 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.LongBinary) {
             return emitLongBinary((IrNodes.LongBinary) instruction);
         }
+        if (instruction instanceof IrNodes.LongShift) {
+            return emitLongShift((IrNodes.LongShift) instruction);
+        }
         if (instruction instanceof IrNodes.FloatingBinary) {
             return emitFloatingBinary((IrNodes.FloatingBinary) instruction);
         }
@@ -274,6 +277,15 @@ public final class IrCppEmitter {
             case MULTIPLY:
                 operator = "*";
                 break;
+            case AND:
+                operator = "&";
+                break;
+            case OR:
+                operator = "|";
+                break;
+            case XOR:
+                operator = "^";
+                break;
             default:
                 throw new IllegalStateException("Unknown long binary operation "
                         + binary.getOperation());
@@ -283,6 +295,32 @@ public final class IrCppEmitter {
                 new CppAst.Cast("uint64_t", expression(binary.getRight()))));
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitLongShift(IrNodes.LongShift shift) {
+        CppAst.Expression value;
+        switch (shift.getOperation()) {
+            case SHL:
+                value = new CppAst.Binary(
+                        new CppAst.Cast("uint64_t", expression(shift.getValue())), "<<",
+                        longShiftAmount(expression(shift.getCount())));
+                break;
+            case SHR:
+                value = new CppAst.Binary(
+                        new CppAst.Cast("int64_t", expression(shift.getValue())), ">>",
+                        longShiftAmount(expression(shift.getCount())));
+                break;
+            case USHR:
+                value = new CppAst.Binary(
+                        new CppAst.Cast("uint64_t", expression(shift.getValue())), ">>",
+                        longShiftAmount(expression(shift.getCount())));
+                break;
+            default:
+                throw new IllegalStateException("Unknown long shift operation "
+                        + shift.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                variable(shift.getResult()), new CppAst.Cast("jlong", value)));
     }
 
     private List<CppAst.Statement> emitFloatingBinary(IrNodes.FloatingBinary binary) {
@@ -342,6 +380,11 @@ public final class IrCppEmitter {
     private CppAst.Expression shiftAmount(CppAst.Expression right) {
         return new CppAst.Binary(new CppAst.Cast("uint32_t", right), "&",
                 new CppAst.IntLiteral(31));
+    }
+
+    private CppAst.Expression longShiftAmount(CppAst.Expression count) {
+        return new CppAst.Binary(new CppAst.Cast("uint32_t", count), "&",
+                new CppAst.IntLiteral(63));
     }
 
     private List<CppAst.Statement> emitUnary(IrNodes.Unary unary) {
