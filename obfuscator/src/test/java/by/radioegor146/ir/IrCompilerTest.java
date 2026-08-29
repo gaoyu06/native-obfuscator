@@ -1283,9 +1283,10 @@ public class IrCompilerTest {
         assertTryCatchLabelsBelongTo(
                 nativeBody, nativeBody.tryCatchBlocks.get(0));
         assertEquals(Arrays.asList(
-                        Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
-                        Opcodes.POP, Opcodes.ALOAD, Opcodes.BIPUSH,
-                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                        Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.ICONST_1,
+                        Opcodes.IADD, Opcodes.IDIV, Opcodes.POP,
+                        Opcodes.ALOAD, Opcodes.BIPUSH, Opcodes.PUTFIELD,
+                        Opcodes.RETURN, Opcodes.POP, Opcodes.RETURN),
                 realOpcodes(nativeBody));
         frontend.build(owner.name, nativeBody);
 
@@ -6859,6 +6860,7 @@ public class IrCompilerTest {
         javaResult.check("plain identical-suffix catch Java run");
         assertEquals(
                 "7" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
                         + "0" + System.lineSeparator()
                         + "7" + System.lineSeparator(),
                 javaResult.stdout);
@@ -14579,12 +14581,11 @@ public class IrCompilerTest {
         }
         method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
         method.instructions.add(new InsnNode(Opcodes.IDIV));
         if (firstEnd != null) {
             method.instructions.add(firstEnd);
-        }
-        if (suffixHandler != null) {
-            method.instructions.add(suffixHandler);
         }
         method.instructions.add(new InsnNode(Opcodes.POP));
         if (hasTwoDivisions) {
@@ -14604,6 +14605,11 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(
                 Opcodes.PUTFIELD, owner, "result", "I"));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+        if (suffixHandler != null) {
+            method.instructions.add(suffixHandler);
+            method.instructions.add(new InsnNode(Opcodes.POP));
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+        }
     }
 
     private MethodNode identicalSuffixCopiesWithPrefixExtraConstructor(
@@ -16471,6 +16477,7 @@ public class IrCompilerTest {
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "main", "([Ljava/lang/String;)V", null, null);
         appendTwoArgumentConstructorResultPrint(method, owner, 7, 6);
+        appendTwoArgumentConstructorResultPrint(method, owner, -7, -1);
         appendTwoArgumentConstructorResultPrint(method, owner, -7, 0);
         appendTwoArgumentConstructorResultPrint(method, owner, -7, 3);
         method.instructions.add(new InsnNode(Opcodes.RETURN));

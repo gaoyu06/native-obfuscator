@@ -1262,7 +1262,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             suffixes.add(suffix);
         }
         LinearSuffix canonical = suffixes.get(suffixes.size() - 1);
-        if (canonical.endIndex != constructor.instructions.size()) {
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Set<LabelNode> canonicalTailHandlers =
+                canonicalSuffixTailHandlers(
+                        constructor, canonical, indexes);
+        if (canonical.endIndex != constructor.instructions.size()
+                && canonicalTailHandlers == null) {
             return null;
         }
 
@@ -1329,16 +1334,20 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
         }
-        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
         Set<LabelNode> canonicalLabels = labelsInRange(
-                constructor, canonical.startIndex, canonical.endIndex);
+                constructor, canonical.startIndex,
+                constructor.instructions.size());
         Set<LabelNode> prefixLabels = labelsInRange(
                 constructor, 0, callIndexes.get(0));
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             if (tryCatchLabelsBefore(
-                    tryCatch, indexes, callIndexes.get(0))
-                    || tryCatchLabelsInRange(
-                    tryCatch, indexes, canonical)) {
+                    tryCatch, indexes, callIndexes.get(0))) {
+                continue;
+            }
+            if (tryCatchRangeLabelsInRange(
+                    tryCatch, indexes, canonical)
+                    && canonicalTailHandlers != null
+                    && canonicalTailHandlers.contains(tryCatch.handler)) {
                 continue;
             }
             RelocatedPrefixHandler relocated =
@@ -1364,6 +1373,64 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new DuplicatedSuffix(
                 discarded, callIndexes.get(callIndexes.size() - 1),
                 canonical.startIndex);
+    }
+
+    /**
+     * Proves the only executable tail accepted after the canonical copy's
+     * normal RETURN: one suffix-owned handler that consumes the caught value
+     * and returns. The normal RETURN makes the handler unreachable by
+     * fallthrough; the generic split later clones the handler and its table
+     * into the independent IR body.
+     */
+    private static Set<LabelNode> canonicalSuffixTailHandlers(
+            MethodNode constructor, LinearSuffix canonical,
+            Map<LabelNode, Integer> indexes) {
+        if (canonical.endIndex == constructor.instructions.size()) {
+            return new HashSet<>();
+        }
+
+        Set<LabelNode> handlers = new HashSet<>();
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            Integer handlerIndex = indexes.get(tryCatch.handler);
+            if (handlerIndex != null
+                    && handlerIndex >= canonical.endIndex) {
+                handlers.add(tryCatch.handler);
+            }
+        }
+        if (handlers.size() != 1) {
+            return null;
+        }
+
+        LabelNode handler = handlers.iterator().next();
+        int handlerIndex = indexes.get(handler);
+        int firstIndex =
+                firstExecutableIndex(constructor, handlerIndex + 1);
+        if (firstIndex >= constructor.instructions.size()
+                || !containsOnlyFrames(
+                constructor, handlerIndex + 1, firstIndex)
+                || hasNormalTarget(constructor, handler)
+                || isTryRangeBoundary(constructor, handler)) {
+            return null;
+        }
+        AbstractInsnNode first = constructor.instructions.get(firstIndex);
+        if (first.getOpcode() != Opcodes.POP
+                && relocatableCaughtExceptionLocal(
+                constructor, first) == null) {
+            return null;
+        }
+        int returnIndex =
+                firstExecutableIndex(constructor, firstIndex + 1);
+        if (returnIndex >= constructor.instructions.size()
+                || constructor.instructions.get(returnIndex)
+                .getOpcode() != Opcodes.RETURN
+                || !containsOnlyFrames(
+                constructor, firstIndex + 1, returnIndex)
+                || firstExecutableIndex(
+                constructor, returnIndex + 1)
+                != constructor.instructions.size()) {
+            return null;
+        }
+        return handlers;
     }
 
     /**
