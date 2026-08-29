@@ -105,7 +105,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 retainedStart =
                         split.distinctSuffix.suffixes.get(i).endIndex;
             }
+            List<TryCatchBlockNode> wrapperTryCatches = new ArrayList<>();
+            for (TryCatchBlockNode tryCatch : retainedPrefixTryCatches) {
+                wrapperTryCatches.add(new TryCatchBlockNode(
+                        labels.get(tryCatch.start), labels.get(tryCatch.end),
+                        labels.get(tryCatch.handler), tryCatch.type));
+            }
             context.method.instructions = wrapper;
+            context.method.tryCatchBlocks.clear();
+            context.method.tryCatchBlocks.addAll(wrapperTryCatches);
             context.method.maxStack = Math.max(
                     context.method.maxStack,
                     bridgeArgumentSlots(context.proxyMethod));
@@ -225,6 +233,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             suffix.startIndex, suffix.endIndex);
                 }
             }
+            for (TryCatchBlockNode tryCatch : split.suffixTryCatches) {
+                body.tryCatchBlocks.add(new TryCatchBlockNode(
+                        labels.get(tryCatch.start), labels.get(tryCatch.end),
+                        labels.get(tryCatch.handler), tryCatch.type));
+            }
             body.maxLocals = Math.max(body.maxLocals, pathIdLocal + 1);
             body.maxStack = Math.max(constructor.maxStack, 1);
             return body;
@@ -336,12 +349,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             distinctExtraLocals(
                                     constructor, distinctSuffix,
                                     diagnosticCallIndex);
+                    MultiSuperTryCatches tryCatches =
+                            distinctSuffixTryCatches(
+                                    constructor, callIndexes, distinctSuffix);
                     return new ConstructorSplit(
                             distinctSuffix.suffixes.get(0).startIndex,
                             distinctSuffix.suffixes.get(0).startIndex,
                             new HashSet<>(), extraLocals,
                             firstExtraLocal(constructor),
-                            new ArrayList<>(), new ArrayList<>(),
+                            tryCatches.prefix, tryCatches.suffix,
                             new ArrayList<>(), null, distinctSuffix);
                 }
                 suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
@@ -501,6 +517,64 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return labels.contains(tryCatch.start)
                 && labels.contains(tryCatch.end)
                 && labels.contains(tryCatch.handler);
+    }
+
+    private static MultiSuperTryCatches distinctSuffixTryCatches(
+            MethodNode constructor, List<Integer> callIndexes,
+            DistinctSuffix distinctSuffix) {
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        List<TryCatchBlockNode> prefix = new ArrayList<>();
+        List<TryCatchBlockNode> suffix = new ArrayList<>();
+        int firstCallIndex = callIndexes.get(0);
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            if (tryCatchLabelsBefore(
+                    tryCatch, indexes, firstCallIndex)) {
+                prefix.add(tryCatch);
+                continue;
+            }
+            boolean whollyInOneSuffix = false;
+            for (LinearSuffix range : distinctSuffix.suffixes) {
+                if (tryCatchLabelsInRange(tryCatch, indexes, range)) {
+                    whollyInOneSuffix = true;
+                    break;
+                }
+            }
+            if (!whollyInOneSuffix) {
+                throw new UnsupportedIrConstructException(
+                        "Constructor exception regions may not cross "
+                                + "the this/super split");
+            }
+            suffix.add(tryCatch);
+        }
+        return new MultiSuperTryCatches(prefix, suffix);
+    }
+
+    private static boolean tryCatchLabelsBefore(
+            TryCatchBlockNode tryCatch, Map<LabelNode, Integer> indexes,
+            int endIndex) {
+        Integer start = indexes.get(tryCatch.start);
+        Integer end = indexes.get(tryCatch.end);
+        Integer handler = indexes.get(tryCatch.handler);
+        return start != null && end != null && handler != null
+                && start < endIndex && end < endIndex
+                && handler < endIndex;
+    }
+
+    private static boolean tryCatchLabelsInRange(
+            TryCatchBlockNode tryCatch, Map<LabelNode, Integer> indexes,
+            LinearSuffix range) {
+        Integer start = indexes.get(tryCatch.start);
+        Integer end = indexes.get(tryCatch.end);
+        Integer handler = indexes.get(tryCatch.handler);
+        return indexInRange(start, range)
+                && indexInRange(end, range)
+                && indexInRange(handler, range);
+    }
+
+    private static boolean indexInRange(
+            Integer index, LinearSuffix range) {
+        return index != null
+                && index >= range.startIndex && index < range.endIndex;
     }
 
     /**
@@ -1062,8 +1136,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
-        if (callIndexes.size() < 2
-                || !constructor.tryCatchBlocks.isEmpty()) {
+        if (callIndexes.size() < 2) {
             return null;
         }
 
@@ -1112,6 +1185,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
         }
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            if (!tryCatchLabelsBefore(
+                    tryCatch, indexes, callIndexes.get(0))) {
+                throw new UnsupportedIrConstructException(
+                        "Constructor exception regions may not cross "
+                                + "the this/super split");
+            }
+        }
 
         List<DuplicatedRange> discarded = new ArrayList<>();
         for (int i = 0; i < suffixes.size() - 1; i++) {
@@ -1137,8 +1219,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static DistinctSuffix distinctSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
         if (callIndexes.size() < 2
-                || callIndexes.size() > MAX_DISTINCT_SUFFIXES
-                || !constructor.tryCatchBlocks.isEmpty()) {
+                || callIndexes.size() > MAX_DISTINCT_SUFFIXES) {
             return null;
         }
 
@@ -1227,6 +1308,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             AbstractInsnNode instruction =
                     constructor.instructions.get(index);
             int opcode = instruction.getOpcode();
+            if (opcode >= 0) {
+                addExceptionSuccessors(
+                        constructor, labelIndexes, index, pending);
+            }
             if (opcode == Opcodes.RETURN) {
                 reachesReturn = true;
                 continue;
@@ -1338,6 +1423,21 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return new LinearSuffix(startIndex, endIndex);
+    }
+
+    private static void addExceptionSuccessors(
+            MethodNode constructor, Map<LabelNode, Integer> labelIndexes,
+            int instructionIndex, ArrayDeque<Integer> pending) {
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            Integer startIndex = labelIndexes.get(tryCatch.start);
+            Integer endIndex = labelIndexes.get(tryCatch.end);
+            Integer handlerIndex = labelIndexes.get(tryCatch.handler);
+            if (startIndex != null && endIndex != null && handlerIndex != null
+                    && instructionIndex >= startIndex
+                    && instructionIndex < endIndex) {
+                pending.add(handlerIndex);
+            }
+        }
     }
 
     private static boolean hasProvenDistinctSuffixSwitchKey(
@@ -3410,6 +3510,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private LinearSuffix(int startIndex, int endIndex) {
             this.startIndex = startIndex;
             this.endIndex = endIndex;
+        }
+    }
+
+    private static final class MultiSuperTryCatches {
+        private final List<TryCatchBlockNode> prefix;
+        private final List<TryCatchBlockNode> suffix;
+
+        private MultiSuperTryCatches(
+                List<TryCatchBlockNode> prefix,
+                List<TryCatchBlockNode> suffix) {
+            this.prefix = prefix;
+            this.suffix = suffix;
         }
     }
 
