@@ -24,7 +24,7 @@ public final class AdmissionTarget {
         return operation.apply(value);
     }
 
-    public float unsupported(float value) {
-        return value + 1.0f;
+    public int unsupported(int value) {
+        return (int) (value + 0.5f);
     }
 }
