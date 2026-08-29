@@ -2457,9 +2457,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a double operand with at most one DADD, DSUB, or DMUL level. Both
-     * operands of that binary must therefore be non-recursive proven double
-     * leaves.
+     * Proves a double operand with at most one DADD, DSUB, DMUL, DDIV, or DREM
+     * level. Both operands of that binary must therefore be non-recursive
+     * proven double leaves.
      */
     private static Integer previousProvenDoubleChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2472,7 +2472,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int opcode = input.getOpcode();
         if (opcode != Opcodes.DADD
                 && opcode != Opcodes.DSUB
-                && opcode != Opcodes.DMUL) {
+                && opcode != Opcodes.DMUL
+                && opcode != Opcodes.DDIV
+                && opcode != Opcodes.DREM) {
             return previousProvenDoubleChainLeaf(
                     constructor, inputIndex, declaredArguments);
         }

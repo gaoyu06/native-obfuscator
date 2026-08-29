@@ -106,6 +106,9 @@ public class IrCompilerTest {
     private static final String[] FLOAT_DIV_REM_CHAIN_INPUT_SHAPES = {
             "float-fdiv", "float-frem"
     };
+    private static final String[] DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES = {
+            "double-ddiv", "double-drem"
+    };
     private static final String[] TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES = {
             "float-nested-fadd", "float-nested-fdiv",
             "float-fdiv-inner", "float-two-sided-fadd"
@@ -3492,6 +3495,52 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithDdivAndDremOfProvenChainInputs() {
+        int[] opcodes = {Opcodes.DDIV, Opcodes.DREM};
+        for (int i = 0; i < DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES[i];
+            ClassNode base = multipleSuperDoubleBase(
+                    "example/MultiSuperDoubleDivRemBase"
+                            + shape.replace("-", ""));
+            ClassNode owner = constructorOwner(
+                    "example/ThreeDoubleDivRemMultiReturn"
+                            + shape.replace("-", ""),
+                    base.name);
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(ID)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;ID)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithFnegOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeFloatNegateMultiReturn",
@@ -4531,7 +4580,7 @@ public class IrCompilerTest {
     public void rejectsUnprovenDoubleComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "double-nested-dadd", "double-extra-local",
-                "double-ddiv")) {
+                "double-dneg")) {
             ClassNode base = multipleSuperDoubleBase(
                     "example/RejectedDoubleComputedBase"
                             + shape.replace("-", ""));
@@ -6014,6 +6063,66 @@ public class IrCompilerTest {
             assertEquals(1, hiddenBridgeCallCount(constructor), shape);
             assertEquals(3, Collections.frequency(
                     realOpcodes(constructor), opcode), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;ID)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
+    }
+
+    @Test
+    public void rewrittenThreeImmediateDdivDremSuperReturnsPassJvmVerification()
+            throws Exception {
+        int[] opcodes = {Opcodes.DDIV, Opcodes.DREM};
+        for (int i = 0; i < DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES[i];
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperDoubleBase(
+                            "example/VerifiedThreeDoubleDivRemBase"
+                                    + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedThreeDoubleDivRem" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            double[] values = {11.0, -22.0, 0.25};
+            for (int j = 0; j < selectors.length; j++) {
+                int selector = selectors[j];
+                double value = values[j];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, double.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
             assertEquals(
                     "(Ljava/lang/Object;ID)V",
                     context.proxyMethod.getMethodNode().desc,
@@ -9911,6 +10020,101 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native double arithmetic multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateDdivDremSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the double div/rem runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the double div/rem runtime test");
+
+        String ownerName = "example/ThreeDoubleDivRemReturnRuntime";
+        String baseName = "example/ThreeDoubleDivRemReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-double-div-rem-run");
+        Path inputJar = directory.resolve("three-double-div-rem-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeDdivDremReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain double div/rem multi-super Java run");
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        String[] transformedNames = {
+                ownerName, ownerName + "$Drem"
+        };
+        int[] opcodes = {Opcodes.DDIV, Opcodes.DREM};
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int i = 0; i < transformedNames.length; i++) {
+                String transformedName = transformedNames[i];
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(transformedName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed));
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor));
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor), opcodes[i]));
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO));
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN));
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("double div/rem multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("double div/rem multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Double div/rem native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native double div/rem multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -17784,6 +17988,44 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeDdivDremReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperDoubleBase(baseName);
+        base.version = Opcodes.V1_8;
+        String[] ownerNames = {
+                ownerName, ownerName + "$Drem"
+        };
+        ClassNode[] owners = new ClassNode[ownerNames.length];
+        for (int i = 0; i < ownerNames.length; i++) {
+            ClassNode owner = constructorOwner(ownerNames[i], baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, DOUBLE_DIV_REM_CHAIN_INPUT_SHAPES[i]));
+            owners[i] = owner;
+        }
+        owners[0].methods.add(multipleSuperThreeDdivDremReturnsMain(
+                ownerNames[0], ownerNames[1], baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, ownerName.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+        }
+    }
+
     private void createMultipleSuperThreeFnegReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -22452,12 +22694,18 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.DCONST_1));
             method.instructions.add(new InsnNode(Opcodes.DSUB));
         } else if ("double-dmul".equals(shape)
-                || "double-ddiv".equals(shape)) {
+                || "double-ddiv".equals(shape)
+                || "double-drem".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
             method.instructions.add(new LdcInsnNode(Double.valueOf(2.0)));
             method.instructions.add(new InsnNode(
                     "double-dmul".equals(shape)
-                            ? Opcodes.DMUL : Opcodes.DDIV));
+                            ? Opcodes.DMUL
+                            : "double-ddiv".equals(shape)
+                                    ? Opcodes.DDIV : Opcodes.DREM));
+        } else if ("double-dneg".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.DNEG));
         } else if ("reference-computed".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.ICONST_0));
@@ -23123,6 +23371,25 @@ public class IrCompilerTest {
                 method, dmulOwner, superName, -7, -22.0);
         appendMultipleSuperDoublePrint(
                 method, dmulOwner, superName, 0, 0.25);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private MethodNode multipleSuperThreeDdivDremReturnsMain(
+            String ddivOwner, String dremOwner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (String owner : Arrays.asList(ddivOwner, dremOwner)) {
+            appendMultipleSuperDoublePrint(
+                    method, owner, superName, 7, 11.0);
+            appendMultipleSuperDoublePrint(
+                    method, owner, superName, -7, -22.0);
+            appendMultipleSuperDoublePrint(
+                    method, owner, superName, 0, 0.25);
+        }
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 6;
