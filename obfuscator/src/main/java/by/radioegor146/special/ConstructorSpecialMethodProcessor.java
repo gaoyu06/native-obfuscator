@@ -2562,10 +2562,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves that every retained ASTORE 0 writes the original constructor
-     * receiver and that each selected chain call consumes that same receiver.
-     * The analysis is deliberately local to constructors containing ASTORE 0,
-     * so unrelated admission behavior is unchanged.
+     * Proves that every retained ASTORE 0 is reachable with a stack input and
+     * that each selected chain call consumes the original constructor receiver.
+     * A single-call constructor may forward that receiver through an alias
+     * while local 0 receives another reference. Multi-call forms remain limited
+     * to identity-preserving stores.
      */
     private static void validateReceiverStores(
             MethodNode constructor, int splitIndex, List<Integer> callIndexes,
@@ -2597,10 +2598,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     constructor.instructions.get(diagnosticIndex));
         }
 
+        boolean allowAliasForwarding = callIndexes.size() == 1;
         for (Integer storeIndex : receiverStores) {
             ReceiverFrame frame = frames[storeIndex];
             if (frame == null || frame.stack.isEmpty()
-                    || !frame.stack.get(frame.stack.size() - 1).receiver) {
+                    || (!allowAliasForwarding
+                    && !frame.stack.get(frame.stack.size() - 1).receiver)) {
                 throw unsupported(
                         "Constructor prefix ASTORE 0 does not provably preserve "
                                 + "the constructor receiver",
