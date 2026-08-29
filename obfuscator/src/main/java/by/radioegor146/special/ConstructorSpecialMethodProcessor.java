@@ -1013,8 +1013,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Restricts the 3+-return normalization to calls whose complete operand
      * sequence is visible locally: ALOAD 0 followed by direct declared-argument
-     * loads, int-family constants, or one INEG over a direct declared
-     * int-family argument load.
+     * loads, int-family constants, one INEG over a direct declared int-family
+     * argument load, or one IADD of two such int-family inputs.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1065,7 +1065,34 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!isIntFamily(expected)) {
             return null;
         }
-        if (isIntFamilyConstant(input)) {
+        if (input.getOpcode() == Opcodes.IADD) {
+            Integer beforeRight = previousProvenIntChainOperand(
+                    constructor,
+                    previousExecutableIndex(constructor, inputIndex - 1),
+                    declaredArguments);
+            if (beforeRight == null) {
+                return null;
+            }
+            return previousProvenIntChainOperand(
+                    constructor, beforeRight, declaredArguments);
+        }
+        return previousProvenIntChainOperand(
+                constructor, inputIndex, declaredArguments);
+    }
+
+    /**
+     * Proves one non-recursive int-family input. Deliberately excluding IADD
+     * here keeps the admitted binary expression to exactly one level.
+     */
+    private static Integer previousProvenIntChainOperand(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isDirectDeclaredIntArgumentLoad(input, declaredArguments)
+                || isIntFamilyConstant(input)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         if (input.getOpcode() != Opcodes.INEG) {

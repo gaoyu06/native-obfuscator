@@ -1308,7 +1308,7 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void admitsThreeImmediateReturnsWithComputedChainInputs() {
+    public void admitsThreeImmediateReturnsWithIaddOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeComputedMultiReturn",
                 "example/MultiSuperBase");
@@ -1331,6 +1331,8 @@ public class IrCompilerTest {
 
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IADD));
         assertEquals(2, Collections.frequency(
                 realOpcodes(constructor), Opcodes.GOTO));
         assertEquals(1, Collections.frequency(
@@ -1343,8 +1345,9 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
-                "extra-local", "astore-zero", "binary",
-                "post-call", "skip-super", "exception-table")) {
+                "extra-local", "iadd-extra-local", "nested-iadd",
+                "astore-zero", "post-call", "skip-super",
+                "exception-table")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedThree"
                             + shape.replace("-", ""),
@@ -2032,7 +2035,7 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rewrittenThreeImmediateSuperReturnsPassJvmVerification()
+    public void rewrittenThreeImmediateIaddSuperReturnsPassJvmVerification()
             throws Exception {
         ClassNode base =
                 multipleSuperBase("example/VerifiedThreeMultiReturnBase");
@@ -2065,6 +2068,8 @@ public class IrCompilerTest {
         }
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IADD));
     }
 
     @Test
@@ -2773,7 +2778,7 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void threeImmediateSuperReturnsCompileAndRunWithJavaParity()
+    public void threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity()
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
                 "cmake is required for the three-return runtime test");
@@ -2796,7 +2801,7 @@ public class IrCompilerTest {
                         "-jar", inputJar.toString()));
         javaResult.check("plain three-return multi-super Java run");
         assertEquals(
-                "11" + System.lineSeparator()
+                "12" + System.lineSeparator()
                         + "22" + System.lineSeparator()
                         + "0" + System.lineSeparator(),
                 javaResult.stdout);
@@ -2821,6 +2826,8 @@ public class IrCompilerTest {
         assertEquals(3, directChainCallCount(
                 transformedConstructor, transformed));
         assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IADD));
         assertEquals(2, Collections.frequency(
                 realOpcodes(transformedConstructor), Opcodes.GOTO));
         assertEquals(1, Collections.frequency(
@@ -2880,7 +2887,7 @@ public class IrCompilerTest {
                         "-jar", inputJar.toString()));
         javaResult.check("plain three-suffix multi-super Java run");
         assertEquals(
-                "11" + System.lineSeparator()
+                "12" + System.lineSeparator()
                         + "22" + System.lineSeparator()
                         + "0" + System.lineSeparator(),
                 javaResult.stdout);
@@ -8813,6 +8820,8 @@ public class IrCompilerTest {
         method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
@@ -8833,7 +8842,7 @@ public class IrCompilerTest {
                 "<init>", "(I)V", false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 2;
-        method.maxStack = 2;
+        method.maxStack = 3;
         return method;
     }
 
@@ -8952,7 +8961,8 @@ public class IrCompilerTest {
         LabelNode negative = new LabelNode();
         LabelNode zero = new LabelNode();
 
-        if ("extra-local".equals(shape)) {
+        if ("extra-local".equals(shape)
+                || "iadd-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
             method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
         } else if ("astore-zero".equals(shape)) {
@@ -8982,7 +8992,7 @@ public class IrCompilerTest {
             method.instructions.add(continueToCalls);
             method.tryCatchBlocks.add(new TryCatchBlockNode(
                     start, end, handler, "java/lang/Throwable"));
-        } else if (!"binary".equals(shape)
+        } else if (!"nested-iadd".equals(shape)
                 && !"post-call".equals(shape)) {
             throw new IllegalArgumentException("Unknown shape " + shape);
         }
@@ -8994,9 +9004,15 @@ public class IrCompilerTest {
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new VarInsnNode(
                 Opcodes.ILOAD,
-                "extra-local".equals(shape) ? 2 : 1));
-        if ("binary".equals(shape)) {
+                "extra-local".equals(shape)
+                        || "iadd-extra-local".equals(shape) ? 2 : 1));
+        if ("iadd-extra-local".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("nested-iadd".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IADD));
         }
         method.instructions.add(new MethodInsnNode(
@@ -9022,7 +9038,8 @@ public class IrCompilerTest {
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
-        method.maxLocals = "extra-local".equals(shape) ? 3 : 2;
+        method.maxLocals = "extra-local".equals(shape)
+                || "iadd-extra-local".equals(shape) ? 3 : 2;
         method.maxStack = 3;
         return method;
     }
