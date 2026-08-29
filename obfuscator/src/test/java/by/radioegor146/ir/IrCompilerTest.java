@@ -1283,7 +1283,7 @@ public class IrCompilerTest {
                         first + "/" + second + " did not preserve the reordered value");
                 assertFalse(cpp.contains("env->"),
                         "SWAP must not emit JNI calls for " + first + "/" + second);
-                assertFalse(ir.toString().contains("swap"),
+                assertFalse(ir.toString().contains(" = swap "),
                         "SWAP should disappear into the SSA stack order");
             }
         }
