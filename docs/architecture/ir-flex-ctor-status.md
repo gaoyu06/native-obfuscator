@@ -43,8 +43,8 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load, plus one `IADD` whose two operands are each one of those
-  already-proven int-family inputs).
+  argument load, plus one `IADD`, `ISUB`, or `IMUL` whose two operands are each
+  one of those already-proven int-family inputs).
 
 ## Current rule
 
@@ -123,10 +123,10 @@ One additional family is reduced to that same shared-join form:
   argument with a matching JVM carrier; `ICONST_M1` through `ICONST_5`,
   `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
   or exactly one `INEG` over a direct `ILOAD` of a declared int-family
-  constructor argument. An int-family argument may also be exactly one `IADD`
-  whose left and right operands are independently one of those direct loads,
-  constants, or single-load `INEG` forms. The operand proof is leaf-only, so
-  neither operand may itself be an `IADD`.
+  constructor argument. An int-family argument may also be exactly one `IADD`,
+  `ISUB`, or `IMUL` whose left and right operands are independently one of
+  those direct loads, constants, or single-load `INEG` forms. The operand proof
+  is leaf-only, so neither operand may itself be a binary expression.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -136,15 +136,15 @@ One additional family is reduced to that same shared-join form:
   strict-diamond split then retains every call and emits the canonical suffix
   once behind one hidden bridge.
 
-Three-or-more calls with extra-local or aliased chain inputs, nested `IADD`,
-other binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
-fields, method calls, stack duplication, computed or rewritten receivers, or
-any other unlisted input remain rejected. Distinct joins, other conditional
-or switch forms, condition/switch-key loads that are not direct declared
-int-family arguments, labels or control flow in a copied suffix, nonempty
-exception tables for the post-chain forms, zero-call paths, unreachable
-candidates, extra-local suffix reads, and non-identical per-call suffixes also
-remain rejected.
+Three-or-more calls with extra-local or aliased chain inputs, nested binary
+expressions, `IDIV`, `IREM`, shifts, other binary arithmetic, `IINC`,
+non-int-family constants, non-`Integer` `LDC`, fields, method calls, stack
+duplication, computed or rewritten receivers, or any other unlisted input
+remain rejected. Distinct joins, other conditional or switch forms,
+condition/switch-key loads that are not direct declared int-family arguments,
+labels or control flow in a copied suffix, nonempty exception tables for the
+post-chain forms, zero-call paths, unreachable candidates, extra-local suffix
+reads, and non-identical per-call suffixes also remain rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
 multi-exit constructor rewriter.
 
@@ -361,6 +361,17 @@ Synthetic bytecode unit tests in
 - `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity` selects all three
   paths through plain Java and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs` applies the
+  same leaf-only proof to one `ISUB` path, one `IMUL` path, and one direct-load
+  path; it retains both arithmetic opcodes, all three calls, two shared-join
+  `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateIsubImulSuperReturnsPassJvmVerification` serializes
+  and loads the rewritten owner and hidden class, then selects all three paths
+  up to the unresolved bridge after JVM verification.
+- `threeImmediateIsubImulSuperReturnsCompileAndRunWithJavaParity` selects the
+  subtraction, multiplication, and direct-load paths through plain Java and the
+  complete CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring
+  identical stdout.
 - `admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies` proves that
   three instruction-identical `ICONST_4; POP; RETURN` copies normalize to two
   retained `GOTO`s, one canonical suffix, and one hidden bridge while retaining
@@ -393,12 +404,13 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
-- Three-call negatives reject direct extra-local inputs, `IADD` using an extra
-  local, nested `IADD`, a rewritten `ASTORE 0` receiver, non-identical
-  post-call work, a branched suffix, a zero-call return, skip-super paths, and
-  nonempty exception tables before mutation. Other multi-call negatives still
-  cover try/catch spanning a chain call and suffix code, a path that executes
-  two chain calls, and distinct non-empty per-call suffixes. Existing
+- Three-call negatives reject direct extra-local inputs, `IADD`, `ISUB`, or
+  `IMUL` using an extra local, nested forms of each admitted binary opcode,
+  trapping `IDIV`, a rewritten `ASTORE 0` receiver, non-identical post-call
+  work, a branched suffix, a zero-call return, skip-super paths, and nonempty
+  exception tables before mutation. Other multi-call negatives still cover
+  try/catch spanning a chain call and suffix code, a path that executes two
+  chain calls, and distinct non-empty per-call suffixes. Existing
   prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
   negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
