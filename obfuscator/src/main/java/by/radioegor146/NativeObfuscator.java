@@ -29,6 +29,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -113,7 +114,7 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
         return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
                 customLibraryDirectory, platform, useAnnotations, generateDebugJar,
-                CodegenMode.LEGACY, CompilerBackend.CPP);
+                CodegenMode.LEGACY, CompilerBackend.CPP, IrLoweringMode.DIRECT);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -123,7 +124,7 @@ public class NativeObfuscator {
                           CodegenMode codegenMode) throws IOException {
         return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
                 customLibraryDirectory, platform, useAnnotations, generateDebugJar,
-                codegenMode, CompilerBackend.CPP);
+                codegenMode, CompilerBackend.CPP, IrLoweringMode.DIRECT);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -131,8 +132,34 @@ public class NativeObfuscator {
                           String customLibraryDirectory,
                           Platform platform, boolean useAnnotations, boolean generateDebugJar,
                           CodegenMode codegenMode, CompilerBackend backend) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, backend, IrLoweringMode.DIRECT);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, IrLoweringMode irLoweringMode)
+            throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, CompilerBackend.CPP, irLoweringMode);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, CompilerBackend backend,
+                          IrLoweringMode irLoweringMode) throws IOException {
         final CodegenMode selectedCodegen = Objects.requireNonNull(codegenMode, "codegenMode");
         final CompilerBackend selectedBackend = Objects.requireNonNull(backend, "backend");
+        final IrLoweringMode selectedIrLowering =
+                Objects.requireNonNull(irLoweringMode, "irLoweringMode");
+        final boolean evaluatorRuntimeEnabled = selectedCodegen == CodegenMode.IR
+                && selectedIrLowering == IrLoweringMode.EVAL;
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -156,6 +183,13 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm.hpp", cppDir);
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
+        if (evaluatorRuntimeEnabled) {
+            Util.copyResource("sources/native_jvm_eval.cpp", cppDir);
+            Util.copyResource("sources/native_jvm_eval.hpp", cppDir);
+            Files.write(cppDir.resolve("native_jvm.hpp"),
+                    "\n#include \"native_jvm_eval.hpp\"\n".getBytes(StandardCharsets.UTF_8),
+                    StandardOpenOption.APPEND);
+        }
         if (selectedBackend == CompilerBackend.INTERPRETER) {
             Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
             Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
@@ -204,6 +238,10 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.h");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.cpp");
+        if (evaluatorRuntimeEnabled) {
+            cMakeBuilder.addMainFile("native_jvm_eval.hpp");
+            cMakeBuilder.addMainFile("native_jvm_eval.cpp");
+        }
         if (selectedBackend == CompilerBackend.INTERPRETER) {
             cMakeBuilder.addMainFile("native_jvm_interp.hpp");
             cMakeBuilder.addMainFile("native_jvm_interp.cpp");
@@ -361,7 +399,7 @@ public class NativeObfuscator {
                                 interpreterMethodProcessor.processMethod(context, interpreted);
                             } else if (selectedCodegen == CodegenMode.IR) {
                                 try {
-                                    irMethodCompiler.processMethod(context);
+                                    irMethodCompiler.processMethod(context, selectedIrLowering);
                                 } catch (UnsupportedIrConstructException ex) {
                                     if ("<init>".equals(method.name)) {
                                         logger.info("IR codegen unsupported for {}#{}{}: {}; "

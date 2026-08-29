@@ -58,6 +58,10 @@ public class Main {
                 description = "Method code generator: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CodegenMode codegenMode;
 
+        @CommandLine.Option(names = {"--ir-lower"}, defaultValue = "direct",
+                description = "IR lowering strategy: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private IrLoweringMode irLoweringMode;
+
         @CommandLine.Option(names = {"--backend"}, defaultValue = "cpp",
                 description = "Compiler backend: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CompilerBackend backend = CompilerBackend.CPP;
@@ -115,7 +119,8 @@ public class Main {
             Path outputDir = Paths.get(outputDirectory);
             String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
-                    platform, useAnnotations, generateDebugJar, codegenMode, backend);
+                    platform, useAnnotations, generateDebugJar, codegenMode, backend,
+                    irLoweringMode);
 
             if (useZig) {
                 runZigBuild(outputDir, nativeDir);

@@ -2,9 +2,9 @@
 
 Java `.class` to C++ converter for use with JNI.
 
-The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a default-off in-process interpreter (`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
+The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in-process interpreter (`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
 
-**现状（中文）：** 默认仍是 `--codegen=legacy` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR。`--backend=interpreter` 是默认关闭的窄整数切片。C++ SDK 会打进生成 JAR。JDK 17 IR 语料在一台 Linux VM 上有过 11/11 对齐记录，**不能**写成“已支持 JDK 17”。`--ir-lower=eval` 仍未进当前 master。
+**现状（中文）：** 默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭，均为窄整数切片。C++ SDK 会打进生成 JAR。JDK 17 IR 语料在一台 Linux VM 上有过 11/11 对齐记录，**不能**写成“已支持 JDK 17”。
 
 ---
 
@@ -23,7 +23,7 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
 | Interpreter | `--backend=interpreter` default off (`cpp`). Static `int` ISA v2 (add/sub/mul/bitwise/shift/neg/div/rem). Not a protection product |
-| Shared evaluator | `--ir-lower=eval` remains a sibling stack; **not** on current `master` |
+| Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Native output can be much slower than HotSpot. No global “faster than Java” claim. Prefer a whitelist |
 
@@ -47,7 +47,7 @@ This tool **transpiles** bytecode to native. It does not pack binaries and does 
 
 ```text
 Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
-                         [--backend=<backend>]
+                         [--ir-lower=<lowering>] [--backend=<backend>]
                          [-b=<blackListFile>] [--custom-lib-dir=<dir>]
                          [-l=<librariesDirectory>] [-p=<platform>]
                          [--plain-lib-name=<libraryName>] [-w=<whiteListFile>]
@@ -66,6 +66,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-l` | Directory of dependent libraries (optional, recommended) |
 | `-p` | `hotspot` (default), `std_java`, or `android` |
 | `--codegen` | `legacy` (default) or `ir` |
+| `--ir-lower` | `direct` (default) or `eval`; consulted only with `--codegen=ir` |
 | `--backend` | `cpp` (default) or `interpreter` (narrow static `int` slice; default off) |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
@@ -78,7 +79,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--jdk-home` | JDK with `include/jni.h` (defaults to `JAVA_HOME`) |
 | `--zig-install-dir` | Where Zig was installed (default `~/.native-obfuscator/zig/`) |
 
-`--codegen=ir` is opt-in. Unsupported methods fall back per-method to the legacy generator, except rejected `<init>` bodies, which are restored to the original bytecode (including `invokedynamic`) instead of being left with internal preprocessor markers. `--backend=interpreter` is separately opt-in and default off.
+`--codegen=ir` is opt-in. Its `direct` lowering remains the default; `--ir-lower=eval` selects a narrow shared evaluator lowering. Unsupported methods fall back per-method to the legacy generator, except rejected `<init>` bodies, which are restored to the original bytecode (including `invokedynamic`) instead of being left with internal preprocessor markers. `--backend=interpreter` is separately opt-in and default off.
 
 ### Platforms
 
@@ -110,7 +111,7 @@ Wildcards: `*` is one `/`-separated segment; `**` is any remaining segments.
 ### Basic flow
 
 1. `java -jar native-obfuscator.jar <input.jar> <output-dir>`
-2. Optional IR: add `--codegen=ir`
+2. Optional IR: add `--codegen=ir` (and optionally `--ir-lower=eval`)
 3. `cmake .` in the generated `cpp/` directory (recorded IR builds used `CC=gcc CXX=g++`)
 4. `cmake --build . --config Release`
 5. Copy the shared library from `build/libs/` into the loader path printed on stdout (`native0/` by default), named like:
