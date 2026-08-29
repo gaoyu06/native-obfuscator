@@ -36,11 +36,19 @@ import java.util.TreeMap;
  * fully admitted remainder to a hidden static native bridge.
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
+    private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
+
     @Override
     public String preProcess(MethodContext context) {
         String name = String.format("special_init_%d_%d",
                 context.classIndex, context.methodIndex);
         ConstructorSplit split = split(context.clazz, context.method);
+        retainedPrefixTryCatches =
+                new ArrayList<>(split.prefixTryCatches);
+        // The JNI shell only needs catch metadata for the native suffix.
+        // Prefix catches are restored with cloned wrapper labels in postProcess.
+        context.method.tryCatchBlocks.clear();
+        context.method.tryCatchBlocks.addAll(split.suffixTryCatches);
         Type[] constructorArguments = splitArgumentTypes(context.method, split);
         Type[] bridgeArguments = new Type[constructorArguments.length + 1];
         bridgeArguments[0] = Type.getType(Object.class);
@@ -65,8 +73,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     @Override
     public void postProcess(MethodContext context) {
         ConstructorSplit split = split(context.clazz, context.method);
+        Map<LabelNode, LabelNode> labels = labels(context.method);
         InsnList wrapper = cloneRange(
-                context.method, 0, split.wrapperEndIndex);
+                context.method, 0, split.wrapperEndIndex, labels);
+        List<TryCatchBlockNode> wrapperTryCatches = new ArrayList<>();
+        for (TryCatchBlockNode tryCatch : retainedPrefixTryCatches) {
+            wrapperTryCatches.add(new TryCatchBlockNode(
+                    labels.get(tryCatch.start), labels.get(tryCatch.end),
+                    labels.get(tryCatch.handler), tryCatch.type));
+        }
         wrapper.add(new VarInsnNode(Opcodes.ALOAD, 0));
 
         int local = 1;
@@ -85,6 +100,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 bridge.getMethodNode().desc, false));
         wrapper.add(new InsnNode(Opcodes.RETURN));
         context.method.instructions = wrapper;
+        context.method.tryCatchBlocks.addAll(wrapperTryCatches);
     }
 
     /**
@@ -114,7 +130,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         body.maxLocals, requiredLocalSlots(copy));
             }
         }
-        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+        for (TryCatchBlockNode tryCatch : split.suffixTryCatches) {
             body.tryCatchBlocks.add(new TryCatchBlockNode(
                     labels.get(tryCatch.start), labels.get(tryCatch.end),
                     labels.get(tryCatch.handler), tryCatch.type));
@@ -261,10 +277,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 }
             }
         }
+        List<TryCatchBlockNode> prefixTryCatches = new ArrayList<>();
+        List<TryCatchBlockNode> suffixTryCatches = new ArrayList<>();
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
-            if (!suffixLabels.contains(tryCatch.start)
-                    || !suffixLabels.contains(tryCatch.end)
-                    || !suffixLabels.contains(tryCatch.handler)) {
+            boolean entirelyInPrefix =
+                    containsTryCatchLabels(prefixLabels, tryCatch);
+            boolean entirelyInSuffix =
+                    containsTryCatchLabels(suffixLabels, tryCatch);
+            if (entirelyInPrefix) {
+                prefixTryCatches.add(tryCatch);
+            } else if (entirelyInSuffix) {
+                suffixTryCatches.add(tryCatch);
+            } else {
                 throw new UnsupportedIrConstructException(
                         "Constructor exception regions may not cross the this/super split");
             }
@@ -277,7 +301,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new ConstructorSplit(
                 suffixStartIndex, wrapperEndIndex,
                 widenedReferenceLocals, extraLocals,
-                firstExtraLocal(constructor));
+                firstExtraLocal(constructor),
+                prefixTryCatches, suffixTryCatches);
+    }
+
+    private static boolean containsTryCatchLabels(
+            Set<LabelNode> labels, TryCatchBlockNode tryCatch) {
+        return labels.contains(tryCatch.start)
+                && labels.contains(tryCatch.end)
+                && labels.contains(tryCatch.handler);
     }
 
     private static SharedSuffix sharedSuffix(
@@ -891,8 +923,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 message, index, instruction.getOpcode());
     }
 
-    private static InsnList cloneRange(MethodNode method, int start, int end) {
-        Map<LabelNode, LabelNode> labels = labels(method);
+    private static InsnList cloneRange(
+            MethodNode method, int start, int end,
+            Map<LabelNode, LabelNode> labels) {
         InsnList copy = new InsnList();
         for (int i = start; i < end; i++) {
             AbstractInsnNode instruction = method.instructions.get(i);
@@ -920,16 +953,22 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final List<ExtraLocal> extraLocals;
         private final int firstExtraLocal;
         private final int packedExtraEnd;
+        private final List<TryCatchBlockNode> prefixTryCatches;
+        private final List<TryCatchBlockNode> suffixTryCatches;
 
         private ConstructorSplit(
                 int suffixStartIndex, int wrapperEndIndex,
                 Set<Integer> widenedReferenceLocals,
-                List<ExtraLocal> extraLocals, int firstExtraLocal) {
+                List<ExtraLocal> extraLocals, int firstExtraLocal,
+                List<TryCatchBlockNode> prefixTryCatches,
+                List<TryCatchBlockNode> suffixTryCatches) {
             this.suffixStartIndex = suffixStartIndex;
             this.wrapperEndIndex = wrapperEndIndex;
             this.widenedReferenceLocals = widenedReferenceLocals;
             this.extraLocals = extraLocals;
             this.firstExtraLocal = firstExtraLocal;
+            this.prefixTryCatches = prefixTryCatches;
+            this.suffixTryCatches = suffixTryCatches;
             int packedLocal = firstExtraLocal;
             for (ExtraLocal extra : extraLocals) {
                 packedLocal += extra.type.getSize();
