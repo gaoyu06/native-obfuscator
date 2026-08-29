@@ -267,13 +267,15 @@ public class IrCompilerTest {
         assertTrue(invokeExact.output.toString().contains("env->CallStaticIntMethod"));
         assertFalse(invokeExact.output.toString().contains("\"invokeExact\""));
 
-        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
-        ClassNode hidden = obfuscator.getHiddenMethodsPool().getClasses().get(0);
-        assertEquals("native0/hidden/Hidden0", hidden.name);
-        assertTrue(hidden.methods.stream().anyMatch(method ->
-                method.name.startsWith("invokereverse")));
-        assertTrue(hidden.methods.stream().anyMatch(method ->
-                method.name.startsWith("mhinvoke")));
+        assertEquals(2, obfuscator.getHiddenMethodsPool().getClasses().size());
+        assertEquals("native0/hidden/Hidden0",
+                obfuscator.getHiddenMethodsPool().getClasses().get(0).name);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .anyMatch(method -> method.name.startsWith("invokereverse")));
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .anyMatch(method -> method.name.startsWith("mhinvokeexact")));
     }
 
     @Test
@@ -307,13 +309,24 @@ public class IrCompilerTest {
         HiddenMethodsPool.HiddenMethod invokeHelper = MethodHandleUtils.getInvokeHelper(
                 obfuscator, "invoke", callSiteDescriptor);
 
-        ClassWriter writer = new ClassWriter(
+        assertFalse(obfuscator.getHiddenMethodsPool()
+                .requiresEagerDefinition(exactHelper.getClassNode()));
+        assertTrue(obfuscator.getHiddenMethodsPool()
+                .requiresEagerDefinition(invokeHelper.getClassNode()));
+
+        ClassWriter exactWriter = new ClassWriter(
                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-        exactHelper.getClassNode().accept(writer);
-        Class<?> helperClass = new ByteArrayClassLoader().define(writer.toByteArray());
-        Method exact = helperClass.getMethod(exactHelper.getMethodNode().name,
-                MethodHandle.class, Object.class);
-        Method invoke = helperClass.getMethod(invokeHelper.getMethodNode().name,
+        exactHelper.getClassNode().accept(exactWriter);
+        Class<?> exactHelperClass =
+                new ByteArrayClassLoader().define(exactWriter.toByteArray());
+        ClassWriter invokeWriter = new ClassWriter(
+                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+        invokeHelper.getClassNode().accept(invokeWriter);
+        Class<?> invokeHelperClass =
+                new ByteArrayClassLoader().define(invokeWriter.toByteArray());
+        Method exact = exactHelperClass.getMethod(exactHelper.getMethodNode().name,
+                MethodHandle.class, String.class);
+        Method invoke = invokeHelperClass.getMethod(invokeHelper.getMethodNode().name,
                 MethodHandle.class, Object.class);
 
         MethodHandle exactTarget = MethodHandles.lookup().findStatic(

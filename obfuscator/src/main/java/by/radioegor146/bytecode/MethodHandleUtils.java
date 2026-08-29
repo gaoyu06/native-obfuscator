@@ -133,7 +133,8 @@ public class MethodHandleUtils {
                     "Unsupported signature-polymorphic invocation " + invokeName);
         }
         boolean exact = "invokeExact".equals(invokeName);
-        String targetDescriptor = simplifyDescriptor(invokeDescriptor);
+        String targetDescriptor = exact
+                ? invokeDescriptor : simplifyDescriptor(invokeDescriptor);
         List<Type> helperArguments = new ArrayList<>();
         helperArguments.add(Type.getObjectType("java/lang/invoke/MethodHandle"));
         helperArguments.addAll(Arrays.asList(Type.getArgumentTypes(targetDescriptor)));
@@ -141,8 +142,7 @@ public class MethodHandleUtils {
                 Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
         return createInvokeHelper(obfuscator,
                 exact ? "mhinvokeexact" : "mhinvoke", helperDescriptor,
-                exact ? invokeDescriptor : helperDescriptor, targetDescriptor,
-                exact ? invokeDescriptor : null, 0);
+                helperDescriptor, targetDescriptor, invokeName, !exact, 0);
     }
 
     public static HiddenMethodsPool.HiddenMethod getInvokeReverseHelper(
@@ -164,15 +164,17 @@ public class MethodHandleUtils {
         String helperDescriptor = Type.getMethodDescriptor(
                 Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
         return createInvokeHelper(obfuscator, "invokereverse", helperDescriptor,
-                helperDescriptor, targetDescriptor, null, helperArguments.size() - 1);
+                helperDescriptor, targetDescriptor, "invoke", true,
+                helperArguments.size() - 1);
     }
 
     private static HiddenMethodsPool.HiddenMethod createInvokeHelper(
             NativeObfuscator obfuscator, String helperName, String helperDescriptor,
-            String cacheKey, String targetDescriptor, String exactDescriptor,
+            String cacheKey, String targetDescriptor, String invokeName,
+            boolean eagerDefinition,
             int methodHandleArgument) {
         return obfuscator.getHiddenMethodsPool().getMethod(
-                helperName, helperDescriptor, cacheKey, method -> {
+                helperName, helperDescriptor, cacheKey, eagerDefinition, method -> {
                     method.visibleAnnotations = new ArrayList<>();
                     method.visibleAnnotations.add(
                             new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
@@ -187,29 +189,6 @@ public class MethodHandleUtils {
                         local += helperArguments[i].getSize();
                     }
 
-                    if (exactDescriptor != null) {
-                        LabelNode exactType = new LabelNode();
-                        method.instructions.add(new VarInsnNode(
-                                Opcodes.ALOAD, localIndexes[methodHandleArgument]));
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                                "java/lang/invoke/MethodHandle", "type",
-                                "()Ljava/lang/invoke/MethodType;"));
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                                "java/lang/invoke/MethodType", "toMethodDescriptorString",
-                                "()Ljava/lang/String;"));
-                        method.instructions.add(new LdcInsnNode(exactDescriptor));
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                                "java/lang/String", "equals", "(Ljava/lang/Object;)Z"));
-                        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, exactType));
-                        method.instructions.add(new TypeInsnNode(Opcodes.NEW,
-                                "java/lang/invoke/WrongMethodTypeException"));
-                        method.instructions.add(new InsnNode(Opcodes.DUP));
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
-                                "java/lang/invoke/WrongMethodTypeException", "<init>", "()V"));
-                        method.instructions.add(new InsnNode(Opcodes.ATHROW));
-                        method.instructions.add(exactType);
-                    }
-
                     method.instructions.add(
                             new VarInsnNode(Opcodes.ALOAD, localIndexes[methodHandleArgument]));
                     for (int i = 0; i < helperArguments.length; i++) {
@@ -221,7 +200,7 @@ public class MethodHandleUtils {
                                 argument.getOpcode(Opcodes.ILOAD), localIndexes[i]));
                     }
                     method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                            "java/lang/invoke/MethodHandle", "invoke", targetDescriptor));
+                            "java/lang/invoke/MethodHandle", invokeName, targetDescriptor));
                     method.instructions.add(new InsnNode(
                             Type.getReturnType(targetDescriptor).getOpcode(Opcodes.IRETURN)));
                 });

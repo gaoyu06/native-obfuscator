@@ -351,15 +351,22 @@ public class NativeObfuscator {
             // Hidden MethodHandle trampolines are ordinary symbolic call targets from the
             // generated native code. Keep them loadable by the transformed application's
             // class loader on every platform, including HOTSPOT. HOTSPOT additionally embeds
-            // them in the native library to preserve the existing eager DefineClass path.
+            // bootstrap-safe classes to preserve the existing eager DefineClass path.
             for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
                 ClassWriter classWriter = new SafeClassWriter(metadataReader,
                         ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
                 hiddenClass.accept(classWriter);
-                Util.writeEntry(out, hiddenClass.name + ".class", classWriter.toByteArray());
+                byte[] rawData = classWriter.toByteArray();
+                Util.writeEntry(out, hiddenClass.name + ".class", rawData);
+                if (debug != null) {
+                    Util.writeEntry(debug, hiddenClass.name + ".class", rawData);
+                }
             }
             if (platform != Platform.ANDROID) {
                 for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
+                    if (!hiddenMethodsPool.requiresEagerDefinition(hiddenClass)) {
+                        continue;
+                    }
                     String hiddenClassFileName = "data_" + Util.escapeCppNameString(hiddenClass.name.replace('/', '_'));
 
                     cMakeBuilder.addClassFile("output/" + hiddenClassFileName + ".hpp");
@@ -374,10 +381,6 @@ public class NativeObfuscator {
                     List<Byte> data = new ArrayList<>(rawData.length);
                     for (byte b : rawData) {
                         data.add(b);
-                    }
-
-                    if (debug != null) {
-                        Util.writeEntry(debug, hiddenClass.name + ".class", rawData);
                     }
 
                     try (BufferedWriter hppWriter = Files.newBufferedWriter(cppOutput.resolve(hiddenClassFileName + ".hpp"))) {

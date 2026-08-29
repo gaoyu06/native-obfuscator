@@ -7,7 +7,9 @@ import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public class HiddenMethodsPool {
@@ -21,6 +23,8 @@ public class HiddenMethodsPool {
     private final HashMap<String, Integer> namePool = new HashMap<>();
     private final HashMap<String, HashMap<String, HiddenMethod>> methods = new HashMap<>();
     private final List<ClassNode> classes = new ArrayList<>();
+    private final HashMap<Boolean, ClassNode> currentClasses = new HashMap<>();
+    private final Map<ClassNode, Boolean> eagerDefinitions = new IdentityHashMap<>();
 
     public static class HiddenMethod {
 
@@ -47,6 +51,12 @@ public class HiddenMethodsPool {
 
     public HiddenMethod getMethod(String name, String desc, String cacheKey,
                                   Consumer<MethodNode> creator) {
+        return getMethod(name, desc, cacheKey, true, creator);
+    }
+
+    public HiddenMethod getMethod(String name, String desc, String cacheKey,
+                                  boolean eagerDefinition,
+                                  Consumer<MethodNode> creator) {
         HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>())
                 .get(cacheKey);
         if (existingMethod != null) {
@@ -57,7 +67,10 @@ public class HiddenMethodsPool {
         MethodNode newMethod = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_BRIDGE |
                 Opcodes.ACC_SYNTHETIC, newName, desc, null, new String[0]);
         creator.accept(newMethod);
-        ClassNode classNode = classes.isEmpty() ? null : classes.get(classes.size() - 1).methods.size() > 10000 ? null : classes.get(classes.size() - 1);
+        ClassNode classNode = currentClasses.get(eagerDefinition);
+        if (classNode != null && classNode.methods.size() > 10000) {
+            classNode = null;
+        }
         if (classNode == null) {
             classNode = new ClassNode(Opcodes.ASM9);
             classNode.access = Opcodes.ACC_PUBLIC;
@@ -65,6 +78,8 @@ public class HiddenMethodsPool {
             classNode.name = baseName + "/Hidden" + classes.size();
             classNode.superName = Type.getInternalName(Object.class);
             classes.add(classNode);
+            currentClasses.put(eagerDefinition, classNode);
+            eagerDefinitions.put(classNode, eagerDefinition);
         }
         classNode.methods.add(newMethod);
         HiddenMethod hiddenMethod = new HiddenMethod(classNode, newMethod);
@@ -74,5 +89,9 @@ public class HiddenMethodsPool {
 
     public List<ClassNode> getClasses() {
         return classes;
+    }
+
+    public boolean requiresEagerDefinition(ClassNode classNode) {
+        return Boolean.TRUE.equals(eagerDefinitions.get(classNode));
     }
 }
