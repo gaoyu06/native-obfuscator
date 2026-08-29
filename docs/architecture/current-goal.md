@@ -53,8 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #157 (`IF_ACMPEQ` / `IF_ACMPNE`) include at least:
-   `monitorenter` / `monitorexit` / synchronized methods (in flight),
+   `master` after #158 (monitors / synchronized) include at least:
    `invokedynamic` and `LDC` of MethodHandle / MethodType / ConstantDynamic,
    remaining constructor-split rejects (prefix branch into suffix,
    multiple this/super, try/catch across the split, prefix `ASTORE` of
