@@ -3484,6 +3484,48 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithThreeLevelProvenChainInputs() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeLevelMultiReturn",
+                "example/MultiSuperBase");
+        MethodNode constructor =
+                threeImmediateReturnsConstructorWithShape(
+                        owner.superName, "three-level-iadd");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(10, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IADD));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
                 "extra-local", "iadd-extra-local",
@@ -3491,7 +3533,7 @@ public class IrCompilerTest {
                 "iand-extra-local", "ior-extra-local",
                 "ixor-extra-local", "ishl-extra-local",
                 "ishr-extra-local", "iushr-extra-local",
-                "three-level-iadd",
+                "four-level-iadd",
                 "nested-idiv", "nested-irem",
                 "idiv-inner", "irem-inner",
                 "idiv-extra-local", "irem-extra-local",
@@ -4785,6 +4827,45 @@ public class IrCompilerTest {
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IADD));
+    }
+
+    @Test
+    public void rewrittenThreeImmediateThreeLevelSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeLevelInputsBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeLevelInputs", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsConstructorWithShape(
+                        base.name, "three-level-iadd");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int argument : new int[]{7, -7, 0}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(10, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
     }
 
@@ -7467,6 +7548,94 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native nested-input multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateThreeLevelSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the three-level input runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the three-level input runtime test");
+
+        String ownerName = "example/ThreeLevelInputRuntime";
+        String baseName = "example/ThreeLevelInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-level-input-run");
+        Path inputJar = directory.resolve("three-level-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeLevelReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain three-level input multi-super Java run");
+        assertEquals(
+                "17" + System.lineSeparator()
+                        + "-16" + System.lineSeparator()
+                        + "6" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(10, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IADD));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("three-level input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("three-level input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Three-level input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native three-level input multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -13387,6 +13556,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeLevelReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsConstructorWithShape(
+                baseName, "three-level-iadd"));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeIsubImulReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -16411,6 +16610,7 @@ public class IrCompilerTest {
                 && !"nested-ishr".equals(shape)
                 && !"nested-iushr".equals(shape)
                 && !"three-level-iadd".equals(shape)
+                && !"four-level-iadd".equals(shape)
                 && !"nested-idiv".equals(shape)
                 && !"nested-irem".equals(shape)
                 && !"idiv-inner".equals(shape)
@@ -16512,6 +16712,15 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.IADD));
             method.instructions.add(new InsnNode(Opcodes.ICONST_3));
             method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("four-level-iadd".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_4));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
         } else if ("nested-idiv".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IDIV));
@@ -16543,21 +16752,43 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.instructions.add(negative);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
-        method.instructions.add(new InsnNode(Opcodes.INEG));
+        if ("three-level-iadd".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.INEG));
+        }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.instructions.add(zero);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        if ("three-level-iadd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = extraLocalOperand ? 3 : 2;
-        method.maxStack = 3;
+        method.maxStack = "three-level-iadd".equals(shape) ? 5 : 3;
         return method;
     }
 
