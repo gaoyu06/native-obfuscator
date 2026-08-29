@@ -2293,18 +2293,127 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsPrimitiveClassLdcBeforeMutation() {
+    public void lowersEveryPrimitiveClassLdcThroughWrapperTypeFieldOnPrivateCopy() {
         MethodNode method = primitiveClassLdcMethod();
+        List<Type> expectedTypes = Arrays.asList(
+                Type.INT_TYPE, Type.LONG_TYPE, Type.FLOAT_TYPE, Type.DOUBLE_TYPE,
+                Type.BOOLEAN_TYPE, Type.BYTE_TYPE, Type.SHORT_TYPE, Type.CHAR_TYPE,
+                Type.VOID_TYPE);
+        IrMethod ir = frontend.build("example/Math", method);
+        List<IrNodes.GetStaticField> fields = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.GetStaticField.class::isInstance)
+                .map(IrNodes.GetStaticField.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(Arrays.asList(
+                        "java/lang/Integer", "java/lang/Long", "java/lang/Float",
+                        "java/lang/Double", "java/lang/Boolean", "java/lang/Byte",
+                        "java/lang/Short", "java/lang/Character", "java/lang/Void"),
+                fields.stream().map(IrNodes.GetStaticField::getOwner)
+                        .collect(Collectors.toList()));
+        assertTrue(fields.stream().allMatch(field ->
+                "TYPE".equals(field.getName())
+                        && "Ljava/lang/Class;".equals(field.getDescriptor())
+                        && field.getResult().getType() == IrType.REFERENCE));
+
+        List<Type> originalConstants = Arrays.stream(method.instructions.toArray())
+                .filter(LdcInsnNode.class::isInstance)
+                .map(LdcInsnNode.class::cast)
+                .map(instruction -> (Type) instruction.cst)
+                .collect(Collectors.toList());
+        assertEquals(expectedTypes, originalConstants);
+
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
 
-        UnsupportedIrConstructException error = assertThrows(
-                UnsupportedIrConstructException.class,
-                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                        .processMethod(context));
+        String cpp = context.output.toString();
+        assertEquals(9, countOccurrences(cpp, "env->GetStaticObjectField("));
+        assertEquals(9, obfuscator.getCachedClasses().size());
+        assertEquals(9, obfuscator.getCachedFields().size());
+        assertFalse(cpp.contains("native.magic"));
+        assertFalse(cpp.contains("native/magic"));
+    }
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
-        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    @Test
+    public void primitiveClassLdcCompilesAndRunsWithHotSpotParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the primitive Class LDC runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the primitive Class LDC runtime test");
+
+        String ownerName = "example/PrimitiveClassLdcRuntime";
+        Path directory = Files.createTempDirectory("ir-primitive-class-ldc-run");
+        Path inputJar = directory.resolve("primitive-class-ldc.jar");
+        Path referenceJar = directory.resolve("primitive-class-reference.jar");
+        Path outputDirectory = directory.resolve("output");
+        createPrimitiveClassLdcJar(inputJar, ownerName, true);
+        createPrimitiveClassLdcJar(referenceJar, ownerName, false);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", referenceJar.toString()));
+        javaResult.check("plain primitive Class reference Java run");
+        assertEquals(
+                "true" + System.lineSeparator()
+                        + "int" + System.lineSeparator()
+                        + "true" + System.lineSeparator()
+                        + "long" + System.lineSeparator()
+                        + "true" + System.lineSeparator()
+                        + "boolean" + System.lineSeparator()
+                        + "true" + System.lineSeparator()
+                        + "void" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        for (String methodName : Arrays.asList(
+                "primitiveInt", "primitiveLong", "primitiveBoolean", "primitiveVoid")) {
+            MethodNode accessor = transformed.methods.stream()
+                    .filter(method -> methodName.equals(method.name))
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertTrue((accessor.access & Opcodes.ACC_NATIVE) != 0);
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("primitive Class LDC CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("primitive Class LDC CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Primitive Class LDC native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native primitive Class LDC Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     @Test
@@ -4125,7 +4234,8 @@ public class IrCompilerTest {
                 addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
                 staticInvokeMethod(), virtualInvokeMethod(), bitwiseShiftMethod(),
                 unaryMethod(), intArrayMethod(), stringLengthMethod(),
-                stringLdcMethod(), classLdcMethod(), longLdcMethod(),
+                stringLdcMethod(), classLdcMethod(), primitiveClassLdcMethod(),
+                longLdcMethod(),
                 arrayBoundsCatchMethod("catchBounds", "java/lang/ArrayIndexOutOfBoundsException"),
                 arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
                 explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null),
@@ -4698,6 +4808,33 @@ public class IrCompilerTest {
                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private void createPrimitiveClassLdcJar(
+            Path jarPath, String ownerName, boolean primitiveLdc) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(primitiveClassAccessor(
+                "primitiveInt", Type.INT_TYPE, "java/lang/Integer", primitiveLdc));
+        owner.methods.add(primitiveClassAccessor(
+                "primitiveLong", Type.LONG_TYPE, "java/lang/Long", primitiveLdc));
+        owner.methods.add(primitiveClassAccessor(
+                "primitiveBoolean", Type.BOOLEAN_TYPE, "java/lang/Boolean", primitiveLdc));
+        owner.methods.add(primitiveClassAccessor(
+                "primitiveVoid", Type.VOID_TYPE, "java/lang/Void", primitiveLdc));
+        owner.methods.add(primitiveClassMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
     }
 
     private String assertFieldRoundTrip(MethodNode method, IrType expectedType,
@@ -5586,12 +5723,93 @@ public class IrCompilerTest {
 
     private MethodNode primitiveClassLdcMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "primitiveClass", "()Ljava/lang/Class;", null, null);
-        method.instructions.add(new LdcInsnNode(Type.INT_TYPE));
+                "primitiveClasses", "()Ljava/lang/Class;", null, null);
+        Type[] constants = {
+                Type.INT_TYPE, Type.LONG_TYPE, Type.FLOAT_TYPE, Type.DOUBLE_TYPE,
+                Type.BOOLEAN_TYPE, Type.BYTE_TYPE, Type.SHORT_TYPE, Type.CHAR_TYPE,
+                Type.VOID_TYPE
+        };
+        for (int index = 0; index < constants.length; index++) {
+            method.instructions.add(new LdcInsnNode(constants[index]));
+            if (index + 1 < constants.length) {
+                method.instructions.add(new InsnNode(Opcodes.POP));
+            }
+        }
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxLocals = 0;
         method.maxStack = 1;
         return method;
+    }
+
+    private MethodNode primitiveClassAccessor(
+            String name, Type primitive, String wrapperOwner, boolean primitiveLdc) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                name, "()Ljava/lang/Class;", null, null);
+        if (primitiveLdc) {
+            method.instructions.add(new LdcInsnNode(primitive));
+        } else {
+            method.instructions.add(new FieldInsnNode(
+                    Opcodes.GETSTATIC, wrapperOwner, "TYPE", "Ljava/lang/Class;"));
+        }
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode primitiveClassMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendPrimitiveClassPrint(
+                method, owner, "primitiveInt", "java/lang/Integer");
+        appendPrimitiveClassPrint(
+                method, owner, "primitiveLong", "java/lang/Long");
+        appendPrimitiveClassPrint(
+                method, owner, "primitiveBoolean", "java/lang/Boolean");
+        appendPrimitiveClassPrint(
+                method, owner, "primitiveVoid", "java/lang/Void");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private void appendPrimitiveClassPrint(
+            MethodNode method, String owner, String accessor, String wrapperOwner) {
+        LabelNode different = new LabelNode();
+        LabelNode identityReady = new LabelNode();
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, owner, accessor,
+                "()Ljava/lang/Class;", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, wrapperOwner, "TYPE", "Ljava/lang/Class;"));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ACMPNE, different));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, identityReady));
+        method.instructions.add(different);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(identityReady);
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Z)V", false));
+
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, owner, accessor,
+                "()Ljava/lang/Class;", false));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/Class",
+                "getName", "()Ljava/lang/String;", false));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/String;)V", false));
     }
 
     private MethodNode rawMethodConstantsMethod() {

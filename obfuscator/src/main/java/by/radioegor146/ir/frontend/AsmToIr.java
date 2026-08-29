@@ -50,6 +50,7 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        method = lowerPrimitiveClassConstants(method);
         method = DynamicConstantSupport.lower(owner, method);
         method = admitInvokeDynamic(owner, method);
         method = splitReferenceAndIntTemporarySlots(method);
@@ -163,6 +164,103 @@ public final class AsmToIr {
         propagateReferenceDescriptors(irMethod);
         MonitorStructureValidator.validate(irMethod);
         return irMethod;
+    }
+
+    /**
+     * Rewrites primitive Class constants to the wrapper {@code TYPE} fields used
+     * by javac. The caller's method remains untouched so a later capability miss
+     * can still fall back without observing a partially rewritten body.
+     */
+    private MethodNode lowerPrimitiveClassConstants(MethodNode method) {
+        boolean needsCopy = false;
+        for (AbstractInsnNode instruction : method.instructions.toArray()) {
+            if (instruction instanceof LdcInsnNode
+                    && primitiveClassOwner(((LdcInsnNode) instruction).cst) != null) {
+                needsCopy = true;
+                break;
+            }
+        }
+        if (!needsCopy) {
+            return method;
+        }
+
+        MethodNode copy = new MethodNode(Opcodes.ASM9, method.access, method.name,
+                method.desc, method.signature,
+                method.exceptions.toArray(new String[method.exceptions.size()]));
+        method.accept(copy);
+        for (AbstractInsnNode instruction : copy.instructions.toArray()) {
+            if (!(instruction instanceof LdcInsnNode)) {
+                continue;
+            }
+            String wrapperOwner = primitiveClassOwner(((LdcInsnNode) instruction).cst);
+            if (wrapperOwner != null) {
+                copy.instructions.set(instruction, new FieldInsnNode(
+                        Opcodes.GETSTATIC, wrapperOwner, "TYPE",
+                        "Ljava/lang/Class;"));
+            }
+        }
+        return copy;
+    }
+
+    private static String primitiveClassOwner(Object constant) {
+        if (!(constant instanceof Type)) {
+            return null;
+        }
+        Type type = (Type) constant;
+        switch (type.getSort()) {
+            case Type.BOOLEAN:
+                return "java/lang/Boolean";
+            case Type.BYTE:
+                return "java/lang/Byte";
+            case Type.CHAR:
+                return "java/lang/Character";
+            case Type.SHORT:
+                return "java/lang/Short";
+            case Type.INT:
+                return "java/lang/Integer";
+            case Type.FLOAT:
+                return "java/lang/Float";
+            case Type.LONG:
+                return "java/lang/Long";
+            case Type.DOUBLE:
+                return "java/lang/Double";
+            case Type.VOID:
+                return "java/lang/Void";
+            case Type.OBJECT:
+                // A CONSTANT_Class entry stores its name as text. ASM therefore
+                // reads synthetic primitive descriptors such as "I" back as an
+                // object-looking Type after a classfile round trip.
+                String name = type.getInternalName();
+                return name.length() == 1
+                        ? primitiveClassOwner(name.charAt(0)) : null;
+            default:
+                return null;
+        }
+    }
+
+    private static String primitiveClassOwner(char descriptor) {
+        switch (descriptor) {
+            case 'Z':
+                return "java/lang/Boolean";
+            case 'B':
+                return "java/lang/Byte";
+            case 'C':
+                return "java/lang/Character";
+            case 'S':
+                return "java/lang/Short";
+            case 'I':
+                return "java/lang/Integer";
+            case 'F':
+                return "java/lang/Float";
+            case 'J':
+                return "java/lang/Long";
+            case 'D':
+                return "java/lang/Double";
+            case 'V':
+                return "java/lang/Void";
+            default:
+                return null;
+        }
     }
 
     /**
