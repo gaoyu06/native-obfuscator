@@ -1,81 +1,70 @@
-Title: `compiler: interpreter ISA i64 increment`
+Title: `docs: Sol review of #140 interpreter i64`
 
 ## English
 
 ### (a) Scope
 
-Widen the explicit, default-off `--backend=interpreter` compiler path from its
-i32 ISA to a first i64 slice. ISA v3 appends `LPUSH`, `LLOAD`, `LSTORE`,
-`LADD`, `LSUB`, `LMUL`, `LAND`, `LOR`, `LXOR`, `LSHL`, `LSHR`, `LUSHR`,
-`LNEG`, `LRETURN`, `LDIV`, and `LREM`.
-
-Long values retain JVM two-slot locals/stack layout. Arithmetic uses unsigned
-64-bit carriers for defined wraparound, shift counts are i32 values masked
-with `& 63`, and right shifts distinguish arithmetic `LSHR` from logical
-`LUSHR`. `LDIV`/`LREM` share the JVM zero-divisor and
-`Long.MIN_VALUE / -1` edge rules. Unsupported methods still fall through per
-method to the active IR or legacy codegen.
+Add the independent Sol review of draft PR #140 at
+`213c1eec79201067dc6f5da5c7225ae66170427d`. The review covers diff ownership,
+all 16 Java/C++ i64 opcode assignments, two-slot locals and stack behavior,
+shift and arithmetic edge cases, default-off output identity, and unchanged
+per-method fallback.
 
 ### (b) Ship-ready?
 
-**No.** This is a narrow, default-off compiler-backend increment, not a
-complete production interpreter.
+**No.** The review verdict is **Accept**, but the implementation remains a
+narrow, default-off compiler-backend increment rather than a complete
+production interpreter.
 
-### (c) Default-off compatibility
+### (c) Correctness result
 
-Preserved. Full generated `cpp/` tree comparisons both returned exit 0:
-
-- detached `origin/master` vs this branch with `--backend` omitted;
-- this branch with `--backend` omitted vs explicit `--backend=cpp`.
-
-The defaults remain `--backend=cpp` and `--codegen=legacy`; interpreter
-sources are not emitted when the backend flag is off.
+No blocking defect or nit was found, and no compiler source fix was needed.
+Java and C++ agree on opcodes 30--45. Long values use two consecutive 32-bit
+slots; shifts consume an i32 count masked with `& 63`; `LSHR` and `LUSHR`
+remain distinct; divide/remainder avoid C++ zero division and the
+`MIN_VALUE / -1` overflow case; and `LNEG` wraps correctly. Unsupported
+methods still use the selected IR or legacy compiler path. The defaults remain
+`--backend=cpp` and `--codegen=legacy`.
 
 ### (d) Verification
 
-- Interpreter suite: **16 tests**, 0 skipped, 0 failures, 0 errors.
-- IR/codegen regression suite: **104 tests**, 0 skipped, 0 failures, 0 errors.
-- The runtime harness compiled under
-  `g++ -std=c++17 -Wall -Wextra -Werror` and executed all i64 operation and
-  edge cases.
-- A generated project containing six i64 interpreter methods configured and
-  built successfully with GCC/G++ 13.3.0, including
-  `native_jvm_interp.cpp` and the generated JNI trampolines.
+- Focused rerun: **23/23 tests passed**, with 0 skipped, 0 failures, and
+  0 errors: 16 interpreter/backend tests plus 7 `CodegenModeTest` tests.
+- The C++17 runtime harness compiled with `-Wall -Wextra -Werror` and executed.
+- Fresh complete-tree `diff -r` checks passed for detached `origin/master` vs
+  omitted `--backend`, and omitted `--backend` vs explicit `--backend=cpp`.
+- The generated project containing six i64 interpreter methods compiled and
+  linked successfully with GCC/G++ 13.3.0.
 
 ## 中文
 
 ### （a）范围
 
-将显式启用、默认关闭的 `--backend=interpreter` 编译路径从 i32 ISA 扩展到首个
-i64 子集。ISA v3 追加 `LPUSH`、`LLOAD`、`LSTORE`、`LADD`、`LSUB`、
-`LMUL`、`LAND`、`LOR`、`LXOR`、`LSHL`、`LSHR`、`LUSHR`、`LNEG`、
-`LRETURN`、`LDIV` 和 `LREM`。
-
-long 在局部变量和操作数栈中继续占用两个 JVM 槽。算术使用无符号 64 位载体以
-保证回绕语义；移位计数来自 i32 并以 `& 63` 掩码；`LSHR` 为算术右移，
-`LUSHR` 为逻辑右移。`LDIV`/`LREM` 处理除数为零和
-`Long.MIN_VALUE / -1` 的 JVM 边界。不支持的方法仍逐方法回退到当前 IR 或
-legacy codegen。
+增加对 draft PR #140（tip
+`213c1eec79201067dc6f5da5c7225ae66170427d`）的独立 Sol 审查。审查范围包括
+diff 归属、全部 16 个 Java/C++ i64 操作码编号、局部变量与操作数栈的双槽语义、
+移位和算术边界、默认关闭时的输出一致性，以及逐方法回退路径。
 
 ### （b）可直接发布？
 
-**否。** 这是范围有限且默认关闭的编译器后端增量，不是完整的生产级解释器。
+**否。** 审查结论为**接受**，但该实现仍是范围有限且默认关闭的编译器后端
+增量，并非完整的生产级解释器。
 
-### （c）默认关闭兼容性
+### （c）正确性结论
 
-已保持。两次完整生成 `cpp/` 目录比较均以 0 退出：
-
-- 分离的 `origin/master` 与本分支未指定 `--backend` 的输出；
-- 本分支未指定 `--backend` 与显式 `--backend=cpp` 的输出。
-
-默认值仍为 `--backend=cpp` 和 `--codegen=legacy`；关闭该后端标志时不会生成
-解释器源文件。
+未发现阻塞性缺陷或审查小问题，也不需要修改编译器源码。Java 与 C++ 的
+30--45 号操作码完全一致；long 使用连续两个 32 位槽；移位使用来自 i32 且经
+`& 63` 处理的计数；`LSHR` 与 `LUSHR` 保持不同语义；除法和取余避免 C++
+零除以及 `MIN_VALUE / -1` 溢出；`LNEG` 回绕正确。不支持的方法仍使用当前
+IR 或 legacy compiler path。默认值仍为 `--backend=cpp` 和
+`--codegen=legacy`。
 
 ### （d）验证
 
-- 解释器测试：**16 项**，0 跳过、0 失败、0 错误。
-- IR/codegen 回归测试：**104 项**，0 跳过、0 失败、0 错误。
-- 运行时测试以 `g++ -std=c++17 -Wall -Wextra -Werror` 编译，并执行了所有
-  i64 操作与边界用例。
-- 包含六个 i64 解释器方法的生成工程已使用 GCC/G++ 13.3.0 成功配置和构建，
-  包括 `native_jvm_interp.cpp` 与生成的 JNI 跳板。
+- 聚焦复跑 **23/23** 项测试通过，0 skipped、0 failures、0 errors；其中
+  interpreter/backend 测试 16 项，`CodegenModeTest` 7 项。
+- C++17 runtime harness 使用 `-Wall -Wextra -Werror` 成功编译并执行。
+- 重新生成的完整目录通过两次 `diff -r`：分离的 `origin/master` 对比未指定
+  `--backend`，以及未指定 `--backend` 对比显式 `--backend=cpp`。
+- 包含六个 i64 interpreter 方法的生成工程使用 GCC/G++ 13.3.0 成功编译并
+  链接。
