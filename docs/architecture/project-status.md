@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing identical-copy suffix and relocated catch
-[#208](https://github.com/gaoyu06/native-obfuscator/pull/208)
-(parent re-ran 271/271: 264 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `identicalSuffixCopiesWithSuffixTryCatchCompileAndRunWithJavaParity`)
-on the post-[#207](https://github.com/gaoyu06/native-obfuscator/pull/207)
-inventory tree. Active process:
+Last updated after landing isolated method-end catch handlers
+[#209](https://github.com/gaoyu06/native-obfuscator/pull/209)
+(parent re-ran 275/275: 268 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `pathIdMethodEndHandlerCompileAndRunWithJavaParity`)
+on the post-[#208](https://github.com/gaoyu06/native-obfuscator/pull/208)
+identical-copy catch tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -186,10 +186,11 @@ legacy。不能当成 JDK 支持矩阵。
   [#208](https://github.com/gaoyu06/native-obfuscator/pull/208) admits
   wholly-in-canonical-suffix tables and relocated isolated prefix
   handlers on identical-copy normalization.
+  [#209](https://github.com/gaoyu06/native-obfuscator/pull/209) admits
+  an isolated method-end handler for a try wholly in one proven suffix.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
-  (tables that span suffixes, cover a chain call, or use a
-  method-end handler), remaining multi-super shapes
+  (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (nested/`IDIV`-as-inner trees, three-or-more nested binaries),
   and extras still unassigned on a bridge-taking path are still
   rejected.
@@ -331,6 +332,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Identical-copy receiver-alias forwarding (#205) | 263 tests (`IrCompilerTest` 256 + `CodegenModeTest` 7). Parent re-ran 263/263 including `receiverAliasIdenticalSuffixCopiesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Identical-copy prefix extras (#206) | 267 tests (`IrCompilerTest` 260 + `CodegenModeTest` 7). Parent re-ran 267/267 including `identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Identical-copy suffix and relocated catch (#208) | 271 tests (`IrCompilerTest` 264 + `CodegenModeTest` 7). Parent re-ran 271/271 including `identicalSuffixCopiesWithSuffixTryCatchCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Isolated method-end catch handlers (#209) | 275 tests (`IrCompilerTest` 268 + `CodegenModeTest` 7). Parent re-ran 275/275 including `pathIdMethodEndHandlerCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -377,8 +379,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
-  beyond #171/#184/#187/#188/#200/#201/#208 such as tables that span
-  suffixes, cover a chain call, or use a method-end handler,
+  beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
+  suffixes or cover a chain call,
   remaining multi-super shapes such as nested/`IDIV`-as-inner
   trees or three-or-more nested binaries, extras still unassigned
   on a bridge-taking path) and
@@ -399,9 +401,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #208 (identical-copy
-  suffix and relocated catch). /
-  落地 #208 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #209 (isolated
+  method-end catch handlers). /
+  落地 #209 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
