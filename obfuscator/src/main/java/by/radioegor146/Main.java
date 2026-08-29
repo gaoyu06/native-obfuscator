@@ -58,6 +58,10 @@ public class Main {
                 description = "Method code generator: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CodegenMode codegenMode;
 
+        @CommandLine.Option(names = {"--backend"}, defaultValue = "cpp",
+                description = "Compiler backend: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private CompilerBackend backend = CompilerBackend.CPP;
+
         @CommandLine.Option(names = {"-a", "--annotations"}, description = "Use annotations to ignore/include native obfuscation")
         private boolean useAnnotations;
 
@@ -111,7 +115,7 @@ public class Main {
             Path outputDir = Paths.get(outputDirectory);
             String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
-                    platform, useAnnotations, generateDebugJar, codegenMode);
+                    platform, useAnnotations, generateDebugJar, codegenMode, backend);
 
             if (useZig) {
                 runZigBuild(outputDir, nativeDir);
