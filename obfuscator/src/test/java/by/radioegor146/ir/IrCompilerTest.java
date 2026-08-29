@@ -1273,17 +1273,73 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsThreeImmediateReturnsWithComputedChainInputs() {
+    public void admitsThreeImmediateReturnsWithComputedChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeComputedMultiReturn",
                 "example/MultiSuperBase");
-        UnsupportedIrConstructException error = assertThrows(
-                UnsupportedIrConstructException.class,
-                () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                        owner, multipleSuperThreeSeparateReturnsConstructor(
-                                owner.superName)));
-        assertTrue(error.getMessage().contains(
-                "Constructor chain calls do not share one suffix join"));
+        MethodNode constructor =
+                multipleSuperThreeSeparateReturnsConstructor(owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "extra-local", "astore-zero", "binary",
+                "post-call", "skip-super", "exception-table")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedThree"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    rejectedThreeImmediateReturnsConstructor(
+                            owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
     }
 
     @Test
@@ -1913,8 +1969,7 @@ public class IrCompilerTest {
                 "example/VerifiedThreeMultiReturn", base.name);
         owner.version = Opcodes.V1_8;
         MethodNode constructor =
-                multipleSuperThreeDeclaredArgumentReturnsConstructor(
-                        base.name);
+                multipleSuperThreeSeparateReturnsConstructor(base.name);
         owner.methods.add(constructor);
 
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -1929,18 +1984,11 @@ public class IrCompilerTest {
             loader.define(writeClass(hidden));
         }
         Class<?> verified = loader.define(writeClass(owner));
-        for (int[] arguments : new int[][]{
-                {1, 11, 22, 33},
-                {-1, 11, 22, 33},
-                {0, 11, 22, 33}}) {
+        for (int argument : new int[]{7, -7, 0}) {
             InvocationTargetException error = assertThrows(
                     InvocationTargetException.class,
-                    () -> verified.getConstructor(
-                                    int.class, int.class,
-                                    int.class, int.class)
-                            .newInstance(
-                                    arguments[0], arguments[1],
-                                    arguments[2], arguments[3]));
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
             assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
         }
         assertEquals(3, directChainCallCount(constructor, owner));
@@ -2642,7 +2690,7 @@ public class IrCompilerTest {
         assertEquals(
                 "11" + System.lineSeparator()
                         + "22" + System.lineSeparator()
-                        + "33" + System.lineSeparator(),
+                        + "0" + System.lineSeparator(),
                 javaResult.stdout);
 
         new NativeObfuscator().process(
@@ -7174,8 +7222,7 @@ public class IrCompilerTest {
         ClassNode owner = constructorOwner(ownerName, baseName);
         owner.version = Opcodes.V1_8;
         owner.methods.add(
-                multipleSuperThreeDeclaredArgumentReturnsConstructor(
-                        baseName));
+                multipleSuperThreeSeparateReturnsConstructor(baseName));
         owner.methods.add(
                 multipleSuperThreeSeparateReturnsMain(
                         ownerName, baseName));
@@ -8567,6 +8614,89 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode rejectedThreeImmediateReturnsConstructor(
+            String superName, String shape) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+
+        if ("extra-local".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        } else if ("astore-zero".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        } else if ("skip-super".equals(shape)) {
+            LabelNode continueToCalls = new LabelNode();
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 99));
+            method.instructions.add(new JumpInsnNode(
+                    Opcodes.IF_ICMPNE, continueToCalls));
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+            method.instructions.add(continueToCalls);
+        } else if ("exception-table".equals(shape)) {
+            LabelNode start = new LabelNode();
+            LabelNode end = new LabelNode();
+            LabelNode handler = new LabelNode();
+            LabelNode continueToCalls = new LabelNode();
+            method.instructions.add(start);
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.POP));
+            method.instructions.add(end);
+            method.instructions.add(new JumpInsnNode(
+                    Opcodes.GOTO, continueToCalls));
+            method.instructions.add(handler);
+            method.instructions.add(new InsnNode(Opcodes.ATHROW));
+            method.instructions.add(continueToCalls);
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    start, end, handler, "java/lang/Throwable"));
+        } else if (!"binary".equals(shape)
+                && !"post-call".equals(shape)) {
+            throw new IllegalArgumentException("Unknown shape " + shape);
+        }
+
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(
+                Opcodes.ILOAD,
+                "extra-local".equals(shape) ? 2 : 1));
+        if ("binary".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        }
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        if ("post-call".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+            method.instructions.add(new InsnNode(Opcodes.POP));
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(zero);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = "extra-local".equals(shape) ? 3 : 2;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode multipleSuperMain(
             String owner, String superName) {
         MethodNode method = new MethodNode(
@@ -8812,42 +8942,16 @@ public class IrCompilerTest {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "main", "([Ljava/lang/String;)V", null, null);
-        appendThreeReturnSuperPrint(
-                method, owner, 1, 11, 22, 33,
-                superName, "magnitude");
-        appendThreeReturnSuperPrint(
-                method, owner, -1, 11, 22, 33,
-                superName, "magnitude");
-        appendThreeReturnSuperPrint(
-                method, owner, 0, 11, 22, 33,
-                superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, 11, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, -22, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, 0, superName, "magnitude");
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
-        method.maxStack = 7;
+        method.maxStack = 4;
         return method;
-    }
-
-    private void appendThreeReturnSuperPrint(
-            MethodNode method, String owner,
-            int selector, int positive, int negative, int zero,
-            String fieldOwner, String fieldName) {
-        method.instructions.add(new FieldInsnNode(
-                Opcodes.GETSTATIC, "java/lang/System",
-                "out", "Ljava/io/PrintStream;"));
-        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
-        method.instructions.add(new InsnNode(Opcodes.DUP));
-        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
-        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, positive));
-        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, negative));
-        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, zero));
-        method.instructions.add(new MethodInsnNode(
-                Opcodes.INVOKESPECIAL, owner,
-                "<init>", "(IIII)V", false));
-        method.instructions.add(new FieldInsnNode(
-                Opcodes.GETFIELD, fieldOwner, fieldName, "I"));
-        method.instructions.add(new MethodInsnNode(
-                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
-                "println", "(I)V", false));
     }
 
     private void appendMultipleSuperPrint(
