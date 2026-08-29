@@ -44,6 +44,7 @@ no_sdk_status_v1 no_sdk_hmac_sha256_v1(
 /*
  * AES-256-GCM profile: a 32-byte key, a 12-byte nonce, and a 16-byte tag
  * appended to the ciphertext. The output capacity must be plaintext.size + 16.
+ * A nonce must never be reused with the same key.
  */
 no_sdk_status_v1 no_sdk_aes_256_gcm_encrypt_v1(
         no_sdk_bytes_v1 key_32,

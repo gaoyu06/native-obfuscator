@@ -8,7 +8,8 @@ stacked on NativeStrings
 ([draft PR #46](https://github.com/gaoyu06/native-obfuscator/pull/46)) and SDK
 v1 ([PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)). This is a
 neutral native crypto SDK API change, not an automatic transformation or
-obfuscation feature.
+obfuscation feature. The review found and fixed one 32-bit C ABI
+output-length representability bug.
 
 本分支为可调用的 C++ SDK 接口及 Java `NativePrimitives` facade 新增
 AES-256-GCM 认证加密与解密。分支基于 `cursor/sdk-hmac-sha256-6d81`
@@ -16,7 +17,8 @@ AES-256-GCM 认证加密与解密。分支基于 `cursor/sdk-hmac-sha256-6d81`
 依次基于 NativeStrings
 （[draft PR #46](https://github.com/gaoyu06/native-obfuscator/pull/46)）和 SDK
 v1（[PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)）。这是中性
-的 native crypto SDK API 改动，不是自动转换或混淆功能。
+的 native crypto SDK API 改动，不是自动转换或混淆功能。审查发现并修复了
+一个 32 位 C ABI 输出长度不可表示的问题。
 
 ## (a) Change scope / 本次改动范围
 
@@ -33,6 +35,8 @@ v1（[PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)）。这是�
   in-tree according to NIST SP 800-38D. No system crypto dependency is added.
 - Verify three exact AES-256 vectors from NIST CAVP
   `gcmEncryptExtIV256.rsp`, including empty AAD and non-empty AAD.
+- Reject C ABI encryption when `plaintext.size + 16` is not representable as
+  `size_t`, preventing invalid tag-pointer arithmetic on 32-bit targets.
 - Preserve HMAC-SHA-256, SHA-256, constant-time equality, and NativeStrings.
 
 - 新增支持可选 AAD 的 Java `aes256GcmEncrypt`/`aes256GcmDecrypt` 重载。
@@ -48,6 +52,8 @@ v1（[PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)）。这是�
   NIST SP 800-38D 在仓内组合 GCM；不新增系统 crypto 依赖。
 - 使用 NIST CAVP `gcmEncryptExtIV256.rsp` 的 3 个精确 AES-256 向量验证，
   覆盖空 AAD 和非空 AAD。
+- 当 `plaintext.size + 16` 无法表示为 `size_t` 时拒绝 C ABI 加密，避免
+  32 位目标上的无效 tag 指针运算。
 - 保持 HMAC-SHA-256、SHA-256、constant-time equality 和 NativeStrings。
 
 ## (b) Is this a shipped product SDK? / 这是已交付的产品 SDK 吗？
@@ -94,29 +100,47 @@ library packaging.
 
 ## Verification / 验证结果
 
-- `CC=gcc CXX=g++` generated-library integration: **PASS**, including CMake,
-  G++, `-Xcheck:jni`, 3 NIST AES-256-GCM vectors, 4 authentication-failure
-  cases, 5 length checks, 8 GCM null checks, and all inherited checks.
+- Review verdict: **PASS WITH ONE CORRECTNESS FIX** for the fixed
+  32-byte-key / 12-byte-nonce / 16-byte-tag profile. This is not product
+  shipping approval; tiny-AES-c uses secret-indexed S-box table lookups and is
+  not side-channel hardened.
+- `CC=gcc CXX=g++` generated-library integration: **1/1 passed**, including
+  CMake, G++, `-Xcheck:jni`, 3 NIST AES-256-GCM vectors,
+  4 authentication-failure cases, 5 length checks, 8 GCM null checks, and all
+  inherited checks.
 - Full `:sdk:test :obfuscator:test` with repository-required Krakatau2:
   **13/13 tests passed** (8 generated fixtures, 4 focused unit tests, 1 SDK
   integration test); `:sdk:test` has no test sources.
-- `:sdk:jar :obfuscator:assemble`: **PASS**.
+- `:sdk:jar :obfuscator:assemble`: **PASS**, 8/8 actionable tasks executed.
+- A direct C ABI harness passed **4/4 checks**, including tampered-tag failure
+  with the caller's output buffer unchanged.
+- All 3 selected records matched the official NIST
+  `gcmEncryptExtIV256.rsp` archive exactly.
 - Exported-symbol inspection includes both AES-256-GCM C ABI symbols.
-- No AES-GCM benchmark or HotSpot performance comparison was run. The inherited
-  NativeStrings diagnostic ran once during the recorded final suite: Java
-  median 5,357,076 ns, NativeStrings median 16,289,443.5 ns, with raw samples
-  and environment in `docs/sdk/v1-status.md`. NativeStrings was slower in this
-  one local run.
+- HMAC-SHA-256, SHA-256, equality, and NativeStrings checks passed; the Java
+  and NativeStrings diagnostic checksums both equaled `231461089`.
+- No AES-GCM benchmark was run and no AES performance claim is made.
 
-- 使用 `CC=gcc CXX=g++` 的生成库集成测试：**通过**，覆盖 CMake、G++、
-  `-Xcheck:jni`、3 个 NIST AES-256-GCM 向量、4 个认证失败场景、5 个长度
-  检查、8 个 GCM null 检查及所有继承检查。
+- 审查结论：对于固定的 32 字节 key / 12 字节 nonce / 16 字节 tag
+  profile，**修复一个正确性问题后通过**。这不代表批准产品交付；
+  tiny-AES-c 使用由秘密状态索引的 S-box 表查找，并非抗侧信道实现。
+- 使用 `CC=gcc CXX=g++` 的生成库集成测试：**1/1 通过**，覆盖 CMake、
+  G++、`-Xcheck:jni`、3 个 NIST AES-256-GCM 向量、4 个认证失败场景、
+  5 个长度检查、8 个 GCM null 检查及所有继承检查。
 - 配置仓库要求的 Krakatau2 后，完整 `:sdk:test :obfuscator:test`：
   **13/13 通过**（8 个生成 fixture、4 个既有单元测试、1 个 SDK 集成测试）；
   `:sdk:test` 没有测试源码。
-- `:sdk:jar :obfuscator:assemble`：**通过**。
+- `:sdk:jar :obfuscator:assemble`：**通过**，8/8 个 actionable task 执行成功。
+- 直接 C ABI harness 的 **4/4 项检查通过**，其中包括 tag 被篡改时认证
+  失败且调用方输出缓冲区保持不变。
+- 选取的 3 条记录均与官方 NIST `gcmEncryptExtIV256.rsp` 完全一致。
 - 导出符号检查包含两个 AES-256-GCM C ABI 符号。
-- 未运行 AES-GCM benchmark 或 HotSpot 性能比较。最终完整 suite 中记录了
-  一次继承的 NativeStrings 诊断：Java 中位数 5,357,076 ns，NativeStrings
-  中位数 16,289,443.5 ns；原始样本和环境记录于
-  `docs/sdk/v1-status.md`。在这一次本地运行中 NativeStrings 更慢。
+- HMAC-SHA-256、SHA-256、equality 和 NativeStrings 检查均通过；Java 与
+  NativeStrings 诊断的 checksum 都是 `231461089`。
+- 未运行 AES-GCM benchmark，也不作 AES 性能声明。
+
+Full findings and exact commands are recorded in
+`docs/sdk/aes-256-gcm-review.md`.
+
+完整审查结论和实际执行命令记录于
+`docs/sdk/aes-256-gcm-review.md`。
