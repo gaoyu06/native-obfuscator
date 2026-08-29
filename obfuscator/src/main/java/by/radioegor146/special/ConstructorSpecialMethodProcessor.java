@@ -524,9 +524,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         boolean allowReceiverAliasForwarding =
                 callIndexes.size() == 1
-                        || callIndexes.size() == 2
-                        && sharedSuffix != null
-                        && sharedSuffix.strictDiamond;
+                        || duplicatedSuffix != null
+                        || sharedSuffix != null && sharedSuffix.strictDiamond;
         boolean receiverAliasForwarding = validateReceiverStores(
                 constructor, suffixStartIndex, callIndexes, prefixTryCatches,
                 allowReceiverAliasForwarding);
@@ -1228,9 +1227,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * copy may be empty, making RETURN the immediate successor of each call.
      *
      * <p>For three or more calls, every call must additionally receive the
-     * original local-0 receiver and locally proven argument inputs. The
-     * canonical final copy can then be shared by replacing every earlier copy
-     * with a GOTO; this does not create multiple native exits.
+     * original receiver, either directly or through a syntactically admitted
+     * prefix alias, and locally proven argument inputs. The canonical final
+     * copy can then be shared by replacing every earlier copy with a GOTO;
+     * this does not create multiple native exits.
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1259,16 +1259,53 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 return null;
             }
         }
-        if (callIndexes.size() > 2) {
-            if (!hasDirectDeclaredChainInputs(
-                    constructor, callIndexes, false)) {
+
+        boolean hasPrefixReceiverAlias = false;
+        int firstCallIndex = callIndexes.get(0);
+        Set<Integer> declaredReferenceLocals =
+                forwardedReferenceLocals(constructor);
+        for (int i = 0; i < constructor.instructions.size(); i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.ASTORE
+                    || ((VarInsnNode) instruction).var != 0) {
+                continue;
+            }
+            if (i >= firstCallIndex) {
                 return null;
             }
+            int valueIndex =
+                    previousExecutableIndex(constructor, i - 1);
+            if (valueIndex < 0) {
+                return null;
+            }
+            AbstractInsnNode value =
+                    constructor.instructions.get(valueIndex);
+            boolean identityStore = value.getOpcode() == Opcodes.ALOAD
+                    && ((VarInsnNode) value).var == 0;
+            if (value.getOpcode() == Opcodes.DUP) {
+                int duplicatedValueIndex =
+                        previousExecutableIndex(constructor, valueIndex - 1);
+                AbstractInsnNode duplicatedValue = duplicatedValueIndex < 0
+                        ? null
+                        : constructor.instructions.get(duplicatedValueIndex);
+                identityStore = duplicatedValueIndex >= 0
+                        && duplicatedValue.getOpcode() == Opcodes.ALOAD
+                        && ((VarInsnNode) duplicatedValue).var == 0;
+            }
+            if (identityStore) {
+                continue;
+            }
+            if (value.getOpcode() != Opcodes.ACONST_NULL
+                    && (value.getOpcode() != Opcodes.ALOAD
+                    || !declaredReferenceLocals.contains(
+                    ((VarInsnNode) value).var))) {
+                return null;
+            }
+            hasPrefixReceiverAlias = true;
         }
-
-        for (AbstractInsnNode instruction : constructor.instructions) {
-            if (instruction.getOpcode() == Opcodes.ASTORE
-                    && ((VarInsnNode) instruction).var == 0) {
+        if (callIndexes.size() > 2) {
+            if (!hasDirectDeclaredChainInputs(
+                    constructor, callIndexes, hasPrefixReceiverAlias)) {
                 return null;
             }
         }
@@ -1912,8 +1949,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * declared int-family argument load, or an admitted int binary tree of at
      * most two levels over those int-family leaves. IDIV and IREM are admitted
      * only as one-level operations whose two operands are leaves. The
-     * identical-copy form requires ALOAD 0; the distinct-suffix form may accept
-     * a direct alias load only when its separate receiver-frame proof succeeds.
+     * identical-copy and distinct-suffix forms may accept a direct alias load
+     * only when their separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2640,10 +2677,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves that every retained ASTORE 0 is reachable with a stack input and
      * that each selected chain call consumes the original constructor receiver.
-     * A single-call constructor, the exact two-call shared-join diamond, or a
-     * bounded path-selected distinct-suffix constructor may forward that
-     * receiver through an alias while local 0 receives another reference.
-     * Other multi-call forms remain limited to identity-preserving stores.
+     * A single-call constructor, a strict shared-join diamond (including an
+     * identical-copy constructor after normalization), or a bounded
+     * path-selected distinct-suffix constructor may forward that receiver
+     * through an alias while local 0 receives another reference. Other
+     * multi-call forms remain limited to identity-preserving stores.
      */
     private static boolean validateReceiverStores(
             MethodNode constructor, int splitIndex, List<Integer> callIndexes,
