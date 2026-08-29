@@ -78,7 +78,7 @@ def benchmarkJarTask = tasks.register('benchmarkJar', Jar) {
 
 tasks.register('bench', Exec) {
     group = 'verification'
-    description = 'Runs plain-JVM and transpiled-JNI benchmarks (not part of check).'
+    description = 'Runs plain-JVM, legacy-JNI, and IR-JNI benchmarks (not part of check).'
     dependsOn shadowJar, benchmarkJar
     workingDir rootProject.projectDir
     commandLine 'python3', rootProject.file('benchmarks/run.py')
