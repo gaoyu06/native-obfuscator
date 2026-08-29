@@ -11,10 +11,13 @@ import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -76,6 +79,7 @@ public final class InterpreterMethodEmitter {
     public static final int ARETURN = 49;
     public static final int IFNULL = 50;
     public static final int IFNONNULL = 51;
+    public static final int ATHROW = 52;
 
     private InterpreterMethodEmitter() {
     }
@@ -88,7 +92,6 @@ public final class InterpreterMethodEmitter {
                 method.name.startsWith("<") ||
                 !isSupportedType(Type.getReturnType(method.desc)) ||
                 !hasOnlySupportedArguments(method.desc) ||
-                (method.tryCatchBlocks != null && !method.tryCatchBlocks.isEmpty()) ||
                 method.maxLocals > 0xffff ||
                 method.maxStack > 0xffff - 2) {
             return null;
@@ -119,8 +122,28 @@ public final class InterpreterMethodEmitter {
             }
         }
 
+        List<ExceptionHandler> exceptionHandlers = new ArrayList<>();
+        if (method.tryCatchBlocks != null) {
+            for (TryCatchBlockNode tryCatch : method.tryCatchBlocks) {
+                Integer startPc = labelOffsets.get(tryCatch.start);
+                Integer endPc = labelOffsets.get(tryCatch.end);
+                Integer handlerPc = labelOffsets.get(tryCatch.handler);
+                if (startPc == null || endPc == null || handlerPc == null ||
+                        startPc < 0 || startPc >= endPc ||
+                        endPc > codeLength || handlerPc < 0 ||
+                        handlerPc >= codeLength ||
+                        (tryCatch.type != null && tryCatch.type.isEmpty())) {
+                    return null;
+                }
+                exceptionHandlers.add(new ExceptionHandler(
+                        startPc, endPc, handlerPc, tryCatch.type));
+            }
+        }
+
         int maxStack = method.maxStack + (expandsIinc ? 2 : 0);
-        return new CompiledMethod(code.toByteArray(), maxStack, method.maxLocals);
+        return new CompiledMethod(code.toByteArray(), maxStack,
+                method.maxLocals, exceptionHandlers.toArray(
+                new ExceptionHandler[exceptionHandlers.size()]));
     }
 
     private static boolean hasOnlySupportedArguments(String descriptor) {
@@ -160,6 +183,7 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.IRETURN:
                 case Opcodes.LRETURN:
                 case Opcodes.ARETURN:
+                case Opcodes.ATHROW:
                     return 1;
                 default:
                     return arithmeticOpcode(opcode) >= 0 ? 1 : -1;
@@ -229,6 +253,9 @@ public final class InterpreterMethodEmitter {
                     return true;
                 case Opcodes.ARETURN:
                     code.write(ARETURN);
+                    return true;
+                case Opcodes.ATHROW:
+                    code.write(ATHROW);
                     return true;
                 default:
                     int interpretedOpcode = arithmeticOpcode(opcode);
@@ -429,11 +456,14 @@ public final class InterpreterMethodEmitter {
         private final byte[] code;
         private final int maxStack;
         private final int maxLocals;
+        private final ExceptionHandler[] exceptionHandlers;
 
-        private CompiledMethod(byte[] code, int maxStack, int maxLocals) {
+        private CompiledMethod(byte[] code, int maxStack, int maxLocals,
+                               ExceptionHandler[] exceptionHandlers) {
             this.code = code;
             this.maxStack = maxStack;
             this.maxLocals = maxLocals;
+            this.exceptionHandlers = exceptionHandlers;
         }
 
         public byte[] getCode() {
@@ -446,6 +476,41 @@ public final class InterpreterMethodEmitter {
 
         public int getMaxLocals() {
             return maxLocals;
+        }
+
+        public ExceptionHandler[] getExceptionHandlers() {
+            return exceptionHandlers.clone();
+        }
+    }
+
+    public static final class ExceptionHandler {
+        private final int startPc;
+        private final int endPc;
+        private final int handlerPc;
+        private final String catchType;
+
+        private ExceptionHandler(int startPc, int endPc, int handlerPc,
+                                 String catchType) {
+            this.startPc = startPc;
+            this.endPc = endPc;
+            this.handlerPc = handlerPc;
+            this.catchType = catchType;
+        }
+
+        public int getStartPc() {
+            return startPc;
+        }
+
+        public int getEndPc() {
+            return endPc;
+        }
+
+        public int getHandlerPc() {
+            return handlerPc;
+        }
+
+        public String getCatchType() {
+            return catchType;
         }
     }
 }

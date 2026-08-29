@@ -105,6 +105,97 @@ namespace native_jvm::interp {
                           std::uint32_t target) noexcept {
             return target < method.code_len;
         }
+
+        bool valid_exception_table(const method_desc &method) noexcept {
+            if (method.exception_table_len != 0 &&
+                    method.exception_table == nullptr) {
+                return false;
+            }
+            for (std::uint32_t index = 0;
+                 index < method.exception_table_len; ++index) {
+                const exception_handler &handler =
+                        method.exception_table[index];
+                if (handler.start_pc >= handler.end_pc ||
+                        handler.end_pc > method.code_len ||
+                        !valid_target(method, handler.handler_pc)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        jthrowable create_exception(JNIEnv *env, const char *type,
+                                    const char *message) noexcept {
+            if (env == nullptr) {
+                return nullptr;
+            }
+            jclass exception_class = env->FindClass(type);
+            if (exception_class == nullptr) {
+                return nullptr;
+            }
+            jint throw_status = env->ThrowNew(exception_class, message);
+            env->DeleteLocalRef(exception_class);
+            if (throw_status != JNI_OK) {
+                return nullptr;
+            }
+            jthrowable exception = env->ExceptionOccurred();
+            if (exception != nullptr) {
+                env->ExceptionClear();
+            }
+            return exception;
+        }
+
+        enum class exception_dispatch_result {
+            handled,
+            pending,
+            invalid_stream
+        };
+
+        exception_dispatch_result dispatch_exception(
+                const method_desc &method, frame &current_frame,
+                JNIEnv *env, std::uint32_t instruction_pc,
+                jthrowable exception, std::uint32_t &pc,
+                std::uint16_t &sp) noexcept {
+            for (std::uint32_t index = 0;
+                 index < method.exception_table_len; ++index) {
+                const exception_handler &handler =
+                        method.exception_table[index];
+                if (instruction_pc < handler.start_pc ||
+                        instruction_pc >= handler.end_pc) {
+                    continue;
+                }
+
+                bool matches = handler.catch_type == nullptr;
+                if (!matches) {
+                    if (env == nullptr) {
+                        current_frame.pending_exception = exception;
+                        return exception_dispatch_result::pending;
+                    }
+                    jclass catch_class = env->FindClass(handler.catch_type);
+                    if (catch_class == nullptr) {
+                        return exception_dispatch_result::pending;
+                    }
+                    matches = env->IsInstanceOf(exception, catch_class) ==
+                            JNI_TRUE;
+                    env->DeleteLocalRef(catch_class);
+                }
+                if (!matches) {
+                    continue;
+                }
+                if (current_frame.ref_stack == nullptr ||
+                        method.max_stack == 0) {
+                    return exception_dispatch_result::invalid_stream;
+                }
+                current_frame.ref_stack[0] = exception;
+                current_frame.pending_exception = nullptr;
+                sp = 1;
+                pc = handler.handler_pc;
+                return exception_dispatch_result::handled;
+            }
+
+            current_frame.pending_exception = exception;
+            return exception_dispatch_result::pending;
+        }
     }
 
     void store_long(std::int32_t *slots, std::int64_t value) noexcept {
@@ -117,21 +208,23 @@ namespace native_jvm::interp {
     execution_result execute(const method_desc &method, frame &current_frame,
                              std::int32_t *int_result,
                              std::int64_t *long_result,
-                             jobject *ref_result) noexcept {
+                             jobject *ref_result, JNIEnv *env) noexcept {
         unsigned int result_count = int_result != nullptr ? 1U : 0U;
         result_count += long_result != nullptr ? 1U : 0U;
         result_count += ref_result != nullptr ? 1U : 0U;
         if (method.isa_version != ISA_VERSION || method.code == nullptr ||
                 method.code_len == 0 || current_frame.locals == nullptr ||
                 current_frame.stack == nullptr ||
-                result_count != 1U) {
+                result_count != 1U || !valid_exception_table(method)) {
             return execution_result::invalid_stream;
         }
 
         std::uint32_t pc = 0;
         std::uint16_t sp = 0;
+        current_frame.pending_exception = nullptr;
 
         while (pc < method.code_len) {
+            std::uint32_t instruction_pc = pc;
             opcode current = static_cast<opcode>(method.code[pc++]);
             switch (current) {
                 case opcode::ipush: {
@@ -287,7 +380,31 @@ namespace native_jvm::interp {
                             break;
                         case opcode::idiv:
                             if (right_value == 0) {
-                                return execution_result::arithmetic_exception;
+                                if (env == nullptr) {
+                                    return execution_result::
+                                            arithmetic_exception;
+                                }
+                                jthrowable exception = create_exception(
+                                        env,
+                                        "java/lang/ArithmeticException",
+                                        "/ by zero");
+                                if (exception == nullptr) {
+                                    return execution_result::
+                                            pending_exception;
+                                }
+                                exception_dispatch_result dispatch =
+                                        dispatch_exception(
+                                                method, current_frame, env,
+                                                instruction_pc, exception,
+                                                pc, sp);
+                                if (dispatch ==
+                                        exception_dispatch_result::handled) {
+                                    continue;
+                                }
+                                return dispatch ==
+                                        exception_dispatch_result::pending
+                                        ? execution_result::pending_exception
+                                        : execution_result::invalid_stream;
                             }
                             if (left_value ==
                                     std::numeric_limits<std::int32_t>::min() &&
@@ -300,7 +417,31 @@ namespace native_jvm::interp {
                             break;
                         case opcode::irem:
                             if (right_value == 0) {
-                                return execution_result::arithmetic_exception;
+                                if (env == nullptr) {
+                                    return execution_result::
+                                            arithmetic_exception;
+                                }
+                                jthrowable exception = create_exception(
+                                        env,
+                                        "java/lang/ArithmeticException",
+                                        "/ by zero");
+                                if (exception == nullptr) {
+                                    return execution_result::
+                                            pending_exception;
+                                }
+                                exception_dispatch_result dispatch =
+                                        dispatch_exception(
+                                                method, current_frame, env,
+                                                instruction_pc, exception,
+                                                pc, sp);
+                                if (dispatch ==
+                                        exception_dispatch_result::handled) {
+                                    continue;
+                                }
+                                return dispatch ==
+                                        exception_dispatch_result::pending
+                                        ? execution_result::pending_exception
+                                        : execution_result::invalid_stream;
                             }
                             if (left_value ==
                                     std::numeric_limits<std::int32_t>::min() &&
@@ -360,8 +501,31 @@ namespace native_jvm::interp {
                             std::int64_t signed_right =
                                     long_from_unsigned(right);
                             if (signed_right == 0) {
-                                return execution_result::
-                                        arithmetic_exception;
+                                if (env == nullptr) {
+                                    return execution_result::
+                                            arithmetic_exception;
+                                }
+                                jthrowable exception = create_exception(
+                                        env,
+                                        "java/lang/ArithmeticException",
+                                        "/ by zero");
+                                if (exception == nullptr) {
+                                    return execution_result::
+                                            pending_exception;
+                                }
+                                exception_dispatch_result dispatch =
+                                        dispatch_exception(
+                                                method, current_frame, env,
+                                                instruction_pc, exception,
+                                                pc, sp);
+                                if (dispatch ==
+                                        exception_dispatch_result::handled) {
+                                    continue;
+                                }
+                                return dispatch ==
+                                        exception_dispatch_result::pending
+                                        ? execution_result::pending_exception
+                                        : execution_result::invalid_stream;
                             }
                             if (signed_left ==
                                     std::numeric_limits<
@@ -507,6 +671,30 @@ namespace native_jvm::interp {
                     pc = target;
                     break;
                 }
+                case opcode::athrow: {
+                    if (current_frame.ref_stack == nullptr || sp == 0) {
+                        return execution_result::invalid_stream;
+                    }
+                    jthrowable exception = reinterpret_cast<jthrowable>(
+                            current_frame.ref_stack[--sp]);
+                    if (exception == nullptr) {
+                        exception = create_exception(
+                                env, "java/lang/NullPointerException",
+                                "ATHROW null");
+                        if (exception == nullptr) {
+                            return execution_result::pending_exception;
+                        }
+                    }
+                    exception_dispatch_result dispatch = dispatch_exception(
+                            method, current_frame, env, instruction_pc,
+                            exception, pc, sp);
+                    if (dispatch == exception_dispatch_result::handled) {
+                        break;
+                    }
+                    return dispatch == exception_dispatch_result::pending
+                            ? execution_result::pending_exception
+                            : execution_result::invalid_stream;
+                }
                 case opcode::ireturn:
                     if (sp == 0 || int_result == nullptr) {
                         return execution_result::invalid_stream;
@@ -537,17 +725,17 @@ namespace native_jvm::interp {
     }
 
     execution_result execute_i(const method_desc &method, frame &current_frame,
-                               std::int32_t *result) noexcept {
-        return execute(method, current_frame, result, nullptr, nullptr);
+                               std::int32_t *result, JNIEnv *env) noexcept {
+        return execute(method, current_frame, result, nullptr, nullptr, env);
     }
 
     execution_result execute_j(const method_desc &method, frame &current_frame,
-                               std::int64_t *result) noexcept {
-        return execute(method, current_frame, nullptr, result, nullptr);
+                               std::int64_t *result, JNIEnv *env) noexcept {
+        return execute(method, current_frame, nullptr, result, nullptr, env);
     }
 
     execution_result execute_l(const method_desc &method, frame &current_frame,
-                               jobject *result) noexcept {
-        return execute(method, current_frame, nullptr, nullptr, result);
+                               jobject *result, JNIEnv *env) noexcept {
+        return execute(method, current_frame, nullptr, nullptr, result, env);
     }
 }

@@ -28,8 +28,69 @@ public class InterpreterRuntimeTest {
         Files.write(directory.resolve("jni.h"),
                 ("#ifndef INTERPRETER_TEST_JNI_H\n" +
                         "#define INTERPRETER_TEST_JNI_H\n" +
-                        "struct _jobject {};\n" +
+                        "#include <cstring>\n" +
+                        "using jint = int;\n" +
+                        "using jboolean = unsigned char;\n" +
+                        "constexpr jint JNI_OK = 0;\n" +
+                        "constexpr jboolean JNI_TRUE = 1;\n" +
+                        "enum class test_object_kind {\n" +
+                        "    object, throwable, arithmetic, null_pointer, class_object\n" +
+                        "};\n" +
+                        "struct _jobject {\n" +
+                        "    explicit _jobject(test_object_kind value = test_object_kind::object) : kind(value) {}\n" +
+                        "    test_object_kind kind;\n" +
+                        "};\n" +
+                        "struct _jthrowable : _jobject {\n" +
+                        "    explicit _jthrowable(test_object_kind value = test_object_kind::throwable) : _jobject(value) {}\n" +
+                        "};\n" +
+                        "struct _jclass : _jobject {\n" +
+                        "    explicit _jclass(const char *value) : _jobject(test_object_kind::class_object), name(value) {}\n" +
+                        "    const char *name;\n" +
+                        "};\n" +
                         "using jobject = _jobject *;\n" +
+                        "using jthrowable = _jthrowable *;\n" +
+                        "using jclass = _jclass *;\n" +
+                        "class JNIEnv {\n" +
+                        "public:\n" +
+                        "    JNIEnv() : pending_(nullptr), generated_(),\n" +
+                        "            arithmetic_class_(\"java/lang/ArithmeticException\"),\n" +
+                        "            null_pointer_class_(\"java/lang/NullPointerException\"),\n" +
+                        "            throwable_class_(\"java/lang/Throwable\") {}\n" +
+                        "    jclass FindClass(const char *name) {\n" +
+                        "        if (std::strcmp(name, arithmetic_class_.name) == 0) return &arithmetic_class_;\n" +
+                        "        if (std::strcmp(name, null_pointer_class_.name) == 0) return &null_pointer_class_;\n" +
+                        "        if (std::strcmp(name, throwable_class_.name) == 0) return &throwable_class_;\n" +
+                        "        generated_.kind = test_object_kind::throwable;\n" +
+                        "        pending_ = &generated_;\n" +
+                        "        return nullptr;\n" +
+                        "    }\n" +
+                        "    jint ThrowNew(jclass type, const char *) {\n" +
+                        "        generated_.kind = std::strcmp(type->name, arithmetic_class_.name) == 0\n" +
+                        "                ? test_object_kind::arithmetic : test_object_kind::null_pointer;\n" +
+                        "        pending_ = &generated_;\n" +
+                        "        return JNI_OK;\n" +
+                        "    }\n" +
+                        "    jthrowable ExceptionOccurred() { return pending_; }\n" +
+                        "    void ExceptionClear() { pending_ = nullptr; }\n" +
+                        "    jint Throw(jthrowable exception) { pending_ = exception; return JNI_OK; }\n" +
+                        "    jboolean IsInstanceOf(jobject object, jclass type) {\n" +
+                        "        if (object == nullptr) return 0;\n" +
+                        "        if (std::strcmp(type->name, throwable_class_.name) == 0)\n" +
+                        "            return object->kind == test_object_kind::throwable ||\n" +
+                        "                    object->kind == test_object_kind::arithmetic ||\n" +
+                        "                    object->kind == test_object_kind::null_pointer;\n" +
+                        "        if (std::strcmp(type->name, arithmetic_class_.name) == 0)\n" +
+                        "            return object->kind == test_object_kind::arithmetic;\n" +
+                        "        return object->kind == test_object_kind::null_pointer;\n" +
+                        "    }\n" +
+                        "    void DeleteLocalRef(jobject) {}\n" +
+                        "private:\n" +
+                        "    jthrowable pending_;\n" +
+                        "    _jthrowable generated_;\n" +
+                        "    _jclass arithmetic_class_;\n" +
+                        "    _jclass null_pointer_class_;\n" +
+                        "    _jclass throwable_class_;\n" +
+                        "};\n" +
                         "#endif\n").getBytes(StandardCharsets.UTF_8));
         Files.write(directory.resolve("runtime_test.cpp"),
                 harness().getBytes(StandardCharsets.UTF_8));
@@ -51,6 +112,7 @@ public class InterpreterRuntimeTest {
                 "#include <limits>\n" +
                 "\n" +
                 "using native_jvm::interp::execution_result;\n" +
+                "using native_jvm::interp::exception_handler;\n" +
                 "using native_jvm::interp::frame;\n" +
                 "using native_jvm::interp::method_desc;\n" +
                 "\n" +
@@ -123,6 +185,20 @@ public class InterpreterRuntimeTest {
                 "static const method_desc ifnull_method = { 4, 1, 1, ifnull_code, sizeof(ifnull_code) };\n" +
                 "static const std::uint8_t ifnonnull_code[] = { 47,0,0, 51,12,0,0,0, 46,49, 46,49, 47,0,0,49 };\n" +
                 "static const method_desc ifnonnull_method = { 4, 1, 1, ifnonnull_code, sizeof(ifnonnull_code) };\n" +
+                "static const std::uint8_t athrow_code[] = { 47,0,0, 52 };\n" +
+                "static const method_desc athrow_method = { 4, 1, 1, athrow_code, sizeof(athrow_code) };\n" +
+                "static const std::uint8_t catch_idiv_code[] = { 2,0,0, 2,1,0, 28, 19, 48,2,0, 1,42,0,0,0, 19 };\n" +
+                "static const exception_handler catch_idiv_handlers[] = { { 0,7,8,nullptr } };\n" +
+                "static const method_desc catch_idiv_method = { 4, 2, 3, catch_idiv_code, sizeof(catch_idiv_code), catch_idiv_handlers, 1 };\n" +
+                "static const std::uint8_t catch_ldiv_code[] = { 31,0,0, 31,2,0, 44, 43, 48,4,0, 30,42,0,0,0,0,0,0,0, 43 };\n" +
+                "static const exception_handler catch_ldiv_handlers[] = { { 0,7,8,nullptr } };\n" +
+                "static const method_desc catch_ldiv_method = { 4, 4, 5, catch_ldiv_code, sizeof(catch_ldiv_code), catch_ldiv_handlers, 1 };\n" +
+                "static const std::uint8_t typed_athrow_code[] = { 47,0,0, 52, 48,1,0, 1,11,0,0,0, 19, 48,1,0, 1,22,0,0,0, 19 };\n" +
+                "static const exception_handler typed_athrow_handlers[] = {\n" +
+                "    { 0,4,4,\"java/lang/NullPointerException\" },\n" +
+                "    { 0,4,13,\"java/lang/ArithmeticException\" }\n" +
+                "};\n" +
+                "static const method_desc typed_athrow_method = { 4, 1, 2, typed_athrow_code, sizeof(typed_athrow_code), typed_athrow_handlers, 2 };\n" +
                 "\n" +
                 "static bool run_binary(const method_desc &method,\n" +
                 "                       std::int32_t a, std::int32_t b,\n" +
@@ -246,9 +322,88 @@ public class InterpreterRuntimeTest {
                 "           result == expected;\n" +
                 "}\n" +
                 "\n" +
+                "static bool run_athrow_no_handler(jthrowable exception) {\n" +
+                "    std::int32_t locals[1] = {};\n" +
+                "    std::int32_t stack[1] = {};\n" +
+                "    jobject ref_locals[1] = { exception };\n" +
+                "    jobject ref_stack[1] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_i(\n" +
+                "                   athrow_method, f, &result, &env) ==\n" +
+                "                   execution_result::pending_exception &&\n" +
+                "           f.pending_exception == exception &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_catch_idiv() {\n" +
+                "    std::int32_t locals[3] = { 1, 0, 0 };\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    jobject ref_locals[3] = {};\n" +
+                "    jobject ref_stack[2] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_i(\n" +
+                "                   catch_idiv_method, f, &result, &env) ==\n" +
+                "                   execution_result::success && result == 42 &&\n" +
+                "           f.pending_exception == nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_catch_ldiv() {\n" +
+                "    std::int32_t locals[5] = {};\n" +
+                "    std::int32_t stack[4] = {};\n" +
+                "    jobject ref_locals[5] = {};\n" +
+                "    jobject ref_stack[4] = {};\n" +
+                "    std::int64_t result = 0;\n" +
+                "    native_jvm::interp::store_long(locals, 1);\n" +
+                "    native_jvm::interp::store_long(locals + 2, 0);\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_j(\n" +
+                "                   catch_ldiv_method, f, &result, &env) ==\n" +
+                "                   execution_result::success && result == 42 &&\n" +
+                "           f.pending_exception == nullptr &&\n" +
+                "           env.ExceptionOccurred() == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_typed_athrow(jthrowable exception,\n" +
+                "                               std::int32_t expected) {\n" +
+                "    std::int32_t locals[2] = {};\n" +
+                "    std::int32_t stack[1] = {};\n" +
+                "    jobject ref_locals[2] = { exception, nullptr };\n" +
+                "    jobject ref_stack[1] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_i(\n" +
+                "                   typed_athrow_method, f, &result, &env) ==\n" +
+                "                   execution_result::success && result == expected &&\n" +
+                "           f.pending_exception == nullptr;\n" +
+                "}\n" +
+                "\n" +
+                "static bool run_typed_athrow_miss(jthrowable exception) {\n" +
+                "    std::int32_t locals[2] = {};\n" +
+                "    std::int32_t stack[1] = {};\n" +
+                "    jobject ref_locals[2] = { exception, nullptr };\n" +
+                "    jobject ref_stack[1] = {};\n" +
+                "    std::int32_t result = 0;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_i(\n" +
+                "                   typed_athrow_method, f, &result, &env) ==\n" +
+                "                   execution_result::pending_exception &&\n" +
+                "           f.pending_exception == exception;\n" +
+                "}\n" +
+                "\n" +
                 "int main() {\n" +
                 "    _jobject object_storage;\n" +
                 "    jobject object = &object_storage;\n" +
+                "    _jthrowable throwable(test_object_kind::throwable);\n" +
+                "    _jthrowable arithmetic(test_object_kind::arithmetic);\n" +
+                "    _jthrowable null_pointer(test_object_kind::null_pointer);\n" +
                 "    if (!run_binary(add_method, 7, -3, 4)) return 1;\n" +
                 "    if (!run_binary(add_method,\n" +
                 "                    std::numeric_limits<std::int32_t>::max(), 1,\n" +
@@ -339,6 +494,13 @@ public class InterpreterRuntimeTest {
                 "    if (!run_reference(ifnull_method, nullptr, nullptr)) return 52;\n" +
                 "    if (!run_reference(ifnonnull_method, object, object)) return 53;\n" +
                 "    if (!run_reference(ifnonnull_method, nullptr, nullptr)) return 54;\n" +
+                "    if (!run_athrow_no_handler(&throwable)) return 55;\n" +
+                "    if (!run_catch_idiv()) return 56;\n" +
+                "    if (!run_catch_ldiv()) return 57;\n" +
+                "    if (!run_typed_athrow(&arithmetic, 22)) return 58;\n" +
+                "    if (!run_typed_athrow(&null_pointer, 11)) return 59;\n" +
+                "    if (!run_typed_athrow(nullptr, 11)) return 60;\n" +
+                "    if (!run_typed_athrow_miss(&throwable)) return 61;\n" +
                 "    return 0;\n" +
                 "}\n";
     }
