@@ -46,6 +46,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final int MAX_DISTINCT_SUFFIXES = 8;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
+    private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
     private List<RelocatedPrefixHandler> relocatedPrefixHandlers =
             new ArrayList<>();
 
@@ -61,6 +62,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         retainedPrefixTryCatches =
                 new ArrayList<>(split.prefixTryCatches);
+        retainedSuffixTryCatches =
+                new ArrayList<>(split.suffixTryCatches);
         relocatedPrefixHandlers =
                 new ArrayList<>(split.relocatedPrefixHandlers);
         // The JNI shell only needs catch metadata for the native suffix.
@@ -95,7 +98,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     @Override
     public void postProcess(MethodContext context) {
+        // MethodShellEmitter clears catch metadata after IR lowering. Restore
+        // it only long enough to reproduce the proven split, including an
+        // isolated tail that is discoverable solely through its handler role.
+        context.method.tryCatchBlocks.addAll(retainedPrefixTryCatches);
+        context.method.tryCatchBlocks.addAll(retainedSuffixTryCatches);
         ConstructorSplit split = split(context.clazz, context.method);
+        context.method.tryCatchBlocks.clear();
         Map<LabelNode, LabelNode> labels = labels(context.method);
         if (split.distinctSuffix != null) {
             InsnList wrapper = new InsnList();
