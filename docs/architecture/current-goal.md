@@ -53,13 +53,14 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #192 (proven extras through distinct path-id
-   suffixes) include at least: remaining constructor-split rejects
-   (non-identity prefix `ASTORE 0` / receiver-alias forwarding,
-   unproven prefix→suffix jumps/switches, other mixed prefix/suffix
-   try/catch placements beyond #171/#184/#187/#188, remaining
-   multi-super shapes such as nested/`IDIV` computed inputs, branched
-   suffixes, hybrid identical-plus-distinct suffix sets, or more than
+   `master` after #193 (closed int-family branches inside exactly
+   two distinct suffixes) include at least: remaining
+   constructor-split rejects (non-identity prefix `ASTORE 0` /
+   receiver-alias forwarding, unproven prefix→suffix jumps/switches,
+   other mixed prefix/suffix try/catch placements beyond
+   #171/#184/#187/#188, remaining multi-super shapes such as
+   nested/`IDIV` computed inputs, 3–8-call branched suffixes, suffix
+   switches, hybrid identical-plus-distinct suffix sets, or more than
    eight distinct paths, extras still unassigned on a bridge-taking
    path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
