@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing shared-suffix multi-super constructor diamonds
-[#165](https://github.com/gaoyu06/native-obfuscator/pull/165)
-(parent re-ran 143/143: 136 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `multipleSuperDiamondCompilesAndRunsWithJavaParity`)
-on the post-[#164](https://github.com/gaoyu06/native-obfuscator/pull/164)
-gapped-extra tree. Active process:
+Last updated after landing prefix-only constructor try/catch
+[#166](https://github.com/gaoyu06/native-obfuscator/pull/166)
+(parent re-ran 148/148: 141 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity`)
+on the post-[#165](https://github.com/gaoyu06/native-obfuscator/pull/165)
+multi-super tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -60,11 +60,14 @@ legacy。不能当成 JDK 支持矩阵。
   gapped extras and remaps suffix accesses onto those packed slots.
   [#165](https://github.com/gaoyu06/native-obfuscator/pull/165) admits
   a strict shared-label multi-super diamond (exactly one chain call per
-  successful path, one join, one hidden bridge). `ASTORE 0`, a
-  prefix→suffix branch that is not an admitted join, try/catch that is
-  not wholly in the suffix, non-diamond multi-super, and conditionally
-  assigned extras are still rejected. This is not a JDK 25 support badge
-  and was not re-run as a Temurin 25 E2E.
+  successful path, one join, one hidden bridge).
+  [#166](https://github.com/gaoyu06/native-obfuscator/pull/166) admits
+  try/catch wholly in the prefix (kept in bytecode) while suffix-only
+  regions stay in the IR body. `ASTORE 0`, a prefix→suffix branch that
+  is not an admitted join, mixed prefix/suffix try/catch, non-diamond
+  multi-super, and conditionally assigned extras are still rejected.
+  This is not a JDK 25 support badge and was not re-run as a Temurin 25
+  E2E.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
   and `PermittedSubclasses` attributes are no longer dropped by stamping 52.
@@ -159,6 +162,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Constructor prefix extra locals (#163) | 133 tests (`IrCompilerTest` 126 + `CodegenModeTest` 7). Parent re-ran 133/133 including `prefixExtraReferenceLocalCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Gapped constructor prefix extras (#164) | 136 tests (`IrCompilerTest` 129 + `CodegenModeTest` 7). Parent re-ran 136/136 including `gappedPrefixExtraReferenceLocalCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Shared-suffix multi-super diamonds (#165) | 143 tests (`IrCompilerTest` 136 + `CodegenModeTest` 7). Parent re-ran 143/143 including `multipleSuperDiamondCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
+| Prefix-only constructor try/catch (#166) | 148 tests (`IrCompilerTest` 141 + `CodegenModeTest` 7). Parent re-ran 148/148 including `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -204,11 +208,12 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (`ASTORE 0`, prefix→suffix branch
-  that is not an admitted join, try/catch that is not wholly in the
-  suffix, non-diamond multi-super, conditionally assigned extras) and
-  `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
-  subroutines). Unsafe condy shapes stay fail-closed. In-tree fixture
-  admission ([#162](https://github.com/gaoyu06/native-obfuscator/pull/162),
+  that is not an admitted join, mixed prefix/suffix try/catch,
+  non-diamond multi-super, conditionally assigned extras), primitive
+  `Class` `LDC`, and `jsr` / `ret` (reject-before-mutation is
+  acceptable for obsolete subroutines). Unsafe condy shapes stay
+  fail-closed. In-tree fixture admission
+  ([#162](https://github.com/gaoyu06/native-obfuscator/pull/162),
   measured on post-#161 master) observed 0 leftovers; that is not
   coverage-complete.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
@@ -222,8 +227,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #165 (multi-super
-  diamonds). / 落地 #165 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #166 (prefix-only
+  ctor try/catch). / 落地 #166 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
