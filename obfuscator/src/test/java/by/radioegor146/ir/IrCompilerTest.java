@@ -106,6 +106,10 @@ public class IrCompilerTest {
     private static final String[] FLOAT_DIV_REM_CHAIN_INPUT_SHAPES = {
             "float-fdiv", "float-frem"
     };
+    private static final String[] TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES = {
+            "float-nested-fadd", "float-nested-fdiv",
+            "float-fdiv-inner", "float-two-sided-fadd"
+    };
     private static final String[] TWO_LEVEL_LONG_CHAIN_INPUT_SHAPES = {
             "long-nested-ladd", "long-nested-ldiv",
             "long-ldiv-inner", "long-nested-lshl",
@@ -3770,6 +3774,55 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsTwoLevelNestedFloatChainInputs() {
+        for (String shape : TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/TwoLevelFloat"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperFloatBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IF)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            long binaryCount = realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                    .count();
+            assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                    binaryCount, shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IF)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void admitsThreeLevelNestedLongChainInputs() {
         for (String shape : THREE_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
             ClassNode owner = constructorOwner(
@@ -4282,7 +4335,8 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenFloatComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
-                "float-nested-fadd", "float-extra-local",
+                "float-three-level-fadd",
+                "float-three-level-fdiv-inner", "float-extra-local",
                 "float-fneg-constant", "float-double-fneg",
                 "float-fneg-extra-local", "float-fneg-computed")) {
             ClassNode owner = constructorOwner(
@@ -6131,6 +6185,74 @@ public class IrCompilerTest {
             assertEquals(
                     "(Ljava/lang/Object;IJ)V",
                     context.proxyMethod.getMethodNode().desc, shape);
+        }
+    }
+
+    @Test
+    public void rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperFloatBase(
+                            "example/VerifiedTwoLevelFloatBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedTwoLevelFloat" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            float[] values = {11.0f, -22.0f, 0.25f};
+            for (int i = 0; i < selectors.length; i++) {
+                int selector = selectors[i];
+                float value = values[i];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, float.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                    realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                    .count(), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IF)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
         }
     }
 
@@ -10014,6 +10136,107 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native nested long chain-input Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the nested float runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the nested float runtime test");
+
+        String mainName = "example/TwoLevelFloatInputRuntime";
+        String baseName = "example/TwoLevelFloatInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-two-level-float-input-run");
+        Path inputJar = directory.resolve("two-level-float-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createTwoLevelNestedFloatChainInputsJar(
+                inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain nested float chain-input Java run");
+        assertEquals(
+                "13.0" + System.lineSeparator()
+                        + "6.0" + System.lineSeparator()
+                        + "6.5" + System.lineSeparator()
+                        + "24.0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        twoLevelFloatRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                        realOpcodes(transformedConstructor).stream()
+                        .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                        .count(), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("nested float chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("nested float chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Nested float chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native nested float chain-input Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -15279,6 +15502,18 @@ public class IrCompilerTest {
                 || shape.startsWith("long-three-level-") ? 9L : 6L;
     }
 
+    private static boolean isFloatChainBinaryOpcode(int opcode) {
+        return opcode == Opcodes.FADD
+                || opcode == Opcodes.FSUB
+                || opcode == Opcodes.FMUL
+                || opcode == Opcodes.FDIV
+                || opcode == Opcodes.FREM;
+    }
+
+    private static long expectedFloatChainBinaryOpcodeCount(String shape) {
+        return "float-two-sided-fadd".equals(shape) ? 9L : 6L;
+    }
+
     private java.util.List<Integer> variableIndexes(
             MethodNode method, int opcode) {
         java.util.List<Integer> indexes = new java.util.ArrayList<>();
@@ -16988,6 +17223,67 @@ public class IrCompilerTest {
     }
 
     private String twoLevelLongRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
+    private void createTwoLevelNestedFloatChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperFloatBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    twoLevelFloatRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperFloatPrint(
+                    entry, owner.name, baseName, 7, 11.0f);
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 5;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String twoLevelFloatRuntimeOwnerName(
             String mainName, String shape) {
         return mainName + "$" + shape.replace("-", "");
     }
@@ -20919,6 +21215,42 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.FADD));
         } else if ("float-nested-fadd".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+        } else if ("float-nested-fdiv".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_2));
+            method.instructions.add(new InsnNode(Opcodes.FDIV));
+        } else if ("float-fdiv-inner".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_2));
+            method.instructions.add(new InsnNode(Opcodes.FDIV));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+        } else if ("float-two-sided-fadd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+        } else if ("float-three-level-fadd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FADD));
+        } else if ("float-three-level-fdiv-inner".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_2));
+            method.instructions.add(new InsnNode(Opcodes.FDIV));
             method.instructions.add(new InsnNode(Opcodes.FCONST_1));
             method.instructions.add(new InsnNode(Opcodes.FADD));
             method.instructions.add(new InsnNode(Opcodes.FCONST_1));
