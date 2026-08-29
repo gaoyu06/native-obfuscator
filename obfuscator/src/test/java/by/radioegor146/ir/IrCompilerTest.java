@@ -902,6 +902,49 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsPostChainSwitchesToSharedSuffix() {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "Lookup" : "Table";
+            ClassNode owner = constructorOwner(
+                    "example/PostChain" + kind + "Switch",
+                    "example/MultiSuperBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor = postChainSwitchConstructor(
+                    owner.name, owner.superName, lookup);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(II)V", nativeBody.desc, kind);
+            assertEquals(Arrays.asList(
+                            Opcodes.ALOAD, Opcodes.BIPUSH,
+                            Opcodes.PUTFIELD, Opcodes.RETURN),
+                    realOpcodes(nativeBody), kind);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertTrue(constructor.tryCatchBlocks.isEmpty(), kind);
+            assertEquals(2, directChainCallCount(constructor, owner), kind);
+            assertEquals(1, hiddenBridgeCallCount(constructor), kind);
+            assertTrue(realOpcodes(constructor).contains(
+                    lookup ? Opcodes.LOOKUPSWITCH : Opcodes.TABLESWITCH), kind);
+            assertTrue(realOpcodes(constructor).contains(Opcodes.GOTO), kind);
+            assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD), kind);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), kind);
+            assertEquals(
+                    "(Ljava/lang/Object;II)V",
+                    context.proxyMethod.getMethodNode().desc, kind);
+        }
+    }
+
+    @Test
     public void admitsConditionallyAssignedExtraOnBridgePathOnly() {
         ClassNode owner = constructorOwner(
                 "example/ConditionalBridgeExtra", "example/MultiSuperBase");
@@ -1057,6 +1100,57 @@ public class IrCompilerTest {
         assertEquals(Opcodes.IFNE, error.getOpcode());
         assertTrue(error.getMessage().contains(
                 "Constructor prefix branches across the this/super call"));
+    }
+
+    @Test
+    public void rejectsUnprovenPostChainSwitchShapes() {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "lookup" : "table";
+            ClassNode owner = constructorOwner(
+                    "example/RejectedPostChainSwitch" + kind,
+                    "example/MultiSuperBase");
+
+            for (int variant = 0; variant < 3; variant++) {
+                MethodNode constructor = postChainSwitchConstructor(
+                        owner.name, owner.superName, lookup);
+                if (variant == 0) {
+                    addComputedPostChainSwitchKey(constructor);
+                } else if (variant == 1) {
+                    addWorkBeforePostChainSwitchReturn(constructor);
+                } else {
+                    addPostChainSwitchExceptionTable(constructor);
+                }
+
+                UnsupportedIrConstructException error = assertThrows(
+                        UnsupportedIrConstructException.class,
+                        () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                                owner, constructor),
+                        kind + " variant " + variant);
+                assertTrue(error.getMessage().contains(
+                                "Constructor chain calls do not share one suffix join"),
+                        kind + " variant " + variant);
+            }
+        }
+    }
+
+    @Test
+    public void rejectsSwitchPathThatSkipsEveryChainCall() {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "lookup" : "table";
+            ClassNode owner = constructorOwner(
+                    "example/SkipChainSwitch" + kind, "java/lang/Object");
+            UnsupportedIrConstructException error = assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, switchSkippingChainConstructor(lookup)),
+                    kind);
+            assertEquals(
+                    lookup ? Opcodes.LOOKUPSWITCH : Opcodes.TABLESWITCH,
+                    error.getOpcode(), kind);
+            assertTrue(error.getMessage().contains(
+                    "Constructor prefix branches across the this/super call"),
+                    kind);
+        }
     }
 
     @Test
@@ -1637,6 +1731,67 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenPostChainSwitchesPassJvmVerification()
+            throws Exception {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "Lookup" : "Table";
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedPostChain" + kind + "SwitchBase");
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedPostChain" + kind + "Switch", base.name);
+            owner.version = Opcodes.V1_8;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor = postChainSwitchConstructor(
+                    owner.name, base.name, lookup);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+
+            Object defaultReturn = verified.getConstructor(
+                            int.class, int.class)
+                    .newInstance(7, 99);
+            assertEquals(0, verified.getField("result").getInt(defaultReturn),
+                    kind + " default return");
+
+            int[] suffixKeys = lookup
+                    ? new int[]{7, 42} : new int[]{0, 1};
+            for (int key : suffixKeys) {
+                InvocationTargetException suffix = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, int.class)
+                                .newInstance(7, key),
+                        kind + " suffix key " + key);
+                assertTrue(suffix.getCause() instanceof UnsatisfiedLinkError,
+                        kind + " suffix key " + key);
+            }
+
+            InvocationTargetException secondCall = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, int.class)
+                            .newInstance(-5, 99),
+                    kind + " second call");
+            assertTrue(secondCall.getCause() instanceof UnsatisfiedLinkError,
+                    kind + " second call");
+            assertEquals(2, directChainCallCount(constructor, owner), kind);
+            assertEquals(1, hiddenBridgeCallCount(constructor), kind);
+        }
+    }
+
+    @Test
     public void rewrittenConditionalBridgeExtraPassesJvmVerification()
             throws Exception {
         ClassNode base =
@@ -2131,6 +2286,101 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native post-chain compare Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void postChainSwitchesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the post-chain switch runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the post-chain switch runtime test");
+
+        String ownerPrefix = "example/PostChainSwitchRuntime";
+        String tableOwner = ownerPrefix + "Table";
+        String lookupOwner = ownerPrefix + "Lookup";
+        String baseName = ownerPrefix + "Base";
+        String mainName = ownerPrefix + "Main";
+        Path directory =
+                Files.createTempDirectory("ir-post-chain-switch-run");
+        Path inputJar = directory.resolve("post-chain-switches.jar");
+        Path outputDirectory = directory.resolve("output");
+        createPostChainSwitchJar(
+                inputJar, tableOwner, lookupOwner, baseName, mainName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain post-chain switch Java run");
+        assertEquals(
+                "41" + System.lineSeparator()
+                        + "41" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "41" + System.lineSeparator()
+                        + "41" + System.lineSeparator()
+                        + "41" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "41" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (boolean lookup : new boolean[]{false, true}) {
+                String ownerName = lookup ? lookupOwner : tableOwner;
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor = transformed.methods.stream()
+                        .filter(method -> "<init>".equals(method.name))
+                        .findFirst().orElseThrow(AssertionError::new);
+                assertEquals(2, directChainCallCount(
+                        transformedConstructor, transformed), ownerName);
+                assertEquals(1, hiddenBridgeCallCount(transformedConstructor),
+                        ownerName);
+                assertTrue(realOpcodes(transformedConstructor).contains(
+                        lookup ? Opcodes.LOOKUPSWITCH : Opcodes.TABLESWITCH),
+                        ownerName);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("post-chain switch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("post-chain switch CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Post-chain switch native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native post-chain switch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -6787,6 +7037,45 @@ public class IrCompilerTest {
         }
     }
 
+    private void createPostChainSwitchJar(
+            Path jarPath, String tableOwnerName, String lookupOwnerName,
+            String baseName, String mainName) throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode tableOwner = constructorOwner(tableOwnerName, baseName);
+        tableOwner.version = Opcodes.V1_8;
+        tableOwner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        tableOwner.methods.add(postChainSwitchConstructor(
+                tableOwnerName, baseName, false));
+        ClassNode lookupOwner = constructorOwner(lookupOwnerName, baseName);
+        lookupOwner.version = Opcodes.V1_8;
+        lookupOwner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        lookupOwner.methods.add(postChainSwitchConstructor(
+                lookupOwnerName, baseName, true));
+        ClassNode main = constructorOwner(mainName, "java/lang/Object");
+        main.version = Opcodes.V1_8;
+        main.methods.add(postChainSwitchMain(
+                tableOwnerName, lookupOwnerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            for (ClassNode classNode :
+                    Arrays.asList(base, tableOwner, lookupOwner, main)) {
+                output.putNextEntry(new JarEntry(classNode.name + ".class"));
+                output.write(writeClass(classNode));
+                output.closeEntry();
+            }
+        }
+    }
+
     private void createConditionalBridgeExtraJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -7868,6 +8157,136 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode postChainSwitchConstructor(
+            String owner, String superName, boolean lookup) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(II)V", null, null);
+        LabelNode secondCall = new LabelNode();
+        LabelNode joinTrampoline = new LabelNode();
+        LabelNode earlyReturn = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, secondCall));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        if (lookup) {
+            method.instructions.add(new LookupSwitchInsnNode(
+                    earlyReturn, new int[]{7, 42},
+                    new LabelNode[]{join, joinTrampoline}));
+        } else {
+            method.instructions.add(new TableSwitchInsnNode(
+                    0, 1, earlyReturn, join, joinTrampoline));
+        }
+        method.instructions.add(joinTrampoline);
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(earlyReturn);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(secondCall);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private void addComputedPostChainSwitchKey(MethodNode constructor) {
+        AbstractInsnNode switchInstruction = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(instruction ->
+                        instruction instanceof TableSwitchInsnNode
+                                || instruction instanceof LookupSwitchInsnNode)
+                .findFirst().orElseThrow(AssertionError::new);
+        InsnList computation = new InsnList();
+        computation.add(new InsnNode(Opcodes.ICONST_1));
+        computation.add(new InsnNode(Opcodes.IADD));
+        constructor.instructions.insertBefore(switchInstruction, computation);
+    }
+
+    private void addWorkBeforePostChainSwitchReturn(MethodNode constructor) {
+        AbstractInsnNode prefixReturn = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(instruction ->
+                        instruction.getOpcode() == Opcodes.RETURN)
+                .findFirst().orElseThrow(AssertionError::new);
+        InsnList work = new InsnList();
+        work.add(new InsnNode(Opcodes.ICONST_0));
+        work.add(new InsnNode(Opcodes.POP));
+        constructor.instructions.insertBefore(prefixReturn, work);
+    }
+
+    private void addPostChainSwitchExceptionTable(MethodNode constructor) {
+        MethodInsnNode firstCall = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL)
+                .findFirst().orElseThrow(AssertionError::new);
+        AbstractInsnNode switchInstruction = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(instruction ->
+                        instruction instanceof TableSwitchInsnNode
+                                || instruction instanceof LookupSwitchInsnNode)
+                .findFirst().orElseThrow(AssertionError::new);
+        AbstractInsnNode prefixReturn = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(instruction ->
+                        instruction.getOpcode() == Opcodes.RETURN)
+                .findFirst().orElseThrow(AssertionError::new);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        constructor.instructions.insert(firstCall, start);
+        constructor.instructions.insertBefore(switchInstruction, end);
+        InsnList handlerBody = new InsnList();
+        handlerBody.add(handler);
+        handlerBody.add(new InsnNode(Opcodes.POP));
+        handlerBody.add(new InsnNode(Opcodes.RETURN));
+        constructor.instructions.insert(prefixReturn, handlerBody);
+        constructor.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/Throwable"));
+    }
+
+    private MethodNode switchSkippingChainConstructor(boolean lookup) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode chainCall = new LabelNode();
+        LabelNode suffix = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        if (lookup) {
+            method.instructions.add(new LookupSwitchInsnNode(
+                    chainCall, new int[]{0}, new LabelNode[]{suffix}));
+        } else {
+            method.instructions.add(new TableSwitchInsnNode(
+                    0, 0, chainCall, suffix));
+        }
+        method.instructions.add(chainCall);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        method.instructions.add(suffix);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
     private MethodNode conditionalPrefixExitExtraConstructor(
             String owner, String superName) {
         MethodNode method = new MethodNode(
@@ -8186,6 +8605,43 @@ public class IrCompilerTest {
         method.maxLocals = 1;
         method.maxStack = 5;
         return method;
+    }
+
+    private MethodNode postChainSwitchMain(
+            String tableOwner, String lookupOwner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendPostChainSwitchPrint(method, tableOwner, 7, 0);
+        appendPostChainSwitchPrint(method, tableOwner, 7, 1);
+        appendPostChainSwitchPrint(method, tableOwner, 7, 99);
+        appendPostChainSwitchPrint(method, tableOwner, -5, 99);
+        appendPostChainSwitchPrint(method, lookupOwner, 7, 7);
+        appendPostChainSwitchPrint(method, lookupOwner, 7, 42);
+        appendPostChainSwitchPrint(method, lookupOwner, 7, 99);
+        appendPostChainSwitchPrint(method, lookupOwner, -5, 99);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private void appendPostChainSwitchPrint(
+            MethodNode method, String owner, int selector, int key) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, key));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>", "(II)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
     }
 
     private MethodNode postChainIntCompareFamilyMain(String ownerPrefix) {
