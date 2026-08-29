@@ -3391,6 +3391,42 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithFnegOfProvenChainInputs() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeFloatNegateMultiReturn",
+                "example/MultiSuperFloatBase");
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "float-fneg");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(IF)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FNEG));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithFsubAndFmulOfProvenChainInputs() {
         for (String shape : Arrays.asList("float-fsub", "float-fmul")) {
             ClassNode owner = constructorOwner(
@@ -4246,7 +4282,9 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenFloatComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
-                "float-nested-fadd", "float-extra-local", "float-fneg")) {
+                "float-nested-fadd", "float-extra-local",
+                "float-fneg-constant", "float-double-fneg",
+                "float-fneg-extra-local", "float-fneg-computed")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedFloatComputed"
                             + shape.replace("-", ""),
@@ -5582,6 +5620,53 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.FADD));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateFnegSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperFloatBase(
+                        "example/VerifiedThreeFloatNegateBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeFloatNegate", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name, "float-fneg");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        int[] selectors = {7, -7, 0};
+        float[] values = {11.0f, -22.0f, 0.25f};
+        for (int i = 0; i < selectors.length; i++) {
+            int selector = selectors[i];
+            float value = values[i];
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, float.class)
+                            .newInstance(selector, value));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FNEG));
         assertEquals(
                 "(Ljava/lang/Object;IF)V",
                 context.proxyMethod.getMethodNode().desc);
@@ -9043,6 +9128,95 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native float three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateFnegSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the float negate runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the float negate runtime test");
+
+        String ownerName = "example/ThreeFloatNegateReturnRuntime";
+        String baseName = "example/ThreeFloatNegateReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-float-negate-run");
+        Path inputJar = directory.resolve("three-float-negate-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeFnegReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain float negate multi-super Java run");
+        assertEquals(
+                "-11.0" + System.lineSeparator()
+                        + "22.0" + System.lineSeparator()
+                        + "-0.25" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FNEG));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("float negate multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("float negate multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Float negate native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native float negate multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -16441,6 +16615,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeFnegReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperFloatBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "float-fneg"));
+        owner.methods.add(multipleSuperThreeFnegReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeFsubFmulReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -20472,7 +20675,8 @@ public class IrCompilerTest {
                 || "long-lneg-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
-        } else if ("float-extra-local".equals(shape)) {
+        } else if ("float-extra-local".equals(shape)
+                || "float-fneg-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.FSTORE, 3));
         } else if ("long-lshl-extra-count".equals(shape)) {
@@ -20499,7 +20703,8 @@ public class IrCompilerTest {
                 : "long-lshl-extra-count".equals(shape) ? 5
                 : shape.startsWith("long-")
                 || "double-binary".equals(shape)
-                || "float-extra-local".equals(shape) ? 4 : 3;
+                || "float-extra-local".equals(shape)
+                || "float-fneg-extra-local".equals(shape) ? 4 : 3;
         method.maxStack = "long-two-sided-ladd".equals(shape) ? 7 : 5;
         return method;
     }
@@ -20733,9 +20938,26 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(
                     "float-fdiv".equals(shape)
                             ? Opcodes.FDIV : Opcodes.FREM));
-        } else if ("float-fneg".equals(shape)) {
-            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+        } else if ("float-fneg".equals(shape)
+                || "float-fneg-constant".equals(shape)
+                || "float-double-fneg".equals(shape)
+                || "float-fneg-extra-local".equals(shape)
+                || "float-fneg-computed".equals(shape)) {
+            if ("float-fneg-constant".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            } else {
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.FLOAD,
+                        "float-fneg-extra-local".equals(shape) ? 3 : 2));
+                if ("float-fneg-computed".equals(shape)) {
+                    method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+                    method.instructions.add(new InsnNode(Opcodes.FADD));
+                }
+            }
             method.instructions.add(new InsnNode(Opcodes.FNEG));
+            if ("float-double-fneg".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.FNEG));
+            }
         } else if ("double-binary".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.DCONST_1));
@@ -21355,6 +21577,23 @@ public class IrCompilerTest {
     }
 
     private MethodNode multipleSuperThreeFaddReturnsMain(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperFloatPrint(
+                method, owner, superName, 7, 11.0f);
+        appendMultipleSuperFloatPrint(
+                method, owner, superName, -7, -22.0f);
+        appendMultipleSuperFloatPrint(
+                method, owner, superName, 0, 0.25f);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private MethodNode multipleSuperThreeFnegReturnsMain(
             String owner, String superName) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
