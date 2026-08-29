@@ -3966,7 +3966,7 @@ public class IrCompilerTest {
                 "long-nested-ldiv", "long-ldiv-inner",
                 "long-ldiv-extra-local", "long-lrem-extra-local",
                 "long-lneg-constant", "long-double-lneg",
-                "long-lneg-extra-local")) {
+                "long-lneg-extra-local", "long-lneg-computed")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedLongComputed"
                             + shape.replace("-", ""),
@@ -19006,13 +19006,18 @@ public class IrCompilerTest {
         } else if ("long-lneg".equals(shape)
                 || "long-lneg-constant".equals(shape)
                 || "long-double-lneg".equals(shape)
-                || "long-lneg-extra-local".equals(shape)) {
+                || "long-lneg-extra-local".equals(shape)
+                || "long-lneg-computed".equals(shape)) {
             if ("long-lneg-constant".equals(shape)) {
                 method.instructions.add(new InsnNode(Opcodes.LCONST_1));
             } else {
                 method.instructions.add(new VarInsnNode(
                         Opcodes.LLOAD,
                         "long-lneg-extra-local".equals(shape) ? 4 : 2));
+                if ("long-lneg-computed".equals(shape)) {
+                    method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+                    method.instructions.add(new InsnNode(Opcodes.LADD));
+                }
             }
             method.instructions.add(new InsnNode(Opcodes.LNEG));
             if ("long-double-lneg".equals(shape)) {
