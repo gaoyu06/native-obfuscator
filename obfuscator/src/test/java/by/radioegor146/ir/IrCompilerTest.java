@@ -748,6 +748,8 @@ public class IrCompilerTest {
                         referenceOwner, referenceConstructor);
         assertEquals("(Ljava/lang/String;Ljava/lang/Object;)V",
                 referenceBody.desc);
+        assertEquals(Arrays.asList(0, 2),
+                variableIndexes(referenceBody, Opcodes.ALOAD));
         frontend.build(referenceOwner.name, referenceBody);
 
         NativeObfuscator referenceObfuscator = new NativeObfuscator();
@@ -771,7 +773,65 @@ public class IrCompilerTest {
                 ConstructorSpecialMethodProcessor.createNativeBody(
                         intOwner, intConstructor);
         assertEquals("(II)V", intBody.desc);
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(intBody, Opcodes.ILOAD));
         frontend.build(intOwner.name, intBody);
+    }
+
+    @Test
+    public void packsAndRemapsGappedPrefixExtrasInIndependentSuffix() {
+        ClassNode owner = constructorOwner(
+                "example/GappedExtra", "java/lang/Object");
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        MethodNode constructor =
+                gappedPrefixExtraReferenceConstructor(owner.name);
+
+        MethodNode body =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(Ljava/lang/String;Ljava/lang/Object;)V", body.desc);
+        assertEquals(Arrays.asList(0, 2),
+                variableIndexes(body, Opcodes.ALOAD));
+        assertFalse(variableIndexes(body, Opcodes.ALOAD).contains(3));
+        frontend.build(owner.name, body);
+
+        ClassNode incrementOwner = constructorOwner(
+                "example/GappedIncrement", "java/lang/Object");
+        incrementOwner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode incrementBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        incrementOwner,
+                        gappedPrefixExtraIincConstructor(incrementOwner.name));
+        assertEquals("(II)V", incrementBody.desc);
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(incrementBody, Opcodes.ILOAD));
+        IincInsnNode increment = Arrays.stream(
+                        incrementBody.instructions.toArray())
+                .filter(IincInsnNode.class::isInstance)
+                .map(IincInsnNode.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, increment.var);
+        frontend.build(incrementOwner.name, incrementBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+        MethodInsnNode bridge = Arrays.stream(constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(bridge.getPrevious() instanceof VarInsnNode);
+        assertEquals(Opcodes.ALOAD, bridge.getPrevious().getOpcode());
+        assertEquals(3, ((VarInsnNode) bridge.getPrevious()).var);
     }
 
     @Test
@@ -867,15 +927,60 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenGappedPrefixExtraConstructorPassesJvmVerification()
+            throws Exception {
+        ClassNode owner = constructorOwner(
+                "example/VerifiedGappedExtra", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        MethodNode constructor =
+                gappedPrefixExtraReferenceConstructor(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(String.class)
+                        .newInstance("verify-gapped-extra"));
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+    }
+
+    @Test
     public void prefixExtraReferenceLocalCompilesAndRunsWithJavaParity()
+            throws Exception {
+        prefixExtraLocalCompilesAndRunsWithJavaParity(
+                "ir-prefix-extra-run", "example/FlexCtorExtraLocal", false);
+    }
+
+    @Test
+    public void gappedPrefixExtraReferenceLocalCompilesAndRunsWithJavaParity()
+            throws Exception {
+        prefixExtraLocalCompilesAndRunsWithJavaParity(
+                "ir-gapped-prefix-extra-run",
+                "example/FlexCtorGappedExtraLocal", true);
+    }
+
+    private void prefixExtraLocalCompilesAndRunsWithJavaParity(
+            String directoryPrefix, String ownerName, boolean gapped)
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
                 "cmake is required for the prefix-extra runtime test");
 
-        Path directory = Files.createTempDirectory("ir-prefix-extra-run");
+        Path directory = Files.createTempDirectory(directoryPrefix);
         Path inputJar = directory.resolve("prefix-extra.jar");
         Path outputDirectory = directory.resolve("output");
-        createPrefixExtraLocalJar(inputJar);
+        createPrefixExtraLocalJar(inputJar, ownerName, gapped);
 
         ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
                 directory, 120_000,
@@ -885,7 +990,6 @@ public class IrCompilerTest {
         assertEquals("PREFIX-EXTRA-FORWARDED" + System.lineSeparator(),
                 javaResult.stdout);
 
-        String ownerName = "example/FlexCtorExtraLocal";
         new NativeObfuscator().process(
                 inputJar, outputDirectory, Collections.emptyList(),
                 Collections.singletonList(
@@ -4128,6 +4232,18 @@ public class IrCompilerTest {
         return opcodes;
     }
 
+    private java.util.List<Integer> variableIndexes(
+            MethodNode method, int opcode) {
+        java.util.List<Integer> indexes = new java.util.ArrayList<>();
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction
+                : method.instructions) {
+            if (instruction.getOpcode() == opcode) {
+                indexes.add(((VarInsnNode) instruction).var);
+            }
+        }
+        return indexes;
+    }
+
     private int countOccurrences(String value, String needle) {
         int count = 0;
         int position = 0;
@@ -4360,13 +4476,16 @@ public class IrCompilerTest {
         return new ByteArrayClassLoader().define(writeClass(owner));
     }
 
-    private void createPrefixExtraLocalJar(Path jarPath) throws IOException {
+    private void createPrefixExtraLocalJar(
+            Path jarPath, String ownerName, boolean gapped) throws IOException {
         ClassNode owner = constructorOwner(
-                "example/FlexCtorExtraLocal", "java/lang/Object");
+                ownerName, "java/lang/Object");
         owner.version = Opcodes.V1_8;
         owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
                 "Ljava/lang/String;", null, null));
-        owner.methods.add(prefixExtraReferenceConstructor(owner.name));
+        owner.methods.add(gapped
+                ? gappedPrefixExtraReferenceConstructor(owner.name)
+                : prefixExtraReferenceConstructor(owner.name));
         owner.methods.add(prefixExtraReferenceMain(owner.name));
 
         java.util.jar.Manifest manifest = new java.util.jar.Manifest();
@@ -5317,6 +5436,46 @@ public class IrCompilerTest {
                 owner, "result", "Ljava/lang/String;"));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode gappedPrefixExtraReferenceConstructor(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/String;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "toUpperCase",
+                "()Ljava/lang/String;", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode gappedPrefixExtraIincConstructor(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new IincInsnNode(3, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
         method.maxStack = 2;
         return method;
     }
