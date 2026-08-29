@@ -2,7 +2,8 @@
 
 ## Scope and environment
 
-- Compiler tip: draft PR #90, `b5a403fd398961870eb6aadafb50b882bc17f273`
+- Compiler tip: draft [PR #90](https://github.com/gaoyu06/native-obfuscator/pull/90),
+  `b5a403fd398961870eb6aadafb50b882bc17f273`
 - Measurement date (UTC): `2026-08-29`
 - OS: `Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC Fri Aug 28 16:08:20 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux`
 - Java:
@@ -180,9 +181,12 @@ Grouping the same rows by result, opcode, and message gives:
 | C-jdk21-extra | legacy-fallback | 1 | 54 | Local 5 is ref but this instruction requires i32 |
 | C-jdk21-extra | legacy-fallback | 1 | 83 | Unsupported instruction for phase-two IR |
 
-## Comparison with PR #92
+## Comparison with [PR #92](https://github.com/gaoyu06/native-obfuscator/pull/92)
 
-PR #92 was 5/6 synthetic on the #89 tip; these numbers replace that as the
-honest checked-in-fixture and JDK 17 corpus measurement on the #90 tip. This
-report does not overwrite PR #92's report, and neither result establishes
-production coverage.
+[PR #92](https://github.com/gaoyu06/native-obfuscator/pull/92) was 5/6
+synthetic on the [#89](https://github.com/gaoyu06/native-obfuscator/pull/89)
+tip; these numbers replace that as the honest checked-in-fixture and JDK 17
+corpus measurement on the
+[#90](https://github.com/gaoyu06/native-obfuscator/pull/90) tip. This report
+does not overwrite the earlier report, and neither result establishes production
+coverage.
