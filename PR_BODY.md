@@ -13,8 +13,9 @@
   Compiler defaults are unchanged.
 - **(d) Verification:** Adds direct and store/reload admission tests, JVM
   verification, CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`, and
-  fail-closed negative shapes. The required focused Gradle gate will be recorded
-  here after completion.
+  fail-closed negative shapes. The required focused Gradle gate passed:
+  `IrCompilerTest` 203/203 and `CodegenModeTest` 7/7 (210/210 total), with zero
+  failures, errors, or skipped tests.
 
 ## 中文
 
@@ -28,4 +29,5 @@
   编译器默认值保持不变。
 - **(d) 验证：** 新增直接重抛、存储后重载重抛、JVM 验证、
   `-Xverify:all -Xcheck:jni` 下的 CMake/g++ JNI 一致性测试，以及 fail-closed
-  反例。所要求的聚焦 Gradle gate 完成后将在此记录结果。
+  反例。所要求的聚焦 Gradle gate 已通过：`IrCompilerTest` 203/203，
+  `CodegenModeTest` 7/7（合计 210/210），失败、错误及跳过均为零。
