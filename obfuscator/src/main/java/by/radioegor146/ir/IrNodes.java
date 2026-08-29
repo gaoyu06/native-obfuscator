@@ -804,7 +804,7 @@ public final class IrNodes {
 
         public ArrayLoad(IrValue result, IrValue array, IrValue index, int bytecodeOffset,
                          int sourceLine) {
-            this.result = requireI32(result, "result");
+            this.result = requireArrayElement(result, "result");
             this.array = requireReference(array, "array");
             this.index = requireI32(index, "index");
             this.bytecodeOffset = bytecodeOffset;
@@ -822,6 +822,10 @@ public final class IrNodes {
 
         public IrValue getIndex() {
             return index;
+        }
+
+        public IrType getElementType() {
+            return result.getType();
         }
 
         @Override
@@ -845,7 +849,7 @@ public final class IrNodes {
                           int sourceLine) {
             this.array = requireReference(array, "array");
             this.index = requireI32(index, "index");
-            this.value = requireI32(value, "value");
+            this.value = requireArrayElement(value, "value");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }
@@ -865,6 +869,10 @@ public final class IrNodes {
 
         public IrValue getValue() {
             return value;
+        }
+
+        public IrType getElementType() {
+            return value.getType();
         }
 
         @Override
@@ -1623,6 +1631,15 @@ public final class IrNodes {
 
     private static IrValue requireReference(IrValue value, String name) {
         return requireType(value, IrType.REFERENCE, name);
+    }
+
+    private static IrValue requireArrayElement(IrValue value, String name) {
+        IrValue result = Objects.requireNonNull(value, name);
+        if (result.getType() != IrType.I32 && result.getType() != IrType.REFERENCE) {
+            throw new IllegalArgumentException(name + " must be i32 or ref, got "
+                    + result.getType());
+        }
+        return result;
     }
 
     private static IrType requireFloatingType(IrValue value, String name) {

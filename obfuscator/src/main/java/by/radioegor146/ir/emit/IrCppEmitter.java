@@ -594,16 +594,25 @@ public final class IrCppEmitter {
                                                  IrNodes.ArrayLoad load,
                                                  MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
-        statements.add(nullCheck(method, load.getArray(), "IALOAD npe",
+        boolean reference = load.getElementType() == IrType.REFERENCE;
+        statements.add(nullCheck(method, load.getArray(),
+                reference ? "AALOAD npe" : "IALOAD npe",
                 load.getSourceLine(), context, block));
-        String temporary = "iaload" + arrayTemporaryId++;
+        String temporary = (reference ? "aaload" : "iaload") + arrayTemporaryId++;
         List<CppAst.Statement> scoped = new ArrayList<>();
-        scoped.add(new CppAst.Declaration("jint", temporary, new CppAst.IntLiteral(0)));
-        scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"), true,
-                "GetIntArrayRegion", Arrays.asList(
-                        new CppAst.Cast("jintArray", expression(load.getArray())),
-                        expression(load.getIndex()), new CppAst.IntLiteral(1),
-                        new CppAst.Unary("&", variable(temporary))))));
+        if (reference) {
+            scoped.add(new CppAst.Declaration("jobject", temporary,
+                    memberCall("env", "GetObjectArrayElement",
+                            new CppAst.Cast("jobjectArray", expression(load.getArray())),
+                            expression(load.getIndex()))));
+        } else {
+            scoped.add(new CppAst.Declaration("jint", temporary, new CppAst.IntLiteral(0)));
+            scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"),
+                    true, "GetIntArrayRegion", Arrays.asList(
+                            new CppAst.Cast("jintArray", expression(load.getArray())),
+                            expression(load.getIndex()), new CppAst.IntLiteral(1),
+                            new CppAst.Unary("&", variable(temporary))))));
+        }
         scoped.add(exceptionCheck(method, block));
         scoped.add(new CppAst.Assignment(variable(load.getResult()), variable(temporary)));
         statements.add(new CppAst.Block(scoped));
@@ -614,16 +623,26 @@ public final class IrCppEmitter {
                                                   IrNodes.ArrayStore store,
                                                   MethodContext context) {
         List<CppAst.Statement> statements = new ArrayList<>();
-        statements.add(nullCheck(method, store.getArray(), "IASTORE npe",
+        boolean reference = store.getElementType() == IrType.REFERENCE;
+        statements.add(nullCheck(method, store.getArray(),
+                reference ? "AASTORE npe" : "IASTORE npe",
                 store.getSourceLine(), context, block));
-        String temporary = "iastore" + arrayTemporaryId++;
         List<CppAst.Statement> scoped = new ArrayList<>();
-        scoped.add(new CppAst.Declaration("jint", temporary, expression(store.getValue())));
-        scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"), true,
-                "SetIntArrayRegion", Arrays.asList(
-                        new CppAst.Cast("jintArray", expression(store.getArray())),
-                        expression(store.getIndex()), new CppAst.IntLiteral(1),
-                        new CppAst.Unary("&", variable(temporary))))));
+        if (reference) {
+            scoped.add(new CppAst.ExpressionStatement(memberCall("env",
+                    "SetObjectArrayElement",
+                    new CppAst.Cast("jobjectArray", expression(store.getArray())),
+                    expression(store.getIndex()), expression(store.getValue()))));
+        } else {
+            String temporary = "iastore" + arrayTemporaryId++;
+            scoped.add(new CppAst.Declaration("jint", temporary,
+                    expression(store.getValue())));
+            scoped.add(new CppAst.ExpressionStatement(new CppAst.MemberCall(variable("env"),
+                    true, "SetIntArrayRegion", Arrays.asList(
+                            new CppAst.Cast("jintArray", expression(store.getArray())),
+                            expression(store.getIndex()), new CppAst.IntLiteral(1),
+                            new CppAst.Unary("&", variable(temporary))))));
+        }
         scoped.add(exceptionCheck(method, block));
         statements.add(new CppAst.Block(scoped));
         return statements;

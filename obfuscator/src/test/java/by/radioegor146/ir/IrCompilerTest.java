@@ -1269,6 +1269,52 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void swapsEveryI32F32AndReferenceCategoryOnePairAsSsaValues() {
+        Type[] categoryOne = {
+                Type.INT_TYPE, Type.FLOAT_TYPE, Type.getType(Object.class)
+        };
+        for (Type first : categoryOne) {
+            for (Type second : categoryOne) {
+                MethodNode method = swapMethod(first, second);
+                IrMethod ir = frontend.build("example/Math", method);
+                String cpp = emitter.emitBody(ir);
+
+                assertTrue(cpp.contains("return arg1;"),
+                        first + "/" + second + " did not preserve the reordered value");
+                assertFalse(cpp.contains("env->"),
+                        "SWAP must not emit JNI calls for " + first + "/" + second);
+                assertFalse(ir.toString().contains("swap"),
+                        "SWAP should disappear into the SSA stack order");
+            }
+        }
+    }
+
+    @Test
+    public void rejectsSwapWhenEitherOperandIsLongOrDoubleBeforeMutation() {
+        Type reference = Type.getType(Object.class);
+        Type[][] pairs = {
+                {Type.LONG_TYPE, Type.INT_TYPE},
+                {Type.INT_TYPE, Type.LONG_TYPE},
+                {Type.DOUBLE_TYPE, reference},
+                {reference, Type.DOUBLE_TYPE}
+        };
+        for (Type[] pair : pairs) {
+            MethodNode method = invalidSwapMethod(pair[0], pair[1]);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+            UnsupportedIrConstructException error = assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                            .processMethod(context));
+
+            assertEquals(Opcodes.SWAP, error.getOpcode());
+            assertTrue(error.getMessage().contains("category-one"));
+            assertUnchangedAfterRejectedIr(method, context, obfuscator);
+        }
+    }
+
+    @Test
     public void lowersIntArrayLoadStoreAndLength() {
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, intArrayMethod(), 0, owner(), 0);
@@ -1279,6 +1325,95 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->GetIntArrayRegion"));
         assertTrue(cpp.contains("env->SetIntArrayRegion"));
         assertTrue(cpp.contains("utils::throw_re"));
+    }
+
+    @Test
+    public void lowersObjectAndStringArrayRoundTripsThroughObjectArrayJni() {
+        MethodNode[] methods = {
+                referenceArrayRoundTripMethod(false),
+                referenceArrayRoundTripMethod(true)
+        };
+        for (MethodNode method : methods) {
+            IrMethod ir = frontend.build("example/Math", method);
+            IrNodes.ArrayStore store = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.ArrayStore.class::isInstance)
+                    .map(IrNodes.ArrayStore.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            IrNodes.ArrayLoad load = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.ArrayLoad.class::isInstance)
+                    .map(IrNodes.ArrayLoad.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertEquals(IrType.REFERENCE, store.getElementType());
+            assertEquals(IrType.REFERENCE, load.getElementType());
+            assertTrue(ir.toString().contains("aastore"));
+            assertTrue(ir.toString().contains("aaload"));
+
+            String cpp = compileToCpp(method, 0);
+            int storeCall = cpp.indexOf("env->SetObjectArrayElement");
+            int storeCheck = cpp.indexOf("env->ExceptionCheck()", storeCall);
+            int loadCall = cpp.indexOf("env->GetObjectArrayElement");
+            int loadCheck = cpp.indexOf("env->ExceptionCheck()", loadCall);
+            int loadedValue = cpp.indexOf(" = aaload", loadCheck);
+            assertTrue(storeCall >= 0 && storeCheck > storeCall);
+            assertTrue(loadCall > storeCheck && loadCheck > loadCall && loadedValue > loadCheck);
+            assertFalse(cpp.contains("GetIntArrayRegion"));
+            assertFalse(cpp.contains("SetIntArrayRegion"));
+        }
+    }
+
+    @Test
+    public void routesReferenceArrayNullBoundsAndStoreTypeFailures() {
+        MethodNode nullLoad = nullReferenceArrayLoadCatchMethod();
+        IrMethod nullIr = frontend.build("example/Math", nullLoad);
+        assertArrayExceptionEdge(nullIr, IrNodes.ArrayLoad.class,
+                "java/lang/NullPointerException");
+        String nullCpp = compileToCpp(nullLoad, 0);
+        int nullThrow = nullCpp.indexOf("utils::throw_re");
+        int nullDispatch = nullCpp.indexOf("goto IR_CATCH_0;", nullThrow);
+        int nullLoadCall = nullCpp.indexOf("env->GetObjectArrayElement");
+        assertTrue(nullThrow >= 0 && nullDispatch > nullThrow && nullLoadCall > nullDispatch);
+
+        for (boolean upperBound : new boolean[]{false, true}) {
+            MethodNode boundsLoad = referenceArrayBoundsCatchMethod(upperBound);
+            IrMethod boundsIr = frontend.build("example/Math", boundsLoad);
+            assertArrayExceptionEdge(boundsIr, IrNodes.ArrayLoad.class,
+                    "java/lang/ArrayIndexOutOfBoundsException");
+            String boundsCpp = compileToCpp(boundsLoad, 1);
+            int boundsCall = boundsCpp.indexOf("env->GetObjectArrayElement");
+            int boundsCheck = boundsCpp.indexOf("env->ExceptionCheck()", boundsCall);
+            int boundsDispatch = boundsCpp.indexOf("goto IR_CATCH_0;", boundsCheck);
+            assertTrue(boundsCall >= 0 && boundsCheck > boundsCall
+                    && boundsDispatch > boundsCheck);
+        }
+
+        MethodNode badStore = wrongTypeReferenceArrayStoreCatchMethod();
+        IrMethod storeIr = frontend.build("example/Math", badStore);
+        assertArrayExceptionEdge(storeIr, IrNodes.ArrayStore.class,
+                "java/lang/ArrayStoreException");
+        String storeCpp = compileToCpp(badStore, 2);
+        int storeCall = storeCpp.indexOf("env->SetObjectArrayElement");
+        int storeCheck = storeCpp.indexOf("env->ExceptionCheck()", storeCall);
+        int storeDispatch = storeCpp.indexOf("goto IR_CATCH_0;", storeCheck);
+        assertTrue(storeCall >= 0 && storeCheck > storeCall && storeDispatch > storeCheck);
+        assertFalse(storeCpp.substring(storeCall, storeDispatch)
+                .contains("ExceptionClear"));
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseSixteenOpsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseSixteenOpsMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.POP2, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
     @Test
@@ -1863,6 +1998,15 @@ public class IrCompilerTest {
                 floatingConversionMethod(Opcodes.F2D),
                 floatingConversionMethod(Opcodes.D2F),
                 floatingStackPhiMethod(false), floatingStackPhiMethod(true),
+                swapMethod(Type.INT_TYPE, Type.FLOAT_TYPE),
+                swapMethod(Type.FLOAT_TYPE, Type.getType(Object.class)),
+                swapMethod(Type.getType(Object.class), Type.INT_TYPE),
+                referenceArrayRoundTripMethod(false),
+                referenceArrayRoundTripMethod(true),
+                nullReferenceArrayLoadCatchMethod(),
+                referenceArrayBoundsCatchMethod(false),
+                referenceArrayBoundsCatchMethod(true),
+                wrongTypeReferenceArrayStoreCatchMethod(),
                 nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod(),
                 intFieldConstructor(), floatingFieldConstructor(),
                 referenceFieldConstructor()
@@ -2026,6 +2170,15 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->CallNonvirtualDoubleMethod"));
         assertTrue(source.contains("std::fmod"));
         assertTrue(source.contains("std::isnan"));
+        assertTrue(source.contains("IR codegen: example/Math.swap"));
+        assertTrue(source.contains("IR codegen: example/Math.objectArrayRoundTrip"));
+        assertTrue(source.contains("IR codegen: example/Math.stringArrayRoundTrip"));
+        assertTrue(source.contains("env->GetObjectArrayElement"));
+        assertTrue(source.contains("env->SetObjectArrayElement"));
+        assertTrue(source.contains("IR codegen: example/Math.catchNullAaload"));
+        assertTrue(source.contains("IR codegen: example/Math.catchNegativeAaload"));
+        assertTrue(source.contains("IR codegen: example/Math.catchUpperAaload"));
+        assertTrue(source.contains("IR codegen: example/Math.catchArrayStore"));
         assertTrue(source.contains("uint32_t bits = 0x80000000U"));
         assertTrue(source.contains("uint64_t bits = 0x7ff8000000001234ULL"));
         assertTrue(source.contains("jfloat"));
@@ -2230,6 +2383,17 @@ public class IrCompilerTest {
                 .flatMap(block -> block.getPhis().stream())
                 .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
                 .findFirst().orElseThrow(AssertionError::new);
+    }
+
+    private void assertArrayExceptionEdge(
+            IrMethod method, Class<? extends IrInstruction> instructionType,
+            String catchType) {
+        IrBlock block = method.getBlocks().stream()
+                .filter(candidate -> candidate.getInstructions().stream()
+                        .anyMatch(instructionType::isInstance))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(1, block.getExceptionEdges().size());
+        assertEquals(catchType, block.getExceptionEdges().get(0).getCatchType());
     }
 
     private String compileToCpp(MethodNode method, int methodId) {
@@ -3388,6 +3552,35 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode swapMethod(Type first, Type second) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "swap" + first.getSort() + second.getSort(),
+                Type.getMethodDescriptor(second, first, second), null, null);
+        method.instructions.add(new VarInsnNode(first.getOpcode(Opcodes.ILOAD), 0));
+        method.instructions.add(new VarInsnNode(second.getOpcode(Opcodes.ILOAD),
+                first.getSize()));
+        method.instructions.add(new InsnNode(Opcodes.SWAP));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(second.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = first.getSize() + second.getSize();
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode invalidSwapMethod(Type first, Type second) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "invalidSwap" + first.getSort() + second.getSort(),
+                Type.getMethodDescriptor(Type.VOID_TYPE, first, second), null, null);
+        method.instructions.add(new VarInsnNode(first.getOpcode(Opcodes.ILOAD), 0));
+        method.instructions.add(new VarInsnNode(second.getOpcode(Opcodes.ILOAD),
+                first.getSize()));
+        method.instructions.add(new InsnNode(Opcodes.SWAP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = first.getSize() + second.getSize();
+        method.maxStack = first.getSize() + second.getSize();
+        return method;
+    }
+
     private MethodNode intArrayMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "bump", "([II)I", null, null);
@@ -3406,6 +3599,126 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
         method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode referenceArrayRoundTripMethod(boolean stringArray) {
+        String element = stringArray ? "Ljava/lang/String;" : "Ljava/lang/Object;";
+        String array = "[" + element;
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                stringArray ? "stringArrayRoundTrip" : "objectArrayRoundTrip",
+                "(" + array + "I" + element + ")" + element, null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.AASTORE));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.AALOAD));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode nullReferenceArrayLoadCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchNullAaload", "()Ljava/lang/Object;", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.AALOAD));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NullPointerException"));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode referenceArrayBoundsCatchMethod(boolean upperBound) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                upperBound ? "catchUpperAaload" : "catchNegativeAaload",
+                "([Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        if (upperBound) {
+            method.instructions.add(new InsnNode(Opcodes.DUP));
+            method.instructions.add(new InsnNode(Opcodes.ARRAYLENGTH));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
+        }
+        method.instructions.add(new InsnNode(Opcodes.AALOAD));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ArrayIndexOutOfBoundsException"));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode wrongTypeReferenceArrayStoreCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchArrayStore",
+                "([Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.AASTORE));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ArrayStoreException"));
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseSixteenOpsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseSixteenOps",
+                "([Ljava/lang/Object;ILjava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.AASTORE));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.AALOAD));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.SWAP));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 3;
         return method;
     }
 

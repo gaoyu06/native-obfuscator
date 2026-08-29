@@ -230,12 +230,14 @@ public final class IrMethod {
         }
         if (instruction instanceof IrNodes.ArrayLoad) {
             IrNodes.ArrayLoad load = (IrNodes.ArrayLoad) instruction;
-            return load.getResult() + ":" + load.getResult().getType() + " = iaload "
+            String mnemonic = load.getElementType() == IrType.I32 ? "iaload" : "aaload";
+            return load.getResult() + ":" + load.getResult().getType() + " = " + mnemonic + " "
                     + load.getArray() + ", " + load.getIndex();
         }
         if (instruction instanceof IrNodes.ArrayStore) {
             IrNodes.ArrayStore store = (IrNodes.ArrayStore) instruction;
-            return "iastore " + store.getArray() + ", " + store.getIndex() + ", "
+            String mnemonic = store.getElementType() == IrType.I32 ? "iastore" : "aastore";
+            return mnemonic + " " + store.getArray() + ", " + store.getIndex() + ", "
                     + store.getValue();
         }
         if (instruction instanceof IrNodes.StringLength) {

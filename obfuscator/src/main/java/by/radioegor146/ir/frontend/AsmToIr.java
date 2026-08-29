@@ -236,6 +236,7 @@ public final class AsmToIr {
                                 || opcode == Opcodes.DCONST_0 || opcode == Opcodes.DCONST_1
                                 || opcode == Opcodes.DUP
                                 || opcode == Opcodes.POP
+                                || opcode == Opcodes.SWAP
                                 || isIntBinaryOp(opcode)
                                 || isLongBinaryOp(opcode)
                                 || isFloatingBinaryOp(opcode)
@@ -245,7 +246,9 @@ public final class AsmToIr {
                                 || isFloatingCompareOp(opcode)
                                 || isConversionOp(opcode)
                                 || opcode == Opcodes.IALOAD
+                                || opcode == Opcodes.AALOAD
                                 || opcode == Opcodes.IASTORE
+                                || opcode == Opcodes.AASTORE
                                 || opcode == Opcodes.ARRAYLENGTH
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
@@ -482,6 +485,19 @@ public final class AsmToIr {
             if (top.getJvmSlots() != 1) {
                 throw unsupported("POP requires a category-one operand", instruction);
             }
+        } else if (opcode == Opcodes.SWAP) {
+            if (stack.size() < 2) {
+                throw unsupported("Operand stack underflow", instruction);
+            }
+            int topIndex = stack.size() - 1;
+            int belowIndex = topIndex - 1;
+            IrType top = stack.get(topIndex);
+            IrType below = stack.get(belowIndex);
+            if (top.getJvmSlots() != 1 || below.getJvmSlots() != 1) {
+                throw unsupported("SWAP requires two category-one operands", instruction);
+            }
+            stack.set(belowIndex, top);
+            stack.set(topIndex, below);
         } else if (isIntBinaryOp(opcode) || isIntDivRem(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
@@ -532,8 +548,16 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
             stack.add(IrType.I32);
+        } else if (opcode == Opcodes.AALOAD) {
+            popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.REFERENCE, instruction);
+            stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.IASTORE) {
             popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.REFERENCE, instruction);
+        } else if (opcode == Opcodes.AASTORE) {
+            popType(stack, IrType.REFERENCE, instruction);
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.ATHROW) {
@@ -909,6 +933,20 @@ public final class AsmToIr {
                 if (value.getType().getJvmSlots() != 1) {
                     throw unsupported("POP requires a category-one operand", instruction);
                 }
+            } else if (opcode == Opcodes.SWAP) {
+                if (state.stack.size() < 2) {
+                    throw unsupported("Operand stack underflow", instruction);
+                }
+                int topIndex = state.stack.size() - 1;
+                int belowIndex = topIndex - 1;
+                IrValue top = state.stack.get(topIndex);
+                IrValue below = state.stack.get(belowIndex);
+                if (top.getType().getJvmSlots() != 1
+                        || below.getType().getJvmSlots() != 1) {
+                    throw unsupported("SWAP requires two category-one operands", instruction);
+                }
+                state.stack.set(belowIndex, top);
+                state.stack.set(topIndex, below);
             } else if (isIntBinaryOp(opcode)) {
                 IrValue right = pop(state, IrType.I32, instruction);
                 IrValue left = pop(state, IrType.I32, instruction);
@@ -1015,8 +1053,21 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.ArrayLoad(result, array, index,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
+            } else if (opcode == Opcodes.AALOAD) {
+                IrValue index = pop(state, IrType.I32, instruction);
+                IrValue array = pop(state, IrType.REFERENCE, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.REFERENCE);
+                block.addInstruction(new IrNodes.ArrayLoad(result, array, index,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+                state.stack.add(result);
             } else if (opcode == Opcodes.IASTORE) {
                 IrValue value = pop(state, IrType.I32, instruction);
+                IrValue index = pop(state, IrType.I32, instruction);
+                IrValue array = pop(state, IrType.REFERENCE, instruction);
+                block.addInstruction(new IrNodes.ArrayStore(array, index, value,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+            } else if (opcode == Opcodes.AASTORE) {
+                IrValue value = pop(state, IrType.REFERENCE, instruction);
                 IrValue index = pop(state, IrType.I32, instruction);
                 IrValue array = pop(state, IrType.REFERENCE, instruction);
                 block.addInstruction(new IrNodes.ArrayStore(array, index, value,
