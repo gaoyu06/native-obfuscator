@@ -3,20 +3,25 @@ package by.radioegor146.special;
 import by.radioegor146.HiddenMethodsPool;
 import by.radioegor146.MethodContext;
 import by.radioegor146.ir.UnsupportedIrConstructException;
+import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.MultiANewArrayInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -233,12 +238,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
             if (instruction.getOpcode() == Opcodes.ASTORE) {
                 int local = ((VarInsnNode) instruction).var;
-                if (local == 0) {
-                    throw unsupported(
-                            "Constructor prefix changes local 0 before the bridge",
-                            i, instruction);
-                }
-                if (forwardedReferenceLocals.contains(local)) {
+                if (local != 0 && forwardedReferenceLocals.contains(local)) {
                     widenedReferenceLocals.add(local);
                 }
             }
@@ -293,6 +293,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         "Constructor exception regions may not cross the this/super split");
             }
         }
+        validateReceiverStores(
+                constructor, suffixStartIndex, callIndexes, prefixTryCatches);
         validateChainControlFlow(
                 constructor, callIndexes, suffixStartIndex);
         List<ExtraLocal> extraLocals =
@@ -692,6 +694,667 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return states[splitIndex];
     }
 
+    /**
+     * Proves that every retained ASTORE 0 writes the original constructor
+     * receiver and that each selected chain call consumes that same receiver.
+     * The analysis is deliberately local to constructors containing ASTORE 0,
+     * so unrelated admission behavior is unchanged.
+     */
+    private static void validateReceiverStores(
+            MethodNode constructor, int splitIndex, List<Integer> callIndexes,
+            List<TryCatchBlockNode> prefixTryCatches) {
+        List<Integer> receiverStores = new ArrayList<>();
+        for (int i = 0; i < splitIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() == Opcodes.ASTORE
+                    && ((VarInsnNode) instruction).var == 0) {
+                receiverStores.add(i);
+            }
+        }
+        if (receiverStores.isEmpty()) {
+            return;
+        }
+
+        int diagnosticIndex = receiverStores.get(0);
+        ReceiverFrame[] frames;
+        try {
+            frames = receiverFrames(
+                    constructor, splitIndex, prefixTryCatches);
+        } catch (ReceiverAnalysisFailure failure) {
+            throw unsupported(
+                    "Constructor prefix ASTORE 0 does not provably preserve "
+                            + "the constructor receiver"
+                            + " (receiver analysis failed at instruction "
+                            + failure.instructionIndex + ")",
+                    diagnosticIndex,
+                    constructor.instructions.get(diagnosticIndex));
+        }
+
+        for (Integer storeIndex : receiverStores) {
+            ReceiverFrame frame = frames[storeIndex];
+            if (frame == null || frame.stack.isEmpty()
+                    || !frame.stack.get(frame.stack.size() - 1).receiver) {
+                throw unsupported(
+                        "Constructor prefix ASTORE 0 does not provably preserve "
+                                + "the constructor receiver",
+                        storeIndex, constructor.instructions.get(storeIndex));
+            }
+        }
+        for (Integer callIndex : callIndexes) {
+            ReceiverFrame frame = frames[callIndex];
+            MethodInsnNode call =
+                    (MethodInsnNode) constructor.instructions.get(callIndex);
+            int receiverIndex = frame == null
+                    ? -1
+                    : frame.stack.size()
+                    - Type.getArgumentTypes(call.desc).length - 1;
+            if (receiverIndex < 0
+                    || !frame.stack.get(receiverIndex).receiver) {
+                throw unsupported(
+                        "Constructor with prefix ASTORE 0 does not provably "
+                                + "invoke this/super on the constructor receiver",
+                        callIndex, call);
+            }
+        }
+    }
+
+    private static ReceiverFrame[] receiverFrames(
+            MethodNode constructor, int splitIndex,
+            List<TryCatchBlockNode> prefixTryCatches)
+            throws ReceiverAnalysisFailure {
+        int localCount = Math.max(constructor.maxLocals, 1);
+        for (AbstractInsnNode instruction : constructor.instructions) {
+            if (instruction instanceof VarInsnNode) {
+                int size = instruction.getOpcode() == Opcodes.LLOAD
+                        || instruction.getOpcode() == Opcodes.DLOAD
+                        || instruction.getOpcode() == Opcodes.LSTORE
+                        || instruction.getOpcode() == Opcodes.DSTORE ? 2 : 1;
+                localCount = Math.max(
+                        localCount, ((VarInsnNode) instruction).var + size);
+            } else if (instruction instanceof IincInsnNode) {
+                localCount = Math.max(
+                        localCount, ((IincInsnNode) instruction).var + 1);
+            }
+        }
+
+        ReceiverFrame[] frames = new ReceiverFrame[splitIndex + 1];
+        ReceiverFrame entry = new ReceiverFrame(localCount);
+        entry.locals[0] = true;
+        frames[0] = entry;
+        ArrayDeque<Integer> pending = new ArrayDeque<>();
+        pending.add(0);
+        boolean[] queued = new boolean[splitIndex + 1];
+        queued[0] = true;
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+
+        while (!pending.isEmpty()) {
+            int index = pending.removeFirst();
+            queued[index] = false;
+            if (index == splitIndex) {
+                continue;
+            }
+            ReceiverFrame input = frames[index];
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(index);
+            ReceiverFrame output = new ReceiverFrame(input);
+            transferReceiverFrame(output, instruction, index);
+
+            for (Integer successor :
+                    normalSuccessors(constructor, index, indexes)) {
+                if (successor <= splitIndex
+                        && mergeReceiverFrame(
+                        frames, successor, output, index)
+                        && !queued[successor]) {
+                    pending.add(successor);
+                    queued[successor] = true;
+                }
+            }
+
+            for (TryCatchBlockNode tryCatch : prefixTryCatches) {
+                int start = indexes.get(tryCatch.start);
+                int end = indexes.get(tryCatch.end);
+                int handler = indexes.get(tryCatch.handler);
+                if (index < start || index >= end || handler > splitIndex) {
+                    continue;
+                }
+                ReceiverFrame exceptionFrame = new ReceiverFrame(input);
+                exceptionFrame.stack.clear();
+                exceptionFrame.stack.add(ReceiverValue.OTHER_ONE);
+                if (mergeReceiverFrame(
+                        frames, handler, exceptionFrame, index)
+                        && !queued[handler]) {
+                    pending.add(handler);
+                    queued[handler] = true;
+                }
+            }
+        }
+        return frames;
+    }
+
+    private static boolean mergeReceiverFrame(
+            ReceiverFrame[] frames, int target, ReceiverFrame incoming,
+            int instructionIndex) throws ReceiverAnalysisFailure {
+        ReceiverFrame current = frames[target];
+        if (current == null) {
+            frames[target] = new ReceiverFrame(incoming);
+            return true;
+        }
+        if (current.stack.size() != incoming.stack.size()) {
+            throw new ReceiverAnalysisFailure(instructionIndex);
+        }
+
+        boolean changed = false;
+        for (int i = 0; i < current.locals.length; i++) {
+            boolean merged = current.locals[i] && incoming.locals[i];
+            changed |= merged != current.locals[i];
+            current.locals[i] = merged;
+        }
+        for (int i = 0; i < current.stack.size(); i++) {
+            ReceiverValue left = current.stack.get(i);
+            ReceiverValue right = incoming.stack.get(i);
+            if (left.size != right.size) {
+                throw new ReceiverAnalysisFailure(instructionIndex);
+            }
+            if (left.receiver && !right.receiver) {
+                current.stack.set(i, left.size == 2
+                        ? ReceiverValue.OTHER_TWO : ReceiverValue.OTHER_ONE);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private static void transferReceiverFrame(
+            ReceiverFrame frame, AbstractInsnNode instruction,
+            int instructionIndex) throws ReceiverAnalysisFailure {
+        int opcode = instruction.getOpcode();
+        if (opcode < 0 || opcode == Opcodes.NOP) {
+            return;
+        }
+        switch (opcode) {
+            case Opcodes.ACONST_NULL:
+            case Opcodes.ICONST_M1:
+            case Opcodes.ICONST_0:
+            case Opcodes.ICONST_1:
+            case Opcodes.ICONST_2:
+            case Opcodes.ICONST_3:
+            case Opcodes.ICONST_4:
+            case Opcodes.ICONST_5:
+            case Opcodes.FCONST_0:
+            case Opcodes.FCONST_1:
+            case Opcodes.FCONST_2:
+            case Opcodes.BIPUSH:
+            case Opcodes.SIPUSH:
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.LCONST_0:
+            case Opcodes.LCONST_1:
+            case Opcodes.DCONST_0:
+            case Opcodes.DCONST_1:
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.LDC:
+                Object constant = ((LdcInsnNode) instruction).cst;
+                int constantSize = constant instanceof Long
+                        || constant instanceof Double ? 2 : 1;
+                if (constant instanceof ConstantDynamic) {
+                    constantSize = Type.getType(
+                            ((ConstantDynamic) constant).getDescriptor()).getSize();
+                }
+                frame.stack.add(constantSize == 2
+                        ? ReceiverValue.OTHER_TWO : ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.ALOAD:
+                int loadedLocal = ((VarInsnNode) instruction).var;
+                frame.stack.add(frame.locals[loadedLocal]
+                        ? ReceiverValue.RECEIVER : ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.ILOAD:
+            case Opcodes.FLOAD:
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.LLOAD:
+            case Opcodes.DLOAD:
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.ASTORE:
+                ReceiverValue reference =
+                        popReceiverValue(frame, 1, instructionIndex);
+                frame.locals[((VarInsnNode) instruction).var] =
+                        reference.receiver;
+                return;
+            case Opcodes.ISTORE:
+            case Opcodes.FSTORE:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.locals[((VarInsnNode) instruction).var] = false;
+                return;
+            case Opcodes.LSTORE:
+            case Opcodes.DSTORE:
+                popReceiverValue(frame, 2, instructionIndex);
+                int wideLocal = ((VarInsnNode) instruction).var;
+                frame.locals[wideLocal] = false;
+                frame.locals[wideLocal + 1] = false;
+                return;
+            case Opcodes.IINC:
+                frame.locals[((IincInsnNode) instruction).var] = false;
+                return;
+            case Opcodes.IALOAD:
+            case Opcodes.FALOAD:
+            case Opcodes.AALOAD:
+            case Opcodes.BALOAD:
+            case Opcodes.CALOAD:
+            case Opcodes.SALOAD:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.LALOAD:
+            case Opcodes.DALOAD:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.IASTORE:
+            case Opcodes.FASTORE:
+            case Opcodes.AASTORE:
+            case Opcodes.BASTORE:
+            case Opcodes.CASTORE:
+            case Opcodes.SASTORE:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.LASTORE:
+            case Opcodes.DASTORE:
+                popReceiverValue(frame, 2, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.POP:
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.POP2:
+                ReceiverValue popped =
+                        popReceiverValue(frame, 0, instructionIndex);
+                if (popped.size == 1) {
+                    popReceiverValue(frame, 1, instructionIndex);
+                }
+                return;
+            case Opcodes.DUP:
+            case Opcodes.DUP_X1:
+            case Opcodes.DUP_X2:
+            case Opcodes.DUP2:
+            case Opcodes.DUP2_X1:
+            case Opcodes.DUP2_X2:
+            case Opcodes.SWAP:
+                transferReceiverStackShuffle(frame, opcode, instructionIndex);
+                return;
+            case Opcodes.IADD:
+            case Opcodes.ISUB:
+            case Opcodes.IMUL:
+            case Opcodes.IDIV:
+            case Opcodes.IREM:
+            case Opcodes.ISHL:
+            case Opcodes.ISHR:
+            case Opcodes.IUSHR:
+            case Opcodes.IAND:
+            case Opcodes.IOR:
+            case Opcodes.IXOR:
+            case Opcodes.FADD:
+            case Opcodes.FSUB:
+            case Opcodes.FMUL:
+            case Opcodes.FDIV:
+            case Opcodes.FREM:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.LADD:
+            case Opcodes.LSUB:
+            case Opcodes.LMUL:
+            case Opcodes.LDIV:
+            case Opcodes.LREM:
+            case Opcodes.LAND:
+            case Opcodes.LOR:
+            case Opcodes.LXOR:
+            case Opcodes.DADD:
+            case Opcodes.DSUB:
+            case Opcodes.DMUL:
+            case Opcodes.DDIV:
+            case Opcodes.DREM:
+                popReceiverValue(frame, 2, instructionIndex);
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.LSHL:
+            case Opcodes.LSHR:
+            case Opcodes.LUSHR:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.INEG:
+            case Opcodes.FNEG:
+            case Opcodes.I2B:
+            case Opcodes.I2C:
+            case Opcodes.I2S:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.LNEG:
+            case Opcodes.DNEG:
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.I2L:
+            case Opcodes.I2D:
+            case Opcodes.F2L:
+            case Opcodes.F2D:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.I2F:
+            case Opcodes.F2I:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.L2I:
+            case Opcodes.L2F:
+            case Opcodes.D2I:
+            case Opcodes.D2F:
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.L2D:
+            case Opcodes.D2L:
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_TWO);
+                return;
+            case Opcodes.LCMP:
+                popReceiverValue(frame, 2, instructionIndex);
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.FCMPL:
+            case Opcodes.FCMPG:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.DCMPL:
+            case Opcodes.DCMPG:
+                popReceiverValue(frame, 2, instructionIndex);
+                popReceiverValue(frame, 2, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.IFEQ:
+            case Opcodes.IFNE:
+            case Opcodes.IFLT:
+            case Opcodes.IFGE:
+            case Opcodes.IFGT:
+            case Opcodes.IFLE:
+            case Opcodes.IFNULL:
+            case Opcodes.IFNONNULL:
+            case Opcodes.TABLESWITCH:
+            case Opcodes.LOOKUPSWITCH:
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.IF_ICMPEQ:
+            case Opcodes.IF_ICMPNE:
+            case Opcodes.IF_ICMPLT:
+            case Opcodes.IF_ICMPGE:
+            case Opcodes.IF_ICMPGT:
+            case Opcodes.IF_ICMPLE:
+            case Opcodes.IF_ACMPEQ:
+            case Opcodes.IF_ACMPNE:
+                popReceiverValue(frame, 1, instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.GOTO:
+                return;
+            case Opcodes.JSR:
+            case Opcodes.RET:
+                throw new ReceiverAnalysisFailure(instructionIndex);
+            case Opcodes.IRETURN:
+            case Opcodes.FRETURN:
+            case Opcodes.ARETURN:
+            case Opcodes.ATHROW:
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.LRETURN:
+            case Opcodes.DRETURN:
+                popReceiverValue(frame, 2, instructionIndex);
+                return;
+            case Opcodes.RETURN:
+                return;
+            case Opcodes.GETSTATIC:
+                pushReceiverType(
+                        frame, Type.getType(((FieldInsnNode) instruction).desc));
+                return;
+            case Opcodes.PUTSTATIC:
+                popReceiverValue(frame,
+                        Type.getType(((FieldInsnNode) instruction).desc).getSize(),
+                        instructionIndex);
+                return;
+            case Opcodes.GETFIELD:
+                popReceiverValue(frame, 1, instructionIndex);
+                pushReceiverType(
+                        frame, Type.getType(((FieldInsnNode) instruction).desc));
+                return;
+            case Opcodes.PUTFIELD:
+                popReceiverValue(frame,
+                        Type.getType(((FieldInsnNode) instruction).desc).getSize(),
+                        instructionIndex);
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.INVOKEVIRTUAL:
+            case Opcodes.INVOKESPECIAL:
+            case Opcodes.INVOKESTATIC:
+            case Opcodes.INVOKEINTERFACE:
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                popReceiverArguments(
+                        frame, invoke.desc,
+                        opcode != Opcodes.INVOKESTATIC, instructionIndex);
+                pushReceiverType(frame, Type.getReturnType(invoke.desc));
+                return;
+            case Opcodes.INVOKEDYNAMIC:
+                InvokeDynamicInsnNode dynamic =
+                        (InvokeDynamicInsnNode) instruction;
+                popReceiverArguments(
+                        frame, dynamic.desc, false, instructionIndex);
+                pushReceiverType(frame, Type.getReturnType(dynamic.desc));
+                return;
+            case Opcodes.NEW:
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.NEWARRAY:
+            case Opcodes.ANEWARRAY:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.ARRAYLENGTH:
+            case Opcodes.INSTANCEOF:
+                popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            case Opcodes.CHECKCAST:
+                ReceiverValue castValue =
+                        popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(castValue);
+                return;
+            case Opcodes.MONITORENTER:
+            case Opcodes.MONITOREXIT:
+                popReceiverValue(frame, 1, instructionIndex);
+                return;
+            case Opcodes.MULTIANEWARRAY:
+                MultiANewArrayInsnNode multi =
+                        (MultiANewArrayInsnNode) instruction;
+                for (int i = 0; i < multi.dims; i++) {
+                    popReceiverValue(frame, 1, instructionIndex);
+                }
+                frame.stack.add(ReceiverValue.OTHER_ONE);
+                return;
+            default:
+                throw new ReceiverAnalysisFailure(instructionIndex);
+        }
+    }
+
+    private static void popReceiverArguments(
+            ReceiverFrame frame, String descriptor, boolean hasReceiver,
+            int instructionIndex) throws ReceiverAnalysisFailure {
+        Type[] arguments = Type.getArgumentTypes(descriptor);
+        for (int i = arguments.length - 1; i >= 0; i--) {
+            popReceiverValue(
+                    frame, arguments[i].getSize(), instructionIndex);
+        }
+        if (hasReceiver) {
+            popReceiverValue(frame, 1, instructionIndex);
+        }
+    }
+
+    private static void pushReceiverType(ReceiverFrame frame, Type type) {
+        if (type.getSort() != Type.VOID) {
+            frame.stack.add(type.getSize() == 2
+                    ? ReceiverValue.OTHER_TWO : ReceiverValue.OTHER_ONE);
+        }
+    }
+
+    private static ReceiverValue popReceiverValue(
+            ReceiverFrame frame, int expectedSize, int instructionIndex)
+            throws ReceiverAnalysisFailure {
+        if (frame.stack.isEmpty()) {
+            throw new ReceiverAnalysisFailure(instructionIndex);
+        }
+        ReceiverValue value = frame.stack.remove(frame.stack.size() - 1);
+        if (expectedSize != 0 && value.size != expectedSize) {
+            throw new ReceiverAnalysisFailure(instructionIndex);
+        }
+        return value;
+    }
+
+    private static void transferReceiverStackShuffle(
+            ReceiverFrame frame, int opcode, int instructionIndex)
+            throws ReceiverAnalysisFailure {
+        ReceiverValue value1 =
+                popReceiverValue(frame, 0, instructionIndex);
+        if (opcode == Opcodes.DUP) {
+            requireReceiverSize(value1, 1, instructionIndex);
+            frame.stack.add(value1);
+            frame.stack.add(value1);
+            return;
+        }
+        ReceiverValue value2 =
+                popReceiverValue(frame, 0, instructionIndex);
+        if (opcode == Opcodes.SWAP) {
+            requireReceiverSize(value1, 1, instructionIndex);
+            requireReceiverSize(value2, 1, instructionIndex);
+            frame.stack.add(value1);
+            frame.stack.add(value2);
+            return;
+        }
+        if (opcode == Opcodes.DUP_X1) {
+            requireReceiverSize(value1, 1, instructionIndex);
+            requireReceiverSize(value2, 1, instructionIndex);
+            frame.stack.add(value1);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            return;
+        }
+        if (opcode == Opcodes.DUP_X2) {
+            requireReceiverSize(value1, 1, instructionIndex);
+            if (value2.size == 2) {
+                frame.stack.add(value1);
+                frame.stack.add(value2);
+                frame.stack.add(value1);
+                return;
+            }
+            ReceiverValue value3 =
+                    popReceiverValue(frame, 1, instructionIndex);
+            frame.stack.add(value1);
+            frame.stack.add(value3);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            return;
+        }
+        if (opcode == Opcodes.DUP2) {
+            if (value1.size == 2) {
+                frame.stack.add(value1);
+                frame.stack.add(value1);
+                return;
+            }
+            requireReceiverSize(value2, 1, instructionIndex);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            return;
+        }
+        if (opcode == Opcodes.DUP2_X1) {
+            if (value1.size == 2) {
+                requireReceiverSize(value2, 1, instructionIndex);
+                frame.stack.add(value1);
+                frame.stack.add(value2);
+                frame.stack.add(value1);
+                return;
+            }
+            requireReceiverSize(value2, 1, instructionIndex);
+            ReceiverValue value3 =
+                    popReceiverValue(frame, 1, instructionIndex);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            frame.stack.add(value3);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            return;
+        }
+        if (opcode == Opcodes.DUP2_X2) {
+            if (value1.size == 2) {
+                if (value2.size == 2) {
+                    frame.stack.add(value1);
+                    frame.stack.add(value2);
+                    frame.stack.add(value1);
+                    return;
+                }
+                ReceiverValue value3 =
+                        popReceiverValue(frame, 1, instructionIndex);
+                frame.stack.add(value1);
+                frame.stack.add(value3);
+                frame.stack.add(value2);
+                frame.stack.add(value1);
+                return;
+            }
+            requireReceiverSize(value2, 1, instructionIndex);
+            ReceiverValue value3 =
+                    popReceiverValue(frame, 0, instructionIndex);
+            if (value3.size == 2) {
+                frame.stack.add(value2);
+                frame.stack.add(value1);
+                frame.stack.add(value3);
+                frame.stack.add(value2);
+                frame.stack.add(value1);
+                return;
+            }
+            ReceiverValue value4 =
+                    popReceiverValue(frame, 1, instructionIndex);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            frame.stack.add(value4);
+            frame.stack.add(value3);
+            frame.stack.add(value2);
+            frame.stack.add(value1);
+            return;
+        }
+        throw new ReceiverAnalysisFailure(instructionIndex);
+    }
+
+    private static void requireReceiverSize(
+            ReceiverValue value, int size, int instructionIndex)
+            throws ReceiverAnalysisFailure {
+        if (value.size != size) {
+            throw new ReceiverAnalysisFailure(instructionIndex);
+        }
+    }
+
     private static List<Integer> prefixSuccessors(
             AbstractInsnNode instruction, int index, int callIndex,
             Map<LabelNode, Integer> labelIndexes) {
@@ -996,6 +1659,46 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             this.index = index;
             this.packedIndex = packedIndex;
             this.type = type;
+        }
+    }
+
+    private static final class ReceiverFrame {
+        private final boolean[] locals;
+        private final List<ReceiverValue> stack;
+
+        private ReceiverFrame(int localCount) {
+            this.locals = new boolean[localCount];
+            this.stack = new ArrayList<>();
+        }
+
+        private ReceiverFrame(ReceiverFrame source) {
+            this.locals = source.locals.clone();
+            this.stack = new ArrayList<>(source.stack);
+        }
+    }
+
+    private static final class ReceiverValue {
+        private static final ReceiverValue RECEIVER =
+                new ReceiverValue(true, 1);
+        private static final ReceiverValue OTHER_ONE =
+                new ReceiverValue(false, 1);
+        private static final ReceiverValue OTHER_TWO =
+                new ReceiverValue(false, 2);
+
+        private final boolean receiver;
+        private final int size;
+
+        private ReceiverValue(boolean receiver, int size) {
+            this.receiver = receiver;
+            this.size = size;
+        }
+    }
+
+    private static final class ReceiverAnalysisFailure extends Exception {
+        private final int instructionIndex;
+
+        private ReceiverAnalysisFailure(int instructionIndex) {
+            this.instructionIndex = instructionIndex;
         }
     }
 

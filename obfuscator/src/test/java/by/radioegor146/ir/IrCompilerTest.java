@@ -633,6 +633,44 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsIdentityPreservingPrefixAstoreZeroWithHiddenBridge() {
+        ClassNode owner = constructorOwner(
+                "example/IdentityReceiver", "java/lang/Object");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                identityAstoreZeroConstructor(owner.name);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("()V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.BIPUSH,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(Arrays.stream(constructor.instructions.toArray())
+                .filter(VarInsnNode.class::isInstance)
+                .map(VarInsnNode.class::cast)
+                .anyMatch(instruction ->
+                        instruction.getOpcode() == Opcodes.ASTORE
+                                && instruction.var == 0));
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
+        assertTrue(context.output.toString().contains(
+                "env->SetIntField(obj"));
+    }
+
+    @Test
     public void admitsPrefixOnlyTryCatchAndRetainsItInRewrittenConstructor() {
         ClassNode owner = constructorOwner(
                 "example/PrefixCatch", "example/PrefixCatchBase");
@@ -811,7 +849,8 @@ public class IrCompilerTest {
                                 owner.name, owner.superName)));
         assertEquals(Opcodes.ASTORE, error.getOpcode());
         assertTrue(error.getMessage().contains(
-                "Constructor prefix changes local 0 before the bridge"));
+                "Constructor prefix ASTORE 0 does not provably preserve "
+                        + "the constructor receiver"));
     }
 
     @Test
@@ -1104,6 +1143,36 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenIdentityAstoreZeroConstructorPassesJvmVerification()
+            throws Exception {
+        ClassNode owner = constructorOwner(
+                "example/VerifiedIdentityReceiver", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                identityAstoreZeroConstructor(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor().newInstance());
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void rewrittenGappedPrefixExtraConstructorPassesJvmVerification()
             throws Exception {
         ClassNode owner = constructorOwner(
@@ -1287,6 +1356,76 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void identityAstoreZeroCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the ASTORE 0 runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the ASTORE 0 runtime test");
+
+        String ownerName = "example/IdentityAstoreRuntime";
+        Path directory = Files.createTempDirectory("ir-astore-zero-run");
+        Path inputJar = directory.resolve("astore-zero.jar");
+        Path outputDirectory = directory.resolve("output");
+        createIdentityAstoreZeroJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain ASTORE 0 Java run");
+        assertEquals("IDENTITY-ASTORE-0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(variableIndexes(
+                transformedConstructor, Opcodes.ASTORE).contains(0));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("ASTORE 0 CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("ASTORE 0 CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "ASTORE 0 native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native ASTORE 0 Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -5272,6 +5411,9 @@ public class IrCompilerTest {
                         .processMethod(context));
 
         assertEquals(Opcodes.ASTORE, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor prefix ASTORE 0 does not provably preserve "
+                        + "the constructor receiver"));
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
@@ -5291,6 +5433,28 @@ public class IrCompilerTest {
                 ? gappedPrefixExtraReferenceConstructor(owner.name)
                 : prefixExtraReferenceConstructor(owner.name));
         owner.methods.add(prefixExtraReferenceMain(owner.name));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
+    private void createIdentityAstoreZeroJar(
+            Path jarPath, String ownerName) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        owner.methods.add(identityAstoreZeroConstructor(owner.name));
+        owner.methods.add(identityAstoreZeroMain(owner.name));
 
         java.util.jar.Manifest manifest = new java.util.jar.Manifest();
         manifest.getMainAttributes().put(
@@ -6284,8 +6448,31 @@ public class IrCompilerTest {
                 multipleSuperDiamondConstructor(owner, superName);
         InsnList prefix = new InsnList();
         prefix.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        prefix.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        prefix.add(new InsnNode(Opcodes.ACONST_NULL));
         prefix.add(new VarInsnNode(Opcodes.ASTORE, 0));
         method.instructions.insert(prefix);
+        for (AbstractInsnNode instruction : method.instructions.toArray()) {
+            if (!(instruction instanceof MethodInsnNode)
+                    || instruction.getOpcode() != Opcodes.INVOKESPECIAL) {
+                continue;
+            }
+            MethodInsnNode invoke = (MethodInsnNode) instruction;
+            if (!"<init>".equals(invoke.name)
+                    || !superName.equals(invoke.owner)) {
+                continue;
+            }
+            for (AbstractInsnNode receiver = instruction.getPrevious();
+                 receiver != null; receiver = receiver.getPrevious()) {
+                if (receiver instanceof VarInsnNode
+                        && receiver.getOpcode() == Opcodes.ALOAD
+                        && ((VarInsnNode) receiver).var == 0) {
+                    ((VarInsnNode) receiver).var = 2;
+                    break;
+                }
+            }
+        }
+        method.maxLocals = 3;
         return method;
     }
 
@@ -6946,6 +7133,51 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode identityAstoreZeroConstructor(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        if (owner.endsWith("Runtime")) {
+            method.instructions.add(new LdcInsnNode("IDENTITY-ASTORE-0"));
+            method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                    owner, "result", "Ljava/lang/String;"));
+        } else {
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 37));
+            method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                    owner, "result", "I"));
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode identityAstoreZeroMain(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "java/lang/System", "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                owner, "<init>", "()V", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/io/PrintStream", "println",
+                "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 3;
         return method;
     }
 
