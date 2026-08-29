@@ -1,9 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing interpreter ISA v3
-[#140](https://github.com/gaoyu06/native-obfuscator/pull/140)/[#143](https://github.com/gaoyu06/native-obfuscator/pull/143)
-on the post-[#139](https://github.com/gaoyu06/native-obfuscator/pull/139) tree.
-on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) tree.
+Last updated after landing the JDK 25 IR E2E
+[#141](https://github.com/gaoyu06/native-obfuscator/pull/141)
+(Fable accept-with-nits
+[#144](https://github.com/gaoyu06/native-obfuscator/pull/144))
+on the post-[#140](https://github.com/gaoyu06/native-obfuscator/pull/140)
+interpreter ISA v3 tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -39,7 +41,10 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   fix. This is not a separately shipped SDK product.
 - **E2E fixtures.** ClassicTest plus JDK 17 / 21 / 25 sample programs under
   `obfuscator/test_data/tests/`. Compiling a fixture with `javac --release 25`
-  is not “JDK 25 supported.”
+  is not “JDK 25 supported.” The four-fixture IR-mode run in
+  [#141](https://github.com/gaoyu06/native-obfuscator/pull/141) is one
+  behavioral measurement (20/21 IR, one hybrid constructor, JEP 472 warning),
+  not a support badge.
 - **Harnesses.** `benchmarks/run.py` now runs JVM, `--codegen=legacy`, and
   `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
   caching remains on the legacy path.
@@ -75,7 +80,8 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 `docs/benchmarks/results-ir-eval-lower.md`,
 `docs/benchmarks/results-ir-vs-legacy-master.md`,
 `docs/benchmarks/results-ir-vs-legacy-phase19.md`,
-`docs/benchmarks/ir-jdk17-e2e-corpus.md`.
+`docs/benchmarks/ir-jdk17-e2e-corpus.md`,
+`docs/benchmarks/ir-jdk25-e2e-corpus.md`.
 
 | Measurement | Result | Must not be read as |
 | --- | --- | --- |
@@ -86,6 +92,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Same five fixtures after the runtime repair (#115 / Sol rerun) | 5/5 stdout parity on one Linux x86-64 VM | Product JDK 17 support |
 | Expanded JDK 17 IR E2E (#123) | 11/11 stdout parity, 82/82 IR admit, one Linux x86-64 VM (OpenJDK 21 host, `--release 17`) | “JDK 17 supported” |
 | JDK 21 IR E2E (#126 via #129) | 6/6 stdout parity, 47/47 IR after local-type split, one Linux VM | “JDK 21 supported” |
+| JDK 25 IR E2E (#141; Fable accept-with-nits #144) | 4/4 stdout parity on one Linux VM (host OpenJDK 21.0.10; Temurin 25.0.4.1+1 for compile/oracle/native). **20/21** IR; `FlexibleConstructorBodiesE2E` `Main$Validated.<init>(I)V` left in Java (control flow before `super(...)`, opcode 154). 0 legacy fallbacks. Every transformed run printed the JEP 472 `System::load` restricted-native-access warning. File: `ir-jdk25-e2e-corpus.md` | “JDK 25 supported” |
 | Pre-phase-19 bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | Post-phase-19 IR timings. Kept as the pre-phase-19 record |
 | Post-phase-19 bench (#132; Fable accept-with-nits #133) | Same harness on `76ebedd`; all three kernels stayed fully IR (four `// IR codegen:` markers; zero fallback log lines). File: `results-ir-vs-legacy-phase19.md` | A portable speedup or “native beats HotSpot” |
 | Phase-20 focused tests (#134) | 97 `IrCompilerTest` + 5 `CodegenModeTest` = 102 | A complete compiler test suite |
@@ -125,13 +132,17 @@ reader/bench notes remain historical.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
+- Admit intra-prefix constructor control flow so JEP 513 prologues can split
+  (`Main$Validated.<init>(I)V` leftover from #141).
+- Document and/or emit a JEP 472 `--enable-native-access` / manifest story
+  for generated `native0.Loader`. Not a JDK 25 support badge.
 - Widen the interpreter to objects and exception dispatch.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #132–#138 (bench,
-  phase 20, default-off evaluator). / 落地 #132–#138 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #141/#144 (JDK 25 IR
+  E2E). / 落地 #141/#144 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。

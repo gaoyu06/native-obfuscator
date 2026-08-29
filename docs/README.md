@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#138. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#144. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -52,6 +52,7 @@ that every phase is a separate product.
 
 | Document | Notes |
 | --- | --- |
+| [benchmarks/ir-jdk25-e2e-corpus.md](benchmarks/ir-jdk25-e2e-corpus.md) | 4-fixture IR behavioral E2E on one VM (20/21 IR, one hybrid ctor, JEP 472 warning); not a JDK 25 badge. Review: [reviews/ir-jdk25-e2e-fable.md](reviews/ir-jdk25-e2e-fable.md) |
 | [benchmarks/ir-jdk21-e2e-corpus.md](benchmarks/ir-jdk21-e2e-corpus.md) | 6-fixture IR behavioral E2E on one VM; not a JDK 21 badge |
 | [benchmarks/ir-jdk17-e2e-corpus.md](benchmarks/ir-jdk17-e2e-corpus.md) | 11-fixture IR behavioral E2E on one VM; not a support badge |
 | [audit/jdk17-e2e-status.md](audit/jdk17-e2e-status.md) | Legacy-path JDK 17 harness |
