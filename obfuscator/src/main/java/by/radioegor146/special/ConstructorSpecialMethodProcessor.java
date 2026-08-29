@@ -44,7 +44,7 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
-    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 3;
+    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
     private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
@@ -2196,7 +2196,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, int-family constants, one INEG over a direct
      * declared int-family argument load, or an admitted int binary tree of at
-     * most three levels over those int-family leaves. The identical-copy and
+     * most four levels over those int-family leaves. The identical-copy and
      * distinct-suffix forms may accept a direct alias load only when their
      * separate receiver-frame proof succeeds.
      */
