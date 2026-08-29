@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #222 (leaf-only `FADD` float chain inputs)
+   `master` after #223 (leaf-only `FSUB`/`FMUL` float chain inputs)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -61,7 +61,7 @@ The goal is complete only when all of the following are true:
    suffixes or cover a chain call,
    remaining multi-super shapes such as five-or-more nested
    int binaries, five-or-more nested long
-   binaries, nested/`FSUB`/`FMUL`/`FDIV`/`FREM`/`FNEG` float
+   binaries, nested float binaries, `FDIV`/`FREM`/`FNEG` float
    inputs, extra-local float operands, double/reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
