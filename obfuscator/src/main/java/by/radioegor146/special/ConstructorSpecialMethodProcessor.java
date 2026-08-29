@@ -35,7 +35,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     public String preProcess(MethodContext context) {
         String name = String.format("special_init_%d_%d",
                 context.classIndex, context.methodIndex);
-        Type[] constructorArguments = Type.getArgumentTypes(context.method.desc);
+        ConstructorSplit split = split(context.clazz, context.method);
+        Type[] constructorArguments = splitArgumentTypes(context.method, split);
         Type[] bridgeArguments = new Type[constructorArguments.length + 1];
         bridgeArguments[0] = Type.getType(Object.class);
         System.arraycopy(constructorArguments, 0, bridgeArguments, 1,
@@ -84,7 +85,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         ConstructorSplit split = split(owner, constructor);
         MethodNode body = new MethodNode(Opcodes.ASM9,
                 constructor.access & ~(Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE),
-                constructor.name, constructor.desc, constructor.signature,
+                constructor.name,
+                Type.getMethodDescriptor(Type.VOID_TYPE,
+                        splitArgumentTypes(constructor, split)),
+                constructor.signature,
                 constructor.exceptions == null
                         ? null : constructor.exceptions.toArray(new String[0]));
 
@@ -147,6 +151,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         Set<Integer> forwardedReferenceLocals = forwardedReferenceLocals(constructor);
+        Set<Integer> widenedReferenceLocals = new HashSet<>();
         for (int i = 0; i <= callIndex; i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
             // Prefix-local branches keep both edges in the retained bytecode, so
@@ -175,12 +180,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             i, instruction);
                 }
             }
-            if (instruction.getOpcode() == Opcodes.ASTORE
-                    && forwardedReferenceLocals.contains(
-                    ((VarInsnNode) instruction).var)) {
-                throw unsupported(
-                        "Constructor prefix changes a reference local forwarded to the bridge",
-                        i, instruction);
+            if (instruction.getOpcode() == Opcodes.ASTORE) {
+                int local = ((VarInsnNode) instruction).var;
+                if (local == 0) {
+                    throw unsupported(
+                            "Constructor prefix changes local 0 before the bridge",
+                            i, instruction);
+                }
+                if (forwardedReferenceLocals.contains(local)) {
+                    widenedReferenceLocals.add(local);
+                }
             }
         }
 
@@ -223,12 +232,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         "Constructor exception regions may not cross the this/super split");
             }
         }
-        return new ConstructorSplit(callIndex);
+        return new ConstructorSplit(callIndex, widenedReferenceLocals);
     }
 
     private static Set<Integer> forwardedReferenceLocals(MethodNode constructor) {
         Set<Integer> locals = new HashSet<>();
-        locals.add(0);
         int local = 1;
         for (Type argument : Type.getArgumentTypes(constructor.desc)) {
             if (argument.getSort() == Type.OBJECT
@@ -238,6 +246,19 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             local += argument.getSize();
         }
         return locals;
+    }
+
+    private static Type[] splitArgumentTypes(
+            MethodNode constructor, ConstructorSplit split) {
+        Type[] arguments = Type.getArgumentTypes(constructor.desc);
+        int local = 1;
+        for (int i = 0; i < arguments.length; i++) {
+            if (split.widenedReferenceLocals.contains(local)) {
+                arguments[i] = Type.getType(Object.class);
+            }
+            local += arguments[i].getSize();
+        }
+        return arguments;
     }
 
     private static UnsupportedIrConstructException unsupported(
@@ -270,9 +291,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static final class ConstructorSplit {
         private final int callIndex;
+        private final Set<Integer> widenedReferenceLocals;
 
-        private ConstructorSplit(int callIndex) {
+        private ConstructorSplit(int callIndex, Set<Integer> widenedReferenceLocals) {
             this.callIndex = callIndex;
+            this.widenedReferenceLocals = widenedReferenceLocals;
         }
     }
 }
