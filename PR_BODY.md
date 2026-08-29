@@ -1,143 +1,102 @@
-# IR compiler phase 12 / IR 编译器第十二阶段
+# IR phase 12 — Fable review (docs only) / IR 编译器第十二阶段 —— Fable 审阅（仅文档）
 
-Required base / 必须基于:
-`cursor/ir-compiler-phase11-6d81`
-(`6fc64927a53c777a36c38e54aaed01b1bd696ed3`, draft PR #78).
-The docs-only phase-11 review branches #82/#83 are not used. /
-必须基于 `cursor/ir-compiler-phase11-6d81`
-（`6fc64927a53c777a36c38e54aaed01b1bd696ed3`，草稿 PR #78），
-不使用仅含文档的 phase-11 审阅分支 #82/#83。
+Review branch: `cursor/ir-phase12-fable-review-6d81`.
+Subject under review: `cursor/ir-compiler-phase12-6d81` (draft PR #84),
+comparing against base `cursor/ir-compiler-phase11-6d81` at
+`6fc64927a53c777a36c38e54aaed01b1bd696ed3` (draft PR #78).
+This branch adds only `docs/architecture/ir-phase12-fable-review.md` and this
+PR body. No compiler code changed.
 
-## Summary / 摘要
-
-Phase 12 admits supported user/test class constructor bodies into the optional
-Java bytecode → typed CFG IR → C++/JNI compiler. The complete constructor is
-validated before mutation. The verifier-required `this(...)`/`super(...)` call
-stays in the Java constructor, while the initialized suffix runs through a
-hidden static native bridge with local 0 represented as `REFERENCE`. The
-constructor itself never receives illegal `ACC_NATIVE`. The default remains
-`legacy`.
-
-第十二阶段将受支持的用户/测试类构造函数方法体纳入可选的 Java 字节码 → typed
-CFG IR → C++/JNI 编译路径。完整构造函数会在 mutation 前验证。verifier 要求的
-`this(...)`/`super(...)` 调用保留在 Java 构造函数中；初始化后的后缀通过 hidden
-static native bridge 执行，local 0 表示为 `REFERENCE`。构造函数本身不会被非法地
-标记为 `ACC_NATIVE`。默认值仍为 `legacy`。
+审阅分支：`cursor/ir-phase12-fable-review-6d81`。
+审阅对象：`cursor/ir-compiler-phase12-6d81`（草稿 PR #84），基于
+`cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）比较。
+本分支仅新增 `docs/architecture/ir-phase12-fable-review.md` 与本 PR 说明，
+未改动任何编译器代码。
 
 ## (a) Change scope / 本次改动范围
 
-- Makes `MethodProcessor.shouldProcess` codegen-mode aware: `<init>` remains
-  excluded in `legacy` and is considered only in explicit IR mode.
-- Validates the complete constructor with the existing frontend before
-  creating output, cache entries, a hidden bridge, or rewritten bytecode.
-- Requires one linear direct `this(...)` or `super(...)` call, then lowers the
-  independently valid initialized suffix through a hidden static native bridge.
-- Keeps the constructor non-native and passes initialized `this` as local 0 /
-  `REFERENCE` / `jobject obj`.
-- Retains the existing full-IR `<init>` representation and
-  `CallNonvirtualVoidMethod` family. The executable bridge preserves the
-  verifier-required call in bytecode so it is not executed twice.
-- Reuses exact phase-10 `SetIntField`, `SetLongField`, and `SetObjectField`
-  carriers for `I`, `J`, object, and array stores.
-- Keeps unprotected exceptional exits as JNI `void` returns with the exception
-  pending.
-- Leaves an unsupported constructor as unchanged Java bytecode instead of
-  sending it to the constructor-excluding legacy method shell.
-- Adds simple-field/getter, subclass `super(...)`, delegated `this(...)`,
-  object/array field, fallback-before-mutation, and retained g++ smoke coverage.
-- Preserves phase-9 array returns, phase-10 fields, phase-11 invokes, the
-  `legacy` default, and all snippet resources.
+- Documents an independent Fable review of the phase-12 constructor lowering:
+  Java bytecode → typed IR → C++/JNI, focused on the verifier-safe split.
+- Confirms `<init>` is never marked `ACC_NATIVE`; only the hidden static helper
+  is native.
+- Confirms exactly one linear direct `this(...)`/`super(...)` call stays in the
+  Java constructor and the native suffix starts after it (not executed twice).
+- Confirms the hidden bridge receives the initialized receiver as local 0 /
+  `REFERENCE` / `jobject obj`, with descriptor arguments after it.
+- Confirms full-body admission before any output, cache, method-flag, bridge,
+  or bytecode mutation; a rejected constructor stays unchanged Java bytecode.
+- Confirms the CLI/API default stays `legacy` and the phase-9/10/11 regressions
+  and `cppsnippets.properties` remain present.
+- Records real focused-test counts and an independent g++ recompile of the
+  retained translation unit.
 
-- 使 `MethodProcessor.shouldProcess` 感知 codegen mode：`<init>` 在 `legacy`
-  中仍被排除，仅在显式 IR mode 下成为候选。
-- 在创建输出、cache entry、hidden bridge 或改写字节码前，先用现有 frontend
-  验证完整构造函数。
-- 要求存在一个线性的直接 `this(...)` 或 `super(...)` 调用，再将可独立验证的
-  已初始化后缀通过 hidden static native bridge 降级。
-- 构造函数保持非 native；已初始化的 `this` 作为 local 0 / `REFERENCE` /
-  `jobject obj` 传入。
-- 保留完整 IR 中现有的 `<init>` 表示及 `CallNonvirtualVoidMethod` family。
-  可执行 bridge 将 verifier 要求的调用保留在字节码中，避免重复执行构造函数。
-- 对 `I`、`J`、对象及数组字段写入复用 phase-10 的精确 `SetIntField`、
-  `SetLongField` 与 `SetObjectField` carrier。
-- 无保护异常出口继续以 JNI `void` 返回，并保持异常 pending。
-- 不受支持的构造函数保持原 Java 字节码，不会送入本就排除构造函数的 legacy
-  method shell。
-- 新增简单字段/ getter、子类 `super(...)`、委托 `this(...)`、对象/数组字段、
-  mutation 前 fallback 及保留的 g++ smoke 覆盖。
-- 保留 phase-9 数组返回、phase-10 字段、phase-11 invoke、`legacy` 默认值及
-  全部 snippet resources。
+- 记录对 phase-12 构造函数降级（Java 字节码 → typed IR → C++/JNI）的独立 Fable
+  审阅，聚焦 verifier-safe split。
+- 确认 `<init>` 绝不被标记 `ACC_NATIVE`；仅 hidden static helper 为 native。
+- 确认唯一的线性直接 `this(...)`/`super(...)` 调用保留在 Java 构造函数中，
+  native 后缀从该调用之后开始（不重复执行）。
+- 确认 hidden bridge 以 local 0 / `REFERENCE` / `jobject obj` 接收已初始化的
+  receiver，描述符参数随其后。
+- 确认 mutation 前完成完整方法体 admission；被拒构造函数保持原 Java 字节码。
+- 确认 CLI/API 默认仍为 `legacy`，phase-9/10/11 回归与 `cppsnippets.properties`
+  均保留。
+- 记录真实聚焦测试计数，及对保留翻译单元的独立 g++ 重编。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
 **No / 否。**
 
-This remains a partial, opt-in compiler slice. Constructors with unsupported
+This branch is documentation only. The reviewed phase-12 implementation is
+still a partial, opt-in compiler slice: constructors with unsupported
 operations, non-linear initialization prefixes, cross-split exception regions,
-or suffix dependencies on prefix-only locals remain as Java bytecode.
-Float/double, invokedynamic, `POP2`, `MULTIANEWARRAY`, other primitive field or
-invoke carriers, and other operations outside the documented subset still
-fall back. Focused unit tests and C++ syntax checks do not replace native
-runtime-parity gates on every supported platform.
+or suffix dependencies on prefix-only locals remain Java bytecode, and the
+default stays `legacy`. Focused unit tests plus a C++ syntax check do not
+replace native runtime-parity gates on every supported platform.
 
-这仍是部分、可选的编译器增量。含不支持操作、非线性初始化前缀、跨 split
-异常区域，或后缀依赖仅在前缀初始化的局部变量的构造函数仍保留为 Java 字节码。
-float/double、invokedynamic、`POP2`、`MULTIANEWARRAY`、其他 primitive 字段或
-invoke carrier，以及文档范围外的操作仍会 fallback。聚焦单测与 C++ 语法检查
+本分支仅含文档。所审阅的 phase-12 实现仍是部分、可选的编译器增量：含不支持
+操作、非线性初始化前缀、跨 split 异常区域，或后缀依赖仅在前缀初始化的局部变量
+的构造函数仍保留为 Java 字节码，默认仍为 `legacy`。聚焦单测加 C++ 语法检查
 不能替代全部受支持平台上的 native 运行时等价性门禁。
 
 ## (c) Is review required? / 上线前是否需要 review？
 
 **Yes / 是。**
 
-Review must confirm the verifier-safe split, full-body admission before
-mutation, exact local-0 receiver mapping, constructor bridge descriptor and
-argument order, retained `this(...)`/`super(...)` bytecode call, I/J/reference
-field carriers, JNI void exceptional exits, and unchanged-constructor fallback.
-The stacked phase-9 through phase-11 regressions must remain present.
+This document is that review. Verdict: **accept**. It verifies the
+verifier-safe split, full-body admission before mutation, the local-0 receiver
+mapping, the bridge descriptor and argument order, the retained single
+`this(...)`/`super(...)` bytecode call, the I/J/reference field carriers, the
+JNI `void` exceptional exits, the unchanged-constructor fallback, and the
+retained phase-9 through phase-11 regressions. No correctness bug was found, so
+no compiler code was changed.
 
-Review 必须确认 verifier-safe split、mutation 前的完整方法体 admission、精确的
-local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留的
-`this(...)`/`super(...)` 字节码调用、I/J/引用字段 carrier、JNI void 异常出口，
-以及构造函数保持不变的 fallback。堆叠的 phase-9 至 phase-11 回归必须保留。
+本文档即为该 review。结论：**接受**。审阅确认了 verifier-safe split、mutation
+前的完整方法体 admission、local-0 receiver 映射、bridge 描述符与参数顺序、保留
+的唯一 `this(...)`/`super(...)` 字节码调用、I/J/引用字段 carrier、JNI `void`
+异常出口、构造函数保持不变的 fallback，以及保留的 phase-9 至 phase-11 回归。
+未发现正确性缺陷，故未改动任何编译器代码。
 
-## (d) Review preconditions / Review 前置条件
+## (d) Review preconditions and evidence / Review 前置条件与证据
 
 1. Compare against `cursor/ir-compiler-phase11-6d81` at `6fc6492…` (draft
-   PR #78), not `master` or docs-only review branches #82/#83.
-   必须基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）
-   比较，不得改用 `master` 或仅含文档的审阅分支 #82/#83。
-2. Re-run the focused command with `CC=gcc CXX=g++ --rerun-tasks` and inspect
-   the JUnit XML. Recorded result: `IrCompilerTest` 57 plus
-   `CodegenModeTest` 2, total 59; zero skipped, failures, or errors.
-   使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦命令并读取 JUnit XML。
-   记录结果为 `IrCompilerTest` 57 加 `CodegenModeTest` 2，共 59；跳过、失败、
-   错误均为零。
-3. With g++ and JNI headers present, require
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped
-   and independently run `g++ -std=c++17 -fsyntax-only` on the retained unit.
-   The recorded 61-method smoke and independent check both exited zero.
-   当 g++ 与 JNI headers 存在时，必须确认
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录的 61-method smoke 与
-   独立检查均以零退出。
-4. Inspect a successful constructor rewrite: `<init>` must remain non-native,
-   retain exactly its direct `this(...)`/`super(...)` prefix, invoke the hidden
-   bridge with initialized `this` plus descriptor arguments, and return `V`.
-   检查成功的构造函数改写：`<init>` 必须保持非 native，精确保留其直接
-   `this(...)`/`super(...)` 前缀，以已初始化的 `this` 加描述符参数调用 hidden
-   bridge，并以 `V` 返回。
-5. Inspect a rejected constructor after an unsupported opcode. Its instruction
-   list and `ACC_NATIVE` state, output/native metadata, hidden bridge state, and
-   all four caches must remain unchanged.
-   检查因不支持 opcode 被拒绝的构造函数：其指令列表、`ACC_NATIVE` 状态、
-   output/native metadata、hidden bridge 状态及四类 cache 均必须保持不变。
-6. Verify source and tests still retain the `legacy` CLI/API default, phase-9
-   `jarray` return cast, phase-10 field families, phase-11 invoke families, and
-   `sources/cppsnippets.properties`.
-   确认源码与测试仍保留 `legacy` CLI/API 默认值、phase-9 `jarray` 返回转换、
-   phase-10 字段 family、phase-11 invoke family 及
-   `sources/cppsnippets.properties`。
+   PR #78), not `master`.
+   基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）比较，
+   而非 `master`。
+2. Focused command re-run with `CC=gcc CXX=g++ … --rerun-tasks`; counts read
+   from JUnit XML: `IrCompilerTest` 57 + `CodegenModeTest` 2 = **59**; zero
+   skipped, failures, or errors.
+   以 `CC=gcc CXX=g++ … --rerun-tasks` 重跑聚焦命令；从 JUnit XML 读取计数：
+   `IrCompilerTest` 57 + `CodegenModeTest` 2 = **59**；跳过、失败、错误均为零。
+3. `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran unskipped
+   (`time="0.268"`, no `<skipped>`); an independent
+   `g++ -std=c++17 -fsyntax-only` on the retained unit (61 `JNICALL`
+   functions, 2 `special_init` bridges) exited 0 with empty diagnostics.
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过运行
+   （`time="0.268"`，无 `<skipped>`）；对保留 unit（61 个 `JNICALL` 函数、
+   2 个 `special_init` bridge）独立运行 `g++ -std=c++17 -fsyntax-only`，退出 0
+   且无诊断输出。
+4. Full evidence: `docs/architecture/ir-phase12-fable-review.md`.
+   完整证据见 `docs/architecture/ir-phase12-fable-review.md`。
 
-Detailed evidence / 详细证据:
-`docs/architecture/ir-phase12-status.md`.
+Compiler code changed: **No**. Verdict: **accept**.
+编译器代码改动：**否**。结论：**接受**。
