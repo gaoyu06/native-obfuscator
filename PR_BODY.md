@@ -25,6 +25,17 @@
 - The default remains `--codegen=legacy`; this change does not flip
   `--ir-lower`, `--backend`, or any production default.
 
+### Focused gate
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+Parsed JUnit XML: 161 `IrCompilerTest` tests plus 7 `CodegenModeTest` tests,
+168 total; 0 failures, 0 errors, and 0 skipped. The gate passed.
+
 ### Preconditions
 
 - Remaining constructor leftovers stay rejected.
@@ -54,6 +65,12 @@
   JVM 验证以及 CMake/g++ JNI 运行时一致性。
 - 默认值仍为 `--codegen=legacy`；本变更不会翻转 `--ir-lower`、
   `--backend` 或任何生产默认值。
+
+### 聚焦测试门槛
+
+执行上方完整测试命令。解析后的 JUnit XML 结果为：
+`IrCompilerTest` 161 项、`CodegenModeTest` 7 项，共 168 项；失败 0、
+错误 0、跳过 0。测试门槛已通过。
 
 ### 前置条件
 

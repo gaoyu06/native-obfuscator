@@ -229,6 +229,18 @@ Synthetic bytecode unit tests in
   negative constructor arguments through the plain Java class and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`; both runs print the
   same superclass and shared-suffix field values.
+- `admitsPostChainConditionalBranchToSharedSuffix` proves the exact
+  `ILOAD; IFNE sharedSuffix; RETURN` post-call shape emits only the shared
+  suffix as the independent native body, preserves the conditional branch and
+  early return in bytecode, and adds one hidden bridge without a synthetic
+  join `GOTO`.
+- `rewrittenPostChainConditionalBranchPassesJvmVerification` executes the
+  early-return path and verifies both suffix-taking paths up to the unresolved
+  native bridge after JVM verification.
+- `postChainConditionalBranchCompilesAndRunsWithJavaParity` exercises the
+  taken prefix-to-suffix edge, its fallthrough early return, and the alternate
+  second-call path through plain Java and the complete CMake/g++ JNI transform
+  under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsMultipleSuperWithIdenticalLinearSuffixCopies` proves that two
   separate, identical field-writing suffix copies produce one native body and
   normalize to a retained two-call wrapper with one hidden bridge.
@@ -286,9 +298,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 158 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 161 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 165 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 168 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
