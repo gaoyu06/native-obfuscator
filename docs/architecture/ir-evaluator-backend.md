@@ -206,12 +206,14 @@ The focused command was:
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test \
-  --tests by.radioegor146.CodegenModeTest \
-  --tests by.radioegor146.MainBackendOptionTest \
-  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest \
+  --tests by.radioegor146.CodegenModeTest
 ```
 
-Result: 16/16 passed, 0 skipped, 0 failures, 0 errors. The unchanged direct-IR
+Result after the `LDIV`/`LREM` wire-up: 17/17 passed, 0 skipped, 0 failures,
+0 errors. This includes C++17 runtime execution for signed divide/remainder,
+both zero-divisor exceptions, and both `Long.MIN_VALUE / -1` results, plus the
+serializer and pre-shell fallback checks. The unchanged direct-IR
 and interpreter-dispatch suites passed 96/96:
 
 ```bash
@@ -228,3 +230,21 @@ cmake -S build/proof-ir-eval/cpp -B build/proof-ir-eval/cpp/build \
 cmake --build build/proof-ir-eval/cpp/build --parallel 2
 # exit 0
 ```
+
+The wire-up also used a fresh one-class fixture containing
+`static long divide(long, long)`. Complete omitted-versus-explicit direct
+outputs matched:
+
+```bash
+java -jar obfuscator/build/libs/obfuscator.jar --codegen=ir \
+  build/ir-eval-ldiv-proof.jar build/ldiv-proof-implicit
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=direct \
+  build/ir-eval-ldiv-proof.jar build/ldiv-proof-direct
+diff -r build/ldiv-proof-implicit build/ldiv-proof-direct
+# exit 0, no output
+```
+
+With `--codegen=ir --ir-lower=eval`, the generated method-data array contains
+decimal `43` (`0x2b`) at the first operation position, calls `evaluate_i64`,
+and has no `// IR codegen: EvalProof.divide(JJ)J` structured-body marker.
