@@ -1,9 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix-local constructor splits
-[#146](https://github.com/gaoyu06/native-obfuscator/pull/146)
-on the post-[#145](https://github.com/gaoyu06/native-obfuscator/pull/145)
-JEP 472 packaging tree.
+Last updated after landing interpreter ISA v4
+[#148](https://github.com/gaoyu06/native-obfuscator/pull/148)
+(Sol accept
+[#149](https://github.com/gaoyu06/native-obfuscator/pull/149))
+on the post-[#146](https://github.com/gaoyu06/native-obfuscator/pull/146)
+constructor-split tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -52,13 +54,16 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
   caching remains on the legacy path.
 - **Opt-in interpreter.** `--backend=interpreter` (default `cpp`) lowers a
-  narrow integer slice to an opcode stream plus a C++17 `switch` dispatcher.
+  narrow slice to an opcode stream plus a C++17 `switch` dispatcher.
   ISA v2 is static `int`. ISA v3
   ([#140](https://github.com/gaoyu06/native-obfuscator/pull/140); Sol accept
   [#143](https://github.com/gaoyu06/native-obfuscator/pull/143)) adds an i64
-  slice (`LPUSH`/`LLOAD`/`LSTORE`, arith/bitwise/shift/`LNEG`/`LRETURN`,
-  `LDIV`/`LREM` with the same `/0` and `MIN/-1` rules as IR phase 20).
-  Objects and exception dispatch are still outside this backend.
+  slice. ISA v4
+  ([#148](https://github.com/gaoyu06/native-obfuscator/pull/148); Sol accept
+  [#149](https://github.com/gaoyu06/native-obfuscator/pull/149)) adds a first
+  reference slice (`ACONST_NULL`/`ALOAD`/`ASTORE`/`ARETURN`/`IFNULL`/`IFNONNULL`,
+  parallel `jobject` slots, `execute_l`). Still static-only.
+  `NEW`, invoke, fields, and exception dispatch remain outside this backend.
 - **Opt-in evaluator.** `--ir-lower=eval` (default `direct`) is consulted only
   when `--codegen=ir` successfully builds an `IrMethod`.
   [#137](https://github.com/gaoyu06/native-obfuscator/pull/137) (Sol
@@ -107,6 +112,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Pre-phase-19 bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | Post-phase-19 IR timings. Kept as the pre-phase-19 record |
 | Post-phase-19 bench (#132; Fable accept-with-nits #133) | Same harness on `76ebedd`; all three kernels stayed fully IR (four `// IR codegen:` markers; zero fallback log lines). File: `results-ir-vs-legacy-phase19.md` | A portable speedup or “native beats HotSpot” |
 | Phase-20 focused tests (#134) | 97 `IrCompilerTest` + 5 `CodegenModeTest` = 102 | A complete compiler test suite |
+| Interpreter ISA v4 focused+regression (#148; Sol accept #149) | 128 tests (2 option + 14 emitter + 1 runtime + 2 integration + 102 IR + 7 codegen). Sol re-ran 26/26 (omitted IrCompilerTest). Default-off `diff -r` of generated `cpp/` exited 0 | A production interpreter or object/exception coverage |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -145,13 +151,13 @@ tree. Close them as superseded, do not merge.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Widen the interpreter to objects and exception dispatch.
+- Widen the interpreter to `NEW` / invoke / fields and exception dispatch.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #146 (prefix-local
-  constructor splits). / 落地 #146 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #148/#149 (interpreter
+  ISA v4). / 落地 #148/#149 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。

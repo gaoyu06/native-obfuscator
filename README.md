@@ -4,13 +4,13 @@ Java `.class` to C++ converter for use with JNI.
 
 The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in-process interpreter (`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
 
-**现状（中文）：** 默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭，均为窄整数切片。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。
+**现状（中文）：** 默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 第一段引用切片），仍无 NEW/调用/字段/异常分派。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。
 
 ---
 
 ## Current status
 
-Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#146](https://github.com/gaoyu06/native-obfuscator/pull/146). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#149](https://github.com/gaoyu06/native-obfuscator/pull/149). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
@@ -24,7 +24,7 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | Native-access packaging | Output JARs emit `Enable-Native-Access: ALL-UNNAMED` (`java -jar`). Classpath still needs `--enable-native-access=ALL-UNNAMED`. Not “supports JDK 25” |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
-| Interpreter | `--backend=interpreter` default off (`cpp`). ISA v3: static `int` plus a first i64 slice. Not a protection product |
+| Interpreter | `--backend=interpreter` default off (`cpp`). ISA v4: static `int`/`long` plus a first reference slice (`null` / `ALOAD`/`ASTORE`/`ARETURN` / `IFNULL`). No `NEW`, invoke, fields, or exception dispatch. Not a protection product |
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). All three kernels stayed on IR on one VM. Not a portable speedup. Prefer a whitelist |
@@ -69,7 +69,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-p` | `hotspot` (default), `std_java`, or `android` |
 | `--codegen` | `legacy` (default) or `ir` |
 | `--ir-lower` | `direct` (default) or `eval`; consulted only with `--codegen=ir` |
-| `--backend` | `cpp` (default) or `interpreter` (narrow int/i64 slice; default off) |
+| `--backend` | `cpp` (default) or `interpreter` (narrow int/i64/reference slice; default off) |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
 | `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
