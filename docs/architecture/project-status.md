@@ -186,8 +186,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
   `ConstantDynamic` / leftover raw MethodHandle `LDC`,
-  `LDC`, monitors / synchronized, leftover constructor-split rejects,
-  `jsr` / `ret`.
+  leftover constructor-split rejects (`ASTORE 0`, prefix→suffix branch,
+  try/catch across the split, multiple this/super), and `jsr` / `ret`.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
