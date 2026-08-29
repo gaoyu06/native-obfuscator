@@ -1,3 +1,5 @@
+#include "jni.h"
+
 #include <cstdint>
 
 #ifndef NATIVE_JVM_INTERP_HPP_GUARD
@@ -5,7 +7,7 @@
 
 namespace native_jvm::interp {
 
-    constexpr std::uint16_t ISA_VERSION = 3;
+    constexpr std::uint16_t ISA_VERSION = 4;
 
     enum class opcode : std::uint8_t {
         ipush = 1,
@@ -52,7 +54,13 @@ namespace native_jvm::interp {
         lneg = 42,
         lreturn = 43,
         ldiv = 44,
-        lrem = 45
+        lrem = 45,
+        aconst_null = 46,
+        aload = 47,
+        astore = 48,
+        areturn = 49,
+        ifnull = 50,
+        ifnonnull = 51
     };
 
     enum class execution_result : std::uint8_t {
@@ -72,6 +80,8 @@ namespace native_jvm::interp {
     struct frame {
         std::int32_t *locals;
         std::int32_t *stack;
+        jobject *ref_locals = nullptr;
+        jobject *ref_stack = nullptr;
     };
 
     void store_long(std::int32_t *slots, std::int64_t value) noexcept;
@@ -81,6 +91,9 @@ namespace native_jvm::interp {
 
     execution_result execute_j(const method_desc &method, frame &current_frame,
                                std::int64_t *result) noexcept;
+
+    execution_result execute_l(const method_desc &method, frame &current_frame,
+                               jobject *result) noexcept;
 }
 
 #endif

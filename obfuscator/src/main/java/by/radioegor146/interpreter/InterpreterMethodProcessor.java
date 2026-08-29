@@ -62,12 +62,19 @@ public final class InterpreterMethodProcessor {
                 .append(Math.max(1, compiled.getMaxStack())).append("] = {};\n");
         context.output.append("    std::int32_t interp_locals[")
                 .append(Math.max(1, compiled.getMaxLocals())).append("] = {};\n");
+        context.output.append("    jobject interp_ref_stack[")
+                .append(Math.max(1, compiled.getMaxStack())).append("] = {};\n");
+        context.output.append("    jobject interp_ref_locals[")
+                .append(Math.max(1, compiled.getMaxLocals())).append("] = {};\n");
         int local = 0;
         for (int i = 0; i < arguments.length; i++) {
             if (arguments[i].getSort() == Type.LONG) {
                 context.output.append("    native_jvm::interp::store_long(interp_locals + ")
                         .append(local).append(", static_cast<std::int64_t>(arg")
                         .append(i).append("));\n");
+            } else if (isReference(arguments[i])) {
+                context.output.append("    interp_ref_locals[").append(local)
+                        .append("] = arg").append(i).append(";\n");
             } else {
                 context.output.append("    interp_locals[").append(local)
                         .append("] = static_cast<std::int32_t>(arg").append(i)
@@ -76,14 +83,19 @@ public final class InterpreterMethodProcessor {
             local += arguments[i].getSize();
         }
         context.output.append(
-                "    native_jvm::interp::frame interp_frame = { interp_locals, interp_stack };\n");
+                "    native_jvm::interp::frame interp_frame = { interp_locals, interp_stack, interp_ref_locals, interp_ref_stack };\n");
         boolean returnsLong = context.ret.getSort() == Type.LONG;
-        context.output.append(returnsLong
-                ? "    std::int64_t interp_result = 0;\n"
-                : "    std::int32_t interp_result = 0;\n");
+        boolean returnsReference = isReference(context.ret);
+        if (returnsLong) {
+            context.output.append("    std::int64_t interp_result = 0;\n");
+        } else if (returnsReference) {
+            context.output.append("    jobject interp_result = nullptr;\n");
+        } else {
+            context.output.append("    std::int32_t interp_result = 0;\n");
+        }
         context.output.append(
                 "    native_jvm::interp::execution_result interp_status = native_jvm::interp::execute_")
-                .append(returnsLong ? "j(" : "i(")
+                .append(returnsLong ? "j(" : returnsReference ? "l(" : "i(")
                 .append(dataName)
                 .append("_method, interp_frame, &interp_result);\n");
         context.output.append(
@@ -92,19 +104,33 @@ public final class InterpreterMethodProcessor {
                 "        utils::throw_re(env, \"java/lang/ArithmeticException\", \"")
                 .append(returnsLong ? "long" : "integer")
                 .append(" / by zero\", -1);\n");
-        context.output.append("        return (")
-                .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
+        if (returnsReference) {
+            context.output.append("        return nullptr;\n");
+        } else {
+            context.output.append("        return (")
+                    .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
+        }
         context.output.append("    }\n");
         context.output.append(
                 "    if (interp_status != native_jvm::interp::execution_result::success) {\n");
         context.output.append(
                 "        env->FatalError(\"invalid native_jvm interpreter opcode stream\");\n");
-        context.output.append("        return (")
-                .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
+        if (returnsReference) {
+            context.output.append("        return nullptr;\n");
+        } else {
+            context.output.append("        return (")
+                    .append(returnsLong ? "jlong" : "jint").append(") 0;\n");
+        }
         context.output.append("    }\n");
-        context.output.append("    return static_cast<")
-                .append(returnsLong ? "jlong" : "jint")
-                .append(">(interp_result);\n");
+        if (returnsReference) {
+            context.output.append("    return reinterpret_cast<")
+                    .append(MethodProcessor.CPP_TYPES[context.ret.getSort()])
+                    .append(">(interp_result);\n");
+        } else {
+            context.output.append("    return static_cast<")
+                    .append(returnsLong ? "jlong" : "jint")
+                    .append(">(interp_result);\n");
+        }
         context.output.append("}\n\n");
 
         method.instructions.clear();
@@ -114,6 +140,10 @@ public final class InterpreterMethodProcessor {
         if (method.tryCatchBlocks != null) {
             method.tryCatchBlocks.clear();
         }
+    }
+
+    private static boolean isReference(Type type) {
+        return type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY;
     }
 
     private static void appendCodeArray(MethodContext context, String dataName,

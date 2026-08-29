@@ -2,7 +2,9 @@ package by.radioegor146.interpreter;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
@@ -59,7 +61,7 @@ public class InterpreterMethodEmitterTest {
                 InterpreterMethodEmitter.tryCompile(owner(), method);
 
         assertNotNull(compiled);
-        assertEquals(3, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(4, InterpreterMethodEmitter.ISA_VERSION);
         assertEquals(4, compiled.getMaxStack());
         assertEquals(4, compiled.getMaxLocals());
         assertArrayEquals(bytes(
@@ -96,6 +98,102 @@ public class InterpreterMethodEmitterTest {
                 39,
                 42,
                 43), compiled.getCode());
+    }
+
+    @Test
+    public void emitsReferenceIdentityAndUsesOneSlotLocal() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "identity", "(Ljava/lang/Object;)Ljava/lang/Object;",
+                null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxStack = 1;
+        method.maxLocals = 1;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertEquals(4, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(1, compiled.getMaxStack());
+        assertEquals(1, compiled.getMaxLocals());
+        assertArrayEquals(bytes(47, 0, 0, 49), compiled.getCode());
+
+        MethodNode arrayIdentity = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "arrayIdentity", "([I)[I", null, null);
+        arrayIdentity.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        arrayIdentity.instructions.add(new InsnNode(Opcodes.ARETURN));
+        arrayIdentity.maxStack = 1;
+        arrayIdentity.maxLocals = 1;
+        assertNotNull(InterpreterMethodEmitter.tryCompile(
+                owner(), arrayIdentity));
+    }
+
+    @Test
+    public void emitsReferenceNullBranchesAndLocalStoreGolden() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "select", "(Ljava/lang/Object;)Ljava/lang/Object;",
+                null, null);
+        LabelNode nullValue = new LabelNode();
+        LabelNode nonnullValue = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNULL, nullValue));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new JumpInsnNode(
+                Opcodes.IFNONNULL, nonnullValue));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(nullValue);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.instructions.add(nonnullValue);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxStack = 1;
+        method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                47, 0, 0,
+                50, 24, 0, 0, 0,
+                47, 0, 0,
+                48, 1, 0,
+                47, 1, 0,
+                51, 26, 0, 0, 0,
+                46,
+                49,
+                46,
+                49,
+                47, 1, 0,
+                49), compiled.getCode());
+    }
+
+    @Test
+    public void rejectsUnsupportedObjectOperationWithoutMutation() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "readValue",
+                "(LInterpreterFixture;)Ljava/lang/Object;", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "InterpreterFixture", "value", "Ljava/lang/Object;"));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxStack = 1;
+        method.maxLocals = 1;
+        AbstractInsnNode[] original = method.instructions.toArray();
+        int originalAccess = method.access;
+
+        assertNull(InterpreterMethodEmitter.tryCompile(owner(), method));
+        assertArrayEquals(original, method.instructions.toArray());
+        assertEquals(originalAccess, method.access);
     }
 
     @Test
@@ -222,7 +320,7 @@ public class InterpreterMethodEmitterTest {
                 InterpreterMethodEmitter.tryCompile(owner(), method);
 
         assertNotNull(compiled);
-        assertEquals(3, InterpreterMethodEmitter.ISA_VERSION);
+        assertEquals(4, InterpreterMethodEmitter.ISA_VERSION);
         assertArrayEquals(bytes(
                 2, 0, 0,
                 2, 1, 0,

@@ -18,11 +18,12 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * ASM-to-opcode-stream lowering for the integer and long interpreter slice.
+ * ASM-to-opcode-stream lowering for the integer, long, and reference
+ * interpreter slices.
  */
 public final class InterpreterMethodEmitter {
 
-    public static final int ISA_VERSION = 3;
+    public static final int ISA_VERSION = 4;
 
     public static final int IPUSH = 1;
     public static final int ILOAD = 2;
@@ -69,6 +70,12 @@ public final class InterpreterMethodEmitter {
     public static final int LRETURN = 43;
     public static final int LDIV = 44;
     public static final int LREM = 45;
+    public static final int ACONST_NULL = 46;
+    public static final int ALOAD = 47;
+    public static final int ASTORE = 48;
+    public static final int ARETURN = 49;
+    public static final int IFNULL = 50;
+    public static final int IFNONNULL = 51;
 
     private InterpreterMethodEmitter() {
     }
@@ -126,7 +133,9 @@ public final class InterpreterMethodEmitter {
     }
 
     private static boolean isSupportedType(Type type) {
-        return type.getSort() == Type.INT || type.getSort() == Type.LONG;
+        int sort = type.getSort();
+        return sort == Type.INT || sort == Type.LONG ||
+                sort == Type.OBJECT || sort == Type.ARRAY;
     }
 
     private static int instructionSize(AbstractInsnNode instruction) {
@@ -147,8 +156,10 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.LCONST_0:
                 case Opcodes.LCONST_1:
                     return 9;
+                case Opcodes.ACONST_NULL:
                 case Opcodes.IRETURN:
                 case Opcodes.LRETURN:
+                case Opcodes.ARETURN:
                     return 1;
                 default:
                     return arithmeticOpcode(opcode) >= 0 ? 1 : -1;
@@ -169,7 +180,9 @@ public final class InterpreterMethodEmitter {
             boolean supported = opcode == Opcodes.ILOAD ||
                     opcode == Opcodes.ISTORE ||
                     opcode == Opcodes.LLOAD ||
-                    opcode == Opcodes.LSTORE;
+                    opcode == Opcodes.LSTORE ||
+                    opcode == Opcodes.ALOAD ||
+                    opcode == Opcodes.ASTORE;
             return supported && variable.var >= 0 &&
                     variable.var <= 0xffff ? 3 : -1;
         }
@@ -205,11 +218,17 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.LCONST_1:
                     emitLongConstant(code, opcode - Opcodes.LCONST_0);
                     return true;
+                case Opcodes.ACONST_NULL:
+                    code.write(ACONST_NULL);
+                    return true;
                 case Opcodes.IRETURN:
                     code.write(IRETURN);
                     return true;
                 case Opcodes.LRETURN:
                     code.write(LRETURN);
+                    return true;
+                case Opcodes.ARETURN:
+                    code.write(ARETURN);
                     return true;
                 default:
                     int interpretedOpcode = arithmeticOpcode(opcode);
@@ -282,6 +301,10 @@ public final class InterpreterMethodEmitter {
                 return LLOAD;
             case Opcodes.LSTORE:
                 return LSTORE;
+            case Opcodes.ALOAD:
+                return ALOAD;
+            case Opcodes.ASTORE:
+                return ASTORE;
             default:
                 return -1;
         }
@@ -315,6 +338,10 @@ public final class InterpreterMethodEmitter {
                 return IF_ICMPLE;
             case Opcodes.GOTO:
                 return GOTO;
+            case Opcodes.IFNULL:
+                return IFNULL;
+            case Opcodes.IFNONNULL:
+                return IFNONNULL;
             default:
                 return -1;
         }

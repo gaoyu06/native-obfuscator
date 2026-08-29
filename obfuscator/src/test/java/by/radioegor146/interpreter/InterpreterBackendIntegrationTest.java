@@ -67,19 +67,27 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(12, occurrences(generated, "_interp_code[]"));
+        assertEquals(14, occurrences(generated, "_interp_code[]"));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_i("));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_j("));
+        assertEquals(2, occurrences(generated,
+                "native_jvm::interp::execute_l("));
         assertTrue(generated.contains(
                         "native_jvm::interp::store_long(interp_locals + 2"),
                 "second long argument must begin at JVM local slot 2");
+        assertTrue(generated.contains(
+                        "interp_ref_locals[2] = arg1;"),
+                "reference after a long must begin at JVM local slot 2");
         assertTrue(generated.contains(
                         "utils::throw_re(env, \"java/lang/ArithmeticException\""),
                 "division status must become a pending JNI exception");
         assertTrue(generated.contains("cstack0.j = cstack0.i;"),
                 "unsupported I2L must use the active legacy codegen");
+        assertTrue(generated.contains(
+                        "// unsupportedObjectCast(Ljava/lang/Object;)Ljava/lang/Object;"),
+                "unsupported object operation must use the active legacy codegen");
     }
 
     @Test
@@ -112,10 +120,13 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(12, occurrences(generated, "_interp_code[]"));
+        assertEquals(14, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
                         "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
                 "unsupported I2L must use the active IR codegen");
+        assertTrue(generated.contains(
+                        "// IR codegen: InterpreterFixture.unsupportedObjectCast(Ljava/lang/Object;)Ljava/lang/Object;"),
+                "unsupported object operation must use the active IR codegen");
     }
 
     private static void writeFixtureJar(Path destination) throws IOException {
@@ -297,6 +308,38 @@ public class InterpreterBackendIntegrationTest {
         longConstant.visitInsn(Opcodes.LRETURN);
         longConstant.visitMaxs(0, 0);
         longConstant.visitEnd();
+
+        MethodVisitor identity = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "identity",
+                "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        identity.visitCode();
+        identity.visitVarInsn(Opcodes.ALOAD, 0);
+        identity.visitInsn(Opcodes.ARETURN);
+        identity.visitMaxs(0, 0);
+        identity.visitEnd();
+
+        MethodVisitor identityAfterLong = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "identityAfterLong",
+                "(JLjava/lang/Object;)Ljava/lang/Object;", null, null);
+        identityAfterLong.visitCode();
+        identityAfterLong.visitVarInsn(Opcodes.ALOAD, 2);
+        identityAfterLong.visitInsn(Opcodes.ARETURN);
+        identityAfterLong.visitMaxs(0, 0);
+        identityAfterLong.visitEnd();
+
+        MethodVisitor unsupportedObjectCast = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "unsupportedObjectCast",
+                "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+        unsupportedObjectCast.visitCode();
+        unsupportedObjectCast.visitVarInsn(Opcodes.ALOAD, 0);
+        unsupportedObjectCast.visitTypeInsn(
+                Opcodes.CHECKCAST, "java/lang/String");
+        unsupportedObjectCast.visitInsn(Opcodes.ARETURN);
+        unsupportedObjectCast.visitMaxs(0, 0);
+        unsupportedObjectCast.visitEnd();
 
         MethodVisitor unsupportedConversion = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
