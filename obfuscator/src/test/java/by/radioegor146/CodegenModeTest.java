@@ -8,7 +8,6 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
-import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -118,11 +117,10 @@ public class CodegenModeTest {
         constructor.instructions.add(new InvokeDynamicInsnNode(
                 "dynamic", "()Ljava/lang/Object;", bootstrap));
         constructor.instructions.add(new InsnNode(Opcodes.POP));
-        constructor.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        constructor.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_FLOAT));
-        constructor.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        constructor.instructions.add(new InsnNode(Opcodes.FALOAD));
-        constructor.instructions.add(new InsnNode(Opcodes.POP));
+        // Phase 18 admits primitive NEWARRAY/FALOAD. Keep a still-unsupported
+        // opcode so IR rejects this constructor and the restore path is tested.
+        constructor.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        constructor.instructions.add(new InsnNode(Opcodes.MONITORENTER));
         constructor.instructions.add(new InsnNode(Opcodes.RETURN));
         owner.methods.add(constructor);
 

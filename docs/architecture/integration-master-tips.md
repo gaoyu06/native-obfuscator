@@ -21,6 +21,11 @@ Phase 18 and the JDK 17 runtime fix were siblings on #108. Both code lines are
 present here: NEWARRAY/*ALOAD/*ASTORE/MULTIANEWARRAY plus version preservation,
 caller-local `invokeExact` trampolines, and rejected-constructor restore.
 
+The constructor-restore regression from #115 used `NEWARRAY`/`FALOAD` as the
+IR-reject trigger. After phase 18 those opcodes are admitted, so the fixture
+now uses `MONITORENTER` to keep testing restore rather than accidental IR
+admission.
+
 ## Not code-merged (sibling compiler stacks)
 
 These rewrite the same compiler files as the phase-18 line and were left as
