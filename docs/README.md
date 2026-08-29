@@ -112,5 +112,7 @@ independent review accepted the claim
 
 [architecture/goal-status-and-options.md](architecture/goal-status-and-options.md)
 is the historical maintainer brief through PR #117, written when `master` was
-still `e7ca4c8`. Keep it as history. For “what is true on master today”, use
+still `e7ca4c8`. Keep it as history. For the active engineering goal, use
+[architecture/current-goal.md](architecture/current-goal.md). For “what is
+true on master today”, use
 [architecture/project-status.md](architecture/project-status.md).
