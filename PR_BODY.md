@@ -23,8 +23,9 @@
 
 - Added focused path-id admission/rewrite, unsafe-tail rejection,
   identical-copy admission/rewrite, and CMake/g++ Java-parity coverage.
-- Focused Gradle/JUnit totals will be recorded from the generated XML after the
-  required rerun.
+- Required focused Gradle rerun: `IrCompilerTest` 268/268 and
+  `CodegenModeTest` 7/7; total 275 tests with 0 failures, 0 errors, and
+  0 skipped, as recorded in JUnit XML.
 
 # 中文
 
@@ -49,4 +50,6 @@
 
 - 新增 path-id 接纳与重写、危险尾部拒绝、identical-copy 接纳与重写，
   以及基于 CMake/g++ 的 Java 输出一致性测试。
-- 必需的聚焦测试完成后，将依据生成的 JUnit XML 记录真实统计。
+- 必需的 Gradle 聚焦测试结果：`IrCompilerTest` 268/268，
+  `CodegenModeTest` 7/7；JUnit XML 共记录 275 个测试，失败 0、错误 0、
+  跳过 0。
