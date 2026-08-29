@@ -19,10 +19,11 @@ The constructor split now covers these related prefix shapes:
   `GOTO` edge to an isolated prefix `RETURN`, plus exact `ATHROW` and
   `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception, for
   both single-super and bounded path-id distinct-suffix constructors;
-- identity-preserving `ASTORE 0` writes, plus single-call receiver-alias
-  forwarding where the original receiver is saved in another local before
-  local 0 receives a different reference and the selected this/super call is
-  proven to consume the saved receiver;
+- identity-preserving `ASTORE 0` writes, plus receiver-alias forwarding for a
+  single call or the exact two-call `GOTO` shared-join diamond where the
+  original receiver is saved in another local before local 0 receives a
+  different reference and every selected this/super call is proven to consume
+  the saved receiver;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
@@ -250,6 +251,12 @@ It also classifies writes to reference/array constructor-argument locals:
   that the selected call consumes the original receiver. An unreachable store,
   a failed frame analysis, or a call on overwritten local 0 is rejected before
   bridge or C++ mutation.
+- The same alias-forwarding rule applies to the exact two-call shared-join
+  diamond when the earlier call has one direct `GOTO` to the join, the final
+  call falls through to that join, and receiver-frame analysis proves that both
+  calls consume the original receiver through the alias. This does not extend
+  the post-call IF/switch, immediate-prefix-return, identical-copy, or path-id
+  families.
 - The wrapper deliberately continues to load local 0 as the first hidden-
   bridge argument. It does not substitute the alias: suffix `ALOAD 0` observes
   the overwritten Java local. If the suffix reads the alias, the existing
@@ -260,8 +267,8 @@ It also classifies writes to reference/array constructor-argument locals:
   `Class` as shell-only metadata. Native class resolution uses that exact class
   loader without changing the IR meaning of local 0 or using the receiver alias
   for instance operations.
-- Non-identity `ASTORE 0` remains rejected for multi-call shared joins,
-  identical-copy normalization, and path-id suffix selection.
+- Non-identity `ASTORE 0` remains rejected for every other multi-call
+  shared-join form, identical-copy normalization, and path-id suffix selection.
 
 Prefix stores into non-parameter locals are classified separately:
 
@@ -299,8 +306,9 @@ Other guards remain unchanged:
 - Suffix jumps/switches into the prefix are rejected.
 - All other try/catch label placements crossing the split are rejected.
 - Prefix `ASTORE 0` is rejected when the selected chain call is not proven to
-  consume the original receiver. Multi-call shapes still require every store
-  to be identity-preserving.
+  consume the original receiver. Outside the exact two-call `GOTO` shared-join
+  diamond, multi-call shapes still require every store to be
+  identity-preserving.
 - `jsr`/`ret` remains unsupported.
 
 A prefix branch into the suffix can bypass the mandatory chain call. A
@@ -440,6 +448,18 @@ Synthetic bytecode unit tests in
   negative constructor arguments through the plain Java class and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`; both runs print the
   same superclass and shared-suffix field values.
+- `admitsAndRewritesMultipleSuperDiamondWithReceiverAlias` proves both retained
+  chain calls consume the saved receiver, local 0 remains the first bridge body
+  argument, owner-`Class` metadata is present, and the rewritten shared-join
+  wrapper verifies with one hidden bridge.
+- `rejectsSharedJoinDiamondWhenOneCallUsesOverwrittenReceiverBeforeMutation`
+  keeps the same diamond fail-closed when one call consumes overwritten local
+  0, without allocating a hidden method.
+- `receiverAliasMultipleSuperDiamondCompilesAndRunsWithJavaParity` exercises
+  both join paths, a declared-reference overwrite and a null overwrite, plus a
+  suffix read of the forwarded receiver alias through the complete CMake/g++
+  JNI transform under `java -Xverify:all -Xcheck:jni`, requiring identical
+  stdout.
 - `admitsPostChainConditionalBranchToSharedSuffix` proves the exact
   `ILOAD; IFNE sharedSuffix; RETURN` post-call shape emits only the shared
   suffix as the independent native body, preserves the conditional branch and

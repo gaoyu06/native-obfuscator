@@ -508,8 +508,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 relocatedByLabel.put(tryCatch.handler, relocated);
             }
         }
+        boolean allowReceiverAliasForwarding =
+                callIndexes.size() == 1
+                        || callIndexes.size() == 2
+                        && sharedSuffix != null
+                        && sharedSuffix.strictDiamond;
         boolean receiverAliasForwarding = validateReceiverStores(
-                constructor, suffixStartIndex, callIndexes, prefixTryCatches);
+                constructor, suffixStartIndex, callIndexes, prefixTryCatches,
+                allowReceiverAliasForwarding);
         validateChainControlFlow(
                 constructor, callIndexes, suffixStartIndex);
         List<ExtraLocal> extraLocals =
@@ -924,7 +930,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 prefixExitCallIndexes.add(callIndexes.get(0));
                 return new SharedSuffix(
                         lastCallIndex + 1, new HashSet<>(),
-                        prefixExitCallIndexes);
+                        prefixExitCallIndexes, false);
             }
         }
 
@@ -943,6 +949,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         Set<Integer> branchIndexes = new HashSet<>();
+        boolean strictDiamond = true;
         for (int i = 0; i < callIndexes.size() - 1; i++) {
             int callIndex = callIndexes.get(i);
             int successorIndex =
@@ -963,6 +970,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     constructor, callIndexes, i, join);
             if (conditionalBranch != null) {
                 branchIndexes.add(conditionalBranch);
+                strictDiamond = false;
                 continue;
             }
 
@@ -972,9 +980,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 return null;
             }
             branchIndexes.addAll(switchBranches);
+            strictDiamond = false;
         }
         return new SharedSuffix(
-                joinIndex, branchIndexes, new HashSet<>());
+                joinIndex, branchIndexes, new HashSet<>(), strictDiamond);
     }
 
     /**
@@ -2577,13 +2586,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves that every retained ASTORE 0 is reachable with a stack input and
      * that each selected chain call consumes the original constructor receiver.
-     * A single-call constructor may forward that receiver through an alias
-     * while local 0 receives another reference. Multi-call forms remain limited
-     * to identity-preserving stores.
+     * A single-call constructor, or the exact two-call shared-join diamond, may
+     * forward that receiver through an alias while local 0 receives another
+     * reference. Other multi-call forms remain limited to identity-preserving
+     * stores.
      */
     private static boolean validateReceiverStores(
             MethodNode constructor, int splitIndex, List<Integer> callIndexes,
-            List<TryCatchBlockNode> prefixTryCatches) {
+            List<TryCatchBlockNode> prefixTryCatches,
+            boolean allowAliasForwarding) {
         List<Integer> receiverStores = new ArrayList<>();
         for (int i = 0; i < splitIndex; i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
@@ -2611,7 +2622,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     constructor.instructions.get(diagnosticIndex));
         }
 
-        boolean allowAliasForwarding = callIndexes.size() == 1;
         boolean receiverAliasForwarding = false;
         for (Integer storeIndex : receiverStores) {
             ReceiverFrame frame = frames[storeIndex];
@@ -3592,13 +3602,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final int joinIndex;
         private final Set<Integer> branchIndexes;
         private final Set<Integer> prefixExitCallIndexes;
+        private final boolean strictDiamond;
 
         private SharedSuffix(
                 int joinIndex, Set<Integer> branchIndexes,
-                Set<Integer> prefixExitCallIndexes) {
+                Set<Integer> prefixExitCallIndexes,
+                boolean strictDiamond) {
             this.joinIndex = joinIndex;
             this.branchIndexes = branchIndexes;
             this.prefixExitCallIndexes = prefixExitCallIndexes;
+            this.strictDiamond = strictDiamond;
         }
     }
 
