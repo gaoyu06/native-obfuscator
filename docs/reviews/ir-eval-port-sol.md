@@ -83,10 +83,72 @@ opcode；本次审查确认完整映射一致，但数据驱动的全表断言�
 
 ## Independent verification / 独立验证
 
-Dynamic reruns are pending on the review branch and will be recorded here
-before handoff.
+Both focused commands were rerun with `CC=gcc CXX=g++`,
+`--rerun-tasks`, and plain console output:
 
-动态复跑正在 review 分支上进行，交付前会在此记录结果。
+```text
+./gradlew :obfuscator:test \
+  --tests by.radioegor146.CodegenModeTest \
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest \
+  --tests by.radioegor146.MainBackendOptionTest
+
+CodegenModeTest: tests=7, skipped=0, failures=0, errors=0
+InterpreterStreamStrategyTest: tests=7, skipped=0, failures=0, errors=0
+MainBackendOptionTest: tests=2, skipped=0, failures=0, errors=0
+Total: 16/16 passed
+```
+
+The evaluator test's C++17 compile-and-execute gate ran rather than skipping.
+
+```text
+./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest
+
+IrCompilerTest: tests=94, skipped=0, failures=0, errors=0
+InterpreterBackendIntegrationTest: tests=2, skipped=0, failures=0, errors=0
+Total: 96/96 passed
+```
+
+A fresh fixture was compiled once and passed to five compiler invocations:
+default legacy, explicit legacy `--ir-lower=direct`, implicit IR lowering,
+explicit IR `direct`, and explicit IR `eval`.
+
+```text
+diff -r default-implicit default-direct
+# exit 0
+
+diff -r ir-implicit-concurrent ir-direct-concurrent
+# exit 0
+```
+
+The synchronized IR rerun keeps generated ZIP timestamps equal for a literal
+full-tree comparison. A prior sequential pair differed in 16 timestamp bytes
+inside the output JAR only; its extracted JAR contents and complete `cpp/`
+trees also compared with exit 0.
+
+`native_jvm_eval.cpp/.hpp` were absent from both legacy trees and both direct
+IR trees, and present only in the IR-eval tree. Only the IR-eval
+`CMakeLists.txt` named those files. Configuring that generated tree with GCC
+13.3/G++ 13.3 and building it compiled `native_jvm_eval.cpp`, linked
+`libnative_library.so`, and exited 0.
+
+两组聚焦命令均使用 `CC=gcc CXX=g++`、`--rerun-tasks` 和 plain console
+独立复跑成功。第一组为 7 个 `CodegenModeTest`、7 个
+`InterpreterStreamStrategyTest` 和 2 个 `MainBackendOptionTest`，合计
+16/16；第二组为 94 个 `IrCompilerTest` 和 2 个
+`InterpreterBackendIntegrationTest`，合计 96/96。所有测试均为
+0 skipped、0 failures、0 errors，C++17 编译执行门槛实际运行而非跳过。
+
+同一份新编译 fixture 用于五次 compiler invocation。default legacy 与显式
+legacy `direct` 的完整目录 `diff -r` 退出 0；同步启动的 implicit IR 与显式
+IR `direct` 完整目录 `diff -r` 也退出 0。先前顺序运行的一组仅在输出 JAR 的
+16 个时间戳字节上不同，其解压内容和完整 `cpp/` 目录仍均以 0 退出。
+
+`native_jvm_eval.cpp/.hpp` 在两组 legacy 和两组 direct IR 输出中均不存在，
+只出现在 IR-eval 输出中，也只有 IR-eval 的 `CMakeLists.txt` 引用它们。
+GCC 13.3/G++ 13.3 成功配置并构建该生成树，实际编译
+`native_jvm_eval.cpp`、链接 `libnative_library.so`，退出码为 0。
 
 ## Nit / 小问题
 

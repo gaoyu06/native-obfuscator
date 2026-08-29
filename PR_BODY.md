@@ -26,8 +26,14 @@ drift detection.
 
 ### (d) Integration evidence
 
-Independent dynamic reruns are pending and will be recorded before handoff.
-The review already confirms that `legacy`, `cpp`, and `direct` remain the
+Independent reruns passed 16/16 CLI/evaluator tests and 96/96 direct-IR and
+interpreter-dispatch tests, with zero skipped, failed, or errored tests. Fresh
+default-legacy and implicit-IR trees each matched their explicit-`direct`
+counterpart with `diff -r`. Evaluator sources and CMake entries appeared only
+in the IR-eval tree, whose generated C++ target configured, compiled, and
+linked with GCC/G++.
+
+The review also confirms that `legacy`, `cpp`, and `direct` remain the
 defaults; all existing `NativeObfuscator.process` overloads remain available;
 the five excluded frontend/emitter/test files are absent from the implementation
 diff; benchmark/status files are unchanged; the #53 median remains `N/A`; and
@@ -56,7 +62,13 @@ C++ evaluator 的 28 个 opcode 名称和值完全一致，`0x2b`/`0x2c` 继续�
 
 ### (d) 集成证据
 
-独立动态复跑正在进行，交付前会补充结果。静态审查已确认 `legacy`、`cpp` 和
-`direct` 默认值保持不变；既有 `NativeObfuscator.process` overload 均保留；
-五个排除的 frontend/emitter/test 文件均不在实现差异中；benchmark/status 文件
-未修改；#53 median 仍为 `N/A`；没有新增 JDK 支持级别或 requirement-7 结论。
+独立复跑通过 16/16 个 CLI/evaluator 测试和 96/96 个 direct-IR 与
+interpreter-dispatch 测试，均为 0 skipped、0 failures、0 errors。新生成的
+default-legacy 与 implicit-IR 目录分别和对应的显式 `direct` 目录通过
+`diff -r` 完整比较。evaluator source 与 CMake entry 只出现在 IR-eval 输出中；
+该生成 C++ target 使用 GCC/G++ 成功配置、编译并链接。
+
+静态审查还确认 `legacy`、`cpp` 和 `direct` 默认值保持不变；既有
+`NativeObfuscator.process` overload 均保留；五个排除的
+frontend/emitter/test 文件均不在实现差异中；benchmark/status 文件未修改；
+#53 median 仍为 `N/A`；没有新增 JDK 支持级别或 requirement-7 结论。
