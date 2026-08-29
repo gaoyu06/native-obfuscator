@@ -137,7 +137,9 @@ public class InterpreterStreamStrategyTest {
         for (int i = 0; i < binaryBytecode.length; i++) {
             byte[] data = lower(longBinaryMethod(
                     "longOp" + i, binaryBytecode[i])).getMethodData();
-            assertLongMethod(data, 18, binaryEvaluator[i], 33);
+            int expectedLength = binaryBytecode[i] == Opcodes.LDIV
+                    || binaryBytecode[i] == Opcodes.LREM ? 68 : 33;
+            assertLongMethod(data, 18, binaryEvaluator[i], expectedLength);
         }
 
         int[] shiftBytecode = {Opcodes.LSHL, Opcodes.LSHR, Opcodes.LUSHR};
@@ -159,7 +161,7 @@ public class InterpreterStreamStrategyTest {
                 .processMethod(context, IrLoweringMode.EVAL);
 
         byte[] data = lower(longBinaryMethod("divide", Opcodes.LDIV)).getMethodData();
-        assertLongMethod(data, 18, 0x2b, 33);
+        assertLongMethod(data, 18, 0x2b, 68);
         String cpp = context.output.toString();
         assertTrue(cpp.contains("native_jvm::ir_eval::evaluate_i64(env, ir_method_data"));
         assertFalse(cpp.contains("// IR codegen:"));
