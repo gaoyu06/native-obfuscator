@@ -1,99 +1,54 @@
-## Summary
+## Summary / 摘要
 
-This widens the explicit, default-off in-process interpreter from ISA v3 to
-ISA v4 with its first reference/object slice.
+Documentation-only independent Sol review of
+[PR #148](https://github.com/gaoyu06/native-obfuscator/pull/148) at
+`2003edbe700b3378e8b635b8ef86e31acb4187f3`.
 
-- Preserve opcode values 1–45 and append `ACONST_NULL=46`, `ALOAD=47`,
-  `ASTORE=48`, `ARETURN=49`, `IFNULL=50`, and `IFNONNULL=51`.
-- Admit static object/array descriptors when every instruction is supported.
-- Keep references as opaque `jobject` values in parallel one-slot local and
-  operand-stack arrays; long values remain two-slot.
-- Transfer JNI reference arguments at descriptor slot offsets and return
-  references through `execute_l`.
-- Continue rejecting unsupported operations before interpreter mutation and
-  fall back per method to the selected code generator.
-- Keep `--backend=cpp` and `--codegen=legacy` as the defaults.
+Verdict: **Accept.** No blocking compiler/VM correctness defect or concrete
+review nit was found. Java/C++ ISA v4 declarations agree, the parallel
+reference-slot layout preserves long's two-slot layout, null branches use the
+existing absolute-target encoding, and eligibility still rejects unsupported
+methods before mutation. Ship-ready remains **No**.
 
-Object creation, field access, method calls, special calls, and exception
-dispatch are outside this increment. The dispatcher makes no JNI call.
+这是对 [PR #148](https://github.com/gaoyu06/native-obfuscator/pull/148)
+（提交 `2003edbe700b3378e8b635b8ef86e31acb4187f3`）的独立 Sol 文档审查。
+结论：**接受。** 未发现阻塞性的编译器/虚拟机正确性缺陷或具体审查小问题。
+Java/C++ 的 ISA v4 声明一致；并行引用槽不会破坏 long 的双槽布局；空引用分支
+沿用现有绝对目标编码；不支持的方法仍会在变更前被拒绝。Ship-ready 仍为
+**No**。
 
-| Value | Opcode | Encoding |
-|---:|---|---|
-| 46 | `ACONST_NULL` | no operand |
-| 47 | `ALOAD` | `u16 local` |
-| 48 | `ASTORE` | `u16 local` |
-| 49 | `ARETURN` | no operand |
-| 50 | `IFNULL` | `i32 absolute target` |
-| 51 | `IFNONNULL` | `i32 absolute target` |
+## Review record / 审查记录
 
-## Verification
+The detailed review is
+[`docs/reviews/interpreter-isa-objects-sol.md`](docs/reviews/interpreter-isa-objects-sol.md).
+This review changes no interpreter or compiler source.
 
-The required command completed with `BUILD SUCCESSFUL`: **128 tests, 0
-skipped, 0 failures, 0 errors**.
+详细审查见
+[`docs/reviews/interpreter-isa-objects-sol.md`](docs/reviews/interpreter-isa-objects-sol.md)。
+本审查不修改解释器或编译器源码。
 
-```text
-CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
-  --tests by.radioegor146.MainBackendOptionTest \
-  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
-  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
-  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest \
-  --tests by.radioegor146.ir.IrCompilerTest \
-  --tests by.radioegor146.CodegenModeTest
-```
+The requested independent focused test rerun will be recorded in a follow-up
+documentation-only commit. The generated-tree comparison was not rerun; the
+unchanged `cpp` default was verified directly in `Main.java` and the unchanged
+convenience API path.
 
-```text
-MainBackendOptionTest:                    2
-InterpreterMethodEmitterTest:           14
-InterpreterRuntimeTest:                  1
-InterpreterBackendIntegrationTest:       2
-IrCompilerTest:                         102
-CodegenModeTest:                          7
-Total:                                  128
-```
-
-The runtime test compiled with
-`g++ -std=c++17 -Wall -Wextra -Werror` and executed 54 numbered i32, i64,
-reference identity/null, local load/store, null-branch, return, and
-version-mismatch checks.
-
-The integration fixture kept object, mixed long/object, and object-array
-identity methods on the interpreter. Its complete generated CMake project
-compiled and linked through `[100%] Built target native_library`.
-
-Both complete generated-tree comparisons exited 0 with no output:
-
-```text
-diff -r /tmp/interpreter-objects-proof/master/cpp \
-  /tmp/interpreter-objects-proof/branch-default/cpp
-# exit 0
-
-diff -r /tmp/interpreter-objects-proof/branch-default/cpp \
-  /tmp/interpreter-objects-proof/branch-cpp/cpp
-# exit 0
-```
-
-The no-option output therefore matches detached `origin/master` at `37f7d03`
-and explicit `--backend=cpp`.
+请求的独立聚焦测试复跑将在后续纯文档提交中记录。未重新执行生成目录比较；
+已直接检查 `Main.java` 和未变更的便捷 API 路径，确认默认值仍为 `cpp`。
 
 ## (a)(b)(c)(d) / （a）（b）（c）（d）
 
-- **(a) Scope / 范围:** Add null constants, one-slot reference locals and
-  operand-stack values, null branches, reference return, JNI argument
-  transfer, and an `execute_l` dispatcher entry to ISA v4. /
-  在 ISA v4 中加入空引用常量、单槽引用局部变量与操作数栈值、空引用分支、
-  引用返回、JNI 参数传递和 `execute_l` 调度入口。
-- **(b) Ship-ready and review / 可直接发布及审查:** **Ship-ready: No /
-  可直接发布：否。 Review required: Yes / 需要审查：是。** Sol-only review
-  is acceptable. The optional backend remains incomplete. /
-  可由 Sol 单独审查。该可选后端仍未完整实现。
-- **(c) Compatibility / 兼容性:** Opcode values 1–45 remain unchanged, ISA
-  versions are checked exactly, unsupported methods retain per-method
-  fallback, and default generation remains C++/legacy. /
-  操作码 1–45 保持不变，ISA 版本继续严格检查，不支持的方法保留逐方法回退，
-  默认生成方式仍为 C++/legacy。
-- **(d) Evidence / 证据:** All 128 required tests passed with no skips or
-  failures; the strict C++17 runtime executable completed 54 checks; the
-  generated shared library built; and both complete-tree comparisons exited
-  0. /
-  128 项必需测试全部通过，无跳过或失败；严格编译的 C++17 运行时可执行文件完成
-  54 项检查；生成的共享库构建成功；两次完整目录比较均以 0 退出。
+- **(a) Scope / 范围:** This reviews PR #148 only. It adds the Sol review
+  record and replaces the implementation PR body with the stacked review PR
+  body; it makes no implementation change. /
+  本 PR 只审查 #148，新增 Sol 审查记录，并把实现 PR 说明替换为堆叠审查 PR
+  说明；不包含实现改动。
+- **(b) Ship-ready? / 可直接发布？** **No. / 否。** Object creation, calls,
+  fields, and exception dispatch remain outside the interpreter increment. /
+  对象创建、调用、字段及异常分派仍不在该解释器增量范围内。
+- **(c) Review / 审查:** This PR **is** the independent Sol review of #148;
+  verdict: **Accept**. No additional review PR is implied. /
+  本 PR **就是** #148 的独立 Sol 审查；结论：**接受**。无需另建审查 PR。
+- **(d) Stack / 堆叠关系:** Stack this review **only** on
+  `cursor/interpreter-objects-6d81`, never directly on `master`. /
+  本审查**只能**堆叠在 `cursor/interpreter-objects-6d81` 上，不能直接以
+  `master` 为基线。
