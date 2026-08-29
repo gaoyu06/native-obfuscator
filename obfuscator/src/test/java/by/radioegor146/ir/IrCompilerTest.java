@@ -1,11 +1,13 @@
 package by.radioegor146.ir;
 
 import by.radioegor146.CodegenMode;
+import by.radioegor146.HiddenMethodsPool;
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
 import by.radioegor146.Platform;
 import by.radioegor146.bytecode.IndyPreprocessor;
+import by.radioegor146.bytecode.MethodHandleUtils;
 import by.radioegor146.bytecode.PreprocessorUtils;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
@@ -34,6 +36,11 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
 import java.io.File;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.WrongMethodTypeException;
+import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,6 +60,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class IrCompilerTest {
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
+
+    private static final class ByteArrayClassLoader extends ClassLoader {
+        private ByteArrayClassLoader() {
+            super(IrCompilerTest.class.getClassLoader());
+        }
+
+        private Class<?> define(byte[] bytecode) {
+            return defineClass(null, bytecode, 0, bytecode.length);
+        }
+    }
+
+    private static String identityString(String value) {
+        return value;
+    }
+
+    private static String acceptCharSequence(CharSequence value) {
+        return value.toString();
+    }
 
     @Test
     public void buildsAndEmitsAdd() {
@@ -281,6 +306,38 @@ public class IrCompilerTest {
             }
         }
         assertTrue(callsBootstrap);
+    }
+
+    @Test
+    public void generatedInvokeExactHelperPreservesExactMethodTypeChecks() throws Throwable {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        String callSiteDescriptor = "(Ljava/lang/String;)Ljava/lang/String;";
+        HiddenMethodsPool.HiddenMethod exactHelper = MethodHandleUtils.getInvokeHelper(
+                obfuscator, "invokeExact", callSiteDescriptor);
+        HiddenMethodsPool.HiddenMethod invokeHelper = MethodHandleUtils.getInvokeHelper(
+                obfuscator, "invoke", callSiteDescriptor);
+
+        ClassWriter writer = new ClassWriter(
+                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+        exactHelper.getClassNode().accept(writer);
+        Class<?> helperClass = new ByteArrayClassLoader().define(writer.toByteArray());
+        Method exact = helperClass.getMethod(exactHelper.getMethodNode().name,
+                MethodHandle.class, Object.class);
+        Method invoke = helperClass.getMethod(invokeHelper.getMethodNode().name,
+                MethodHandle.class, Object.class);
+
+        MethodHandle exactTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "identityString",
+                MethodType.methodType(String.class, String.class));
+        MethodHandle adaptableTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "acceptCharSequence",
+                MethodType.methodType(String.class, CharSequence.class));
+
+        assertEquals("value", exact.invoke(null, exactTarget, "value"));
+        assertEquals("value", invoke.invoke(null, adaptableTarget, "value"));
+        InvocationTargetException error = assertThrows(InvocationTargetException.class,
+                () -> exact.invoke(null, adaptableTarget, "value"));
+        assertTrue(error.getCause() instanceof WrongMethodTypeException);
     }
 
     @Test

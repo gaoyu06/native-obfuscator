@@ -76,7 +76,8 @@ public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
                 node.getOpcode() == Opcodes.INVOKEVIRTUAL) {
             // stack - mh, args
             HiddenMethodsPool.HiddenMethod hiddenMethod =
-                    MethodHandleUtils.getInvokeHelper(context.obfuscator, node.desc);
+                    MethodHandleUtils.getInvokeHelper(
+                            context.obfuscator, node.name, node.desc);
 
             node = (MethodInsnNode) node.clone(null);
             node.name = hiddenMethod.getMethodNode().name;

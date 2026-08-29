@@ -42,7 +42,13 @@ public class HiddenMethodsPool {
     }
 
     public HiddenMethod getMethod(String name, String desc, Consumer<MethodNode> creator) {
-        HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>()).get(desc);
+        return getMethod(name, desc, desc, creator);
+    }
+
+    public HiddenMethod getMethod(String name, String desc, String cacheKey,
+                                  Consumer<MethodNode> creator) {
+        HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>())
+                .get(cacheKey);
         if (existingMethod != null) {
             return existingMethod;
         }
@@ -62,7 +68,7 @@ public class HiddenMethodsPool {
         }
         classNode.methods.add(newMethod);
         HiddenMethod hiddenMethod = new HiddenMethod(classNode, newMethod);
-        methods.computeIfAbsent(name, unused -> new HashMap<>()).put(desc, hiddenMethod);
+        methods.computeIfAbsent(name, unused -> new HashMap<>()).put(cacheKey, hiddenMethod);
         return hiddenMethod;
     }
 
