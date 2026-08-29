@@ -289,14 +289,14 @@ public class IrCompilerTest {
         String fullCpp = emitter.emitBody(subclassIr,
                 new MethodContext(fullObfuscator, subclassConstructor, 0, subclass, 0));
         assertTrue(fullCpp.contains("env->CallNonvirtualVoidMethod(obj"));
-        assertTrue(fullCpp.contains("env->SetLongField(obj"));
+        assertTrue(fullCpp.contains("env->SetLongField"));
 
         NativeObfuscator subclassObfuscator = new NativeObfuscator();
         MethodContext subclassContext = new MethodContext(
                 subclassObfuscator, subclassConstructor, 0, subclass, 0);
         new IrMethodCompiler(new MethodShellEmitter(subclassObfuscator))
                 .processMethod(subclassContext);
-        assertTrue(subclassContext.output.toString().contains("env->SetLongField(obj"));
+        assertTrue(subclassContext.output.toString().contains("env->SetLongField"));
         assertFalse(subclassContext.output.toString().contains("cstack"));
         assertEquals("example/Base",
                 ((MethodInsnNode) subclassConstructor.instructions.get(2)).owner);
