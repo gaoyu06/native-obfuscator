@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-28. PRs
-#1–#65 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#71 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -65,6 +65,26 @@ checksum 均为 2,038,221,507；记录的 JVM、legacy、direct IR、evaluator I
 永不触发。[#64](https://github.com/gaoyu06/native-obfuscator/pull/64) 是 Sol 对
 #62 的纯文档审阅，记录结论 **accept**、无编译器改动、38/38 个聚焦测试及
 34-method g++ 语法检查。两项审阅均不构成上线就绪声明。
+[#66](https://github.com/gaoyu06/native-obfuscator/pull/66) 将仍为 opt-in 的
+direct IR phase 9 扩展至 `ARETURN`、`ACONST_NULL`、`IFNULL`/`IFNONNULL` 与
+category-one `POP`；`POP2` 仍逐方法 fallback，默认仍为 legacy。其记录为
+42 + 2 = 44 个聚焦测试及 39-method g++ 烟测，仍部分且未达上线就绪。
+[#70](https://github.com/gaoyu06/native-obfuscator/pull/70) 是首选 phase-9
+tip：Sol 审阅发现 `jobject` 与 `jarray` 的 `ARETURN` 边界不匹配，以显式
+`jarray` cast 修复并增加数组返回回归；修复后结论为 **accept**，记录
+43 + 2 = 45 个测试及 40-method g++ 烟测，但不是上线就绪结论。
+[#71](https://github.com/gaoyu06/native-obfuscator/pull/71) 是纯文档 Fable
+**accept-with-nits** 审阅，审阅的是未含 #70 修复的 #66 `32ac47d`，记录 44 个
+测试；它不包含 `jarray` 修复，也不是上线就绪结论。独立的 evaluator 路线中，
+[#68](https://github.com/gaoyu06/native-obfuscator/pull/68) 在 #57 上加入
+`LLOAD`、`LSTORE`、`LADD`、`LSUB`、`LMUL`、`LRETURN`、`I2L` 与 `L2I`
+（opcode `0x23`–`0x2a`）；`(J)J` 保持在 eval 路径，`LDIV`/`LREM` 仍 fallback，
+记录 31/31，且不新增 benchmark 数字。
+[#69](https://github.com/gaoyu06/native-obfuscator/pull/69) 是对 #68 的纯文档
+Sol 审阅，记录 **accept** 与 31/31；共享 frontend 使 sibling direct-IR 文件
+改动成为必要集成边界，而非隔离缺陷。该审阅不构成上线就绪声明。本文叠加在
+此前 options brief [#67](https://github.com/gaoyu06/native-obfuscator/pull/67)
+之上。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -110,11 +130,34 @@ allocated and checked object path. [#64](https://github.com/gaoyu06/native-obfus
 is Sol's documentation-only review of #62; it records an **accept** verdict,
 no compiler change, 38/38 focused tests, and a 34-method g++ syntax check.
 Neither review is a ship-readiness finding. This brief neither merges nor
-implements any draft.
+implements any draft. [#66](https://github.com/gaoyu06/native-obfuscator/pull/66)
+extends still-opt-in direct IR phase 9 with `ARETURN`, `ACONST_NULL`,
+`IFNULL`/`IFNONNULL`, and category-one `POP`; `POP2` still falls back per
+method and legacy remains the default. It records 42 + 2 = 44 focused tests
+and a 39-method g++ smoke, and remains partial and not ship-ready.
+[#70](https://github.com/gaoyu06/native-obfuscator/pull/70) is the preferred
+phase-9 tip: Sol found the `jobject` versus `jarray` `ARETURN` boundary
+mismatch, fixed it with an explicit `jarray` cast, and added an array-return
+regression. Its post-fix verdict is **accept**, with 43 + 2 = 45 tests and a
+40-method g++ smoke; it is not a ship-readiness finding.
+[#71](https://github.com/gaoyu06/native-obfuscator/pull/71) is Fable's
+documentation-only **accept-with-nits** review of the unfixed #66 tip
+`32ac47d`; it records 44 tests, does not contain #70's `jarray` fix, and is not
+ship-ready. In the separate evaluator lane,
+[#68](https://github.com/gaoyu06/native-obfuscator/pull/68), stacked on #57,
+adds `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LRETURN`, `I2L`, and `L2I`
+at opcodes `0x23`–`0x2a`. `(J)J` stays on eval, `LDIV`/`LREM` still fall back,
+31/31 focused tests are recorded, and no benchmark numbers are added.
+[#69](https://github.com/gaoyu06/native-obfuscator/pull/69) is Sol's
+documentation-only **accept** review of #68 with 31/31 focused tests. It
+records that sibling direct-IR file edits are required by the shared frontend,
+not an isolation defect, and does not establish ship-readiness. This brief is
+stacked on the prior options brief
+[#67](https://github.com/gaoyu06/native-obfuscator/pull/67).
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#65 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#71 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -123,9 +166,11 @@ fallback 的 phase 8，构造器方法体仍排除；#63 与 #64 对 #62 的 acc
 、#53 与 #59 的本地测量均不是可移植性能结论；#53 的 eval timing 仍为
 `N/A`，#57 本身不含新 benchmark 数字，#59 只是叠加在 #57 上的独立诊断。
 #37 与 #50 分别从有效 live direct-IR 与 shared-evaluator stripped `.so`
-完整恢复了四个方法，因此 requirement 7 并未满足。
+完整恢复了四个方法，因此 requirement 7 并未满足。#66 仍是部分 opt-in
+phase 9；#70 修复并接受其数组返回边界，但不是上线批准，#71 又仅审阅未修复
+的 #66 tip。#68 仍是 opt-in evaluator 扩展，#69 的 accept 审阅也不是上线批准。
 
-**No.** PRs #1–#65 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#71 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -136,7 +181,10 @@ of #62 are also explicitly not ship-readiness findings. The local measurements i
 remains `N/A`, #57 itself contains no new benchmark numbers, and #59 is a
 separate diagnostic stacked on #57. #37 and #50 respectively recovered all
 four methods from valid live direct-IR and shared-evaluator stripped `.so`
-subjects, so requirement 7 is not met.
+subjects, so requirement 7 is not met. #66 remains a partial opt-in phase 9;
+#70 fixes and accepts its array-return boundary but is not ship approval, while
+#71 reviews only the unfixed #66 tip. #68 remains an opt-in evaluator
+extension, and #69's accept review is likewise not ship approval.
 
 ### (c) 上线前是否需要 review / Is review required?
 
@@ -168,9 +216,14 @@ boundaries rather than generalized.
    #61 的 `docs/architecture/ir-evaluator-ushr-review.md`、#62 的
    `docs/architecture/ir-phase8-status.md` 与双语 `PR_BODY.md`、#63 的
    `docs/architecture/ir-phase8-fable-review.md`，以及 #64 的
-   `docs/architecture/ir-phase8-review.md`。
+   `docs/architecture/ir-phase8-review.md`；#66 的
+   `docs/architecture/ir-phase9-status.md`、#70 的
+   `docs/architecture/ir-phase9-review.md`、#71 的
+   `docs/architecture/ir-phase9-fable-review.md`、#68 的
+   `docs/architecture/ir-evaluator-backend.md` 与双语 `PR_BODY.md`，以及
+   #69 的 `docs/architecture/ir-evaluator-i64-review.md`。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#64 claims.
+   named branch documents for the new #44–#71 claims.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -222,29 +275,56 @@ boundaries rather than generalized.
    非阻塞观察为构造器路径上永不触发的 receiver null check。#64 是 Sol 对
    #62 的纯文档审阅，记录 **accept**、无编译器改动、38/38 个聚焦测试及
    34-method g++ 语法检查。两者均不是上线就绪结论。
-6. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+6. #66 仅记录仍为 opt-in 的 phase-9 `ARETURN`、`ACONST_NULL`、
+   `IFNULL`/`IFNONNULL` 与 category-one `POP`；`POP2` 仍 fallback，默认仍为
+   legacy，记录 42 + 2 = 44 个测试及 39-method g++ 烟测。#70 发现并修复
+   `jobject`/`jarray` 数组 `ARETURN` 边界，以 cast 与数组返回回归将记录更新为
+   **accept**、43 + 2 = 45 个测试及 40-method g++ 烟测；它是首选 phase-9 tip。
+   #71 仅为 **accept-with-nits** 文档审阅，审阅未修复的 #66 `32ac47d`，记录
+   44 个测试且不包含 #70 修复。三者均不是上线就绪结论。#68 在 #57 上为
+   evaluator 加入 `LLOAD`/`LSTORE`/`LADD`/`LSUB`/`LMUL`/`LRETURN`/`I2L`/`L2I`
+   的 `0x23`–`0x2a` 映射，`(J)J` 保持在 eval，`LDIV`/`LREM` 仍 fallback，
+   记录 31/31 且不新增 benchmark；#69 是纯文档 **accept** 审阅，记录 31/31
+   并说明 shared frontend 要求 sibling direct-IR 文件同步支持。两者均未达
+   上线就绪。 #66 records only still-opt-in phase-9 `ARETURN`, `ACONST_NULL`,
+   `IFNULL`/`IFNONNULL`, and category-one `POP`; `POP2` still falls back,
+   legacy remains the default, and it records 42 + 2 = 44 tests plus a
+   39-method g++ smoke. #70 found and fixed the `jobject`/`jarray` array
+   `ARETURN` boundary with a cast and array-return regression, recording
+   **accept**, 43 + 2 = 45 tests, and a 40-method g++ smoke; it is the
+   preferred phase-9 tip. #71 is only a documentation **accept-with-nits**
+   review of unfixed #66 at `32ac47d`, records 44 tests, and does not contain
+   #70's fix. None is a ship-readiness finding. Stacked on #57, #68 adds
+   evaluator `LLOAD`/`LSTORE`/`LADD`/`LSUB`/`LMUL`/`LRETURN`/`I2L`/`L2I` at
+   `0x23`–`0x2a`; `(J)J` stays on eval, `LDIV`/`LREM` still fall back, 31/31
+   is recorded, and no benchmark is added. #69 is a documentation-only
+   **accept** review with 31/31 and records the shared frontend's required
+   sibling direct-IR support. Neither is ship-ready.
+7. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
-   #54 → #56 → #62 → #63/#64（#62 的审阅）的 direct-IR coverage/review、
+   #54 → #56 → #62 → #63/#64 → #66 → #70（修复并 accept）/#71（审阅未修复
+   tip 的 accept-with-nits）的 direct-IR coverage/review、
    #34 → #53 的 benchmark 与叠加
    在 #57 上的独立 #59 后续测量、#42 → #44 → #48 → #50 的独立 evaluator
-   实验、其 #57 ISA sibling 及对 #57 的 #61 审阅、SDK #12 → #15 → #46、
-   compatibility #6 → #9 → #14 → #41，以及 options brief … → #60 → #65 →
+   实验、#57/#61 与 #68/#69 ISA/review sibling、SDK #12 → #15 → #46、
+   compatibility #6 → #9 → #14 → #41，以及 options brief … → #65 → #67 →
    本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
-   blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 direct-IR
-   coverage/review lane, with #63/#64 reviewing #62,
+   blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
+   #70 (fix plus accept) / #71 (accept-with-nits on the unfixed tip) direct-IR
+   coverage/review lane,
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
-   the #42 → #44 → #48 → #50 evaluator experiment with #57 as an ISA sibling
-   and #61 reviewing #57,
+   the #42 → #44 → #48 → #50 evaluator experiment with #57/#61 and #68/#69
+   as ISA/review siblings,
    SDK #12 → #15 → #46, compatibility #6 → #9 → #14 → #41, and options briefs
-   … → #60 → #65 → this PR continue as separate lanes.
+   … → #65 → #67 → this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
-| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), [#51](https://github.com/gaoyu06/native-obfuscator/pull/51), [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), and [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) form the still-opt-in phase-6/7 coverage and review path. [#62](https://github.com/gaoyu06/native-obfuscator/pull/62), stacked on #56, adds phase-8 `NEW`/`AllocObject`, constructor-only `INVOKESPECIAL`/`CallNonvirtualVoidMethod`, and broader `I`/`J`/reference invoke shapes; constructor bodies remain excluded, default legacy remains, and its record claims 38 focused tests plus a 34-method g++ smoke. [#63](https://github.com/gaoyu06/native-obfuscator/pull/63) and [#64](https://github.com/gaoyu06/native-obfuscator/pull/64) are documentation-only **accept** reviews of #62 with no compiler changes and 38/38 focused tests; #63 records one non-blocking never-taken constructor-receiver null-check observation, while #64 records a 34-method g++ syntax check. The separate evaluator experiment #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) publishes a valid live stripped `--ir-lower=eval` `.so`, then records all four methods as full. [#57](https://github.com/gaoyu06/native-obfuscator/pull/57) is an ISA sibling from #44 with six named bitwise/shift operations and no benchmark timings; [#61](https://github.com/gaoyu06/native-obfuscator/pull/61) is its docs-only **accept** review with no compiler change and a 28/28 rerun. None of #61–#64 establishes ship-readiness. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, broader object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
+| IR | Fable's typed-CFG/structured-C++ design is documented in [#5](https://github.com/gaoyu06/native-obfuscator/pull/5). The opt-in direct-IR implementation runs through phase 5 in [#40](https://github.com/gaoyu06/native-obfuscator/pull/40); [#45](https://github.com/gaoyu06/native-obfuscator/pull/45) is Fable's docs-only **accept with nits** review of that phase and changes no compiler code. [#44](https://github.com/gaoyu06/native-obfuscator/pull/44) separately records an **accept with nits** review of evaluator [#42](https://github.com/gaoyu06/native-obfuscator/pull/42), with no compiler change. | [#47](https://github.com/gaoyu06/native-obfuscator/pull/47), [#51](https://github.com/gaoyu06/native-obfuscator/pull/51), [#54](https://github.com/gaoyu06/native-obfuscator/pull/54), and [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) form the still-opt-in phase-6/7 path. [#62](https://github.com/gaoyu06/native-obfuscator/pull/62) adds phase 8; [#63](https://github.com/gaoyu06/native-obfuscator/pull/63) and [#64](https://github.com/gaoyu06/native-obfuscator/pull/64) are its docs-only **accept** reviews. [#66](https://github.com/gaoyu06/native-obfuscator/pull/66) adds opt-in phase-9 `ARETURN`, `ACONST_NULL`, `IFNULL`/`IFNONNULL`, and category-one `POP`, records 44 focused tests and a 39-method g++ smoke, and leaves `POP2` on fallback and legacy as default. [#70](https://github.com/gaoyu06/native-obfuscator/pull/70) is the preferred phase-9 tip: it fixes the `jobject`/`jarray` array-return boundary and records **accept**, 45 tests, and a 40-method smoke. [#71](https://github.com/gaoyu06/native-obfuscator/pull/71) is a docs-only **accept-with-nits** review of unfixed #66 at `32ac47d`, records 44 tests, and lacks #70's fix. The evaluator experiment #42 → #44 → [#48](https://github.com/gaoyu06/native-obfuscator/pull/48) → [#50](https://github.com/gaoyu06/native-obfuscator/pull/50) remains separate. [#57](https://github.com/gaoyu06/native-obfuscator/pull/57)/[#61](https://github.com/gaoyu06/native-obfuscator/pull/61) form one ISA/review sibling. Stacked on #57, [#68](https://github.com/gaoyu06/native-obfuscator/pull/68) adds the eight `0x23`–`0x2a` i64 operations with 31/31 focused tests and no benchmark numbers; [#69](https://github.com/gaoyu06/native-obfuscator/pull/69) is its docs-only **accept** review with 31/31 and records required shared-frontend/direct-IR integration. None establishes ship-readiness. | Full JVM semantics and parity remain incomplete, including broad descriptors/wide values, monitors, broader object construction, most primitive and multidimensional array allocation, complete invokes and exceptions, reference lifetime, class initialization, native-JAR differential E2E, and any reviewed default switch. #50 shows that the shared-evaluator lowering does not meet requirement 7 on this subject. |
 | JDK compatibility | [#6](https://github.com/gaoyu06/native-obfuscator/pull/6) restores actual JUnit execution and adds JDK 17 behavioral fixtures. The stacked fix [#9](https://github.com/gaoyu06/native-obfuscator/pull/9) preserves modern class versions and accepts `TypeDescriptor` for record bootstrap rewriting; its Sol-verified run recorded 16 pass, 1 `krak2` skip, 0 fail. [#14](https://github.com/gaoyu06/native-obfuscator/pull/14) records all three new JDK 21 fixtures passing on the three harness modes, with 19 pass, 1 pre-existing skip, 0 fail. | [#41](https://github.com/gaoyu06/native-obfuscator/pull/41), stacked on #14, adds four ClassicTest fixtures compiled independently with `javac --release 25` (class-file major 69). Its status document records 24 total: 23 passed, 1 pre-existing `krak2` skip, 0 failed; each new fixture reached `OK` on `HOTSPOT`, `STD_JAVA`, and `ANDROID`. The full #6 → #9 → #14 → #41 stack remains draft. | #41 is not a blanket full-JDK-25 claim: it does not cover every language feature, library API, runtime mode, generated class shape, preview feature, or separate JDK 22–24 class file. `ConstantDynamic`, multi-release JARs, hidden classes, preview policy, virtual-thread behavior, and device-level Android evidence remain gaps. |
 | Benchmarks | [#10](https://github.com/gaoyu06/native-obfuscator/pull/10) adds a checksum-gated plain-HotSpot versus current transpiled-JNI harness with raw samples and environment data. [#11](https://github.com/gaoyu06/native-obfuscator/pull/11) removes repeated warm instance-member lookup work; its one-run deltas are explicitly mixed. [#34](https://github.com/gaoyu06/native-obfuscator/pull/34) runs JVM, legacy, and IR tasks through the same harness. | [#53](https://github.com/gaoyu06/native-obfuscator/pull/53), stacked on #34, records `IrFriendlyIntKernel.run(I)I` local medians of 12,207,144.5 ns for JVM, 202,090,247.0 ns for legacy, and 11,311,481.5 ns for direct IR. Direct IR stayed on IR. Eval rejected `USHR` and used legacy fallback, so the evaluator median is `N/A` and no eval timing is claimed. Separately, [#59](https://github.com/gaoyu06/native-obfuscator/pull/59), stacked on #57, records 5/10 warmup/iterations, checksum 2,038,221,507, and JVM/legacy/direct-IR/evaluator-IR medians of 10,017,146.0 / 167,870,311.5 / 10,021,957.0 / 411,875,537.5 ns. Its target evaluator-data marker was present with no target-method or `IUSHR` fallback. Both are one-VM diagnostics, not portable results; #59 does not revise or back-fill #53. | JMH/forked baselines, confidence intervals, native-only isolation, controlled multi-machine repetitions, workload-derived release budgets, and continuous regression gates. |
 | SDK | [#12](https://github.com/gaoyu06/native-obfuscator/pull/12) implements a Java 8/JNI/C-ABI v1 with ABI query, one-shot SHA-256, and equal-length constant-time byte comparison. The Linux CMake/G++ `-Xcheck:jni` integration run passed. [#15](https://github.com/gaoyu06/native-obfuscator/pull/15) independently re-ran it, checked the vendored source/license and JNI path, and concluded accept-with-nits. | [#46](https://github.com/gaoyu06/native-obfuscator/pull/46) cleanly stacks `NativeStrings` length/hash/concat on #12 without copying the general benchmark harness. Its local diagnostic remeasurement was slower than Java; the status document explicitly says this is not portable and not a speedup claim. The #12 → #15 → #46 lane remains draft. | The product surface, embedding and provider/update policy, target matrix, Zig execution, broader approved v1 surface if required, fuzz/allocation/concurrency/sanitizer/ABI target coverage, SBOM/update process, optional JDK 22+ FFM adapter, and release security sign-off remain unresolved. |
@@ -339,12 +419,12 @@ wait for a live-kernel reader. The next reader-bar design must not leave the
 source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
 design. Wider opt-in direct-IR coverage/review in #45 → #47 → #51 → #54 →
-#56 → #62 → #63/#64 (reviews of #62), the #34 → #53 benchmark lane plus #59
-stacked on the #57 ISA sibling,
-the separate #42 → #44 → #48 → #50 evaluator experiment with #61 reviewing
-#57, the SDK #12 → #15 → #46 and compatibility #6 → #9 → #14 → #41 stacks,
-and options briefs … → #60 → #65 → this PR continue as separate engineering
-lanes.
+#56 → #62 → #63/#64 → #66 → #70 (fix plus accept) / #71
+(accept-with-nits on the unfixed tip), the #34 → #53 benchmark lane plus #59
+stacked on #57, the separate #42 → #44 → #48 → #50 evaluator experiment with
+#57/#61 and #68/#69 as ISA/review siblings, the SDK #12 → #15 → #46 and
+compatibility #6 → #9 → #14 → #41 stacks, and options briefs
+… → #65 → #67 → this PR continue as separate engineering lanes.
 
 #### Other product decisions
 
@@ -400,7 +480,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#56](https://github.com/gaoyu06/native-obfuscator/pull/56) →
    [#62](https://github.com/gaoyu06/native-obfuscator/pull/62) →
    [#63](https://github.com/gaoyu06/native-obfuscator/pull/63) /
-   [#64](https://github.com/gaoyu06/native-obfuscator/pull/64). Rebase after
+   [#64](https://github.com/gaoyu06/native-obfuscator/pull/64) →
+   [#66](https://github.com/gaoyu06/native-obfuscator/pull/66) →
+   [#70](https://github.com/gaoyu06/native-obfuscator/pull/70) /
+   [#71](https://github.com/gaoyu06/native-obfuscator/pull/71). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
    away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
@@ -417,6 +500,14 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    focused tests; #63 records one non-blocking never-taken constructor-receiver
    null-check observation, while #64 records a 34-method g++ syntax check.
    Neither review establishes ship-readiness.
+   #66 adds still-opt-in phase-9 reference returns, null values/branches, and
+   category-one discard; `POP2` remains fallback, legacy remains default, and
+   its 44 focused tests plus 39-method g++ smoke do not establish readiness.
+   #70 is the preferred phase-9 tip because it fixes the `jobject`/`jarray`
+   array-return carrier mismatch, adds the regression, records **accept**,
+   45 tests, and a 40-method smoke. #71 is only a parallel docs review of the
+   unfixed #66 `32ac47d` tip; its **accept-with-nits** and 44-test record do not
+   contain or supersede #70's fix. None is a ship-readiness finding.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -431,6 +522,14 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#61](https://github.com/gaoyu06/native-obfuscator/pull/61) is Sol's
    documentation-only review of #57; it records **accept**, no compiler change,
    and a 28/28 focused-test rerun, but no ship-readiness finding.
+   [#68](https://github.com/gaoyu06/native-obfuscator/pull/68), stacked on #57,
+   is the next ISA sibling: it adds the eight `0x23`–`0x2a` i64 operations,
+   keeps `(J)J` on eval and `LDIV`/`LREM` on fallback, records 31/31 focused
+   tests, and adds no benchmark numbers.
+   [#69](https://github.com/gaoyu06/native-obfuscator/pull/69) is its
+   documentation-only **accept** review with 31/31; it records that shared
+   frontend admission requires the sibling direct-IR file support and does not
+   establish ship-readiness.
    [#59](https://github.com/gaoyu06/native-obfuscator/pull/59) is a benchmark
    follow-up stacked on #57. It records evaluator-path timing only for its own
    no-fallback run and must not be used to back-fill #53.
@@ -513,6 +612,17 @@ parallel, but their order within each arrowed stack must be preserved.
   38/38 focused tests. #63's sole non-blocking observation is a never-taken
   constructor-receiver null check; #64 additionally records a 34-method g++
   syntax check. Neither is a ship-readiness finding.
+  #66 adds opt-in phase-9 `ARETURN`, `ACONST_NULL`, `IFNULL`/`IFNONNULL`, and
+  category-one `POP`; `POP2` still falls back and legacy remains default. Its
+  44-test and 39-method-smoke record remains partial. #70 fixes the
+  `jobject`/`jarray` array-return mismatch and records **accept**, 45 tests, and
+  a 40-method smoke, making it the preferred phase-9 tip but not ship-ready.
+  #71's docs-only **accept-with-nits** review covers unfixed #66 at `32ac47d`,
+  records 44 tests, and does not include #70's fix.
+  #68 adds the eight evaluator i64 operations at `0x23`–`0x2a`, records 31/31,
+  leaves `LDIV`/`LREM` on fallback, and adds no benchmark numbers. #69's
+  docs-only **accept** review records 31/31 and the required shared-frontend
+  sibling direct-IR support; neither is ship-ready.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -533,7 +643,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#65 are still open drafts. `master` contains none of their work.
+- PRs #1–#71 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
