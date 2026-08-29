@@ -82,6 +82,7 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 | [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + legacy + IR) |
 | [benchmarks/results-ir-vs-legacy-phase19.md](benchmarks/results-ir-vs-legacy-phase19.md) | Latest three-mode bench (all three kernels on IR; one VM). Fable accept-with-nits: [reviews/bench-ir-phase19-fable.md](reviews/bench-ir-phase19-fable.md) |
 | [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Pre-phase-19 three-mode bench; only `string-concat-hash` stayed fully IR |
+| [benchmarks/ir-leftover-inventory.md](benchmarks/ir-leftover-inventory.md) | Post-#168 admission inventory (ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21). Not coverage-complete |
 | [benchmarks/ir-admission-phase18-corpus.md](benchmarks/ir-admission-phase18-corpus.md) | Latest admission tables (ClassicTest 108/108 IR; JDK 17 36/36 admit; JDK 21 extra 36/38) |
 | [benchmarks/results-local.md](benchmarks/results-local.md) | Early local JVM vs JNI numbers |
 | [benchmarks/results-ir-vs-legacy.md](benchmarks/results-ir-vs-legacy.md) | IR vs legacy vs JVM (local) |
