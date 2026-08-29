@@ -1,12 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing proven `ConstantDynamic` plus raw
-MethodHandle / MethodType `LDC`
-[#161](https://github.com/gaoyu06/native-obfuscator/pull/161)
-(parent re-ran 128/128: 121 `IrCompilerTest` + 7 `CodegenModeTest`,
-including nested string condy and raw `MethodType` harnesses) on the
-post-[#160](https://github.com/gaoyu06/native-obfuscator/pull/160)
-constructor-prefix tree. Active process:
+Last updated after landing constructor prefix extra-local forwarding
+[#163](https://github.com/gaoyu06/native-obfuscator/pull/163)
+(parent re-ran 133/133: 126 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `prefixExtraReferenceLocalCompilesAndRunsWithJavaParity`)
+on the post-[#161](https://github.com/gaoyu06/native-obfuscator/pull/161)
+condy tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -53,9 +52,13 @@ legacy。不能当成 JDK 支持矩阵。
   stay in bytecode.
   [#160](https://github.com/gaoyu06/native-obfuscator/pull/160) admits
   prefix `ASTORE` into reference/array parameter slots.
-  `ASTORE 0`, a prefix branch into the suffix, try/catch across the
-  split, and multiple this/super are still rejected. This
-  is not a JDK 25 support badge and was not re-run as a Temurin 25 E2E.
+  [#163](https://github.com/gaoyu06/native-obfuscator/pull/163) forwards
+  definitely assigned prefix extra locals (reference + exact primitive
+  carriers, including category-2 slots) through trailing hidden-bridge
+  arguments. `ASTORE 0`, a prefix branch into the suffix, try/catch
+  across the split, multiple this/super, and gapped or conditionally
+  assigned extras are still rejected. This is not a JDK 25 support badge
+  and was not re-run as a Temurin 25 E2E.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
   and `PermittedSubclasses` attributes are no longer dropped by stamping 52.
@@ -147,6 +150,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | IR `invokedynamic` (#159) | 121 tests (`IrCompilerTest` 114 + `CodegenModeTest` 7). Parent re-ran 121/121 including `executesStringConcatIndyThroughIrWhenToolchainAvailable` | Complete indy/condy coverage or a default flip |
 | Constructor prefix parameter `ASTORE` (#160) | 123 tests (`IrCompilerTest` 116 + `CodegenModeTest` 7). Parent re-ran 123/123 including `prefixReferenceParameterAstoreCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | IR proven `ConstantDynamic` + raw MH/MT `LDC` (#161) | 128 tests (`IrCompilerTest` 121 + `CodegenModeTest` 7). Parent re-ran 128/128 including `executesStringConstantDynamicThroughIrWhenToolchainAvailable` and `executesRawMethodTypeLdcThroughIrWhenToolchainAvailable` | Complete condy coverage or a default flip |
+| Constructor prefix extra locals (#163) | 133 tests (`IrCompilerTest` 126 + `CodegenModeTest` 7). Parent re-ran 133/133 including `prefixExtraReferenceLocalCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -192,10 +196,13 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (`ASTORE 0`, prefix→suffix branch,
-  try/catch across the split, multiple this/super), prefix-written
-  extras the suffix reads that the hidden bridge does not yet forward,
-  and `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
-  subroutines). Unsafe condy shapes stay fail-closed.
+  try/catch across the split, multiple this/super, gapped or
+  conditionally assigned prefix extras) and `jsr` / `ret`
+  (reject-before-mutation is acceptable for obsolete subroutines).
+  Unsafe condy shapes stay fail-closed. In-tree fixture admission
+  ([#162](https://github.com/gaoyu06/native-obfuscator/pull/162),
+  measured on post-#161 master) observed 0 leftovers; that is not
+  coverage-complete.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
@@ -207,8 +214,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #161 (proven
-  condy + raw MH/MT `LDC`). / 落地 #161 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #163 (ctor prefix
+  extra locals). / 落地 #163 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
