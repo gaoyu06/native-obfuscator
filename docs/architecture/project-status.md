@@ -4,7 +4,9 @@ Last updated after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)
 (`5f017e3`) and the phase-18 Fable review note
 [#119](https://github.com/gaoyu06/native-obfuscator/pull/119) (`e997d71`).
 This page is the current public status. It does not complete the original
-production goal and must not be read as a support matrix.
+production goal and must not be read as a support matrix. The long
+maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
+now includes the pre-landing #108–#117 notes; it is still not this page.
 
 本页是当前公开现状。原生产目标仍未完成，也不能当成支持矩阵。
 

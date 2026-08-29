@@ -89,6 +89,6 @@ independent review accepted the claim
 ## Historical maintainer brief / 历史维护者简报
 
 [architecture/goal-status-and-options.md](architecture/goal-status-and-options.md)
-was written when `master` was still `e7ca4c8` and PRs #1–#107 were unmerged
-drafts. Keep it as history. For “what is true on master today”, use
+is the historical maintainer brief through PR #117, written when `master` was
+still `e7ca4c8`. Keep it as history. For “what is true on master today”, use
 [architecture/project-status.md](architecture/project-status.md).
