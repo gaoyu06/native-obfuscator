@@ -1,12 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after landing shared-join diamond receiver-alias
+Last updated after landing path-id distinct-suffix receiver-alias
 forwarding
-[#203](https://github.com/gaoyu06/native-obfuscator/pull/203)
-(parent re-ran 256/256: 249 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `receiverAliasMultipleSuperDiamondCompilesAndRunsWithJavaParity`)
-on the post-[#202](https://github.com/gaoyu06/native-obfuscator/pull/202)
-single-chain alias tree. Active process:
+[#204](https://github.com/gaoyu06/native-obfuscator/pull/204)
+(parent re-ran 259/259: 252 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `receiverAliasDistinctSuffixesCompileAndRunWithJavaParity`)
+on the post-[#203](https://github.com/gaoyu06/native-obfuscator/pull/203)
+shared-join diamond alias tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -177,7 +177,9 @@ legacy。不能当成 JDK 支持矩阵。
   proven alias.
   [#203](https://github.com/gaoyu06/native-obfuscator/pull/203) admits
   the same alias proof on the two-call shared-join diamond.
-  Path-id / identical-copy `ASTORE 0` aliasing, unproven
+  [#204](https://github.com/gaoyu06/native-obfuscator/pull/204) admits
+  the same alias proof on bounded path-id distinct suffixes.
+  Identical-copy `ASTORE 0` aliasing, unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes, cover a chain call, or use a
   method-end handler), remaining multi-super shapes
@@ -317,6 +319,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Relocated prefix handlers on distinct suffixes (#201) | 252 tests (`IrCompilerTest` 245 + `CodegenModeTest` 7). Parent re-ran 252/252 including `relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Single-chain receiver-alias forwarding (#202) | 254 tests (`IrCompilerTest` 247 + `CodegenModeTest` 7). Parent re-ran 254/254 including `receiverAliasForwardingCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Shared-join diamond receiver-alias forwarding (#203) | 256 tests (`IrCompilerTest` 249 + `CodegenModeTest` 7). Parent re-ran 256/256 including `receiverAliasMultipleSuperDiamondCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
+| Path-id distinct-suffix receiver-alias forwarding (#204) | 259 tests (`IrCompilerTest` 252 + `CodegenModeTest` 7). Parent re-ran 259/259 including `receiverAliasDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -361,8 +364,8 @@ tree. Close them as superseded, do not merge.
 Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
-  leftover constructor-split rejects (multi-call `ASTORE 0`
-  aliasing on identical-copy / path-id forms, unproven
+  leftover constructor-split rejects (identical-copy `ASTORE 0`
+  aliasing, unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   beyond #171/#184/#187/#188/#200/#201 such as tables that span
   suffixes, cover a chain call, or use a method-end handler,
@@ -385,9 +388,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #203 (shared-join
-  diamond receiver-alias forwarding). /
-  落地 #203 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #204 (path-id
+  distinct-suffix receiver-alias forwarding). /
+  落地 #204 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
