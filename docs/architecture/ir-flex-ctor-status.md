@@ -43,12 +43,14 @@ The constructor split now covers these related prefix shapes:
   copies, including immediate `RETURN` copies, are proven
   instruction-for-instruction identical; and
 - between two and eight reachable direct this/super calls whose separate
-  nonempty straight-line suffixes end in `RETURN` and are pairwise not
+  nonempty suffixes end in `RETURN` and are pairwise not
   instruction-identical, when every call consumes the original `ALOAD 0`
-  receiver and only locally proven chain arguments; prefix-assigned extras read
-  by those suffixes must have one compatible type on every bridge-taking path,
-  and every retained path calls one hidden bridge with a trailing constant path
-  id; and
+  receiver and only locally proven chain arguments; with exactly two calls,
+  either suffix may additionally contain one closed int-family conditional
+  branch whose arms stay in that suffix and reach `RETURN`; prefix-assigned
+  extras read by those suffixes must have one compatible type on every
+  bridge-taking path, and every retained path calls one hidden bridge with a
+  trailing constant path id; and
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
@@ -157,14 +159,20 @@ without normalizing the suffixes to one copied join:
   exception table and empty chain-entry stacks. Each call must receive direct
   `ALOAD 0` and the same locally proven argument-input families used by the
   bounded multi-return proof.
-- Each call must fall through to its own nonempty straight-line suffix ending
-  in immediate `RETURN`. Labels, branches, switches, throws, nested
-  constructor calls, and unproven extra-local accesses are rejected. A suffix
-  may load a prefix-assigned extra only when the extra has one exact compatible
+- Each call must fall through to its own nonempty suffix ending in `RETURN`.
+  The 3–8-call form remains straight-line. With exactly two calls, either
+  suffix may contain one unary `IFxx` over a direct declared int-family
+  `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
+  another such load or an int-family constant. Every target and both
+  fallthrough arms must stay inside that suffix and reach `RETURN`; a `GOTO`
+  is accepted only as part of this conditional form and only when it targets
+  an in-suffix `RETURN`. Back edges, switches, throws, nested constructor
+  calls, and unproven extra-local accesses are rejected. A suffix may load a
+  prefix-assigned extra only when the extra has one exact compatible
   primitive/reference carrier on every path that reaches any hidden-bridge
   invocation. The suffix ranges may not overlap, the final range must end at
-  method end, and every pair of suffixes must be instruction-distinct. Fully
-  identical copies continue to use the existing normalization above; a mixture
+  method end, and every pair of suffixes must be CFG-distinct. Fully identical
+  copies continue to use the existing normalization above; a mixture
   containing an identical pair remains rejected rather than combining join
   normalization with path selection.
 - The independent IR method appends one `int` parameter. It first branches on
@@ -179,13 +187,15 @@ without normalizing the suffixes to one copied join:
   parameters and packed extras. It therefore does not reuse a live extra slot,
   receiver slot, or category-2 parameter slot.
 
-Three-or-more calls with extra-local or aliased chain inputs, nested binary
-expressions (including nested bitwise and shift forms), `IDIV`, `IREM`, other
+Three-or-more calls with branched suffixes, extra-local or aliased chain inputs,
+nested binary expressions (including nested bitwise and shift forms), `IDIV`,
+`IREM`, other
 binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
 fields, method calls, stack duplication, computed or rewritten receivers, or
 any other unlisted input remain rejected. Distinct joins, other conditional or
 switch forms, condition/switch-key loads that are not direct declared
-int-family arguments, labels or control flow in a copied suffix, nonempty
+int-family arguments, switches or escaping control flow in a distinct suffix,
+labels or control flow in a copied suffix, nonempty
 exception tables for the post-chain forms, zero-call paths, unreachable
 candidates, unproven or suffix-only extra-local accesses, partly identical
 suffix sets, and pairwise-distinct per-call suffixes above the bounded
@@ -418,6 +428,22 @@ Synthetic bytecode unit tests in
   paths through plain Java and the complete CMake/g++ JNI transform under
   `java -Xverify:all -Xcheck:jni`, requiring the same path-specific field
   values.
+- `admitsTwoDistinctSuffixesWithInSuffixIntBranch` proves that each of two
+  pairwise-distinct suffixes may keep one closed declared-argument `IFEQ`,
+  while the rewritten constructor retains two chain calls and two invocations
+  of one hidden bridge with a trailing path id.
+- `rewrittenBranchedDistinctSuffixesPassJvmVerification` serializes and loads
+  the rewritten owner, superclass, and hidden class, then selects both suffixes
+  and both conditional arms up to the unresolved native bridge after JVM
+  verification.
+- `branchedDistinctSuffixesCompileAndRunWithJavaParity` exercises both path ids
+  and both in-suffix branch arms through plain Java and the complete CMake/g++
+  JNI transform under `java -Xverify:all -Xcheck:jni`, requiring identical
+  stdout.
+- `rejectsCrossSuffixOrPrefixTargetingBranchBeforeMutation` checks that a
+  suffix branch into its sibling suffix or back into retained pre-call
+  bytecode fails before bridge allocation or constructor mutation. The
+  pre-existing trivial-`GOTO` `branch` fixture remains rejected.
 - `admitsTwoDistinctSuffixesWithProvenPrefixExtra` checks that both suffixes
   read the same definitely assigned extra, the independent descriptor places
   it before the trailing path-id `int`, and both wrapper sites call one hidden
@@ -593,9 +619,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 210 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 218 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 217 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 225 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
