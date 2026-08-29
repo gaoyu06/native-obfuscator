@@ -17,12 +17,20 @@ EN: No.
 
 # (c) Verification / 验证
 
-EN: Added admission, JVM verification, CMake/g++ JNI parity, and reject-before-
-mutation coverage. The required focused Gradle gate will be recorded after it
-is run.
+EN: The required focused Gradle gate passes 221/221 tests:
+`IrCompilerTest` 214/214 and `CodegenModeTest` 7/7, with zero skipped,
+failures, or errors. New coverage:
+`admitsTwoDistinctSuffixesWithProvenPrefixExtra`,
+`rewrittenTwoDistinctSuffixesWithExtraPassJvmVerification`,
+`twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity`, and
+`rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation`.
 
-中文：新增了准入、JVM 验证、CMake/g++ JNI 一致性以及变更前拒绝测试。运行指定的
-Gradle 聚焦测试门禁后，将在此记录结果。
+中文：指定的 Gradle 聚焦测试门禁共 221/221 通过：`IrCompilerTest` 214/214，
+`CodegenModeTest` 7/7，跳过、失败和错误均为 0。新增覆盖：
+`admitsTwoDistinctSuffixesWithProvenPrefixExtra`、
+`rewrittenTwoDistinctSuffixesWithExtraPassJvmVerification`、
+`twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity` 和
+`rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation`。
 
 # (d) Scope and invariants / 范围与约束
 
