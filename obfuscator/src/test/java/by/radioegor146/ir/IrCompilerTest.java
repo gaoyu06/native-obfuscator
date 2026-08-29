@@ -304,6 +304,21 @@ public class IrCompilerTest {
                 subclassConstructor.instructions.get(2).getOpcode());
         assertTrue(realOpcodes(subclassConstructor).contains(Opcodes.INVOKESTATIC));
 
+        ClassNode delegatingOwner =
+                constructorOwner("example/Math", "java/lang/Object");
+        MethodNode delegatingConstructor = delegatingConstructor();
+        NativeObfuscator delegatingObfuscator = new NativeObfuscator();
+        MethodContext delegatingContext = new MethodContext(
+                delegatingObfuscator, delegatingConstructor, 0, delegatingOwner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(delegatingObfuscator))
+                .processMethod(delegatingContext);
+        assertTrue(delegatingContext.output.toString().contains("env->SetIntField"));
+        MethodInsnNode retainedThisCall =
+                (MethodInsnNode) delegatingConstructor.instructions.get(2);
+        assertEquals("example/Math", retainedThisCall.owner);
+        assertEquals("<init>", retainedThisCall.name);
+        assertEquals(Opcodes.INVOKESPECIAL, retainedThisCall.getOpcode());
+
         ClassNode holder = constructorOwner("example/Holder", "java/lang/Object");
         MethodNode referenceConstructor = referenceFieldConstructor();
         NativeObfuscator referenceObfuscator = new NativeObfuscator();
@@ -1908,6 +1923,23 @@ public class IrCompilerTest {
                 "example/Holder", "arrayValue", "[I"));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode delegatingConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "example/Math", "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "otherValue", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
         method.maxStack = 2;
         return method;
     }
