@@ -77,9 +77,9 @@ The constructor split now covers these related prefix shapes:
   a float argument, whose leaves are declared float-argument loads,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
-  at most one `DADD` level for a double argument, whose two leaves are
-  declared double-argument loads, `DCONST_0`, `DCONST_1`, or `LDC` of
-  `Double`;
+  at most one `DADD`, `DSUB`, or `DMUL` level for a double argument, whose two
+  leaves are declared double-argument loads, `DCONST_0`, `DCONST_1`, or `LDC`
+  of `Double`;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -211,12 +211,12 @@ One additional family is reduced to that same shared-join form:
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
-- A double call argument may instead contain exactly one leaf-only `DADD`.
-  Both operands must be matching declared-argument `DLOAD`s, `DCONST_0`,
-  `DCONST_1`, or `LDC` of `Double`. This proof has its own one-level budget:
-  nested double binaries, extra-local double loads, `DSUB`, `DMUL`, `DDIV`,
-  `DREM`, and `DNEG` remain rejected. The admitted addition stays in the
-  retained bytecode prefix, preserving JVM double semantics without
+- A double call argument may instead contain exactly one leaf-only `DADD`,
+  `DSUB`, or `DMUL`. Both operands must be matching declared-argument
+  `DLOAD`s, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`. This proof has its
+  own one-level budget: `DDIV`, `DREM`, `DNEG`, nested double binaries, and
+  extra-local double loads remain rejected. The admitted arithmetic stays in
+  the retained bytecode prefix, preserving JVM double semantics without
   reproducing double arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
@@ -287,7 +287,7 @@ normalizing the suffixes to one copied join:
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
 trees deeper than four levels, long binary expression trees deeper than four
-levels, double expression trees deeper than the single admitted `DADD` level,
+levels, double expression trees deeper than the single admitted binary level,
 other unlisted long or double operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
@@ -830,10 +830,21 @@ Synthetic bytecode unit tests in
 - `threeImmediateDaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
   double inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring exactly matching double stdout.
+- `admitsThreeImmediateReturnsWithDsubAndDmulOfProvenChainInputs` checks
+  leaf-only double subtraction and multiplication while retaining all three
+  matching operations, all three chain calls, two join `GOTO`s, and one hidden
+  bridge.
+- `rewrittenThreeImmediateDsubDmulSuperReturnsPassJvmVerification` selects all
+  three paths for both admitted opcodes and reaches each unresolved hidden
+  bridge only after the rewritten Java 8 classes pass JVM verification.
+- `threeImmediateDsubDmulSuperReturnsCompileAndRunWithJavaParity` exercises
+  both double shapes through plain Java and the complete CMake/g++ JNI
+  transform under `-Xverify:all -Xcheck:jni`, requiring exactly matching
+  finite-value stdout.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps nested
-  `DADD`, extra-local double operands, and `DSUB` fail-closed without
-  constructor or hidden-method mutation. `DMUL`, `DDIV`, `DREM`, `DNEG`, and
-  computed reference inputs remain outside this admission increment.
+  `DADD`, extra-local double operands, and `DDIV` fail-closed without
+  constructor or hidden-method mutation. `DREM`, `DNEG`, and computed
+  reference inputs remain outside this admission increment.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
