@@ -11371,15 +11371,11 @@ public class IrCompilerTest {
             method.tryCatchBlocks.add(new TryCatchBlockNode(
                     start, end, handler, "java/lang/Throwable"));
         } else if ("extra-local-suffix".equals(shape)) {
-            InsnList prefix = new InsnList();
-            prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
-            prefix.add(new VarInsnNode(Opcodes.ISTORE, 2));
-            method.instructions.insert(prefix);
             for (MethodInsnNode call : calls) {
-                InsnList extraRead = new InsnList();
-                extraRead.add(new VarInsnNode(Opcodes.ILOAD, 2));
-                extraRead.add(new InsnNode(Opcodes.POP));
-                method.instructions.insert(call, extraRead);
+                InsnList suffixOnlyStore = new InsnList();
+                suffixOnlyStore.add(new InsnNode(Opcodes.ICONST_0));
+                suffixOnlyStore.add(new VarInsnNode(Opcodes.ISTORE, 2));
+                method.instructions.insert(call, suffixOnlyStore);
             }
             method.maxLocals = 3;
         } else {
