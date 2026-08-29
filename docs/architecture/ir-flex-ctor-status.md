@@ -67,10 +67,10 @@ The constructor split now covers these related prefix shapes:
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
-  loads; one leaf-only `LADD`, `LSUB`, or `LMUL` for a long argument whose
-  operands are declared long-argument loads, `LCONST_0`, `LCONST_1`, or `LDC`
-  of `Long`; int-family constants; or one `INEG` over a direct declared
-  int-family argument load,
+  loads; one leaf-only `LADD`, `LSUB`, `LMUL`, `LAND`, `LOR`, or `LXOR` for a
+  long argument whose operands are declared long-argument loads, `LCONST_0`,
+  `LCONST_1`, or `LDC` of `Long`; int-family constants; or one `INEG` over a
+  direct declared int-family argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs).
@@ -173,13 +173,13 @@ One additional family is reduced to that same shared-join form:
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
-- A long call argument may instead be exactly one `LADD`, `LSUB`, or `LMUL`
-  over two non-recursive long leaves. Each leaf must be a matching
-  declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC` of `Long`. This
-  proof has its own explicit one-level budget: nested long binaries,
-  extra-local `LLOAD`, `LDIV`, `LREM`, bitwise operations, shifts, and `LNEG`
-  remain rejected. The retained bytecode prefix executes admitted arithmetic,
-  preserving Java long wrapping semantics.
+- A long call argument may instead be exactly one `LADD`, `LSUB`, `LMUL`,
+  `LAND`, `LOR`, or `LXOR` over two non-recursive long leaves. Each leaf must
+  be a matching declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC`
+  of `Long`. This proof has its own explicit one-level budget: nested long
+  binaries, extra-local `LLOAD`, `LDIV`, `LREM`, shifts, and `LNEG` remain
+  rejected. The retained bytecode prefix executes admitted operations,
+  preserving Java long wrapping and bitwise semantics.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -248,7 +248,7 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
-trees deeper than four levels, nested long binaries, other long arithmetic,
+trees deeper than four levels, nested long binaries, other long operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
 remain rejected.
@@ -783,10 +783,20 @@ Synthetic bytecode unit tests in
   subtraction, multiplication, and wrapping subtraction through plain Java
   and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithBitwiseProvenLongChainInputs` checks
+  leaf-only `LAND`, `LOR`, and `LXOR` over a declared long load and
+  `LCONST_1`, retaining all operations and chain calls behind one hidden
+  bridge.
+- `rewrittenThreeImmediateLongBitwiseSuperReturnsPassJvmVerification` selects
+  every rewritten bitwise call path and reaches the unresolved hidden bridge
+  only after the rewritten classes pass JVM verification.
+- `threeImmediateLongBitwiseSuperReturnsCompileAndRunWithJavaParity` exercises
+  all three long bitwise families through plain Java and the complete CMake/g++
+  JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nested `LADD`,
-  extra-local long operands, `LDIV`, and `LAND` fail-closed without constructor
-  or hidden-method mutation. The existing non-int-family negative continues to
-  reject `FADD`, `DADD`, and `AALOAD`.
+  extra-local long operands, `LDIV`, `LREM`, long shifts, and `LNEG`
+  fail-closed without constructor or hidden-method mutation. The existing
+  non-int-family negative continues to reject `FADD`, `DADD`, and `AALOAD`.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join
@@ -967,9 +977,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 285 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 288 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 292 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 295 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
