@@ -20,10 +20,11 @@ The constructor split now covers these related prefix shapes:
   `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception, for
   both single-super and bounded path-id distinct-suffix constructors;
 - identity-preserving `ASTORE 0` writes, plus receiver-alias forwarding for a
-  single call, the exact two-call `GOTO` shared-join diamond, or bounded path-id
-  distinct suffixes where the original receiver is saved in another local
-  before local 0 receives a different reference and every selected this/super
-  call is proven to consume the saved receiver;
+  single call, a strict `GOTO` shared-join diamond (including one produced by
+  identical-copy normalization), or bounded path-id distinct suffixes where
+  the original receiver is saved in another local before local 0 receives a
+  different reference and every selected this/super call is proven to consume
+  the saved receiver;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
@@ -123,7 +124,7 @@ fail-closed rule:
   instruction. In the strict-diamond form, every earlier candidate's next
   executable instruction must be `GOTO` to that exact label. This proves that
   all suffix-taking prefix paths enter one identical range.
-- The retained wrapper keeps the complete diamond, both chain calls, their
+- The retained wrapper keeps the complete diamond, every chain call, their
   join label, and one hidden-bridge invocation. `createNativeBody` starts at
   the shared join and emits that suffix once.
 
@@ -139,12 +140,14 @@ One additional family is reduced to that same shared-join form:
   retained prefix. Every executable instruction and operand in every copy must
   match the final bytecode-order copy.
 - With three or more candidates, each call's complete input sequence must
-  additionally start with a direct `ALOAD 0`. In invocation order, each
-  argument must then be either a direct load of a declared constructor
-  argument with a matching JVM carrier; `ICONST_M1` through `ICONST_5`,
-  `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
-  or exactly one `INEG` over a direct `ILOAD` of a declared int-family
-  constructor argument. An int-family argument may also have at most two
+  additionally start with direct `ALOAD 0`, or a direct `ALOAD` of the proven
+  original-receiver alias after the prefix overwrite described below. In
+  invocation order, each argument must then be either a direct load of a
+  declared constructor argument with a matching JVM carrier; `ICONST_M1`
+  through `ICONST_5`, `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an
+  int-family call argument; or exactly one `INEG` over a direct `ILOAD` of a
+  declared int-family constructor argument. An int-family argument may also
+  have at most two
   levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
   or `IUSHR`. Each outer operand may be one admitted inner binary whose two
   operands are direct loads, constants, or single-load `INEG` forms. The inner
@@ -157,9 +160,12 @@ One additional family is reduced to that same shared-join form:
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
 - A receiver-state CFG analysis proves that each call consumes the original
-  constructor receiver with no older operand-stack values. The suffix may
-  enter with only the receiver and declared constructor arguments; prefix
-  `ASTORE 0` and extra-local suffix inputs are not admitted for this shape.
+  constructor receiver with no older operand-stack values. Every `ASTORE 0`
+  must precede the first chain call. Besides an identity-preserving store, its
+  direct value must be `ACONST_NULL` or `ALOAD` of a declared reference
+  argument. The suffix may enter with only the receiver and declared
+  constructor arguments; reads of locals at or above the first extra-local
+  index remain rejected, so a copied suffix cannot read the receiver alias.
 - After all checks pass, every noncanonical suffix copy is replaced with
   `GOTO` and the final copy receives the shared join label. The existing
   strict-diamond split then retains every call and emits the canonical suffix
@@ -228,10 +234,10 @@ Multi-call tables remain rejected when their labels mix prefix and suffix,
 span suffixes, cover a chain call, use a handler after the last suffix, or use
 an unproven prefix handler. The identical-copy one-join normalizer still admits
 prefix-only tables only. All-identical suffix sets that do not match that
-normalizer, non-identity `ASTORE 0` in multi-call identical-copy forms or
-outside the exact path-id alias rule, and other unlisted catch forms remain
-rejected. This is intentionally a narrow set of proven constructor split
-forms, not a general multi-exit constructor rewriter.
+normalizer, non-identity `ASTORE 0` outside the exact single-call, strict-join,
+identical-copy, or path-id alias rules, and other unlisted catch forms remain
+rejected. This is intentionally a narrow set of proven constructor split forms,
+not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -254,18 +260,24 @@ It also classifies writes to reference/array constructor-argument locals:
   that the selected call consumes the original receiver. An unreachable store,
   a failed frame analysis, or a call on overwritten local 0 is rejected before
   bridge or C++ mutation.
-- The same alias-forwarding rule applies to the exact two-call shared-join
-  diamond when the earlier call has one direct `GOTO` to the join, the final
-  call falls through to that join, and receiver-frame analysis proves that both
-  calls consume the original receiver through the alias.
+- The same alias-forwarding rule applies to a strict shared-join diamond with
+  two or more calls when every earlier call has one direct `GOTO` to the join,
+  the final call falls through to that join, and receiver-frame analysis proves
+  that every call consumes the original receiver through the alias.
+- Identical-copy normalization applies that strict-join rule after proving that
+  every `ASTORE 0` is prefix-only and directly stores `ACONST_NULL` or a
+  declared reference argument (apart from identity-preserving stores). For
+  three or more copies, each selected call must directly load the receiver or
+  its proven alias. Copied suffixes remain extra-free and therefore cannot read
+  the alias local. Normalization still emits one join and one hidden bridge.
 - It also applies to bounded path-id distinct suffixes when every `ASTORE 0`
   occurs before the first chain call and directly stores `ACONST_NULL` or a
   declared reference argument, every call directly loads the proven original-
   receiver alias, and all normal distinct-suffix argument, stack, exception,
   and extra-local proofs pass. A suffix read of that alias is forwarded only
   when its packed extra is definitely assigned at every bridge-taking call.
-  This does not extend the post-call IF/switch, immediate-prefix-return, or
-  identical-copy families.
+  This does not extend the post-call IF/switch or immediate-prefix-return
+  families.
 - The wrapper deliberately continues to load local 0 as the first hidden-
   bridge argument. It does not substitute the alias: suffix `ALOAD 0` observes
   the overwritten Java local. If the suffix reads the alias, the existing
@@ -277,8 +289,8 @@ It also classifies writes to reference/array constructor-argument locals:
   loader without changing the IR meaning of local 0 or using the receiver alias
   for instance operations.
 - Non-identity `ASTORE 0` remains rejected for every other multi-call
-  shared-join form, identical-copy normalization, and every path-id shape
-  outside the exact rule above.
+  shared-join form and every path-id or identical-copy shape outside the exact
+  rules above.
 
 Prefix stores into non-parameter locals are classified separately:
 
@@ -316,9 +328,9 @@ Other guards remain unchanged:
 - Suffix jumps/switches into the prefix are rejected.
 - All other try/catch label placements crossing the split are rejected.
 - Prefix `ASTORE 0` is rejected when the selected chain call is not proven to
-  consume the original receiver. Outside the exact two-call `GOTO` shared-join
-  diamond and bounded path-id rule, multi-call shapes still require every store
-  to be identity-preserving.
+  consume the original receiver. Outside the strict `GOTO` shared-join,
+  identical-copy, and bounded path-id rules, multi-call shapes still require
+  every store to be identity-preserving.
 - `jsr`/`ret` remains unsupported.
 
 A prefix branch into the suffix can bypass the mandatory chain call. A
@@ -481,6 +493,18 @@ Synthetic bytecode unit tests in
 - `receiverAliasDistinctSuffixesCompileAndRunWithJavaParity` exercises both
   path ids and a null local-0 overwrite through the complete CMake/g++ JNI
   transform under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsAndRewritesReceiverAliasIdenticalSuffixCopies` and
+  `admitsAndRewritesReceiverAliasThreeIdenticalSuffixCopies` prove two- and
+  three-copy normalization retains every alias-based chain call, replaces the
+  earlier copies with one or two join `GOTO`s, and emits one owner-`Class`-
+  aware hidden bridge for the canonical extra-free suffix.
+- `rejectsIdenticalSuffixCopyUsingOverwrittenReceiverBeforeMutation` keeps the
+  copied-suffix form fail-closed when one call consumes overwritten local 0,
+  without allocating a hidden method or changing bytecode.
+- `receiverAliasIdenticalSuffixCopiesCompileAndRunWithJavaParity` exercises all
+  three normalized paths with declared-reference and null local-0 overwrites
+  through the complete CMake/g++ JNI transform under
+  `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsPostChainConditionalBranchToSharedSuffix` proves the exact
   `ILOAD; IFNE sharedSuffix; RETURN` post-call shape emits only the shared
   suffix as the independent native body, preserves the conditional branch and

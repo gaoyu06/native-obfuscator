@@ -2271,6 +2271,220 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsAndRewritesReceiverAliasIdenticalSuffixCopies()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/IdenticalReceiverAliasBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/IdenticalReceiverAlias", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                receiverAliasIdenticalSuffixCopiesConstructor(
+                        base.name, 2, false);
+        owner.methods.add(constructor);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Class;)V",
+                nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ICONST_4, Opcodes.POP, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(variableIndexes(
+                constructor, Opcodes.ASTORE).contains(0));
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.POP));
+        for (MethodInsnNode call : directChainCalls(constructor, base.name)) {
+            AbstractInsnNode receiver = call.getPrevious();
+            while (receiver != null
+                    && receiver.getOpcode() != Opcodes.ALOAD) {
+                receiver = receiver.getPrevious();
+            }
+            assertTrue(receiver instanceof VarInsnNode);
+            assertEquals(3, ((VarInsnNode) receiver).var);
+        }
+
+        MethodInsnNode bridge = hiddenBridgeCalls(constructor).get(0);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;I"
+                        + "Ljava/lang/Class;)V",
+                bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(owner.name),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ILOAD, argument.getOpcode());
+        assertEquals(2, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(0, ((VarInsnNode) argument).var);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg2;"));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> rewritten = loader.define(writeClass(owner));
+        for (Object[] arguments : new Object[][]{
+                {"OVERWRITTEN", 7}, {null, -5}}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> rewritten.getConstructor(Object.class, int.class)
+                            .newInstance(arguments));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+    }
+
+    @Test
+    public void admitsAndRewritesReceiverAliasThreeIdenticalSuffixCopies()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/ThreeIdenticalReceiverAliasBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/ThreeIdenticalReceiverAlias", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                receiverAliasIdenticalSuffixCopiesConstructor(
+                        base.name, 3, false);
+        owner.methods.add(constructor);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Class;)V",
+                nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ICONST_4, Opcodes.POP, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.POP));
+        assertEquals(3, directChainCalls(
+                constructor, base.name).size());
+        for (MethodInsnNode call : directChainCalls(constructor, base.name)) {
+            AbstractInsnNode receiver = call.getPrevious();
+            while (receiver != null
+                    && receiver.getOpcode() != Opcodes.ALOAD) {
+                receiver = receiver.getPrevious();
+            }
+            assertTrue(receiver instanceof VarInsnNode);
+            assertEquals(3, ((VarInsnNode) receiver).var);
+        }
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;I"
+                        + "Ljava/lang/Class;)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg2;"));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> rewritten = loader.define(writeClass(owner));
+        for (Object[] arguments : new Object[][]{
+                {"OVERWRITTEN", 7}, {null, -5}, {null, 0}}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> rewritten.getConstructor(Object.class, int.class)
+                            .newInstance(arguments));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+    }
+
+    @Test
+    public void rejectsIdenticalSuffixCopyUsingOverwrittenReceiverBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "identical-copy", "three-call-strict-diamond")) {
+            ClassNode owner = constructorOwner(
+                    "example/UnsafeIdenticalReceiverAlias"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor;
+            if ("identical-copy".equals(shape)) {
+                constructor = receiverAliasIdenticalSuffixCopiesConstructor(
+                        owner.superName, 2, true);
+            } else {
+                constructor = receiverAliasThreeCallStrictDiamondConstructor(
+                        owner.superName, true);
+            }
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
     public void admitsTwoSuperCallsWithDifferentStraightLineSuffixes() {
         ClassNode owner = constructorOwner(
                 "example/MultiSuffix", "example/MultiSuperBase");
@@ -5129,6 +5343,101 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native path-id receiver-alias Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void receiverAliasIdenticalSuffixCopiesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the identical-copy alias runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the identical-copy alias runtime test");
+
+        String ownerName = "example/ReceiverAliasIdenticalSuffixRuntime";
+        String baseName = "example/ReceiverAliasIdenticalSuffixRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-receiver-alias-identical-run");
+        Path inputJar = directory.resolve("receiver-alias-identical.jar");
+        Path outputDirectory = directory.resolve("output");
+        createReceiverAliasIdenticalSuffixCopiesJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain identical-copy receiver-alias Java run");
+        assertEquals(
+                "7" + System.lineSeparator()
+                        + "5" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(variableIndexes(
+                transformedConstructor, Opcodes.ASTORE).contains(0));
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        MethodInsnNode bridge = hiddenBridgeCalls(
+                transformedConstructor).get(0);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;I"
+                        + "Ljava/lang/Class;)V",
+                bridge.desc);
+        assertEquals(Opcodes.LDC, bridge.getPrevious().getOpcode());
+        assertEquals(Type.getObjectType(ownerName),
+                ((LdcInsnNode) bridge.getPrevious()).cst);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("identical-copy receiver-alias CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("identical-copy receiver-alias CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Identical-copy receiver-alias native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native identical-copy receiver-alias Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -11662,6 +11971,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createReceiverAliasIdenticalSuffixCopiesJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(receiverAliasIdenticalSuffixCopiesConstructor(
+                baseName, 3, false));
+        owner.methods.add(receiverAliasIdenticalSuffixCopiesMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createPostChainConditionalBranchJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -13969,6 +14307,112 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode receiverAliasIdenticalSuffixCopiesConstructor(
+            String superName, int copyCount,
+            boolean secondCallUsesOverwrittenReceiver) {
+        if (copyCount < 2 || copyCount > 3) {
+            throw new IllegalArgumentException(
+                    "Expected two or three suffix copies");
+        }
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        if (copyCount == 3) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        appendReceiverAliasIdenticalSuffixCall(
+                method, superName, 3, 1);
+        method.instructions.add(negative);
+        appendReceiverAliasIdenticalSuffixCall(
+                method, superName,
+                secondCallUsesOverwrittenReceiver ? 0 : 3, -1);
+        if (copyCount == 3) {
+            method.instructions.add(zero);
+            appendReceiverAliasIdenticalSuffixCall(
+                    method, superName, 3, 0);
+        }
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode receiverAliasThreeCallStrictDiamondConstructor(
+            String superName, boolean secondCallUsesOverwrittenReceiver) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(
+                Opcodes.ALOAD,
+                secondCallUsesOverwrittenReceiver ? 0 : 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(zero);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(join);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_4));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private void appendReceiverAliasIdenticalSuffixCall(
+            MethodNode method, String superName,
+            int receiverLocal, int argumentKind) {
+        method.instructions.add(new VarInsnNode(
+                Opcodes.ALOAD, receiverLocal));
+        if (argumentKind == 0) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        } else {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            if (argumentKind < 0) {
+                method.instructions.add(new InsnNode(Opcodes.INEG));
+            }
+        }
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_4));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
     private void appendReceiverAliasDistinctSuffix(
             MethodNode method, String owner, int result) {
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
@@ -15147,6 +15591,45 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode receiverAliasIdenticalSuffixCopiesMain(
+            String owner, String base) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendReceiverAliasIdenticalSuffixPrint(
+                method, owner, base, "OVERWRITTEN", 7);
+        appendReceiverAliasIdenticalSuffixPrint(
+                method, owner, base, null, -5);
+        appendReceiverAliasIdenticalSuffixPrint(
+                method, owner, base, null, 0);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private void appendReceiverAliasIdenticalSuffixPrint(
+            MethodNode method, String owner, String base,
+            String overwritten, int selector) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(overwritten == null
+                ? new InsnNode(Opcodes.ACONST_NULL)
+                : new LdcInsnNode(overwritten));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                "(Ljava/lang/Object;I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, base, "magnitude", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+    }
+
     private void appendReceiverAliasDistinctSuffixPrint(
             MethodNode method, String owner,
             String overwritten, int selector) {
@@ -16127,6 +16610,18 @@ public class IrCompilerTest {
         return count;
     }
 
+    private List<MethodInsnNode> directChainCalls(
+            MethodNode method, String owner) {
+        return Arrays.stream(method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke ->
+                        invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                                && "<init>".equals(invoke.name)
+                                && owner.equals(invoke.owner))
+                .collect(Collectors.toList());
+    }
+
     private int hiddenBridgeCallCount(MethodNode method) {
         int count = 0;
         for (AbstractInsnNode instruction : method.instructions) {
@@ -16137,6 +16632,16 @@ public class IrCompilerTest {
             }
         }
         return count;
+    }
+
+    private List<MethodInsnNode> hiddenBridgeCalls(MethodNode method) {
+        return Arrays.stream(method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke ->
+                        invoke.getOpcode() == Opcodes.INVOKESTATIC
+                                && invoke.owner.contains("/hidden/"))
+                .collect(Collectors.toList());
     }
 
     private MethodInsnNode retainedThisOrSuperCall(MethodNode method, ClassNode owner) {
