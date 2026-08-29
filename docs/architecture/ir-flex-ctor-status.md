@@ -77,6 +77,9 @@ The constructor split now covers these related prefix shapes:
   a float argument, whose leaves are declared float-argument loads,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
+  at most one `DADD` level for a double argument, whose two leaves are
+  declared double-argument loads, `DCONST_0`, `DCONST_1`, or `LDC` of
+  `Double`;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -204,10 +207,17 @@ One additional family is reduced to that same shared-join form:
   `FLOAD`. This proof has its own four-level binary budget, which `FNEG` does
   not consume: five-or-more nested float binaries, extra-local float loads,
   `FNEG` of a constant, double `FNEG`, and `FNEG` of an extra-local or
-  computed value remain rejected, as do computed double or reference inputs.
+  computed value remain rejected, as do computed reference inputs.
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
+- A double call argument may instead contain exactly one leaf-only `DADD`.
+  Both operands must be matching declared-argument `DLOAD`s, `DCONST_0`,
+  `DCONST_1`, or `LDC` of `Double`. This proof has its own one-level budget:
+  nested double binaries, extra-local double loads, `DSUB`, `DMUL`, `DDIV`,
+  `DREM`, and `DNEG` remain rejected. The admitted addition stays in the
+  retained bytecode prefix, preserving JVM double semantics without
+  reproducing double arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -277,7 +287,8 @@ normalizing the suffixes to one copied join:
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
 trees deeper than four levels, long binary expression trees deeper than four
-levels, other unlisted long operations,
+levels, double expression trees deeper than the single admitted `DADD` level,
+other unlisted long or double operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
 remain rejected.
@@ -810,6 +821,19 @@ Synthetic bytecode unit tests in
 - `threeImmediateFaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
   float inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring exactly matching float stdout.
+- `admitsThreeImmediateReturnsWithDaddOfProvenChainInputs` admits leaf-only
+  `DLOAD; DCONST_1; DADD` chain arguments while retaining all three additions,
+  all three chain calls, two join `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateDaddSuperReturnsPassJvmVerification` selects every
+  rewritten path through a Java 8 owner and double-taking superclass, reaching
+  the unresolved hidden bridge only after JVM verification succeeds.
+- `threeImmediateDaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
+  double inputs through plain Java and the complete CMake/g++ JNI transform
+  under `-Xverify:all -Xcheck:jni`, requiring exactly matching double stdout.
+- `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps nested
+  `DADD`, extra-local double operands, and `DSUB` fail-closed without
+  constructor or hidden-method mutation. `DMUL`, `DDIV`, `DREM`, `DNEG`, and
+  computed reference inputs remain outside this admission increment.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -907,8 +931,8 @@ Synthetic bytecode unit tests in
   extra-local long-shift value and int-count operands, extra-local
   `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
   or computed `LNEG` operands fail-closed without constructor or hidden-method
-  mutation. The remaining non-int-family negative continues to reject `DADD`
-  and `AALOAD`.
+  mutation. The remaining non-int-family negative continues to reject
+  computed reference input through `AALOAD`.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded

@@ -46,6 +46,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final int MAX_DISTINCT_SUFFIXES = 8;
     private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 4;
     private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 4;
+    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 1;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2261,6 +2262,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     constructor, inputIndex, declaredArguments,
                     MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS);
         }
+        if (expected.getSort() == Type.DOUBLE) {
+            return previousProvenDoubleChainOperand(
+                    constructor, inputIndex, declaredArguments,
+                    MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS);
+        }
         if (!isIntFamily(expected)) {
             return null;
         }
@@ -2448,6 +2454,65 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || opcode == Opcodes.LDC
                 && input instanceof LdcInsnNode
                 && ((LdcInsnNode) input).cst instanceof Float;
+    }
+
+    /**
+     * Proves a double operand with at most one DADD level. Both operands of
+     * that addition must therefore be non-recursive proven double leaves.
+     */
+    private static Integer previousProvenDoubleChainOperand(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments,
+            int remainingBinaryLevels) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != Opcodes.DADD) {
+            return previousProvenDoubleChainLeaf(
+                    constructor, inputIndex, declaredArguments);
+        }
+        if (remainingBinaryLevels == 0) {
+            return null;
+        }
+        Integer beforeRight = previousProvenDoubleChainOperand(
+                constructor,
+                previousExecutableIndex(constructor, inputIndex - 1),
+                declaredArguments, remainingBinaryLevels - 1);
+        if (beforeRight == null) {
+            return null;
+        }
+        return previousProvenDoubleChainOperand(
+                constructor, beforeRight, declaredArguments,
+                remainingBinaryLevels - 1);
+    }
+
+    /**
+     * Proves one double leaf: a declared DLOAD, DCONST_0/1, or an LDC whose
+     * constant is a Double.
+     */
+    private static Integer previousProvenDoubleChainLeaf(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isDirectDeclaredArgumentLoad(
+                input, Type.DOUBLE_TYPE, declaredArguments)
+                || isDoubleConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        return null;
+    }
+
+    private static boolean isDoubleConstant(AbstractInsnNode input) {
+        int opcode = input.getOpcode();
+        return opcode == Opcodes.DCONST_0
+                || opcode == Opcodes.DCONST_1
+                || opcode == Opcodes.LDC
+                && input instanceof LdcInsnNode
+                && ((LdcInsnNode) input).cst instanceof Double;
     }
 
     /**
