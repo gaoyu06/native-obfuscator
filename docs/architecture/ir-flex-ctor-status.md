@@ -67,10 +67,10 @@ The constructor split now covers these related prefix shapes:
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
-  loads; one leaf-only `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`,
-  or `LXOR` for a long argument whose operands are declared long-argument
-  loads, `LCONST_0`, `LCONST_1`, or `LDC` of `Long`; one leaf-only `LSHL`,
-  `LSHR`, or `LUSHR`
+  loads; one `LNEG` over a direct declared long-argument load; one leaf-only
+  `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR` for a long
+  argument whose operands are declared long-argument loads, `LCONST_0`,
+  `LCONST_1`, or `LDC` of `Long`; one leaf-only `LSHL`, `LSHR`, or `LUSHR`
   over one such long value leaf and a proven int-family count leaf;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
@@ -180,14 +180,17 @@ One additional family is reduced to that same shared-join form:
   `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR` over two non-recursive long leaves,
   or one `LSHL`, `LSHR`, or `LUSHR` over one non-recursive long value leaf
   followed by one proven int-family count leaf. A long leaf must be a matching
-  declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC` of `Long`; an
+  declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC` of `Long`, or
+  one `LNEG` whose sole operand is a matching declared-argument `LLOAD`; an
   int-family count leaf uses the existing declared-argument `ILOAD` and
-  int-family constant proof. This proof has its own explicit one-level budget:
-  nested long binaries, extra-local value or count loads, and `LNEG` remain
+  int-family constant proof. A standalone `LNEG` leaf is admitted under the
+  same operand restriction. This proof has its own explicit one-level binary
+  budget: nested long binaries, extra-local value or count loads, `LNEG` of a
+  constant, double `LNEG`, and `LNEG` of an extra-local or computed value remain
   rejected. The retained bytecode prefix executes admitted operations,
-  preserving Java long wrapping, bitwise semantics, JVM divide-by-zero and
-  signed-overflow behavior, and mask-63 shift-count behavior without
-  reproducing those semantics in C++.
+  preserving Java long wrapping, negate semantics, bitwise semantics, JVM
+  divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
+  without reproducing those semantics in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -821,12 +824,19 @@ Synthetic bytecode unit tests in
 - `threeImmediateLdivLremSuperReturnsCompileAndRunWithJavaParity` exercises
   both long operations through plain Java and the complete CMake/g++ JNI
   transform under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithLnegOfProvenChainInputs`,
+  `rewrittenThreeImmediateLnegSuperReturnsPassJvmVerification`, and
+  `threeImmediateLnegSuperReturnsCompileAndRunWithJavaParity` prove that one
+  `LNEG` over a declared long `LLOAD` remains in the retained prefix, rewrites
+  to one hidden bridge, passes JVM verification, and matches plain Java through
+  the complete CMake/g++ JNI transform.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nested `LADD`,
   extra-local long operands, extra-local long-shift value and int-count
   operands, nested `LDIV` as either an inner or outer node, extra-local
-  `LDIV`/`LREM` operands, and `LNEG` fail-closed without constructor or
-  hidden-method mutation. The existing non-int-family negative continues to
-  reject `FADD`, `DADD`, and `AALOAD`.
+  `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
+  `LNEG` operands fail-closed without constructor or hidden-method mutation.
+  The existing non-int-family negative continues to reject `FADD`, `DADD`, and
+  `AALOAD`.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join

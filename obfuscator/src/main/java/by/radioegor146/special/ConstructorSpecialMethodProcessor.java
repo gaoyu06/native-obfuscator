@@ -2264,11 +2264,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one admitted long binary whose operands are non-recursive leaves.
-     * Long shifts consume an int-family count leaf after their long value leaf;
-     * the other admitted binaries consume two long leaves. The separate
-     * one-level budget prevents the int-family depth bound from admitting
-     * nested long arithmetic.
+     * Proves one admitted long binary whose operands are non-recursive leaves,
+     * or one admitted unary leaf. Long shifts consume an int-family count leaf
+     * after their long value leaf; the other admitted binaries consume two long
+     * leaves. The separate one-level budget prevents the int-family depth bound
+     * from admitting nested long arithmetic.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2279,6 +2279,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         int opcode = input.getOpcode();
+        if (opcode == Opcodes.LNEG) {
+            return previousProvenLongChainLeaf(
+                    constructor, inputIndex, declaredArguments);
+        }
         boolean longShift = opcode == Opcodes.LSHL
                 || opcode == Opcodes.LSHR
                 || opcode == Opcodes.LUSHR;
@@ -2323,8 +2327,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one non-recursive long leaf: a declared LLOAD, LCONST_0/1, or an
-     * LDC whose constant is a Long.
+     * Proves one non-recursive long leaf: a declared LLOAD, LCONST_0/1, an LDC
+     * whose constant is a Long, or one LNEG over a direct declared LLOAD.
      */
     private static Integer previousProvenLongChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2338,7 +2342,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || isLongConstant(input)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
-        return null;
+        if (input.getOpcode() != Opcodes.LNEG) {
+            return null;
+        }
+        int operandIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (operandIndex < 0
+                || !isDirectDeclaredArgumentLoad(
+                constructor.instructions.get(operandIndex),
+                Type.LONG_TYPE, declaredArguments)) {
+            return null;
+        }
+        return previousExecutableIndex(constructor, operandIndex - 1);
     }
 
     private static boolean isLongConstant(AbstractInsnNode input) {
