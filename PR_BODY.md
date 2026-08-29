@@ -71,7 +71,8 @@ JUnit XML:
 
 Pushed branch / 已推送分支: `cursor/ir-ctor-lneg-6d81-afca`
 
-Tested HEAD SHA / 已测试 HEAD: `3670caf98494ce353973d76ae273d3367d58f463`
+Tested HEAD before this PR-body-only update / 本 PR 说明更新前已测试 HEAD:
+`94dd4e473922ebb5505ac8ba68309564a3ef2455`
 
 Files changed / 修改文件:
 `PR_BODY.md`,
