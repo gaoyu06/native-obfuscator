@@ -6500,9 +6500,14 @@ public class IrCompilerTest {
                         && invoke.owner.contains("/hidden/"))
                 .findFirst().orElseThrow(AssertionError::new);
         assertEquals(
-                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",
+                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
+                        + "Ljava/lang/Class;)V",
                 bridge.desc);
         AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(ownerName),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
         assertEquals(2, ((VarInsnNode) argument).var);
         argument = argument.getPrevious();
         assertEquals(1, ((VarInsnNode) argument).var);
@@ -7015,7 +7020,8 @@ public class IrCompilerTest {
         MethodNode nativeBody =
                 ConstructorSpecialMethodProcessor.createNativeBody(
                         owner, constructor);
-        assertEquals("(Ljava/lang/Object;)V", nativeBody.desc);
+        assertEquals("(Ljava/lang/Object;Ljava/lang/Class;)V",
+                nativeBody.desc);
         assertEquals(Collections.singletonList(Opcodes.RETURN),
                 realOpcodes(nativeBody));
         frontend.build(owner.name, nativeBody);
@@ -7039,14 +7045,22 @@ public class IrCompilerTest {
                 .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
                         && invoke.owner.contains("/hidden/"))
                 .findFirst().orElseThrow(AssertionError::new);
-        assertEquals("(Ljava/lang/Object;Ljava/lang/Object;)V", bridge.desc);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;)V",
+                bridge.desc);
         AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(owner.name),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
         assertEquals(1, ((VarInsnNode) argument).var);
         argument = argument.getPrevious();
         assertEquals(0, ((VarInsnNode) argument).var);
         assertEquals(1, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg1;"));
 
         ByteArrayClassLoader loader = new ByteArrayClassLoader();
         for (ClassNode hidden :

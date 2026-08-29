@@ -68,6 +68,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         context.method.tryCatchBlocks.clear();
         context.method.tryCatchBlocks.addAll(split.suffixTryCatches);
         Type[] constructorArguments = splitArgumentTypes(context.method, split);
+        if (split.receiverAliasForwarding) {
+            context.constructorClassloaderArgumentIndex =
+                    constructorArguments.length - 1;
+        }
         Type[] bridgeArguments = new Type[constructorArguments.length + 1];
         bridgeArguments[0] = Type.getType(Object.class);
         System.arraycopy(constructorArguments, 0, bridgeArguments, 1,
@@ -147,6 +151,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         for (ExtraLocal extra : split.extraLocals) {
             wrapper.add(new VarInsnNode(
                     extra.type.getOpcode(Opcodes.ILOAD), extra.index));
+        }
+        if (split.receiverAliasForwarding) {
+            wrapper.add(new LdcInsnNode(
+                    Type.getObjectType(context.clazz.name)));
         }
         if (pathId != null) {
             appendIntConstant(wrapper, pathId);
@@ -274,7 +282,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     labels.get(tryCatch.start), labels.get(tryCatch.end),
                     labels.get(tryCatch.handler), tryCatch.type));
         }
-        body.maxLocals = Math.max(body.maxLocals, constructor.maxLocals);
+        body.maxLocals = Math.max(
+                Math.max(body.maxLocals, constructor.maxLocals),
+                split.packedExtraEnd
+                        + (split.receiverAliasForwarding ? 1 : 0));
         body.maxStack = constructor.maxStack;
         return body;
     }
@@ -370,7 +381,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             new HashSet<>(), extraLocals,
                             firstExtraLocal(constructor),
                             tryCatches.prefix, tryCatches.suffix,
-                            tryCatches.relocated, null, distinctSuffix);
+                            tryCatches.relocated, false,
+                            null, distinctSuffix);
                 }
                 suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
                 wrapperEndIndex = suffixStartIndex;
@@ -496,7 +508,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 relocatedByLabel.put(tryCatch.handler, relocated);
             }
         }
-        validateReceiverStores(
+        boolean receiverAliasForwarding = validateReceiverStores(
                 constructor, suffixStartIndex, callIndexes, prefixTryCatches);
         validateChainControlFlow(
                 constructor, callIndexes, suffixStartIndex);
@@ -521,6 +533,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 firstExtraLocal(constructor),
                 prefixTryCatches, suffixTryCatches,
                 new ArrayList<>(relocatedByLabel.values()),
+                receiverAliasForwarding,
                 duplicatedSuffix, distinctSuffix);
     }
 
@@ -2568,7 +2581,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * while local 0 receives another reference. Multi-call forms remain limited
      * to identity-preserving stores.
      */
-    private static void validateReceiverStores(
+    private static boolean validateReceiverStores(
             MethodNode constructor, int splitIndex, List<Integer> callIndexes,
             List<TryCatchBlockNode> prefixTryCatches) {
         List<Integer> receiverStores = new ArrayList<>();
@@ -2580,7 +2593,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         if (receiverStores.isEmpty()) {
-            return;
+            return false;
         }
 
         int diagnosticIndex = receiverStores.get(0);
@@ -2599,6 +2612,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         boolean allowAliasForwarding = callIndexes.size() == 1;
+        boolean receiverAliasForwarding = false;
         for (Integer storeIndex : receiverStores) {
             ReceiverFrame frame = frames[storeIndex];
             if (frame == null || frame.stack.isEmpty()
@@ -2609,6 +2623,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                                 + "the constructor receiver",
                         storeIndex, constructor.instructions.get(storeIndex));
             }
+            receiverAliasForwarding |=
+                    !frame.stack.get(frame.stack.size() - 1).receiver;
         }
         for (Integer callIndex : callIndexes) {
             ReceiverFrame frame = frames[callIndex];
@@ -2626,6 +2642,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         callIndex, call);
             }
         }
+        return receiverAliasForwarding;
     }
 
     private static ReceiverFrame[] receiverFrames(
@@ -3396,11 +3413,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Type[] splitArguments =
                 new Type[arguments.length + split.extraLocals.size()
+                        + (split.receiverAliasForwarding ? 1 : 0)
                         + (split.distinctSuffix == null ? 0 : 1)];
         System.arraycopy(arguments, 0, splitArguments, 0, arguments.length);
         for (int i = 0; i < split.extraLocals.size(); i++) {
             splitArguments[arguments.length + i] =
                     split.extraLocals.get(i).type;
+        }
+        if (split.receiverAliasForwarding) {
+            splitArguments[arguments.length + split.extraLocals.size()] =
+                    Type.getType(Class.class);
         }
         if (split.distinctSuffix != null) {
             splitArguments[splitArguments.length - 1] = Type.INT_TYPE;
@@ -3429,6 +3451,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         // packed parameters and, for path-selected bodies, the selector;
         // only this independent clone is rewritten.
         int remapped = split.packedExtraEnd
+                + (split.receiverAliasForwarding ? 1 : 0)
                 + (split.distinctSuffix == null ? 0 : 1)
                 + local - split.firstExtraLocal;
         for (ExtraLocal extra : split.extraLocals) {
@@ -3506,6 +3529,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final List<TryCatchBlockNode> prefixTryCatches;
         private final List<TryCatchBlockNode> suffixTryCatches;
         private final List<RelocatedPrefixHandler> relocatedPrefixHandlers;
+        private final boolean receiverAliasForwarding;
         private final DuplicatedSuffix duplicatedSuffix;
         private final DistinctSuffix distinctSuffix;
 
@@ -3516,6 +3540,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 List<TryCatchBlockNode> prefixTryCatches,
                 List<TryCatchBlockNode> suffixTryCatches,
                 List<RelocatedPrefixHandler> relocatedPrefixHandlers,
+                boolean receiverAliasForwarding,
                 DuplicatedSuffix duplicatedSuffix,
                 DistinctSuffix distinctSuffix) {
             this.suffixStartIndex = suffixStartIndex;
@@ -3526,6 +3551,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             this.prefixTryCatches = prefixTryCatches;
             this.suffixTryCatches = suffixTryCatches;
             this.relocatedPrefixHandlers = relocatedPrefixHandlers;
+            this.receiverAliasForwarding = receiverAliasForwarding;
             this.duplicatedSuffix = duplicatedSuffix;
             this.distinctSuffix = distinctSuffix;
             int packedLocal = firstExtraLocal;

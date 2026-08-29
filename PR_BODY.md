@@ -6,7 +6,9 @@ Admit only the single-chain constructor receiver-alias leftover: the retained
 prefix may save the original receiver, overwrite local 0 with another reference,
 and invoke this/super through the proven alias. The wrapper still passes local 0
 as the first hidden-bridge body argument, while a suffix-read alias is forwarded
-by the existing extra-local mechanism.
+by the existing extra-local mechanism. It also passes the constructor owner's
+`Class` as shell-only class-loader metadata, so a null or bootstrap-loaded local
+0 does not change class resolution.
 
 ## (b) Ship-ready?
 
@@ -42,7 +44,9 @@ path-id forms remain unsupported. `--codegen` stays `legacy`.
 本次只接纳单链构造函数的 receiver-alias 遗留形态：保留的字节码前缀可以先保存原始
 构造接收者，再用另一个引用覆盖局部变量 0，并通过已证明的别名调用 this/super。
 包装器仍把局部变量 0 作为隐藏桥接方法体的第一个参数；若后缀读取该别名，则沿用
-现有 extra-local 机制转发。
+现有 extra-local 机制转发。包装器还把构造函数所属类的 `Class` 作为仅供 JNI
+外壳使用的类加载元数据，因此局部变量 0 为 null 或由 bootstrap loader 加载时，
+不会改变类解析行为。
 
 ## (b) 是否可发布？
 

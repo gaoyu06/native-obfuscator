@@ -255,6 +255,11 @@ It also classifies writes to reference/array constructor-argument locals:
   the overwritten Java local. If the suffix reads the alias, the existing
   extra-local proof forwards it separately; after the chain call that value is
   the initialized constructed receiver.
+- Because overwritten local 0 may be `null` or an object from a bootstrap
+  class, the alias-forwarding wrapper also passes the constructor owner's
+  `Class` as shell-only metadata. Native class resolution uses that exact class
+  loader without changing the IR meaning of local 0 or using the receiver alias
+  for instance operations.
 - Non-identity `ASTORE 0` remains rejected for multi-call shared joins,
   identical-copy normalization, and path-id suffix selection.
 
