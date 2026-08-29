@@ -21,12 +21,16 @@ The constructor split now covers these related prefix shapes:
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
-  suffix, when their incoming state at the chain call is provable;
+  suffix, when their incoming state at the hidden bridge is provable;
 - multiple direct this/super calls in a strict diamond that converges at one
   shared suffix label;
 - exactly two direct this/super calls where the first call is followed by a
   declared int-argument `ILOAD`, `IFNE` to the shared suffix, and immediate
   fallthrough `RETURN`, while the second call falls through to that suffix; and
+- exactly two direct this/super calls where the first call returns immediately
+  and the second falls through to the suffix, only when a forwarded extra local
+  is unassigned at the exiting call but has one provable type on every path
+  that reaches the hidden bridge; and
 - exactly two direct this/super calls whose separate straight-line suffix
   copies, including immediate `RETURN` copies, are proven
   instruction-for-instruction identical.
@@ -51,6 +55,17 @@ The constructor split now covers these related prefix shapes:
   join. Receiver-stack analysis requires both calls to consume the original
   constructor receiver with no older stack values. The count-state CFG proof
   still requires exactly one call at the join and at the early return.
+- One prefix-exit exception is admitted only for exactly two chain calls with
+  no exception table and empty chain-entry stacks. The first call must be
+  followed immediately by `RETURN`; the final call must fall through directly
+  to the suffix. The suffix boundary is the instruction after that final call,
+  so this rule does not depend on an otherwise unreferenced label surviving a
+  class-file round trip.
+- That prefix-exit form is conditional-extra-only: the normal extra-local
+  analysis must prove one compatible type at every actual hidden-bridge entry,
+  and at least one forwarded extra must be unassigned at the earlier,
+  immediately returning chain call. The retained return never loads that local
+  or invokes the bridge. No synthetic `null` or zero value is introduced.
 
 Multiple direct this/super candidates are admitted only under a stricter
 fail-closed rule:
@@ -61,10 +76,11 @@ fail-closed rule:
   candidate, and rejects a path that reaches another candidate after one call,
   reaches the shared suffix with zero or multiple calls, or reaches a return
   without exactly one call. Every candidate must be reachable.
-- The final candidate in bytecode order must be followed by a join label before
-  the first suffix instruction. In the strict-diamond form, every earlier
-  candidate's next executable instruction must be `GOTO` to that exact label.
-  This proves that all suffix-taking prefix paths enter one identical range.
+- Outside the immediate-prefix-return exception, the final candidate in
+  bytecode order must be followed by a join label before the first suffix
+  instruction. In the strict-diamond form, every earlier candidate's next
+  executable instruction must be `GOTO` to that exact label. This proves that
+  all suffix-taking prefix paths enter one identical range.
 - The retained wrapper keeps the complete diamond, both chain calls, their
   join label, and one hidden-bridge invocation. `createNativeBody` starts at
   the shared join and emits that suffix once.
@@ -120,9 +136,12 @@ Prefix stores into non-parameter locals are classified separately:
 - `ALOAD`, `ILOAD`, `LLOAD`, `FLOAD`, `DLOAD`, and `IINC` in the suffix identify
   extra locals whose prefix values need to cross the split.
 - A must-style prefix CFG analysis requires one compatible stored type on every
-  path that reaches the this/super call. A missing assignment or incompatible
-  store family is rejected by `split()` before bridge or C++ mutation, with the
-  local index in the diagnostic.
+  path that reaches the hidden bridge. Normally that is also every path through
+  the this/super call. The exact two-call immediate-prefix-return exception
+  above may leave the local unassigned on its exiting call because that path
+  cannot reach the suffix load or bridge. A missing bridge-path assignment or
+  incompatible store family is rejected by `split()` before bridge or C++
+  mutation, with the local index in the diagnostic.
 - The independent suffix descriptor and hidden static bridge append the extra
   parameters in increasing local-index order. The wrapper loads them from their
   original local indexes after loading the receiver and declared constructor
@@ -219,6 +238,16 @@ Synthetic bytecode unit tests in
 - `gappedPrefixExtraReferenceLocalCompilesAndRunsWithJavaParity` repeats that
   compile-and-run parity path with the extra stored at local 3 and local 2
   unused.
+- `admitsConditionallyAssignedExtraOnBridgePathOnly` proves the exact two-call
+  prefix-exit form retains the unassigned immediate return while forwarding
+  the bridge-only reference extra.
+- `rewrittenConditionalBridgeExtraPassesJvmVerification` executes the prefix
+  exit successfully and verifies that the assigned path reaches the unresolved
+  native bridge.
+- `conditionalBridgeExtraCompilesAndRunsWithJavaParity` exercises both paths
+  through plain Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`; both runs print `BRIDGE-ASSIGNED` and
+  `PREFIX-EXIT`.
 - `admitsMultipleSuperDiamondWithSharedSuffix` proves two retained direct
   superclass calls converge on one hidden bridge and that the independent
   native body contains only the shared suffix.
@@ -298,9 +327,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 161 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 164 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 168 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 171 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
