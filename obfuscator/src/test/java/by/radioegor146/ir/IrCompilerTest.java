@@ -2862,10 +2862,28 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.FCONST_1));
         method.instructions.add(new InsnNode(Opcodes.FADD));
         method.instructions.add(new VarInsnNode(Opcodes.FSTORE, 6));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 6));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "floatValue", "F"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "floatValue", "F"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/PrimitiveTarget", "identityFloat", "(F)F", false));
+        method.instructions.add(new VarInsnNode(Opcodes.FSTORE, 6));
         method.instructions.add(new LdcInsnNode(Double.longBitsToDouble(
                 0x7ff8000000001234L)));
         method.instructions.add(new InsnNode(Opcodes.DCONST_1));
         method.instructions.add(new InsnNode(Opcodes.DREM));
+        method.instructions.add(new VarInsnNode(Opcodes.DSTORE, 7));
+        method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 7));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                "example/Math", "doubleValue", "D"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "doubleValue", "D"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "example/PrimitiveTarget", "identityDouble", "(D)D", false));
         method.instructions.add(new VarInsnNode(Opcodes.DSTORE, 7));
         method.instructions.add(new InsnNode(Opcodes.FALOAD));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
