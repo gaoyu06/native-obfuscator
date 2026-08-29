@@ -16,6 +16,7 @@ it does not complete the production goal or change defaults.
 **(c) Review and gate:** There is no stacked review. The gate is the executed
 focused `IrCompilerTest` and `CodegenModeTest` suite, including the new
 compile-and-run Java/JNI parity harness under `java -Xverify:all -Xcheck:jni`.
+JUnit XML reports 187 + 7 = 194 tests, with 0 failures, 0 errors, and 0 skipped.
 
 **(d) Preconditions:** Remaining constructor leftovers, unsafe constant-dynamic
 forms, and `jsr`/`ret` stay reject-before-mutation. `--codegen` remains
@@ -37,6 +38,7 @@ try/catch 形式：后缀保护区间可以指向隔离的前缀 `POP; GOTO ret`
 **(c) 审查与门禁：** 没有堆叠审查。门禁是实际执行的 `IrCompilerTest` 和
 `CodegenModeTest` 聚焦测试套件，其中包括新增的、在
 `java -Xverify:all -Xcheck:jni` 下运行的 Java/JNI 编译执行一致性测试。
+JUnit XML 记录为 187 + 7 = 194 个测试，0 个失败、0 个错误、0 个跳过。
 
 **(d) 前置条件：** 其余构造函数遗留项、不安全的 constant-dynamic 形式以及
 `jsr`/`ret` 继续在修改前拒绝。`--codegen` 保持为 `legacy`。
