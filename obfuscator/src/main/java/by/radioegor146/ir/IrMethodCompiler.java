@@ -57,8 +57,12 @@ public final class IrMethodCompiler {
                     context.clazz, context.method);
         }
         IrMethod method = frontend.build(context.clazz.name, bytecodeBody);
-        MethodLoweringStrategy strategy = Objects.requireNonNull(
-                loweringMode, "loweringMode") == IrLoweringMode.EVAL
+        IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
+        if (selectedMode == IrLoweringMode.EVAL && method.isSynchronizedMethod()) {
+            throw new UnsupportedIrConstructException(
+                    "Evaluator lowering does not support synchronized methods");
+        }
+        MethodLoweringStrategy strategy = selectedMode == IrLoweringMode.EVAL
                 ? evaluatorStrategy : directStrategy;
         LoweredMethod lowered = strategy.lower(method, new LoweringContext(context));
 

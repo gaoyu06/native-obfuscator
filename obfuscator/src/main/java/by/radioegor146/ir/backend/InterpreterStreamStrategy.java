@@ -85,10 +85,6 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
         if (!method.isStaticMethod()) {
             throw unsupported("Evaluator lowering currently supports static methods only", -1);
         }
-        if (method.isSynchronizedMethod()) {
-            throw unsupported(
-                    "Evaluator lowering does not yet support synchronized methods", -1);
-        }
         if (method.getReturnType() != IrType.I32
                 && method.getReturnType() != IrType.I64) {
             throw unsupported("Evaluator lowering requires an i32 or i64 method return", -1);
