@@ -147,6 +147,9 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
         }
+        if (instruction instanceof IrNodes.LongUnary) {
+            return emitLongUnary((IrNodes.LongUnary) instruction);
+        }
         if (instruction instanceof IrNodes.Conversion) {
             return emitConversion((IrNodes.Conversion) instruction);
         }
@@ -162,6 +165,9 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.IntDivRem) {
             return emitIntDivRem(method, block, (IrNodes.IntDivRem) instruction, context);
+        }
+        if (instruction instanceof IrNodes.LongDivRem) {
+            return emitLongDivRem(method, block, (IrNodes.LongDivRem) instruction, context);
         }
         if (instruction instanceof IrNodes.NewObject) {
             return emitNewObject(method, block, (IrNodes.NewObject) instruction, context);
@@ -412,6 +418,24 @@ public final class IrCppEmitter {
                 new CppAst.Assignment(variable(unary.getResult()), value));
     }
 
+    private List<CppAst.Statement> emitLongUnary(IrNodes.LongUnary unary) {
+        CppAst.Expression operand = expression(unary.getOperand());
+        CppAst.Expression value;
+        switch (unary.getOperation()) {
+            case NEGATE:
+                // Negating Long.MIN_VALUE wraps to itself under JVM rules, so
+                // negate on the unsigned carrier to avoid signed C++ overflow.
+                value = new CppAst.Cast("jlong",
+                        new CppAst.Unary("-", new CppAst.Cast("uint64_t", operand)));
+                break;
+            default:
+                throw new IllegalStateException("Unknown long unary operation "
+                        + unary.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(unary.getResult()), value));
+    }
+
     private List<CppAst.Statement> emitConversion(IrNodes.Conversion conversion) {
         CppAst.Expression value;
         switch (conversion.getOperation()) {
@@ -514,6 +538,45 @@ public final class IrCppEmitter {
                 new CppAst.Cast("int32_t", expression(binary.getLeft())),
                 binary.getOperation().getCppOperator(),
                 new CppAst.Cast("int32_t", expression(binary.getRight()))));
+        CppAst.Assignment ordinaryResult = new CppAst.Assignment(
+                variable(binary.getResult()), quotient);
+        statements.add(new CppAst.If(overflow,
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(overflowResult)),
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(ordinaryResult))));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitLongDivRem(IrMethod method, IrBlock block,
+                                                  IrNodes.LongDivRem binary,
+                                                  MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        List<CppAst.Statement> divideByZero = new ArrayList<>();
+        divideByZero.add(new CppAst.ExpressionStatement(new CppAst.Call("utils::throw_re",
+                Arrays.asList(variable("env"),
+                        pool(context.getStringPool().getOffset(
+                                "java/lang/ArithmeticException")),
+                        pool(context.getStringPool().getOffset(
+                                binary.getOperation() == IrNodes.LongDivRem.Operation.DIVIDE
+                                        ? "LDIV / by 0" : "LREM % by 0")),
+                        new CppAst.IntLiteral(binary.getSourceLine())))));
+        divideByZero.addAll(exceptionalExit(method, block));
+        statements.add(new CppAst.If(new CppAst.Binary(expression(binary.getRight()), "==",
+                new CppAst.LongLiteral(0)), new CppAst.Block(divideByZero), null));
+
+        CppAst.Expression overflow = new CppAst.Binary(
+                new CppAst.Binary(expression(binary.getLeft()), "==",
+                        new CppAst.LongLiteral(Long.MIN_VALUE)),
+                "&&",
+                new CppAst.Binary(expression(binary.getRight()), "==",
+                        new CppAst.LongLiteral(-1)));
+        CppAst.Assignment overflowResult = new CppAst.Assignment(variable(binary.getResult()),
+                binary.getOperation() == IrNodes.LongDivRem.Operation.DIVIDE
+                        ? new CppAst.LongLiteral(Long.MIN_VALUE)
+                        : new CppAst.LongLiteral(0));
+        CppAst.Expression quotient = new CppAst.Cast("jlong", new CppAst.Binary(
+                new CppAst.Cast("int64_t", expression(binary.getLeft())),
+                binary.getOperation().getCppOperator(),
+                new CppAst.Cast("int64_t", expression(binary.getRight()))));
         CppAst.Assignment ordinaryResult = new CppAst.Assignment(
                 variable(binary.getResult()), quotient);
         statements.add(new CppAst.If(overflow,

@@ -247,6 +247,8 @@ public final class AsmToIr {
                                 || isLongShiftOp(opcode)
                                 || isFloatingBinaryOp(opcode)
                                 || isIntDivRem(opcode)
+                                || isLongDivRem(opcode)
+                                || isLongNeg(opcode)
                                 || isIntUnaryOp(opcode)
                                 || isFloatingUnaryOp(opcode)
                                 || isFloatingCompareOp(opcode)
@@ -607,8 +609,11 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
-        } else if (isLongBinaryOp(opcode)) {
+        } else if (isLongBinaryOp(opcode) || isLongDivRem(opcode)) {
             popType(stack, IrType.I64, instruction);
+            popType(stack, IrType.I64, instruction);
+            stack.add(IrType.I64);
+        } else if (isLongNeg(opcode)) {
             popType(stack, IrType.I64, instruction);
             stack.add(IrType.I64);
         } else if (isLongShiftOp(opcode)) {
@@ -1079,6 +1084,21 @@ public final class AsmToIr {
                 IrValue value = pop(state, IrType.I64, instruction);
                 state.stack.add(blockLongShift(irMethod, block, longShiftOperation(opcode),
                         value, count, instruction.getOriginalIndex()));
+            } else if (isLongDivRem(opcode)) {
+                IrValue right = pop(state, IrType.I64, instruction);
+                IrValue left = pop(state, IrType.I64, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I64);
+                block.addInstruction(new IrNodes.LongDivRem(result,
+                        longDivRemOperation(opcode), left, right,
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+                state.stack.add(result);
+            } else if (isLongNeg(opcode)) {
+                IrValue operand = pop(state, IrType.I64, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I64);
+                block.addInstruction(new IrNodes.LongUnary(result,
+                        IrNodes.LongUnary.Operation.NEGATE, operand,
+                        instruction.getOriginalIndex()));
+                state.stack.add(result);
             } else if (isFloatingBinaryOp(opcode)) {
                 IrType type = floatingType(opcode);
                 IrValue right = pop(state, type, instruction);
@@ -2138,6 +2158,14 @@ public final class AsmToIr {
         return opcode == Opcodes.LSHL || opcode == Opcodes.LSHR || opcode == Opcodes.LUSHR;
     }
 
+    private static boolean isLongDivRem(int opcode) {
+        return opcode == Opcodes.LDIV || opcode == Opcodes.LREM;
+    }
+
+    private static boolean isLongNeg(int opcode) {
+        return opcode == Opcodes.LNEG;
+    }
+
     private static boolean isIntUnaryOp(int opcode) {
         return opcode == Opcodes.INEG || opcode == Opcodes.I2B || opcode == Opcodes.I2S
                 || opcode == Opcodes.I2C;
@@ -2197,6 +2225,17 @@ public final class AsmToIr {
                 return IrNodes.LongShift.Operation.USHR;
             default:
                 throw new IllegalArgumentException("Not a long shift opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.LongDivRem.Operation longDivRemOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.LDIV:
+                return IrNodes.LongDivRem.Operation.DIVIDE;
+            case Opcodes.LREM:
+                return IrNodes.LongDivRem.Operation.REMAINDER;
+            default:
+                throw new IllegalArgumentException("Not a long div/rem opcode: " + opcode);
         }
     }
 
