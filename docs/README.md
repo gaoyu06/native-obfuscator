@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#136. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#138. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -77,17 +77,17 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 | [benchmarks/results-ir-eval-lower.md](benchmarks/results-ir-eval-lower.md) | Eval fell back; median `N/A` |
 | [benchmarks/results-ir-eval-ushr.md](benchmarks/results-ir-eval-ushr.md) | Later eval stay-on-eval measure (local only) |
 
-## Sibling stacks not in the master compiler / 未合入主线编译器的兄弟栈
-
-`--ir-lower=eval` still did **not** land. The first default-off interpreter
-slice **did** land (#124). Older #17–#28 sibling flags are not the current CLI.
+## Default-off backends on master / 已在 master、默认关闭的后端
 
 | Document | Stack |
 | --- | --- |
 | [architecture/interpreter-on-master-status.md](architecture/interpreter-on-master-status.md) | What `--backend=interpreter` actually does on master |
 | [reviews/interpreter-on-master-fable.md](reviews/interpreter-on-master-fable.md) | Fable accept-with-nits of #124 |
-| [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` sibling (not on master) |
+| [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` on master (default `direct`; #137) |
+| [reviews/ir-eval-port-sol.md](reviews/ir-eval-port-sol.md) | Sol accept-with-nits of #137 |
 | [eval/](eval/) | Reader / recovery notes (requirement 7 unmet) |
+
+Older #17–#28 sibling flags and old evaluator PRs #42–#87 are not the current CLI.
 
 ## Research / 调研
 

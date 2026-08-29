@@ -1,7 +1,7 @@
 # Project status on master / master 现状
 
-Last updated after landing [#132](https://github.com/gaoyu06/native-obfuscator/pull/132)–[#136](https://github.com/gaoyu06/native-obfuscator/pull/136)
-(post-phase-19 bench + IR phase 20 `LDIV`/`LREM`/`LNEG` and their reviews)
+Last updated after landing [#132](https://github.com/gaoyu06/native-obfuscator/pull/132)–[#138](https://github.com/gaoyu06/native-obfuscator/pull/138)
+(post-phase-19 bench, IR phase 20, and the default-off `--ir-lower=eval` port)
 on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
@@ -48,10 +48,18 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   (Fable accept-with-nits [#125](https://github.com/gaoyu06/native-obfuscator/pull/125));
   ISA v2 [#127](https://github.com/gaoyu06/native-obfuscator/pull/127) adds
   multiply, bitwise ops, shifts, `INEG`, and `IDIV`/`IREM`.
+- **Opt-in evaluator.** `--ir-lower=eval` (default `direct`) is consulted only
+  when `--codegen=ir` successfully builds an `IrMethod`.
+  [#137](https://github.com/gaoyu06/native-obfuscator/pull/137) (Sol
+  accept-with-nits [#138](https://github.com/gaoyu06/native-obfuscator/pull/138))
+  serializes a narrow i32/i64 slice to a method-data stream plus a C++17
+  trampoline. `LDIV`/`LREM` opcodes `0x2b`/`0x2c` stay reserved unused.
+  Sources are copied into generated `cpp/` only for this lowering.
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
-默认仍是 `--codegen=legacy` 与 `--backend=cpp`。IR 与解释器都需显式打开。
-SDK 随生成 JAR 提供，不是独立产品。classfile 不再无条件写成 major 52。
+默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。
+IR、evaluator 与解释器都需显式打开。SDK 随生成 JAR 提供，不是独立产品。
+classfile 不再无条件写成 major 52。
 
 ## Recorded measurements (do not invent more) / 已记录测量（勿编造）
 
@@ -84,24 +92,20 @@ Admission 不是行为正确性。五个 fixture 的 5/5 只是一台 Linux VM �
 
 ## What did not land as compiler code / 未作为编译器代码落地
 
-These stacks **conflict with the phase-18 + #124 `NativeObfuscator` line**.
-Their documents and reader/bench notes are in-tree; the compiler flags they
-describe are **not** on current `master`.
+Old sibling evaluator PRs #42–#87 **conflict with the phase-18 + #124 line**
+and must not be merged. The current-master port is #137 (landed). Their
+reader/bench notes remain historical.
 
-- Shared evaluator (`--ir-lower=eval`): old sibling PRs #42–#87, plus the
-  current-master port [#137](https://github.com/gaoyu06/native-obfuscator/pull/137)
-  (open; not landed here)
 - Older opcode interpreter / compact encoding / link-only output, PRs #17–#28
   (superseded as a *first increment* by #124; those sibling flags are still
   not the current CLI)
 - Standalone NativeStrings-on-master #27 (superseded by the SDK stack)
 
-未合入：`--ir-lower=eval`。旧 #17–#28 解释器栈已被 #124 的默认关闭切片取代，
-不要把旧 CLI 旗标当成当前功能。
+不要把旧 #42–#87 或 #17–#28 的 CLI 旗标当成当前功能。
 
 ## Defaults and policies that remain / 仍然有效的默认与政策
 
-1. Do not flip the default off `legacy`.
+1. Do not flip the default off `legacy` or `direct`.
 2. Do not publish “supports JDK 17/21/25” from admission counts or five fixtures.
 3. Do not claim a general native speedup versus HotSpot.
 4. Do not treat reader “mix not recovered” on DCE as success. Requirement 7
@@ -115,14 +119,15 @@ describe are **not** on current `master`.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Land or reject the current-master `--ir-lower=eval` port (#137) after review.
+- Wire evaluator `0x2b`/`0x2c` to the phase-20 `LongDivRem` nodes, or keep
+  those methods on fallback.
 - Widen the interpreter beyond the static `int` slice (long ops, objects).
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status and doc-index refresh after landing preferred
-  tips on master. / 在 master 落地优选 tip 之后的现状与文档索引。
+- **(a) Scope / 范围:** Status refresh after landing #132–#138 (bench,
+  phase 20, default-off evaluator). / 落地 #132–#138 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。

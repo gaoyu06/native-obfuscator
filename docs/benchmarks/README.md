@@ -3,7 +3,8 @@
 This harness measures the legacy and opt-in IR generators against plain Java.
 It does not claim that either transpiled mode is faster. One
 `:obfuscator:bench` run executes plain JVM, explicit `--codegen=legacy`, and
-explicit `--codegen=ir`. `--ir-lower=eval` is **not** on current `master`.
+explicit `--codegen=ir`. `--ir-lower=eval` exists on `master` as default-off
+and is **not** part of this three-mode harness.
 Do not invent numbers. Do not back-fill the #53 eval median (`N/A`).
 Current product status:
 [../architecture/project-status.md](../architecture/project-status.md).
