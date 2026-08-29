@@ -17,6 +17,7 @@ import by.radioegor146.source.ClassSourceBuilder;
 import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -691,7 +692,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
@@ -1048,8 +1049,8 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsConstantDynamicLdcBeforeMutation() {
-        MethodNode method = constantDynamicMethod();
+    public void rejectsUnlowerableConstantDynamicLdcBeforeMutation() {
+        MethodNode method = unlowerableConstantDynamicMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
@@ -1060,6 +1061,231 @@ public class IrCompilerTest {
 
         assertEquals(Opcodes.LDC, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void admitsAndCachesStringConstantDynamicThroughSyntheticResolver()
+            throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicStringMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(context.output.toString().contains("env->CallStaticObjectMethod"));
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$"))
+                .reduce((first, second) -> second)
+                .orElseThrow(AssertionError::new);
+        assertTrue((resolver.access & Opcodes.ACC_SYNCHRONIZED) != 0);
+
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        Method resolverMethod = generated.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        assertEquals("condy-value", resolverMethod.invoke(null));
+        assertEquals("condy-value", resolverMethod.invoke(null));
+        assertEquals(1, generated.getField("bootstrapCalls").getInt(null));
+        assertEquals(1, generated.getField("outerBootstrapCalls").getInt(null));
+    }
+
+    @Test
+    public void admitsPrimitiveConstantDynamicThroughTypedResolver()
+            throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicIntMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(context.output.toString().contains("env->CallStaticIntMethod"));
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()I".equals(candidate.desc))
+                .findFirst().orElseThrow(AssertionError::new);
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        Method resolverMethod = generated.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        assertEquals(42, resolverMethod.invoke(null));
+        assertEquals(42, resolverMethod.invoke(null));
+    }
+
+    @Test
+    public void executesStringConstantDynamicThroughIrWhenToolchainAvailable()
+            throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicStringMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+        String body = context.output.toString();
+        String function = generatedFunction(body);
+        int classes = Math.max(1, obfuscator.getCachedClasses().size());
+        int methods = Math.max(1, obfuscator.getCachedMethods().size());
+        int strings = Math.max(1, obfuscator.getCachedStrings().size());
+        int fields = Math.max(1, obfuscator.getCachedFields().size());
+
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "#include <cstdarg>\n"
+                + "#include <mutex>\n"
+                + "#include <unordered_set>\n"
+                + "static const jobject CLASSLOADER = reinterpret_cast<jobject>(0x1001);\n"
+                + "static const jclass RESOLVED = reinterpret_cast<jclass>(0x1002);\n"
+                + "static const jobject CONDY = reinterpret_cast<jobject>(0x4242);\n"
+                + "static const jmethodID MID = reinterpret_cast<jmethodID>(0x2001);\n"
+                + "static int g_resolver_calls = 0;\n"
+                + "static jboolean f_exception_check(JNIEnv *) { return JNI_FALSE; }\n"
+                + "static jboolean f_is_same(JNIEnv *, jobject, jobject) { return JNI_FALSE; }\n"
+                + "static jobject f_new_weak(JNIEnv *, jobject value) { return value; }\n"
+                + "static void f_delete_local(JNIEnv *, jobject) {}\n"
+                + "static jmethodID f_get_static_mid(JNIEnv *, jclass, const char *, const char *)"
+                + " { return MID; }\n"
+                + "static jobject f_call_static_object(JNIEnv *, jclass, jmethodID, va_list)"
+                + " { ++g_resolver_calls; return CONDY; }\n"
+                + "static jsize f_get_string_length(JNIEnv *, jstring value)"
+                + " { return value == CONDY ? 11 : -1; }\n"
+                + "namespace native_jvm {\n"
+                + "namespace utils {\n"
+                + "jobject get_classloader_from_class(JNIEnv *, jclass) { return CLASSLOADER; }\n"
+                + "jclass find_class_wo_static(JNIEnv *, jobject, jstring) { return RESOLVED; }\n"
+                + "void throw_re(JNIEnv *, const char *, const char *, int) {}\n"
+                + "}\n"
+                + "namespace classes { namespace condyns {\n"
+                + "char string_pool_storage[4096] = {};\n"
+                + "char *string_pool = string_pool_storage;\n"
+                + "jstring cstrings[" + strings + "] = {};\n"
+                + "std::mutex cclasses_mtx[" + classes + "];\n"
+                + "jclass cclasses[" + classes + "] = {};\n"
+                + "jmethodID cmethods[" + methods + "] = {};\n"
+                + "jfieldID cfields[" + fields + "] = {};\n"
+                + body
+                + "} }\n"
+                + "}\n"
+                + "int main() {\n"
+                + "    JNINativeInterface_ functions = {};\n"
+                + "    functions.ExceptionCheck = f_exception_check;\n"
+                + "    functions.IsSameObject = f_is_same;\n"
+                + "    functions.NewWeakGlobalRef = f_new_weak;\n"
+                + "    functions.DeleteLocalRef = f_delete_local;\n"
+                + "    functions.GetStaticMethodID = f_get_static_mid;\n"
+                + "    functions.CallStaticObjectMethodV = f_call_static_object;\n"
+                + "    functions.GetStringLength = f_get_string_length;\n"
+                + "    JNIEnv_ env_value = {};\n"
+                + "    env_value.functions = &functions;\n"
+                + "    JNIEnv *env = &env_value;\n"
+                + "    jclass clazz = reinterpret_cast<jclass>(0x9001);\n"
+                + "    jint first = native_jvm::classes::condyns::" + function
+                + "(env, clazz);\n"
+                + "    jint second = native_jvm::classes::condyns::" + function
+                + "(env, clazz);\n"
+                + "    if (first != 11 || second != 11) return 1;\n"
+                + "    if (g_resolver_calls != 2) return 2;\n"
+                + "    return 0;\n"
+                + "}\n";
+        compileAndRunCppHarness("ir-condy-run", source,
+                "Lowered ConstantDynamic did not return the cached resolver value");
+    }
+
+    @Test
+    public void executesRawMethodTypeLdcThroughIrWhenToolchainAvailable()
+            throws Exception {
+        MethodNode method = rawMethodTypeUseMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(
+                obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+        String body = context.output.toString();
+        String function = generatedFunction(body);
+        int classes = Math.max(1, obfuscator.getCachedClasses().size());
+        int methods = Math.max(1, obfuscator.getCachedMethods().size());
+        int strings = Math.max(1, obfuscator.getCachedStrings().size());
+        int fields = Math.max(1, obfuscator.getCachedFields().size());
+
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "#include <cstdarg>\n"
+                + "#include <mutex>\n"
+                + "#include <unordered_set>\n"
+                + "static const jobject CLASSLOADER = reinterpret_cast<jobject>(0x1001);\n"
+                + "static const jclass RESOLVED = reinterpret_cast<jclass>(0x1002);\n"
+                + "static const jobject METHODTYPE = reinterpret_cast<jobject>(0x4242);\n"
+                + "static const jmethodID MID = reinterpret_cast<jmethodID>(0x2001);\n"
+                + "static jboolean f_exception_check(JNIEnv *) { return JNI_FALSE; }\n"
+                + "static jboolean f_is_same(JNIEnv *, jobject, jobject) { return JNI_FALSE; }\n"
+                + "static jobject f_new_weak(JNIEnv *, jobject value) { return value; }\n"
+                + "static void f_delete_local(JNIEnv *, jobject) {}\n"
+                + "static jmethodID f_get_static_mid(JNIEnv *, jclass, const char *, const char *)"
+                + " { return MID; }\n"
+                + "static jmethodID f_get_mid(JNIEnv *, jclass, const char *, const char *)"
+                + " { return MID; }\n"
+                + "static jobject f_call_static_object(JNIEnv *, jclass, jmethodID, va_list)"
+                + " { return METHODTYPE; }\n"
+                + "static jint f_call_int(JNIEnv *, jobject receiver, jmethodID, va_list)"
+                + " { return receiver == METHODTYPE ? 2 : -1; }\n"
+                + "namespace native_jvm {\n"
+                + "namespace utils {\n"
+                + "jobject get_classloader_from_class(JNIEnv *, jclass) { return CLASSLOADER; }\n"
+                + "jclass find_class_wo_static(JNIEnv *, jobject, jstring) { return RESOLVED; }\n"
+                + "void throw_re(JNIEnv *, const char *, const char *, int) {}\n"
+                + "}\n"
+                + "namespace classes { namespace methodtypens {\n"
+                + "char string_pool_storage[4096] = {};\n"
+                + "char *string_pool = string_pool_storage;\n"
+                + "jstring cstrings[" + strings + "] = {};\n"
+                + "std::mutex cclasses_mtx[" + classes + "];\n"
+                + "jclass cclasses[" + classes + "] = {};\n"
+                + "jmethodID cmethods[" + methods + "] = {};\n"
+                + "jfieldID cfields[" + fields + "] = {};\n"
+                + body
+                + "} }\n"
+                + "}\n"
+                + "int main() {\n"
+                + "    JNINativeInterface_ functions = {};\n"
+                + "    functions.ExceptionCheck = f_exception_check;\n"
+                + "    functions.IsSameObject = f_is_same;\n"
+                + "    functions.NewWeakGlobalRef = f_new_weak;\n"
+                + "    functions.DeleteLocalRef = f_delete_local;\n"
+                + "    functions.GetStaticMethodID = f_get_static_mid;\n"
+                + "    functions.GetMethodID = f_get_mid;\n"
+                + "    functions.CallStaticObjectMethodV = f_call_static_object;\n"
+                + "    functions.CallIntMethodV = f_call_int;\n"
+                + "    JNIEnv_ env_value = {};\n"
+                + "    env_value.functions = &functions;\n"
+                + "    JNIEnv *env = &env_value;\n"
+                + "    jclass clazz = reinterpret_cast<jclass>(0x9001);\n"
+                + "    jint result = native_jvm::classes::methodtypens::" + function
+                + "(env, clazz);\n"
+                + "    return result == 2 ? 0 : 1;\n"
+                + "}\n";
+        compileAndRunCppHarness("ir-methodtype-run", source,
+                "Lowered raw MethodType LDC did not execute its use");
+    }
+
+    @Test
+    public void routesConstantDynamicResolverFailureThroughCatchDispatch() {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicCatchMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        String cpp = context.output.toString();
+        int resolverCall = cpp.indexOf("env->CallStaticObjectMethod");
+        assertTrue(resolverCall >= 0);
+        assertTrue(cpp.indexOf("env->ExceptionCheck()", resolverCall) > resolverCall);
+        assertTrue(cpp.indexOf("goto IR_CATCH_0;", resolverCall) > resolverCall);
     }
 
     @Test
@@ -1240,7 +1466,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -1255,7 +1481,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -1379,18 +1605,20 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsHandleLdcAfterAdmittedPhaseFifteenConstantsBeforeMutation() {
-        MethodNode method = unsupportedAfterPhaseFifteenLdcMethod();
+    public void admitsRawMethodHandleAndMethodTypeLdcOnPrivateCopy() {
+        MethodNode method = rawMethodConstantsMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
-        UnsupportedIrConstructException error = assertThrows(
-                UnsupportedIrConstructException.class,
-                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                        .processMethod(context));
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
-        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("utils::get_lookup(env, clazz)"));
+        assertTrue(cpp.contains("env->CallStaticObjectMethod"));
+        assertTrue(cpp.contains("env->CallObjectMethod"));
+        assertFalse(cpp.contains("native.magic"));
+        assertFalse(cpp.contains("native/magic"));
     }
 
     @Test
@@ -1627,7 +1855,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -1840,7 +2068,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -2105,7 +2333,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -2201,7 +2429,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -2374,7 +2602,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -2788,7 +3016,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertEquals(Opcodes.JSR, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -3705,6 +3933,47 @@ public class IrCompilerTest {
         return count;
     }
 
+    private String generatedFunction(String body) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(__ngen_[A-Za-z0-9_]+)\\(JNIEnv").matcher(body);
+        assertTrue(matcher.find(), "generated IR function not found");
+        return matcher.group(1);
+    }
+
+    private void compileAndRunCppHarness(
+            String directoryPrefix, String source, String runtimeFailure)
+            throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        assertTrue(gpp != null, "g++ is required for the IR runtime test");
+        assertTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are required for the IR runtime test");
+        assertTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are required for the IR runtime test");
+
+        Path directory = Files.createTempDirectory(directoryPrefix);
+        Path sourceFile = directory.resolve("harness.cpp");
+        Path binary = directory.resolve("harness");
+        Path compilerOutput = directory.resolve("gpp-output.txt");
+        Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
+        Process compileProcess = new ProcessBuilder(gpp.toString(), "-std=c++17",
+                "-I" + jniInclude, "-I" + platformInclude,
+                sourceFile.toString(), "-o", binary.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(compilerOutput.toFile())
+                .start();
+        int compileExit = compileProcess.waitFor();
+        String output = new String(Files.readAllBytes(compilerOutput),
+                StandardCharsets.UTF_8);
+        assertEquals(0, compileExit,
+                "g++ failed:\n" + output + "\nSource:\n" + source);
+
+        Process runProcess = new ProcessBuilder(binary.toString()).start();
+        assertEquals(0, runProcess.waitFor(), runtimeFailure);
+    }
+
     private String arrayJniType(String carrier) {
         return "j" + carrier.toLowerCase(Locale.ROOT);
     }
@@ -4449,20 +4718,18 @@ public class IrCompilerTest {
                 "dynamic", descriptor, bootstrap));
     }
 
-    // INVOKEDYNAMIC is now admitted by the IR frontend (it runs the shared indy
-    // preprocessor on a private copy). The still-unsupported sentinel for the
-    // reject-before-mutation tests is therefore an LDC of a ConstantDynamic:
-    // no preprocessor lowers a dynamic constant, so the ordinary
-    // unsupported-constant validation rejects it before any mutation.
+    // INVOKEDYNAMIC and the proven ConstantDynamic shapes are admitted by the
+    // IR frontend. Legacy JSR/RET subroutines remain deliberately unsupported
+    // and provide the reject-before-mutation sentinel.
     private void appendStillUnsupportedConstruct(MethodNode method) {
-        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, "example/Bootstrap",
-                "constant",
-                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
-                        + "Ljava/lang/Class;)Ljava/lang/Object;",
-                false);
-        method.instructions.add(new LdcInsnNode(new org.objectweb.asm.ConstantDynamic(
-                "constant", "Ljava/lang/Object;", bootstrap)));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        LabelNode subroutine = new LabelNode();
+        LabelNode continuation = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.JSR, subroutine));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, continuation));
+        method.instructions.add(subroutine);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.RET, 0));
+        method.instructions.add(continuation);
     }
 
     private MethodNode stringLdcMethod() {
@@ -4529,9 +4796,9 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode unsupportedAfterPhaseFifteenLdcMethod() {
+    private MethodNode rawMethodConstantsMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedAfterPhaseFifteenLdc", "()V", null, null);
+                "rawMethodConstants", "()V", null, null);
         method.instructions.add(new LdcInsnNode(""));
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new LdcInsnNode(Type.getObjectType("java/lang/String")));
@@ -4540,6 +4807,9 @@ public class IrCompilerTest {
         method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 0));
         method.instructions.add(new LdcInsnNode(new Handle(Opcodes.H_INVOKESTATIC,
                 "example/Bootstrap", "target", "()V", false)));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new LdcInsnNode(
+                Type.getMethodType("(Ljava/lang/String;I)V")));
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 2;
@@ -6296,9 +6566,8 @@ public class IrCompilerTest {
     }
 
     private MethodNode unsupportedWideOperationMethod() {
-        // Both monitors (an earlier sentinel) and INVOKEDYNAMIC are now admitted
-        // by the IR frontend. An LDC of a ConstantDynamic stays deliberately
-        // unsupported: no preprocessor lowers a dynamic constant.
+        // Monitors, INVOKEDYNAMIC, and proven ConstantDynamic shapes are now
+        // admitted. Legacy subroutines remain outside the IR subset.
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "unsupportedWide", "()V", null, null);
         appendStillUnsupportedConstruct(method);
@@ -6308,11 +6577,157 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode constantDynamicMethod() {
+    private MethodNode unlowerableConstantDynamicMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "condy", "()V", null, null);
-        appendStillUnsupportedConstruct(method);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKEVIRTUAL,
+                "example/Bootstrap", "constant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;", false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "constant", "Ljava/lang/String;", bootstrap)));
+        method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private ClassNode constantDynamicOwner() {
+        ClassNode owner = owner();
+        owner.version = Opcodes.V11;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "bootstrapCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "outerBootstrapCalls", "I", null, null));
+
+        MethodNode bootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "stringConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;",
+                null, null);
+        bootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "bootstrapCalls", "I"));
+        bootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        bootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        bootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "bootstrapCalls", "I"));
+        bootstrap.instructions.add(new LdcInsnNode("condy-value"));
+        bootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        bootstrap.maxLocals = 3;
+        bootstrap.maxStack = 2;
+        owner.methods.add(bootstrap);
+
+        MethodNode outerBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "nestedConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/String;",
+                null, null);
+        outerBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "outerBootstrapCalls", "I"));
+        outerBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        outerBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        outerBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "outerBootstrapCalls", "I"));
+        outerBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        outerBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        outerBootstrap.maxLocals = 4;
+        outerBootstrap.maxStack = 2;
+        owner.methods.add(outerBootstrap);
+
+        MethodNode intBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "intConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)I",
+                null, null);
+        intBootstrap.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 42));
+        intBootstrap.instructions.add(new InsnNode(Opcodes.IRETURN));
+        intBootstrap.maxLocals = 3;
+        intBootstrap.maxStack = 1;
+        owner.methods.add(intBootstrap);
+        return owner;
+    }
+
+    private MethodNode constantDynamicStringMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyString", "()I", null, null);
+        Handle nestedBootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "stringConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;", false);
+        ConstantDynamic nested = new ConstantDynamic(
+                "nestedMessage", "Ljava/lang/String;", nestedBootstrap);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "nestedConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/String;",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "message", "Ljava/lang/String;", bootstrap, nested)));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constantDynamicIntMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyInt", "()I", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "intConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)I", false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "answer", "I", bootstrap)));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constantDynamicCatchMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyCatch", "()I", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "stringConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;", false);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "message", "Ljava/lang/String;", bootstrap)));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/BootstrapMethodError"));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode rawMethodTypeUseMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "rawMethodType", "()I", null, null);
+        method.instructions.add(new LdcInsnNode(
+                Type.getMethodType("(Ljava/lang/String;I)V")));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/invoke/MethodType", "parameterCount", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 0;
         method.maxStack = 1;
         return method;

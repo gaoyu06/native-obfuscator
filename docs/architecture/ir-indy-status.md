@@ -65,18 +65,18 @@ fails, so a rejected method can still fall back cleanly to legacy.
 | `invokedynamic` whose bootstrap the shared `IndyPreprocessor` lowers (string concat, lambda metafactory, `ObjectMethods.bootstrap` record accessors) | **Admitted / 接纳** |
 | `LDC` of `MethodType` / `MethodHandle` produced by that preprocessing pass | **Admitted / 接纳** |
 | `invokedynamic` whose bootstrap the preprocessor cannot lower | **Rejected before mutation / 改写前拒绝** |
-| `LDC` of a `ConstantDynamic` (condy) — no preprocessor lowers a dynamic constant | **Rejected before mutation / 改写前拒绝** |
-| Raw `LDC` of `MethodHandle` / `MethodType` that is not part of an admitted `invokedynamic` lowering | **Rejected before mutation / 改写前拒绝** |
+| Proven `LDC` of a `ConstantDynamic` (condy) | **Admitted through a cached resolver / 通过缓存解析器接纳** |
+| Raw `LDC` of `MethodHandle` / `MethodType` that is not part of an admitted `invokedynamic` lowering | **Admitted through the shared LDC expansion / 通过共享 LDC 展开接纳** |
+| Condy bootstrap/argument shapes outside the proven subset | **Rejected before mutation / 改写前拒绝** |
 
-`ConstantDynamic` stays unsupported because neither `IndyPreprocessor`
-nor `LdcPreprocessor` rewrites a dynamic constant; admitting it would
-require emitting a bootstrap-resolved constant the IR backend has no
-lowering for. It is the new reject-before-mutation sentinel used by
+The exact dynamic/loadable-constant boundary and one-time resolver cache are
+documented in [ir-condy-status.md](ir-condy-status.md). Legacy `jsr`/`ret`
+subroutines are now the reject-before-mutation sentinel used by
 `rejectsUnsupportedWideOperationBeforeMutation`.
 
-`ConstantDynamic` 仍不支持：没有预处理器会改写动态常量，接纳它需要 IR
-后端能降解一个由 bootstrap 解析的常量，而它没有。因此它成为
-`rejectsUnsupportedWideOperationBeforeMutation` 的新“改写前拒绝”哨兵。
+动态/可加载常量的精确边界与一次性解析缓存见
+[ir-condy-status.md](ir-condy-status.md)。旧式 `jsr`/`ret` 子程序现作为
+`rejectsUnsupportedWideOperationBeforeMutation` 的“改写前拒绝”哨兵。
 
 ## Tests / 测试
 
@@ -87,10 +87,6 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.ir.IrCompilerTest \
   --tests by.radioegor146.CodegenModeTest
 ```
-
-Result from the JUnit XML: `IrCompilerTest` 114 tests, 0 skipped, 0
-failures, 0 errors; `CodegenModeTest` 7 tests, 0 skipped, 0 failures,
-0 errors.
 
 Coverage added on the IR path:
 
@@ -108,16 +104,17 @@ Coverage added on the IR path:
   the expected reference.
 - `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` — now also
   compiles the preprocessed indy method for a syntax-only g++ check.
-- `rejectsConstantDynamicLdcBeforeMutation` and
-  `rejectsUnsupportedWideOperationBeforeMutation` — assert condy is
-  rejected with the `LDC` opcode and the method is left unmutated.
+- `rejectsUnlowerableConstantDynamicLdcBeforeMutation` — keeps an unsafe
+  condy bootstrap as an `LDC` reject-before-mutation case.
+- `rejectsUnsupportedWideOperationBeforeMutation` — uses `jsr`/`ret` as
+  the still-rejected sentinel.
 
 ## Not done / 未完成
 
 This does not flip the CLI default off `legacy` and does not delete the
-snippet path. Condy and non-lowerable bootstraps still fall back per
-method. This is one admission increment toward the active goal, not a
-JDK-support or ship-ready claim.
+snippet path. Condy shapes and bootstraps outside the proven subset still
+fall back per method. This is one admission increment toward the active
+goal, not a JDK-support or ship-ready claim.
 
-本改动没有改掉 CLI 默认值，也没有删除 snippet 路径。condy 与无法降解的
-bootstrap 仍逐方法回退。这只是朝现行目标的一次接纳增量。
+本改动没有改掉 CLI 默认值，也没有删除 snippet 路径。证明子集之外的
+condy 与 bootstrap 仍逐方法回退。这只是朝现行目标的一次接纳增量。

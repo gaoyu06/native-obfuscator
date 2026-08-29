@@ -10,6 +10,7 @@ import by.radioegor146.ir.backend.MethodLoweringStrategy;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
+import by.radioegor146.ir.frontend.DynamicConstantSupport;
 import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.MethodNode;
@@ -56,6 +57,8 @@ public final class IrMethodCompiler {
             bytecodeBody = ConstructorSpecialMethodProcessor.createNativeBody(
                     context.clazz, context.method);
         }
+        DynamicConstantSupport.validateResolverInstallation(
+                context.clazz, bytecodeBody);
         IrMethod method = frontend.build(context.clazz.name, bytecodeBody);
         IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
         if (selectedMode == IrLoweringMode.EVAL && method.isSynchronizedMethod()) {
@@ -65,6 +68,7 @@ public final class IrMethodCompiler {
         MethodLoweringStrategy strategy = selectedMode == IrLoweringMode.EVAL
                 ? evaluatorStrategy : directStrategy;
         LoweredMethod lowered = strategy.lower(method, new LoweringContext(context));
+        DynamicConstantSupport.installResolvers(context.clazz, bytecodeBody);
 
         if (method.isSynchronizedMethod()) {
             // The IR body owns the method monitor explicitly. Clear the JVM
