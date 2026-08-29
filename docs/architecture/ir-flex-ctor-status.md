@@ -8,9 +8,11 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers four related prefix shapes:
+The constructor split now covers five related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
+- try/catch entries whose start, end, and handler labels all remain in the
+  retained prefix;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`; and
 - extra reference or primitive locals written in the prefix and read in the
@@ -105,6 +107,19 @@ cross-split exception region cannot preserve a bytecode handler edge from
 exceptions raised by the native suffix. Those cases therefore remain unsafe
 for this split shape.
 
+Try/catch entries are classified independently and fail closed:
+
+- If `start`, `end`, and `handler` all have instruction indexes below the
+  suffix start, the entry is admitted. `postProcess` clones the complete entry
+  with the retained prefix and does not expose it to the JNI shell or copy it
+  into `createNativeBody`.
+- If all three labels are in the suffix, the entry remains admitted and is
+  cloned into `createNativeBody` for IR lowering.
+- Every mixed placement is rejected, including a prefix protected range with a
+  suffix handler and a suffix protected range with a prefix handler. The
+  hidden bridge is outside every admitted prefix protected range, so native
+  suffix exceptions cannot enter a bytecode handler before the bridge.
+
 `createNativeBody` still emits the suffix only. `postProcess` keeps the prefix
 plus every admitted this/super call in the source constructor and appends one
 bridge invocation at the split. Prefix + this/super stay in bytecode; no
@@ -156,6 +171,20 @@ Synthetic bytecode unit tests in
   negative constructor arguments through the plain Java class and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`; both runs print the
   same superclass and shared-suffix field values.
+- `admitsPrefixOnlyTryCatchAndRetainsItInRewrittenConstructor` proves that the
+  independent suffix has no prefix handler while the rewritten constructor
+  retains the complete prefix exception-table entry and forwards its assigned
+  local to the suffix bridge.
+- `admitsSuffixOnlyTryCatchInNativeBody` proves that an all-suffix entry is
+  still cloned and lowered.
+- `rewrittenPrefixOnlyTryCatchConstructorPassesJvmVerification` loads the
+  rewritten owner, superclass, and hidden bridge class, then executes the catch
+  path through JVM verification.
+- `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` compares normal
+  and caught inputs through plain Java and the complete CMake/g++ JNI transform
+  under `-Xverify:all -Xcheck:jni`.
+- `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
+  assignments of the start, end, and handler labels.
 - Multi-call negatives cover prefix `ASTORE 0`, a zero-call edge into the
   suffix, try/catch spanning a chain call and suffix code, a path that executes
   two chain calls, and distinct per-call suffixes. Existing prefix-to-suffix,
@@ -172,9 +201,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 136 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 141 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 143 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 148 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
