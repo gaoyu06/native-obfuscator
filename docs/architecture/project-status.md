@@ -45,7 +45,11 @@ legacy。不能当成 JDK 支持矩阵。
   [#146](https://github.com/gaoyu06/native-obfuscator/pull/146) admits
   prefix-local branches (every target still in the prefix) so a JEP 513-style
   prologue like `if (...) throw; super(...)` can split. Prefix + this/super
-  stay in bytecode. A prefix branch into the suffix is still rejected. This
+  stay in bytecode.
+  [#160](https://github.com/gaoyu06/native-obfuscator/pull/160) admits
+  prefix `ASTORE` into reference/array parameter slots.
+  `ASTORE 0`, a prefix branch into the suffix, try/catch across the
+  split, and multiple this/super are still rejected. This
   is not a JDK 25 support badge and was not re-run as a Temurin 25 E2E.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
