@@ -113,7 +113,9 @@ public class CodegenModeTest {
                 "dynamic", "()Ljava/lang/Object;", bootstrap));
         constructor.instructions.add(new InsnNode(Opcodes.POP));
         constructor.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        constructor.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_INT));
+        constructor.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_FLOAT));
+        constructor.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        constructor.instructions.add(new InsnNode(Opcodes.FALOAD));
         constructor.instructions.add(new InsnNode(Opcodes.POP));
         constructor.instructions.add(new InsnNode(Opcodes.RETURN));
         owner.methods.add(constructor);
