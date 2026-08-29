@@ -129,9 +129,11 @@ One additional family is reduced to that same shared-join form:
   straight-line suffix copy ending in `RETURN`. The copies may be empty, in
   which case each call is immediately followed by `RETURN`.
 - The copies may not contain labels, branches, switches, throws, nested
-  constructor calls, unsafe constants, or exception-table coverage. Every
-  executable instruction and operand in every copy must match the final
-  bytecode-order copy.
+  constructor calls, unsafe constants, or exception-table coverage. A
+  try/catch entry is accepted only when its start, end, and handler labels are
+  all before the first chain call, so the complete entry remains in the
+  retained prefix. Every executable instruction and operand in every copy must
+  match the final bytecode-order copy.
 - With three or more candidates, each call's complete input sequence must
   additionally start with a direct `ALOAD 0`. In invocation order, each
   argument must then be either a direct load of a declared constructor
@@ -163,9 +165,11 @@ One bounded path-selected family uses the same single-bridge pipeline without
 normalizing the suffixes to one copied join:
 
 - Between two and eight reachable candidates are required, with an empty
-  exception table and empty chain-entry stacks. Each call must receive direct
-  `ALOAD 0` and the same locally proven argument-input families used by the
-  bounded multi-return proof.
+  chain-entry stack. Each call must receive direct `ALOAD 0` and the same
+  locally proven argument-input families used by the bounded multi-return
+  proof. Exception entries are admitted only when all three labels are before
+  the first chain call, or when all three labels are wholly inside one proven
+  nonempty suffix range.
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
   Any suffix may contain one unary `IFxx` over a direct declared int-family
   `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
@@ -189,6 +193,8 @@ normalizing the suffixes to one copied join:
   that path id, then contains every proven suffix instruction range. Two paths
   retain the existing `IFNE` dispatch. Three or more paths use a `TABLESWITCH`
   over the exact `0..n-1` range and an explicit `ACONST_NULL; ATHROW` default.
+  A wholly-in-one-suffix try/catch entry is cloned with that range and owned by
+  this independent body. Prefix-only entries stay on the bytecode wrapper.
   The source constructor retains its prefix and every chain call; each path
   loads the receiver, declared arguments, and proven extras in packed
   local-index order, then pushes its path id and invokes the same hidden bridge
@@ -205,13 +211,16 @@ any other unlisted input remain rejected.
 Distinct joins, other conditional or switch forms,
 unproven condition/switch-key loads, computed keys, escaping switch targets,
 labels or control flow in a copied suffix, nonempty exception tables for the
-post-chain forms, zero-call paths, unreachable candidates, unproven or
-suffix-only extra-local accesses, and path-selected per-call suffix sets above
-the bounded eight-call rule also remain rejected. All-identical suffix sets
-that do not match the straight-line one-join normalizer, non-identity
-`ASTORE 0` aliasing, and unlisted mixed prefix/suffix catch forms remain
-rejected. This is intentionally a narrow set of proven constructor split
-forms, not a general multi-exit constructor rewriter.
+two-call shared-join post-chain IF/switch forms, zero-call paths, unreachable
+candidates, unproven or suffix-only extra-local accesses, and path-selected
+per-call suffix sets above the bounded eight-call rule also remain rejected.
+Multi-call tables remain rejected when their labels mix prefix and suffix,
+span suffixes, cover a chain call, use a handler after the last suffix, or use
+a suffix range with a relocated prefix handler. All-identical suffix sets that
+do not match the straight-line one-join normalizer, non-identity `ASTORE 0`
+aliasing, and other unlisted catch forms remain rejected. This is intentionally
+a narrow set of proven constructor split forms, not a general multi-exit
+constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -310,6 +319,17 @@ Try/catch entries are classified independently and fail closed:
   `postProcess` omits both dead prefix blocks from the bytecode wrapper.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
+- For the bounded two-to-eight-call path-selected form, an all-suffix entry is
+  admitted only when start, end, and handler all belong to the same proven
+  suffix range. It is remapped into the independent IR body as that range is
+  appended. Entries spanning two suffixes, covering a chain call, or placing a
+  handler after the final suffix fail before constructor mutation.
+- For both the path-selected form and identical-copy normalization, an entry
+  whose three labels all precede the first chain call stays entirely in the
+  retained wrapper. Identical-copy normalization admits no suffix entry because
+  its earlier copies are removed.
+- The relocatable suffix-range/prefix-handler family remains single-super; it
+  is not admitted for multi-call constructors.
 - Every other mixed placement is rejected, including a prefix protected range
   with a suffix handler and any suffix protected range with a prefix handler
   that does not match one of the two isolated return forms.
@@ -512,10 +532,27 @@ Synthetic bytecode unit tests in
 - `admitsFourSuperCallsWithPairwiseDistinctStraightLineSuffixes` proves the
   bounded dispatch and wrapper reconstruction also retain four chain calls
   and four invocations of one hidden bridge.
+- `admitsPrefixOnlyTryCatchOnThreeImmediateReturns`,
+  `admitsPrefixOnlyTryCatchOnThreeDistinctSuffixes`, and
+  `admitsPrefixOnlyTryCatchOnTwoDistinctSuffixes` prove that the complete
+  exception entry stays on each rewritten wrapper while one hidden bridge
+  remains responsible for the selected IR body.
+- `admitsWhollyInOneSuffixTryCatchOnTwoDistinctSuffixes` proves that a table
+  owned by one suffix is cloned into the path-id-dispatched IR body and omitted
+  from the wrapper.
+- `rejectsCrossSuffixAndChainCoveringMultiSuperTryCatchBeforeMutation` checks
+  both a table whose labels span suffixes and a protected range covering a
+  chain call without allocating a hidden method.
+- `prefixOnlyMultiSuperTryCatchCompilesAndRunsWithJavaParity` runs normal and
+  throwing prefix paths under `java -Xverify:all` before and after the complete
+  CMake/g++ JNI transform.
+- `suffixOnlyDistinctMultiSuperTryCatchCompilesAndRunsWithJavaParity` exercises
+  normal and caught `IDIV` paths in one suffix plus the unchanged sibling
+  suffix under `java -Xverify:all`, requiring identical stdout.
 - `rejectsUnprovenThreeDistinctSuffixShapesBeforeMutation` and
   `rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation` keep
-  standalone-`GOTO`, skip-super, exception-table, and unproven suffix-only
-  extra-local variants fail-closed.
+  standalone-`GOTO`, skip-super, method-end-handler exception-table, and
+  unproven suffix-only extra-local variants fail-closed.
 - `admitsMultipleSuperWithImmediateSeparateReturns` proves that an immediate
   `RETURN` after each of exactly two chain calls creates a `RETURN`-only native
   body and normalizes to one retained wrapper join and one hidden bridge.
@@ -667,12 +704,11 @@ Synthetic bytecode unit tests in
   arithmetic, bitwise, or shift binary opcode using an extra local, a
   three-level nested binary input, nested or inner-tree `IDIV`/`IREM`,
   extra-local `IDIV`/`IREM` operands, a rewritten `ASTORE 0` receiver, a
-  standalone-`GOTO` suffix, a zero-call return, skip-super paths, and nonempty
-  exception tables before mutation. Other multi-call negatives
-  still cover try/catch spanning a chain
-  call and suffix code and a path that executes two chain calls. Existing
-  prefix-to-suffix, suffix-to-prefix, and
-  conditionally assigned extra-local negatives remain.
+  standalone-`GOTO` suffix, a zero-call return, and skip-super paths before
+  mutation. Other multi-call negatives still cover mixed or spanning
+  try/catch tables, a table covering a chain call, and a path that executes two
+  chain calls. Existing prefix-to-suffix, suffix-to-prefix, and conditionally
+  assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
