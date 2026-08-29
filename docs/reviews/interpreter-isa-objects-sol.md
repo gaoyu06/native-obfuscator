@@ -60,15 +60,39 @@ modify interpreter or compiler code.
 
 ## Independent verification
 
-The requested focused rerun is pending in the initial documentation commit.
-Its measured per-class counts and result will be recorded in a follow-up
-documentation-only commit.
+The requested focused command was rerun with GCC/G++, forced task execution,
+and plain Gradle output:
 
-The implementation branch records a separate 128-test run that includes
-`IrCompilerTest`. This review will report only the tests actually rerun here.
-The generated-tree comparison was not rerun; its recorded commands compare
-the complete generated `cpp/` trees, while the unchanged defaults above were
-verified directly in source.
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --console=plain \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
+  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+Result: `BUILD SUCCESSFUL`; **26 tests, 0 skipped, 0 failures, 0 errors**.
+
+```text
+MainBackendOptionTest:                   2
+InterpreterMethodEmitterTest:          14
+InterpreterRuntimeTest:                 1
+InterpreterBackendIntegrationTest:      2
+CodegenModeTest:                         7
+Total:                                  26
+```
+
+The runtime test did not skip: it compiled the ISA v4 dispatcher with
+`g++ -std=c++17 -Wall -Wextra -Werror` and its executable completed all 54
+numbered i32, i64, reference, null-branch, return, and version-mismatch checks.
+
+The implementation branch records a separate 128-test run because that command
+also includes the 102-test `IrCompilerTest`; this review did not rerun that
+class. The generated-tree comparison and the separately recorded generated
+CMake build were not rerun. The comparison commands cover complete generated
+`cpp/` trees, and the unchanged `cpp` defaults were verified directly in
+`Main.java` and the convenience API source.
 
 ## 中文摘要
 
@@ -80,3 +104,6 @@ long 仍在数值数组中占连续两个槽。空引用分支与现有整数分
 保持不变，不支持的指令会在方法变更前回退。默认后端仍为 `cpp`。
 
 Ship-ready 仍为 **No**。本次审查只修改文档，不修改解释器或编译器代码。
+独立复跑 **26/26** 项测试通过，0 skipped、0 failures、0 errors；其中运行时
+测试未跳过，并以严格 C++17 编译参数完成 54 项编号检查。实现分支记录的
+128 项测试还包含本次命令未选择的 102 项 `IrCompilerTest`。
