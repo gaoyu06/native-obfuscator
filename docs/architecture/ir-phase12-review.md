@@ -6,8 +6,8 @@ Review target: draft PR #84, `cursor/ir-compiler-phase12-6d81`, compared with
 
 ## Verdict
 
-Pass after one correctness fix, with the required focused verification pending
-on the review branch.
+Pass after one correctness fix and a successful focused verification run on
+the review branch.
 
 The constructor split remains opt-in under `--codegen=ir`; the CLI and API
 defaults remain `legacy`. The review found no change to the phase-9 array return
@@ -70,7 +70,7 @@ state, serializes the unchanged classes, and invokes the constructors.
 - `obfuscator/src/main/resources/sources/cppsnippets.properties` remains
   present.
 
-## Required re-run
+## Re-run evidence
 
 Command:
 
@@ -81,8 +81,30 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --rerun-tasks
 ```
 
-JUnit XML counts and the g++ smoke status will be recorded here from the review
-branch run. No pre-existing count is used as review evidence.
+Result: `BUILD SUCCESSFUL`.
+
+Counts read from the review branch JUnit XML:
+
+```text
+IrCompilerTest: tests=58, skipped=0, failures=0, errors=0 (time=0.69 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.097 s)
+Total: 60 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The toolchain was present (`g++ 13.3.0`, OpenJDK 21.0.10, and JNI headers).
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran unskipped in
+0.256 s. The retained
+`/tmp/ir-compile-smoke12551902791792438333/ir-smoke.cpp` unit contains 61
+`JNICALL` functions and also passed:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke12551902791792438333/ir-smoke.cpp
+```
+
+The independent command exited zero with empty diagnostics.
 
 ## Verifier-safety assessment
 

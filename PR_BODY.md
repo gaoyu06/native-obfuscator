@@ -115,15 +115,20 @@ local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留�
    必须基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）
    比较，不得改用 `master` 或仅含文档的审阅分支 #82/#83。
 2. Re-run the focused command with `CC=gcc CXX=g++ --rerun-tasks` and inspect
-   the JUnit XML. Review-branch counts will be recorded after that run.
+   the JUnit XML. Review-branch result: `IrCompilerTest` 58 plus
+   `CodegenModeTest` 2, total 60; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦命令并读取 JUnit XML。
-   审阅分支的实际计数将在该次运行后记录。
+   审阅分支结果为 `IrCompilerTest` 58 加 `CodegenModeTest` 2，共 60；跳过、
+   失败、错误均为零。
 3. With g++ and JNI headers present, require
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped
    and independently run `g++ -std=c++17 -fsyntax-only` on the retained unit.
+   The review run's unskipped smoke and independent 61-`JNICALL`-function
+   syntax check both exited zero.
    当 g++ 与 JNI headers 存在时，必须确认
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。
+   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。审阅运行中未跳过的 smoke
+   与独立的 61 个 `JNICALL` 函数语法检查均以零退出。
 4. Inspect a successful constructor rewrite: `<init>` must remain non-native,
    retain exactly its direct `this(...)`/`super(...)` prefix, invoke the hidden
    bridge with initialized `this` plus descriptor arguments, and return `V`.

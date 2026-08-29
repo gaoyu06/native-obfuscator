@@ -117,9 +117,9 @@ Result: `BUILD SUCCESSFUL`.
 Counts read directly from Gradle's JUnit XML:
 
 ```text
-IrCompilerTest: tests=57, skipped=0, failures=0, errors=0 (time=0.524 s)
-CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.085 s)
-Total: 59 tests, 0 skipped, 0 failures, 0 errors
+IrCompilerTest: tests=58, skipped=0, failures=0, errors=0 (time=0.69 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.097 s)
+Total: 60 tests, 0 skipped, 0 failures, 0 errors
 ```
 
 Phase-12 coverage includes:
@@ -130,6 +130,9 @@ Phase-12 coverage includes:
 - object and array field stores through `SetObjectField`;
 - an unsupported opcode after the constructor-chain call, proving rejection
   before constructor, output, bridge, or cache mutation;
+- valid constructors that overwrite local 0 or a forwarded reference parameter
+  before the constructor-chain call, proving verifier-safe rejection with the
+  original class still loadable and invocable;
 - serialization and JVM verification of the rewritten constructor plus hidden
   native bridge class; and
 - the retained phase-9 array-return, phase-10 field, and phase-11 interface and
@@ -145,20 +148,20 @@ openjdk version "21.0.10" 2026-01-20
 JNI headers: present
 ```
 
-`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran in 0.162 s and has
-no `<skipped>` child in the JUnit XML. Its retained 61-method translation unit
-contains the phase-12 constructor bridges and the phase-9 through phase-11
-regressions.
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran in 0.256 s and has
+no `<skipped>` child in the JUnit XML. Its retained translation unit contains
+61 `JNICALL` functions, including the phase-12 constructor bridges and the
+phase-9 through phase-11 regressions.
 
 The exact retained unit
-`/tmp/ir-compile-smoke17002103531268511540/ir-smoke.cpp` was also checked
+`/tmp/ir-compile-smoke12551902791792438333/ir-smoke.cpp` was also checked
 independently with:
 
 ```text
 g++ -std=c++17 -fsyntax-only \
   -I/usr/lib/jvm/java-21-openjdk-amd64/include \
   -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
-  /tmp/ir-compile-smoke17002103531268511540/ir-smoke.cpp
+  /tmp/ir-compile-smoke12551902791792438333/ir-smoke.cpp
 ```
 
 g++ exited zero with empty diagnostics.
