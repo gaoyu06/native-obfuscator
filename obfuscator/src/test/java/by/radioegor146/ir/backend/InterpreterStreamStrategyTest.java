@@ -19,7 +19,9 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.io.File;
@@ -126,10 +128,12 @@ public class InterpreterStreamStrategyTest {
         assertFalse(context.output.toString().contains("// IR codegen:"));
 
         int[] binaryBytecode = {
-                Opcodes.LADD, Opcodes.LSUB, Opcodes.LMUL,
+                Opcodes.LADD, Opcodes.LSUB, Opcodes.LMUL, Opcodes.LDIV, Opcodes.LREM,
                 Opcodes.LAND, Opcodes.LOR, Opcodes.LXOR
         };
-        int[] binaryEvaluator = {0x25, 0x26, 0x27, 0x2d, 0x2e, 0x2f};
+        int[] binaryEvaluator = {
+                0x25, 0x26, 0x27, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f
+        };
         for (int i = 0; i < binaryBytecode.length; i++) {
             byte[] data = lower(longBinaryMethod(
                     "longOp" + i, binaryBytecode[i])).getMethodData();
@@ -146,6 +150,40 @@ public class InterpreterStreamStrategyTest {
     }
 
     @Test
+    public void staticLongDivideUsesEvaluatorWithoutStructuredBody() {
+        MethodNode method = longBinaryMethod("divide", Opcodes.LDIV);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = context(obfuscator, method);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context, IrLoweringMode.EVAL);
+
+        byte[] data = lower(longBinaryMethod("divide", Opcodes.LDIV)).getMethodData();
+        assertLongMethod(data, 18, 0x2b, 33);
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("native_jvm::ir_eval::evaluate_i64(env, ir_method_data"));
+        assertFalse(cpp.contains("// IR codegen:"));
+        assertFalse(cpp.contains("int64_t"));
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+    }
+
+    @Test
+    public void longDivideWithCatchFallsBackBeforeShellMutation() {
+        MethodNode method = longDivideCatchMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = context(obfuscator, method);
+        IrMethod ir = new AsmToIr().build(context.clazz.name, method);
+        assertFalse(new InterpreterStreamStrategy().supports(ir));
+
+        assertThrows(UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context, IrLoweringMode.EVAL));
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+    }
+
+    @Test
     public void javaAndCppOpcodeMapsAgree() throws Exception {
         String cpp = readResource("/sources/native_jvm_eval.cpp");
         assertTrue(cpp.contains("OP_CONST_I32 = 0x01;"));
@@ -153,14 +191,14 @@ public class InterpreterStreamStrategyTest {
         assertTrue(cpp.contains("OP_RETURN_I32 = 0x22;"));
         assertTrue(cpp.contains("OP_LLOAD = 0x23;"));
         assertTrue(cpp.contains("OP_L2I = 0x2a;"));
+        assertTrue(cpp.contains("OP_LDIV = 0x2b;"));
+        assertTrue(cpp.contains("OP_LREM = 0x2c;"));
         assertTrue(cpp.contains("OP_LAND = 0x2d;"));
         assertTrue(cpp.contains("OP_LOR = 0x2e;"));
         assertTrue(cpp.contains("OP_LXOR = 0x2f;"));
         assertTrue(cpp.contains("OP_LSHL = 0x30;"));
         assertTrue(cpp.contains("OP_LSHR = 0x31;"));
         assertTrue(cpp.contains("OP_LUSHR = 0x32;"));
-        assertFalse(cpp.contains("OP_LDIV ="));
-        assertFalse(cpp.contains("OP_LREM ="));
     }
 
     @Test
@@ -206,6 +244,40 @@ public class InterpreterStreamStrategyTest {
                 harness.toString(), "-o", executable.toString());
         assertEquals(0, compileExit, read(compileLog));
         Path runLog = tempDir.resolve("run.log");
+        assertEquals(0, run(runLog, executable.toString()), read(runLog));
+    }
+
+    @Test
+    public void cppEvaluatorExecutesLongDivRemJvmEdges() throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        Assumptions.assumeTrue(gpp != null
+                && Files.isRegularFile(jniInclude.resolve("jni.h"))
+                && Files.isDirectory(platformInclude));
+
+        copyResource("/sources/native_jvm_eval.cpp",
+                tempDir.resolve("native_jvm_eval.cpp"));
+        copyResource("/sources/native_jvm_eval.hpp",
+                tempDir.resolve("native_jvm_eval.hpp"));
+
+        byte[][] streams = {
+                lower(longBinaryMethod("divide", Opcodes.LDIV)).getMethodData(),
+                lower(longBinaryMethod("remainder", Opcodes.LREM)).getMethodData()
+        };
+        Path harness = tempDir.resolve("long-div-rem-harness.cpp");
+        Files.write(harness, longDivRemRuntimeHarness(streams)
+                .getBytes(StandardCharsets.UTF_8));
+        Path executable = tempDir.resolve(
+                isWindows() ? "long-div-rem-test.exe" : "long-div-rem-test");
+        Path compileLog = tempDir.resolve("long-div-rem-compile.log");
+        int compileExit = run(compileLog, gpp.toString(), "-std=c++17",
+                "-I" + jniInclude, "-I" + platformInclude,
+                tempDir.resolve("native_jvm_eval.cpp").toString(),
+                harness.toString(), "-o", executable.toString());
+        assertEquals(0, compileExit, read(compileLog));
+        Path runLog = tempDir.resolve("long-div-rem-run.log");
         assertEquals(0, run(runLog, executable.toString()), read(runLog));
     }
 
@@ -321,6 +393,30 @@ public class InterpreterStreamStrategyTest {
         return method;
     }
 
+    private MethodNode longDivideCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "catchLongDivide", "(JJ)J", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 4));
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ArithmeticException"));
+        method.maxLocals = 5;
+        method.maxStack = 4;
+        return method;
+    }
+
     private void assertLongMethod(byte[] data, int operationOffset,
                                   int opcode, int length) {
         assertNotNull(data);
@@ -416,7 +512,76 @@ public class InterpreterStreamStrategyTest {
         return out.toString();
     }
 
+    private String longDivRemRuntimeHarness(byte[][] streams) {
+        StringBuilder out = new StringBuilder();
+        out.append("#include \"native_jvm_eval.hpp\"\n");
+        out.append("#include <cstring>\n\n");
+        for (int i = 0; i < streams.length; i++) {
+            out.append("static const std::uint8_t data").append(i).append("[] = {");
+            for (int j = 0; j < streams[i].length; j++) {
+                if (j != 0) {
+                    out.append(", ");
+                }
+                out.append(streams[i][j] & 0xff);
+            }
+            out.append("};\n");
+        }
+        out.append("\nstatic bool saw_arithmetic_exception = false;\n");
+        out.append("static const char *exception_message = nullptr;\n");
+        out.append("static jclass JNICALL fake_find_class(JNIEnv *, const char *name) {\n");
+        out.append("    if (std::strcmp(name, \"java/lang/ArithmeticException\") != 0) ")
+                .append("return nullptr;\n");
+        out.append("    return reinterpret_cast<jclass>(1);\n");
+        out.append("}\n");
+        out.append("static jint JNICALL fake_throw_new(JNIEnv *, jclass, ")
+                .append("const char *message) {\n");
+        out.append("    saw_arithmetic_exception = true;\n");
+        out.append("    exception_message = message;\n");
+        out.append("    return 0;\n");
+        out.append("}\n");
+        out.append("static void JNICALL fake_delete_local_ref(JNIEnv *, jobject) {}\n\n");
+        out.append("static int check(const std::uint8_t *data, std::size_t size, ")
+                .append("jlong left, jlong right, jlong expected, int error) {\n");
+        out.append("    const jlong args[] = { left, right };\n");
+        out.append("    return native_jvm::ir_eval::evaluate_i64(nullptr, data, size, ")
+                .append("args, 2) == expected ? 0 : error;\n");
+        out.append("}\n\n");
+        out.append("int main() {\n");
+        out.append("    int error;\n");
+        out.append("    if ((error = check(data0, sizeof(data0), -7, 3, -2, 1))) ")
+                .append("return error;\n");
+        out.append("    if ((error = check(data1, sizeof(data1), -7, 3, -1, 2))) ")
+                .append("return error;\n");
+        out.append("    if ((error = check(data0, sizeof(data0), ")
+                .append(cppLong(Long.MIN_VALUE)).append(", -1, ")
+                .append(cppLong(Long.MIN_VALUE)).append(", 3))) return error;\n");
+        out.append("    if ((error = check(data1, sizeof(data1), ")
+                .append(cppLong(Long.MIN_VALUE)).append(", -1, 0, 4))) return error;\n");
+        out.append("    JNINativeInterface_ functions{};\n");
+        out.append("    functions.FindClass = fake_find_class;\n");
+        out.append("    functions.ThrowNew = fake_throw_new;\n");
+        out.append("    functions.DeleteLocalRef = fake_delete_local_ref;\n");
+        out.append("    JNIEnv env{&functions};\n");
+        out.append("    const jlong zero_args[] = { 7, 0 };\n");
+        out.append("    if (native_jvm::ir_eval::evaluate_i64(&env, data0, ")
+                .append("sizeof(data0), zero_args, 2) != 0) return 5;\n");
+        out.append("    if (!saw_arithmetic_exception || exception_message == nullptr ")
+                .append("|| std::strcmp(exception_message, \"LDIV / by 0\") != 0) return 6;\n");
+        out.append("    saw_arithmetic_exception = false;\n");
+        out.append("    exception_message = nullptr;\n");
+        out.append("    if (native_jvm::ir_eval::evaluate_i64(&env, data1, ")
+                .append("sizeof(data1), zero_args, 2) != 0) return 7;\n");
+        out.append("    if (!saw_arithmetic_exception || exception_message == nullptr ")
+                .append("|| std::strcmp(exception_message, \"LREM % by 0\") != 0) return 8;\n");
+        out.append("    return 0;\n");
+        out.append("}\n");
+        return out.toString();
+    }
+
     private String cppLong(long value) {
+        if (value == Long.MIN_VALUE) {
+            return "static_cast<jlong>(-9223372036854775807LL - 1LL)";
+        }
         return "static_cast<jlong>(" + value + "LL)";
     }
 
