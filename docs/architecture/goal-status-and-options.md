@@ -97,10 +97,12 @@ SDK 路线新增 [#72](https://github.com/gaoyu06/native-obfuscator/pull/72)，�
 `no_sdk_hmac_sha256_v1`，以仓内 SHA-256 实现 RFC 2104 HMAC，并用公开向量
 验证；其 module suite 记录 13/13，且未运行 HMAC benchmark。
 [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) 是纯文档 Sol
-**PASS** 审阅，而不是已交付 SDK：记录 focused 1/1、完整 suite 13/13、独立
-向量核对 4/4、C ABI probe 11/11；generated-library verifier 还记录 2 个
-SHA-256 向量、4 个 HMAC 向量、9 个 `MessageDigest` case、5 个 equality case、
-5 个 string vector 与 4 个 concatenation，且未运行 HMAC benchmark。
+**PASS** 审阅，而不是已交付 SDK：记录 focused 1/1 与完整 suite 13/13（二者均
+0 failed、0 skipped），完整 suite 包含 8 个 generated fixture、2 个
+`StringPoolTest`、2 个 `ClassMethodListTest` 与 1 个 SDK integration test；
+另记录独立向量核对 4/4、C ABI probe 11/11。generated-library verifier 还记录
+2 个 SHA-256 向量、4 个 HMAC 向量、9 个 `MessageDigest` case、5 个 equality
+case、5 个 string vector 与 4 个 concatenation，且未运行 HMAC benchmark。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -186,10 +188,12 @@ stacks on #46 and exposes `NativePrimitives.hmacSha256` plus the
 SHA-256 and checking published vectors. It records a 13/13 module suite and no
 HMAC benchmark. [#75](https://github.com/gaoyu06/native-obfuscator/pull/75) is
 Sol's documentation-only **PASS** review, not a shipped SDK: it records a 1/1
-focused run, 13/13 full suite, 4/4 independent vector check, and 11/11 C ABI
-probe. Its generated-library verifier also records 2 SHA-256 vectors, 4 HMAC
-vectors, 9 `MessageDigest` cases, 5 equality cases, 5 string vectors, and 4
-concatenations; no HMAC benchmark was run.
+focused run and 13/13 full suite, both with 0 failed and 0 skipped. The full
+suite comprises 8 generated fixtures, 2 `StringPoolTest`, 2
+`ClassMethodListTest`, and 1 SDK integration test. It also records a 4/4
+independent vector check and 11/11 C ABI probe. Its generated-library verifier
+records 2 SHA-256 vectors, 4 HMAC vectors, 9 `MessageDigest` cases, 5 equality
+cases, 5 string vectors, and 4 concatenations; no HMAC benchmark was run.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
@@ -351,10 +355,11 @@ boundaries rather than generalized.
 7. #72 叠加在 #46 上，仅记录 review-stage 的
    `NativePrimitives.hmacSha256`、C ABI `no_sdk_hmac_sha256_v1`、RFC 2104
    与仓内 SHA-256 构造、公开向量、13/13 module suite，且无 HMAC benchmark。
-   #75 是纯文档 **PASS** 审阅，不是已交付 SDK；记录 focused 1/1、完整 suite
-   13/13、独立向量核对 4/4、C ABI probe 11/11，以及 verifier 的 2 个 SHA-256
-   向量、4 个 HMAC 向量、9 个 `MessageDigest` case、5 个 equality case、5 个
-   string vector、4 个 concatenation。#73 叠加在首选 #70 上，为 exact `I`、
+   #75 是纯文档 **PASS** 审阅，不是已交付 SDK；记录 focused 1/1 与完整 suite
+   13/13（二者均 0 failed、0 skipped），完整 suite 构成 8 + 2 + 2 + 1，另有
+   独立向量核对 4/4、C ABI probe 11/11，以及 verifier 的 2 个 SHA-256 向量、
+   4 个 HMAC 向量、9 个 `MessageDigest` case、5 个 equality case、5 个 string
+   vector、4 个 concatenation。#73 叠加在首选 #70 上，为 exact `I`、
    exact `J`、object/array descriptor 增加四种 instance/static field opcode；
    null receiver 以 pending NPE 走异常出口，`Z`/`B`/`C`/`S`/`F`/`D` 仍
    fallback，默认仍为 legacy，记录 47 + 2 = 49 个测试及 50-method g++ 烟测。
@@ -364,7 +369,8 @@ boundaries rather than generalized.
    `no_sdk_hmac_sha256_v1`, RFC 2104 construction with the in-tree SHA-256,
    published vectors, a 13/13 module suite, and no HMAC benchmark. #75 is a
    documentation-only **PASS** review, not a shipped SDK; it records a 1/1
-   focused run, 13/13 full suite, 4/4 independent vector check, 11/11 C ABI
+   focused run and 13/13 full suite (both 0 failed/0 skipped), a full-suite
+   breakdown of 8 + 2 + 2 + 1, a 4/4 independent vector check, 11/11 C ABI
    probe, and verifier counts of 2 SHA-256 vectors, 4 HMAC vectors,
    9 `MessageDigest` cases, 5 equality cases, 5 string vectors, and
    4 concatenations. #73 is stacked on preferred #70 and adds all four
@@ -719,7 +725,8 @@ parallel, but their order within each arrowed stack must be preserved.
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
 - #72's HMAC-SHA-256 API/C ABI remains review-stage. #75 records a
-  documentation-only **PASS** with 1/1 focused, 13/13 full-suite, 4/4
+  documentation-only **PASS** with 1/1 focused and 13/13 full-suite checks
+  (both 0 failed/0 skipped), the 8 + 2 + 2 + 1 suite breakdown, 4/4
   independent-vector, and 11/11 C-ABI checks, but it is not a shipped SDK and
   no HMAC benchmark was run.
 - #10's one local checksum-correct run shows the current transpiled-JNI path

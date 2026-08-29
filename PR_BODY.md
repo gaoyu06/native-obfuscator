@@ -42,10 +42,13 @@ phase-9 tip，也是 #73 的 base。
   Its source records published vectors, a 13/13 module suite, and no HMAC
   benchmark. This is a review-stage API, not a shipped SDK.
 - Add #75, Sol's documentation-only **PASS** review of #72. It records a 1/1
-  focused test, 13/13 full suite, 4/4 independent vector cross-check, and
-  11/11 C ABI probe. Its generated-library verifier records 2 SHA-256 vectors,
-  4 HMAC vectors, 9 `MessageDigest` cases, 5 equality cases, 5 string vectors,
-  and 4 concatenations. No HMAC benchmark was run; this is not a shipped SDK.
+  focused test and 13/13 full suite, both with 0 failed and 0 skipped; the full
+  suite comprises 8 generated fixtures, 2 `StringPoolTest`, 2
+  `ClassMethodListTest`, and 1 SDK integration test. It also records a 4/4
+  independent vector cross-check and 11/11 C ABI probe. Its generated-library
+  verifier records 2 SHA-256 vectors, 4 HMAC vectors, 9 `MessageDigest` cases,
+  5 equality cases, 5 string vectors, and 4 concatenations. No HMAC benchmark
+  was run; this is not a shipped SDK.
 - Add #73 on preferred #70: `GETFIELD`, `PUTFIELD`, `GETSTATIC`, and
   `PUTSTATIC` for exact `I`, exact `J`, and object/array descriptors. A null
   instance receiver takes the exceptional exit with a pending
@@ -93,11 +96,13 @@ phase-9 tip，也是 #73 的 base。
   `no_sdk_hmac_sha256_v1`，以及使用仓内 SHA-256 的 RFC 2104 HMAC。其来源
   记录公开向量、13/13 module suite，且未运行 HMAC benchmark。这是 review-stage
   API，不是已交付 SDK。
-- 新增 #75，即 Sol 对 #72 的纯文档 **PASS** 审阅。它记录 focused 1/1、完整
-  suite 13/13、独立向量核对 4/4 与 C ABI probe 11/11；generated-library
-  verifier 记录 2 个 SHA-256 向量、4 个 HMAC 向量、9 个 `MessageDigest`
-  case、5 个 equality case、5 个 string vector 与 4 个 concatenation。未运行
-  HMAC benchmark；这不是已交付 SDK。
+- 新增 #75，即 Sol 对 #72 的纯文档 **PASS** 审阅。它记录 focused 1/1 与完整
+  suite 13/13，二者均为 0 failed、0 skipped；完整 suite 包含 8 个 generated
+  fixture、2 个 `StringPoolTest`、2 个 `ClassMethodListTest` 与 1 个 SDK
+  integration test。它还记录独立向量核对 4/4 与 C ABI probe 11/11；
+  generated-library verifier 记录 2 个 SHA-256 向量、4 个 HMAC 向量、9 个
+  `MessageDigest` case、5 个 equality case、5 个 string vector 与 4 个
+  concatenation。未运行 HMAC benchmark；这不是已交付 SDK。
 - 新增叠加在首选 #70 上的 #73：为 exact `I`、exact `J` 与 object/array
   descriptor 增加 `GETFIELD`、`PUTFIELD`、`GETSTATIC`、`PUTSTATIC`。实例字段
   null receiver 留下 pending `NullPointerException` 并走异常出口；
@@ -182,8 +187,10 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    `NativePrimitives.hmacSha256`, `no_sdk_hmac_sha256_v1`, RFC 2104 with the
    in-tree SHA-256, published vectors, 13/13, and no HMAC benchmark.
 7. Use #75's `docs/sdk/hmac-sha256-review.md` for its documentation-only
-   **PASS**, non-shipped boundary, 1/1 focused run, 13/13 full suite, 4/4
-   independent vector check, 11/11 C ABI probe, and the verifier's
+   **PASS**, non-shipped boundary, 1/1 focused run and 13/13 full suite
+   (both 0 failed/0 skipped), full-suite breakdown of 8 generated fixtures +
+   2 `StringPoolTest` + 2 `ClassMethodListTest` + 1 SDK integration test,
+   4/4 independent vector check, 11/11 C ABI probe, and the verifier's
    2/4/9/5/5/4 SHA-256/HMAC/`MessageDigest`/equality/string/concatenation
    counts. It makes no HMAC performance claim.
 8. Use #73's `docs/architecture/ir-phase10-status.md` for all four field
@@ -221,9 +228,11 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    `NativePrimitives.hmacSha256`、`no_sdk_hmac_sha256_v1`、RFC 2104 与仓内
    SHA-256、公开向量、13/13，以及不运行 HMAC benchmark 的边界。
 7. 以 #75 的 `docs/sdk/hmac-sha256-review.md` 为准：保留纯文档 **PASS**、
-   非已交付 SDK 边界、focused 1/1、完整 suite 13/13、独立向量 4/4、C ABI
-   probe 11/11，以及 verifier 的 SHA-256/HMAC/`MessageDigest`/equality/
-   string/concatenation 计数 2/4/9/5/5/4；不作 HMAC 性能声明。
+   非已交付 SDK 边界、focused 1/1 与完整 suite 13/13（二者均 0 failed/
+   0 skipped）、完整 suite 构成 8 generated fixtures + 2 `StringPoolTest` +
+   2 `ClassMethodListTest` + 1 SDK integration test、独立向量 4/4、C ABI probe
+   11/11，以及 verifier 的 SHA-256/HMAC/`MessageDigest`/equality/string/
+   concatenation 计数 2/4/9/5/5/4；不作 HMAC 性能声明。
 8. 以 #73 的 `docs/architecture/ir-phase10-status.md` 为准：保留 exact `I`、
    exact `J`、object/array descriptor 的四种字段 opcode、pending-NPE 的
    null-receiver 异常出口、六种 primitive sort fallback、47 + 2 = 49 个测试、
