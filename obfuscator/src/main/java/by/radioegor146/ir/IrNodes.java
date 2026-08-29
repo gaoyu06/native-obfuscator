@@ -632,6 +632,11 @@ public final class IrNodes {
         private final int sourceLine;
 
         public LongBinary(IrValue result, Operation operation, IrValue left, IrValue right,
+                          int bytecodeOffset) {
+            this(result, operation, left, right, bytecodeOffset, -1);
+        }
+
+        public LongBinary(IrValue result, Operation operation, IrValue left, IrValue right,
                           int bytecodeOffset, int sourceLine) {
             this.result = requireI64(result, "result");
             this.operation = Objects.requireNonNull(operation, "operation");
