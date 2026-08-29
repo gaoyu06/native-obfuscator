@@ -712,6 +712,56 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsPrefixTryCatchEndingExactlyAtConstructorSplit() {
+        ClassNode owner = constructorOwner(
+                "example/BoundaryCatch", "java/lang/Object");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                boundaryEndingPrefixTryCatchConstructor(owner.name);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(Ljava/lang/String;I)V", nativeBody.desc);
+        assertTrue(nativeBody.tryCatchBlocks.isEmpty());
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(1, constructor.tryCatchBlocks.size());
+        TryCatchBlockNode retained = constructor.tryCatchBlocks.get(0);
+        MethodInsnNode chainCall = retainedThisOrSuperCall(constructor, owner);
+        MethodInsnNode bridgeCall = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/NumberFormatException", retained.type);
+        assertTrue(constructor.instructions.indexOf(retained.start)
+                < constructor.instructions.indexOf(chainCall));
+        assertTrue(constructor.instructions.indexOf(chainCall)
+                < constructor.instructions.indexOf(retained.end));
+        assertTrue(constructor.instructions.indexOf(retained.end)
+                < constructor.instructions.indexOf(bridgeCall));
+        assertTrue(constructor.instructions.indexOf(retained.handler)
+                < constructor.instructions.indexOf(retained.start));
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/String;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void admitsSuffixOnlyTryCatchInNativeBody() {
         ClassNode owner = constructorOwner(
                 "example/SuffixCatch", "java/lang/Object");
@@ -815,14 +865,26 @@ public class IrCompilerTest {
                 constructorOwner("example/MixedCatch", "java/lang/Object");
         for (int prefixMask = 1; prefixMask < 7; prefixMask++) {
             final int placement = prefixMask;
+            MethodNode constructor =
+                    mixedTryCatchLabelsConstructor(placement);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
             UnsupportedIrConstructException error = assertThrows(
                     UnsupportedIrConstructException.class,
-                    () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                            owner, mixedTryCatchLabelsConstructor(placement)),
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
                     "mixed try/catch label mask " + placement);
             assertTrue(error.getMessage().contains(
                     "Constructor exception regions may not cross "
                             + "the this/super split"));
+            assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+            assertEquals(opcodes, realOpcodes(constructor));
+            assertEquals(1, constructor.tryCatchBlocks.size());
+            assertTrue(context.proxyMethod == null);
+            assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
         }
     }
 
@@ -1272,6 +1334,47 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenBoundaryEndingPrefixTryCatchPassesJvmVerification()
+            throws Exception {
+        ClassNode owner = constructorOwner(
+                "example/VerifiedBoundaryCatch", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                boundaryEndingPrefixTryCatchConstructor(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+
+        InvocationTargetException caught = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(String.class)
+                        .newInstance("not-an-integer"));
+        assertTrue(caught.getCause() instanceof IllegalArgumentException);
+        assertEquals("MIXED-PREFIX-CAUGHT",
+                caught.getCause().getMessage());
+
+        InvocationTargetException bridge = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(String.class)
+                        .newInstance("41"));
+        assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        assertEquals(1, constructor.tryCatchBlocks.size());
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void prefixExtraReferenceLocalCompilesAndRunsWithJavaParity()
             throws Exception {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
@@ -1501,6 +1604,88 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native prefix-catch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void boundaryEndingPrefixTryCatchCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the boundary-catch runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the boundary-catch runtime test");
+
+        String ownerName = "example/BoundaryCatchRuntime";
+        Path directory = Files.createTempDirectory("ir-boundary-catch-run");
+        Path inputJar = directory.resolve("boundary-catch.jar");
+        Path outputDirectory = directory.resolve("output");
+        createBoundaryEndingPrefixTryCatchJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain boundary-catch Java run");
+        assertEquals(
+                "41" + System.lineSeparator()
+                        + "MIXED-PREFIX-CAUGHT" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(1, transformedConstructor.tryCatchBlocks.size());
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        TryCatchBlockNode retained =
+                transformedConstructor.tryCatchBlocks.get(0);
+        MethodInsnNode bridgeCall = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(transformedConstructor.instructions.indexOf(retained.end)
+                < transformedConstructor.instructions.indexOf(bridgeCall));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("boundary-catch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("boundary-catch CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Boundary-catch native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native boundary-catch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -5498,6 +5683,29 @@ public class IrCompilerTest {
         }
     }
 
+    private void createBoundaryEndingPrefixTryCatchJar(
+            Path jarPath, String ownerName) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                boundaryEndingPrefixTryCatchConstructor(ownerName));
+        owner.methods.add(boundaryEndingPrefixTryCatchMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperDiamondJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -6651,6 +6859,49 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode boundaryEndingPrefixTryCatchConstructor(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/String;)V", null, null);
+        LabelNode handler = new LabelNode();
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, start));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.NEW, "java/lang/IllegalArgumentException"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("MIXED-PREFIX-CAUGHT"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/IllegalArgumentException",
+                "<init>", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, "java/lang/Integer",
+                "parseInt", "(Ljava/lang/String;)I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        // This is the first node after the chain call: the protected range is
+        // wholly retained even though its end label is classified as suffix.
+        method.instructions.add(end);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/NumberFormatException"));
+        method.maxLocals = 4;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode suffixOnlyTryCatchConstructor(String owner) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
@@ -7054,6 +7305,60 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
                 "println", "(I)V", false));
+    }
+
+    private MethodNode boundaryEndingPrefixTryCatchMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("41"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner,
+                "<init>", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        LabelNode done = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("not-an-integer"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner,
+                "<init>", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(end);
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, done));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/IllegalArgumentException",
+                "getMessage", "()Ljava/lang/String;", false));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/String;)V", false));
+        method.instructions.add(done);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/IllegalArgumentException"));
+        method.maxLocals = 2;
+        method.maxStack = 4;
+        return method;
     }
 
     private MethodNode referenceParameterReassignedBeforeSuperConstructor() {

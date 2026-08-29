@@ -83,8 +83,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 context.method, 0, split.wrapperEndIndex, labels);
         List<TryCatchBlockNode> wrapperTryCatches = new ArrayList<>();
         for (TryCatchBlockNode tryCatch : retainedPrefixTryCatches) {
+            LabelNode clonedEnd = labels.get(tryCatch.end);
+            if (wrapper.indexOf(clonedEnd) < 0) {
+                // A mixed entry may end at the first suffix label. Keep that
+                // boundary immediately before the bridge so the bridge and
+                // native suffix remain outside the protected bytecode range.
+                wrapper.add(clonedEnd);
+            }
             wrapperTryCatches.add(new TryCatchBlockNode(
-                    labels.get(tryCatch.start), labels.get(tryCatch.end),
+                    labels.get(tryCatch.start), clonedEnd,
                     labels.get(tryCatch.handler), tryCatch.type));
         }
         wrapper.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -279,6 +286,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         List<TryCatchBlockNode> prefixTryCatches = new ArrayList<>();
         List<TryCatchBlockNode> suffixTryCatches = new ArrayList<>();
+        Map<LabelNode, Integer> instructionIndexes =
+                labelIndexes(constructor);
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             boolean entirelyInPrefix =
                     containsTryCatchLabels(prefixLabels, tryCatch);
@@ -288,6 +297,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 prefixTryCatches.add(tryCatch);
             } else if (entirelyInSuffix) {
                 suffixTryCatches.add(tryCatch);
+            } else if (isPrefixTryCatchEndingAtSplit(
+                    prefixLabels, suffixLabels, instructionIndexes,
+                    suffixStartIndex, tryCatch)) {
+                prefixTryCatches.add(tryCatch);
             } else {
                 throw new UnsupportedIrConstructException(
                         "Constructor exception regions may not cross the this/super split");
@@ -312,6 +325,23 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return labels.contains(tryCatch.start)
                 && labels.contains(tryCatch.end)
                 && labels.contains(tryCatch.handler);
+    }
+
+    /**
+     * Admits the one mixed placement whose exception edges remain wholly in
+     * retained bytecode: a prefix start and handler with an end label exactly
+     * at the split. Every protected instruction remains before that label, and
+     * postProcess places the bridge after its clone.
+     */
+    private static boolean isPrefixTryCatchEndingAtSplit(
+            Set<LabelNode> prefixLabels, Set<LabelNode> suffixLabels,
+            Map<LabelNode, Integer> instructionIndexes, int suffixStartIndex,
+            TryCatchBlockNode tryCatch) {
+        return prefixLabels.contains(tryCatch.start)
+                && prefixLabels.contains(tryCatch.handler)
+                && suffixLabels.contains(tryCatch.end)
+                && Integer.valueOf(suffixStartIndex).equals(
+                instructionIndexes.get(tryCatch.end));
     }
 
     private static SharedSuffix sharedSuffix(
