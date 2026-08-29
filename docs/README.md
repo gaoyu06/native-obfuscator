@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#144. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#147. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -57,6 +57,7 @@ that every phase is a separate product.
 | [benchmarks/ir-jdk17-e2e-corpus.md](benchmarks/ir-jdk17-e2e-corpus.md) | 11-fixture IR behavioral E2E on one VM; not a support badge |
 | [audit/jdk17-e2e-status.md](audit/jdk17-e2e-status.md) | Legacy-path JDK 17 harness |
 | [audit/jdk21-25-e2e-status.md](audit/jdk21-25-e2e-status.md) / [audit/jdk25-e2e-status.md](audit/jdk25-e2e-status.md) | Extra fixtures; not “JDK 25 supported” |
+| [architecture/jep472-native-access.md](architecture/jep472-native-access.md) | Output JAR `Enable-Native-Access: ALL-UNNAMED` (#145). Review: [reviews/jep472-native-access-fable.md](reviews/jep472-native-access-fable.md). Not a JDK 25 badge |
 | [benchmarks/ir-jdk17-e2e-phase17.md](benchmarks/ir-jdk17-e2e-phase17.md) | IR-mode 0/5 crashes **before** the runtime repair |
 | [architecture/ir-jdk17-runtime-fix.md](architecture/ir-jdk17-runtime-fix.md) | Same five fixtures after the repair |
 | [audit/opcode-coverage.md](audit/opcode-coverage.md) | Legacy opcode coverage notes |

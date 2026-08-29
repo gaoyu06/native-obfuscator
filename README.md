@@ -10,7 +10,7 @@ The tool still ships a **legacy** snippet-based generator as the CLI default. `m
 
 ## Current status
 
-Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#144](https://github.com/gaoyu06/native-obfuscator/pull/144). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#147](https://github.com/gaoyu06/native-obfuscator/pull/147). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
@@ -22,6 +22,7 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | JDK 21 IR fixtures | 6 `--release 21` programs matched on **one** Linux VM after the local-type split. Not “supports JDK 21” |
 | JDK 25 IR fixtures | 4 `--release 25` programs matched on **one** Linux VM (Temurin 25.0.4.1+1). 20/21 IR; one hybrid constructor left in Java; JEP 472 warning on every transformed run. Not “supports JDK 25” |
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
+| Native-access packaging | Output JARs emit `Enable-Native-Access: ALL-UNNAMED` (`java -jar`). Classpath still needs `--enable-native-access=ALL-UNNAMED`. Not “supports JDK 25” |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
 | Interpreter | `--backend=interpreter` default off (`cpp`). ISA v3: static `int` plus a first i64 slice. Not a protection product |
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |

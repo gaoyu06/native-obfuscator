@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the JDK 25 IR E2E
-[#141](https://github.com/gaoyu06/native-obfuscator/pull/141)
+Last updated after landing JEP 472 native-access packaging
+[#145](https://github.com/gaoyu06/native-obfuscator/pull/145)
 (Fable accept-with-nits
-[#144](https://github.com/gaoyu06/native-obfuscator/pull/144))
-on the post-[#140](https://github.com/gaoyu06/native-obfuscator/pull/140)
-interpreter ISA v3 tree.
+[#147](https://github.com/gaoyu06/native-obfuscator/pull/147))
+on the post-[#141](https://github.com/gaoyu06/native-obfuscator/pull/141)
+JDK 25 E2E tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -66,6 +66,14 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   wires `0x2b`/`0x2c` to phase-20 `LongDivRem`; try/catch around those ops
   still falls back.
   Sources are copied into generated `cpp/` only for this lowering.
+- **JEP 472 packaging.** Output JARs now always write
+  `Enable-Native-Access: ALL-UNNAMED` unless the input already set that
+  attribute ([#145](https://github.com/gaoyu06/native-obfuscator/pull/145);
+  Fable accept-with-nits
+  [#147](https://github.com/gaoyu06/native-obfuscator/pull/147)). `java -jar`
+  honors it; classpath launches still need
+  `--enable-native-access=ALL-UNNAMED`. `System.load` is unchanged. This is
+  not a JDK 25 support badge, and the #141 E2E warning was not re-run.
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
 默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。
@@ -133,16 +141,14 @@ reader/bench notes remain historical.
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
 - Admit intra-prefix constructor control flow so JEP 513 prologues can split
-  (`Main$Validated.<init>(I)V` leftover from #141).
-- Document and/or emit a JEP 472 `--enable-native-access` / manifest story
-  for generated `native0.Loader`. Not a JDK 25 support badge.
+  (`Main$Validated.<init>(I)V` leftover from #141; open as #146).
 - Widen the interpreter to objects and exception dispatch.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #141/#144 (JDK 25 IR
-  E2E). / 落地 #141/#144 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #145/#147 (JEP 472
+  packaging). / 落地 #145/#147 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。
