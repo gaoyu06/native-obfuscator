@@ -24,14 +24,14 @@ The compiler base was draft PR #108 commit
   `link_call_site`, and reverse-invoke preprocessor markers as intrinsics. It no
   longer emits symbolic calls to the deliberately nonexistent
   `native.magic.1.*` marker classes.
-- Signature-polymorphic `MethodHandle.invokeExact` and `invoke` calls use the
-  same generated Java trampoline strategy in IR and legacy modes. The
-  trampoline calls `MethodHandle.invoke` from bytecode, where the JVM applies
-  signature-polymorphic linkage, instead of asking JNI for an `invokeExact`
+- Signature-polymorphic `MethodHandle.invokeExact` and `invoke` calls use
+  generated Java trampolines in the original caller class in both IR and legacy
+  modes. This preserves the call-site descriptor, invocation semantics,
+  defining loader, and access rights instead of asking JNI for a polymorphic
   method ID that cannot exist at the call-site descriptor.
-- Generated trampoline classes are written to every output JAR, including
-  HotSpot output. The existing non-Android native-library embedding and eager
-  `DefineClass` path remains in place.
+- Generated reverse-invoke trampoline classes are written to every output JAR,
+  including HotSpot output. The existing non-Android native-library embedding
+  and eager `DefineClass` path remains in place for those hidden classes.
 
 The `BootstrapMethods` data used by lambda and record call sites is consumed by
 the existing invokedynamic preprocessor. If preprocessing removes every indy
@@ -170,9 +170,10 @@ Circle,Rectangle
 - `Main` / `Main$Worker`: `NestMembers` and `NestHost`;
 - `Point`: the `Record` components `int x` and `java.lang.String label`;
 - `Shape`: `PermittedSubclasses` containing `Circle` and `Rectangle`;
-- `native0.hidden.Hidden0`: major version 52 and generated `mhinvoke*` /
-  `invokereverse*` methods whose bytecode invokes
-  `java/lang/invoke/MethodHandle.invoke`.
+- `Main`: caller-local `mhinvokeexact*` methods whose bytecode invokes
+  `java/lang/invoke/MethodHandle.invokeExact` with the original descriptors;
+- `native0.hidden.Hidden0`: major version 52 and generated `invokereverse*`
+  methods whose bytecode invokes `java/lang/invoke/MethodHandle.invoke`.
 
 ## Remaining failures and boundary
 
