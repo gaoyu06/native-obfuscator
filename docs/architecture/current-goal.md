@@ -53,17 +53,17 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #201 (relocated isolated prefix handlers on
-   path-id distinct suffixes)
+   `master` after #202 (single-chain receiver-alias forwarding)
    include at least: remaining
-   constructor-split rejects (non-identity prefix `ASTORE 0` /
-   receiver-alias forwarding, unproven prefix→suffix jumps/switches,
-   other mixed prefix/suffix try/catch placements beyond
-   #171/#184/#187/#188/#200/#201 such as tables that span suffixes,
-   cover a chain call, or use a method-end handler, remaining
-   multi-super shapes such as nested/`IDIV`-as-inner trees or
-   three-or-more nested binaries, or more than eight distinct paths,
-   extras still unassigned on a bridge-taking path),
+   constructor-split rejects (multi-call `ASTORE 0` aliasing on
+   diamond / identical-copy / path-id forms, unproven
+   prefix→suffix jumps/switches, other mixed prefix/suffix
+   try/catch placements beyond #171/#184/#187/#188/#200/#201 such
+   as tables that span suffixes, cover a chain call, or use a
+   method-end handler, remaining multi-super shapes such as
+   nested/`IDIV`-as-inner trees or three-or-more nested binaries,
+   or more than eight distinct paths, extras still unassigned on a
+   bridge-taking path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
    (obsolete; reject is fine). In-tree ClassicTest / JDK fixture
