@@ -1,8 +1,12 @@
 # Reproducible JVM versus transpiled-JNI benchmark
 
-This harness measures the current generator against plain Java. It does not
-claim that the transpiler is faster, and it does not benchmark a future IR,
-interpreter, or C++ crypto SDK.
+This harness measures a transpiled shared library against plain Java. It does
+not claim that the transpiler is faster. The Gradle task uses the **legacy**
+generator unless you change the driver. Checked-in IR / evaluator result files
+under this directory are named-branch evidence; `--ir-lower=eval` is **not**
+on current `master`. Do not invent numbers. Do not back-fill the #53 eval
+median (`N/A`). Current product status:
+[../architecture/project-status.md](../architecture/project-status.md).
 
 ## Run
 

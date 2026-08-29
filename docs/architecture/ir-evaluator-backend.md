@@ -1,6 +1,12 @@
 # IR evaluator backend
 
-Status: implemented as an opt-in lowering for the current IR i32/i64 slice.
+> **Not on current `master` as compiler code.** `--ir-lower=eval` lived on a
+> sibling stack (PRs #42–#87). Documents and reader/bench notes are in-tree;
+> the flag is **not** in `Main.java` on the phase-18 line. See
+> [project-status.md](project-status.md).
+
+Status (on that sibling stack): implemented as an opt-in lowering for the
+then-current IR i32/i64 slice.
 
 ## Selection
 

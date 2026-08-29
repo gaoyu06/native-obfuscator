@@ -3,9 +3,17 @@
 ## Status and scope
 
 This document is a production plan, not a claim that the current transpiler is
-production-ready. This PR changes documentation only. It does not implement the
-IR, SDK, interpreter backend, benchmarks, or compatibility fixes described
-below.
+production-ready. Sections below that cite “evidence from `master` @ `e7ca4c8`”
+were written before preferred tips landed. After
+[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) / `master` @
+`e997d71`, the IR compiler through phase 18, the JDK 17 IR runtime repair, the
+C++ SDK through AES-256-GCM, the E2E harness, and the bench harness are in the
+tree. The CLI default is still `legacy`. Requirement 7 is still unmet. See
+[project-status.md](project-status.md) for current measurements.
+
+This file remains a plan. It does not by itself implement remaining work
+(evaluator on the phase-18 tip, interpreter backend, broader JDK corpus,
+support badges).
 
 The product goal has two supported paths:
 
@@ -19,10 +27,11 @@ The product goal has two supported paths:
 Correctness is the first gate. Native code is not presumed faster, safer, or
 harder to analyze until the corresponding harness measures it.
 
-## Evidence from the current repository
+## Evidence from the repository at `e7ca4c8` (historical)
 
-The following observations are from `master` at `e7ca4c8`, not from the research
-drafts:
+The following observations were from `master` at `e7ca4c8`, before #118.
+Several of them are now false on current `master` (classfile version 52
+stamping; “IR not implemented”). Keep them as the pre-landing baseline:
 
 - `MethodProcessor` walks ASM instructions linearly and maintains a numeric
   simulated stack pointer.

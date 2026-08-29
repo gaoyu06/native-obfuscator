@@ -1,7 +1,10 @@
 # IR Compiler Architecture
 
-Status: **Design proposal (docs only).** Nothing in this document is implemented yet.
-This PR ships architecture and a migration plan; no compiler code changes land here.
+> **Current tree:** the typed CFG IR and structured C++/JNI emitter described
+> here are on `master` as `--codegen=ir` (default remains `legacy`). Read
+> [project-status.md](project-status.md) and [ir-phase18-status.md](ir-phase18-status.md)
+> for what actually landed. This file began as a design proposal; later
+> “not implemented yet” sentences below are historical.
 
 Scope: replace the string-template snippet concatenation that currently turns JVM
 bytecode into C++ with a real, well-typed intermediate representation (IR) and a

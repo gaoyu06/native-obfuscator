@@ -1,12 +1,21 @@
 # Goal status and human options / 目标状态与人工选项
 
+> **Superseded as current-status.** Preferred tips landed on `master` via
+> [#118](https://github.com/gaoyu06/native-obfuscator/pull/118) (fast-forward to
+> `5f017e3`) and the Fable phase-18 accept note
+> [#119](https://github.com/gaoyu06/native-obfuscator/pull/119) (`e997d71`).
+> Read [project-status.md](project-status.md) for what is on `master` now.
+> This file is kept as a historical maintainer brief written when `master` was
+> still `e7ca4c8` and PRs #1–#107 were open drafts. Numbers below are evidence
+> from those named branches; they are not current-master CI.
+
 ## Executive status
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
-requests returned by `gh pr list --state all --limit 200` on 2026-08-29. PRs
-#1–#107 are all open drafts. `master` is unchanged from the preceding brief and
-contains none of their code or documentation. This refresh carries the brief
-through PR #107; the previous brief [#106](https://github.com/gaoyu06/native-obfuscator/pull/106)
+requests returned by `gh pr list --state all --limit 200` on 2026-08-29. At the
+time this brief was written, PRs #1–#107 were all open drafts and `master`
+contained none of their code. That landing later happened in #118. This refresh
+carries the brief through PR #107; the previous brief [#106](https://github.com/gaoyu06/native-obfuscator/pull/106)
 covered work through #103. Results below are evidence recorded on the named
 branch, not invented merge, review, or CI results.
 
