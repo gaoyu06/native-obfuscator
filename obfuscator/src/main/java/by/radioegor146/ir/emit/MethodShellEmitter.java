@@ -67,6 +67,15 @@ public final class MethodShellEmitter {
         boolean isStatic = Util.getFlag(method.access, Opcodes.ACC_STATIC);
         context.ret = Type.getReturnType(method.desc);
         Type[] args = Type.getArgumentTypes(method.desc);
+        if ("<init>".equals(method.name) && context.proxyMethod != null) {
+            Type[] bridgeArgs = Type.getArgumentTypes(
+                    context.proxyMethod.getMethodNode().desc);
+            if (bridgeArgs.length == 0) {
+                throw new IllegalStateException(
+                        "Constructor bridge has no receiver argument");
+            }
+            args = Arrays.copyOfRange(bridgeArgs, 1, bridgeArgs.length);
+        }
         context.argTypes = new ArrayList<>(Arrays.asList(args));
         if (!isStatic) {
             context.argTypes.add(0, Type.getType(Object.class));

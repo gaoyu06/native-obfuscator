@@ -9,6 +9,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
@@ -20,11 +21,15 @@ import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Keeps the verifier-required constructor-chain call in bytecode and moves the
@@ -67,6 +72,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         for (Type argument : Type.getArgumentTypes(context.method.desc)) {
             wrapper.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), local));
             local += argument.getSize();
+        }
+        for (ExtraLocal extra : split.extraLocals) {
+            wrapper.add(new VarInsnNode(
+                    extra.type.getOpcode(Opcodes.ILOAD), extra.index));
         }
 
         HiddenMethodsPool.HiddenMethod bridge = context.proxyMethod;
@@ -154,6 +163,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Set<Integer> widenedReferenceLocals = new HashSet<>();
         for (int i = 0; i <= callIndex; i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() == Opcodes.JSR
+                    || instruction.getOpcode() == Opcodes.RET) {
+                throw unsupported("Constructor jsr/ret bytecode is not supported",
+                        i, instruction);
+            }
             // Prefix-local branches keep both edges in the retained bytecode, so
             // the this/super call can still be reached. A branch whose target
             // lands in the suffix would skip the mandatory chain call.
@@ -232,7 +246,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         "Constructor exception regions may not cross the this/super split");
             }
         }
-        return new ConstructorSplit(callIndex, widenedReferenceLocals);
+        List<ExtraLocal> extraLocals =
+                extraLocals(constructor, callIndex);
+        return new ConstructorSplit(
+                callIndex, widenedReferenceLocals, extraLocals);
     }
 
     private static Set<Integer> forwardedReferenceLocals(MethodNode constructor) {
@@ -248,6 +265,299 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return locals;
     }
 
+    private static List<ExtraLocal> extraLocals(
+            MethodNode constructor, int callIndex) {
+        int firstExtraLocal = 1;
+        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
+            firstExtraLocal += argument.getSize();
+        }
+
+        Map<Integer, Type> suffixReads = new TreeMap<>();
+        for (int i = callIndex + 1; i < constructor.instructions.size(); i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            int local = readLocal(instruction);
+            Type type = loadType(instruction);
+            if (local < firstExtraLocal || type == null) {
+                continue;
+            }
+            Type previous = suffixReads.put(local, type);
+            if (previous != null && !previous.equals(type)) {
+                throw unsupported(
+                        "Constructor suffix reads extra local " + local
+                                + " with incompatible types",
+                        i, instruction);
+            }
+        }
+
+        Set<Integer> storedAndRead = new HashSet<>();
+        for (int i = 0; i < callIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            Type type = storeType(instruction);
+            if (type != null) {
+                int local = ((VarInsnNode) instruction).var;
+                if (local >= firstExtraLocal && suffixReads.containsKey(local)) {
+                    storedAndRead.add(local);
+                }
+            }
+        }
+        if (storedAndRead.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        int lastRequiredLocal = -1;
+        for (Integer local : storedAndRead) {
+            lastRequiredLocal = Math.max(lastRequiredLocal, local);
+        }
+
+        List<ExtraLocal> extras = new ArrayList<>();
+        int local = firstExtraLocal;
+        while (local <= lastRequiredLocal) {
+            int state = localStateAtCall(constructor, callIndex, local);
+            if ((state & LOCAL_UNASSIGNED) != 0 || state == 0) {
+                throw unsupported(
+                        "Constructor prefix extra local " + local
+                                + " is not definitely assigned on every path "
+                                + "reaching the this/super call",
+                        callIndex, constructor.instructions.get(callIndex));
+            }
+            Type type = singleStateType(state);
+            if (type == null) {
+                throw unsupported(
+                        "Constructor prefix extra local " + local
+                                + " does not have one provable type at the "
+                                + "this/super call",
+                        callIndex, constructor.instructions.get(callIndex));
+            }
+
+            Type suffixType = suffixReads.get(local);
+            if (suffixType != null && !suffixType.equals(type)) {
+                throw unsupported(
+                        "Constructor prefix extra local " + local
+                                + " is stored as " + type.getDescriptor()
+                                + " but read by the suffix as "
+                                + suffixType.getDescriptor(),
+                        callIndex, constructor.instructions.get(callIndex));
+            }
+            if (type.getSize() == 2 && suffixReads.containsKey(local + 1)) {
+                throw unsupported(
+                        "Constructor suffix reads the second slot of category-2 "
+                                + "extra local " + local,
+                        callIndex, constructor.instructions.get(callIndex));
+            }
+            extras.add(new ExtraLocal(local, type));
+            local += type.getSize();
+        }
+
+        for (Integer required : storedAndRead) {
+            boolean forwarded = false;
+            for (ExtraLocal extra : extras) {
+                if (extra.index == required) {
+                    forwarded = true;
+                    break;
+                }
+            }
+            if (!forwarded) {
+                throw unsupported(
+                        "Constructor prefix extra local " + required
+                                + " overlaps another forwarded local",
+                        callIndex, constructor.instructions.get(callIndex));
+            }
+        }
+        return extras;
+    }
+
+    private static int localStateAtCall(
+            MethodNode constructor, int callIndex, int local) {
+        int[] states = new int[callIndex + 1];
+        ArrayDeque<Integer> pending = new ArrayDeque<>();
+        states[0] = LOCAL_UNASSIGNED;
+        pending.add(0);
+        Map<LabelNode, Integer> labelIndexes = new IdentityHashMap<>();
+        for (int i = 0; i <= callIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction instanceof LabelNode) {
+                labelIndexes.put((LabelNode) instruction, i);
+            }
+        }
+
+        while (!pending.isEmpty()) {
+            int index = pending.removeFirst();
+            if (index == callIndex) {
+                continue;
+            }
+            AbstractInsnNode instruction = constructor.instructions.get(index);
+            int output = transferLocalState(states[index], instruction, local);
+            for (Integer successor :
+                    prefixSuccessors(instruction, index, callIndex, labelIndexes)) {
+                int merged = states[successor] | output;
+                if (merged != states[successor]) {
+                    states[successor] = merged;
+                    pending.add(successor);
+                }
+            }
+        }
+        return states[callIndex];
+    }
+
+    private static List<Integer> prefixSuccessors(
+            AbstractInsnNode instruction, int index, int callIndex,
+            Map<LabelNode, Integer> labelIndexes) {
+        List<Integer> successors = new ArrayList<>();
+        if (instruction instanceof JumpInsnNode) {
+            JumpInsnNode jump = (JumpInsnNode) instruction;
+            successors.add(labelIndexes.get(jump.label));
+            if (instruction.getOpcode() != Opcodes.GOTO
+                    && instruction.getOpcode() != Opcodes.JSR
+                    && index + 1 <= callIndex) {
+                successors.add(index + 1);
+            }
+            return successors;
+        }
+        if (instruction instanceof TableSwitchInsnNode) {
+            TableSwitchInsnNode table = (TableSwitchInsnNode) instruction;
+            successors.add(labelIndexes.get(table.dflt));
+            for (LabelNode label : table.labels) {
+                successors.add(labelIndexes.get(label));
+            }
+            return successors;
+        }
+        if (instruction instanceof LookupSwitchInsnNode) {
+            LookupSwitchInsnNode lookup = (LookupSwitchInsnNode) instruction;
+            successors.add(labelIndexes.get(lookup.dflt));
+            for (LabelNode label : lookup.labels) {
+                successors.add(labelIndexes.get(label));
+            }
+            return successors;
+        }
+        int opcode = instruction.getOpcode();
+        if ((opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN)
+                || opcode == Opcodes.ATHROW || opcode == Opcodes.RET) {
+            return successors;
+        }
+        if (index + 1 <= callIndex) {
+            successors.add(index + 1);
+        }
+        return successors;
+    }
+
+    private static int transferLocalState(
+            int input, AbstractInsnNode instruction, int local) {
+        Type stored = storeType(instruction);
+        if (stored != null) {
+            int storedLocal = ((VarInsnNode) instruction).var;
+            if (storedLocal == local) {
+                return stateForType(stored);
+            }
+            if (stored.getSize() == 2 && storedLocal + 1 == local) {
+                return LOCAL_UNASSIGNED;
+            }
+            if (storedLocal == local + 1) {
+                int output = input & ~(LOCAL_LONG | LOCAL_DOUBLE);
+                if ((input & (LOCAL_LONG | LOCAL_DOUBLE)) != 0) {
+                    output |= LOCAL_UNASSIGNED;
+                }
+                return output;
+            }
+        }
+        if (instruction instanceof IincInsnNode
+                && ((IincInsnNode) instruction).var == local) {
+            int output = input & LOCAL_INT;
+            if ((input & ~LOCAL_INT) != 0) {
+                output |= LOCAL_UNASSIGNED;
+            }
+            return output;
+        }
+        return input;
+    }
+
+    private static int readLocal(AbstractInsnNode instruction) {
+        if (instruction instanceof IincInsnNode) {
+            return ((IincInsnNode) instruction).var;
+        }
+        return loadType(instruction) == null
+                ? -1 : ((VarInsnNode) instruction).var;
+    }
+
+    private static Type loadType(AbstractInsnNode instruction) {
+        if (instruction instanceof IincInsnNode) {
+            return Type.INT_TYPE;
+        }
+        if (!(instruction instanceof VarInsnNode)) {
+            return null;
+        }
+        switch (instruction.getOpcode()) {
+            case Opcodes.ILOAD:
+                return Type.INT_TYPE;
+            case Opcodes.LLOAD:
+                return Type.LONG_TYPE;
+            case Opcodes.FLOAD:
+                return Type.FLOAT_TYPE;
+            case Opcodes.DLOAD:
+                return Type.DOUBLE_TYPE;
+            case Opcodes.ALOAD:
+                return Type.getType(Object.class);
+            default:
+                return null;
+        }
+    }
+
+    private static Type storeType(AbstractInsnNode instruction) {
+        if (!(instruction instanceof VarInsnNode)) {
+            return null;
+        }
+        switch (instruction.getOpcode()) {
+            case Opcodes.ISTORE:
+                return Type.INT_TYPE;
+            case Opcodes.LSTORE:
+                return Type.LONG_TYPE;
+            case Opcodes.FSTORE:
+                return Type.FLOAT_TYPE;
+            case Opcodes.DSTORE:
+                return Type.DOUBLE_TYPE;
+            case Opcodes.ASTORE:
+                return Type.getType(Object.class);
+            default:
+                return null;
+        }
+    }
+
+    private static int stateForType(Type type) {
+        switch (type.getSort()) {
+            case Type.INT:
+                return LOCAL_INT;
+            case Type.LONG:
+                return LOCAL_LONG;
+            case Type.FLOAT:
+                return LOCAL_FLOAT;
+            case Type.DOUBLE:
+                return LOCAL_DOUBLE;
+            case Type.OBJECT:
+                return LOCAL_REFERENCE;
+            default:
+                throw new IllegalArgumentException(
+                        "Unsupported constructor extra-local type " + type);
+        }
+    }
+
+    private static Type singleStateType(int state) {
+        if (state == LOCAL_INT) {
+            return Type.INT_TYPE;
+        }
+        if (state == LOCAL_LONG) {
+            return Type.LONG_TYPE;
+        }
+        if (state == LOCAL_FLOAT) {
+            return Type.FLOAT_TYPE;
+        }
+        if (state == LOCAL_DOUBLE) {
+            return Type.DOUBLE_TYPE;
+        }
+        if (state == LOCAL_REFERENCE) {
+            return Type.getType(Object.class);
+        }
+        return null;
+    }
+
     private static Type[] splitArgumentTypes(
             MethodNode constructor, ConstructorSplit split) {
         Type[] arguments = Type.getArgumentTypes(constructor.desc);
@@ -258,7 +568,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
             local += arguments[i].getSize();
         }
-        return arguments;
+        Type[] splitArguments =
+                new Type[arguments.length + split.extraLocals.size()];
+        System.arraycopy(arguments, 0, splitArguments, 0, arguments.length);
+        for (int i = 0; i < split.extraLocals.size(); i++) {
+            splitArguments[arguments.length + i] =
+                    split.extraLocals.get(i).type;
+        }
+        return splitArguments;
     }
 
     private static UnsupportedIrConstructException unsupported(
@@ -292,10 +609,31 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final class ConstructorSplit {
         private final int callIndex;
         private final Set<Integer> widenedReferenceLocals;
+        private final List<ExtraLocal> extraLocals;
 
-        private ConstructorSplit(int callIndex, Set<Integer> widenedReferenceLocals) {
+        private ConstructorSplit(
+                int callIndex, Set<Integer> widenedReferenceLocals,
+                List<ExtraLocal> extraLocals) {
             this.callIndex = callIndex;
             this.widenedReferenceLocals = widenedReferenceLocals;
+            this.extraLocals = extraLocals;
         }
     }
+
+    private static final class ExtraLocal {
+        private final int index;
+        private final Type type;
+
+        private ExtraLocal(int index, Type type) {
+            this.index = index;
+            this.type = type;
+        }
+    }
+
+    private static final int LOCAL_UNASSIGNED = 1;
+    private static final int LOCAL_INT = 1 << 1;
+    private static final int LOCAL_LONG = 1 << 2;
+    private static final int LOCAL_FLOAT = 1 << 3;
+    private static final int LOCAL_DOUBLE = 1 << 4;
+    private static final int LOCAL_REFERENCE = 1 << 5;
 }
