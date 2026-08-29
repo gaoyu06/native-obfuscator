@@ -26,7 +26,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Expected total after this increment: 205 tests (198 + 7).
+Result: 205 tests passed (198 + 7), with 0 failures, 0 errors, and
+0 skipped.
 
 ### (d) Scope and defaults
 
@@ -62,7 +63,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本次增量后的预期总数：205 项测试（198 + 7）。
+结果：205 项测试全部通过（198 + 7），0 项失败、0 项错误、0 项跳过。
 
 ### (d) 范围与默认值
 
