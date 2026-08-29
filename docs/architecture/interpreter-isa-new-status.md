@@ -51,6 +51,53 @@ initializers.
 
 ## Verification
 
-The required focused Gradle command, per-class JUnit counts, 67-check strict
-C++ runtime harness, and default-off generated-tree comparison are recorded
-after execution in the branch handoff and `PR_BODY.md`.
+The required combined command completed with `BUILD SUCCESSFUL`:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
+  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+JUnit XML counts:
+
+```text
+MainBackendOptionTest:                    2
+InterpreterMethodEmitterTest:           20
+InterpreterRuntimeTest:                  1
+InterpreterBackendIntegrationTest:       2
+IrCompilerTest:                         102
+CodegenModeTest:                          7
+Total:                                  134
+Skipped:                                  0
+Failures:                                 0
+Errors:                                   0
+```
+
+`InterpreterRuntimeTest` compiled the dispatcher with
+`g++ -std=c++17 -Wall -Wextra -Werror` and completed 67 numbered checks. The
+new checks cover successful allocation/construction/return with
+`int`/`long`/reference arguments, a caught constructor exception, an unmatched
+constructor exception, failed allocation, and invalid class/constructor
+indices. All previous integer, long, reference, and exception checks remain.
+
+The default-off proof generated both trees from the same fixture and compiler
+JAR:
+
+```text
+java -jar obfuscator/build/libs/obfuscator.jar \
+  /tmp/interpreter-new-proof-ac59/fixture.jar \
+  /tmp/interpreter-new-proof-ac59/output/default
+java -jar obfuscator/build/libs/obfuscator.jar \
+  /tmp/interpreter-new-proof-ac59/fixture.jar \
+  /tmp/interpreter-new-proof-ac59/output/explicit-cpp \
+  --backend=cpp
+diff -r \
+  /tmp/interpreter-new-proof-ac59/output/default/cpp \
+  /tmp/interpreter-new-proof-ac59/output/explicit-cpp/cpp
+# exit 0, no diff output
+```
