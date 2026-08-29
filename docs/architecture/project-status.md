@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing `IDIV`/`IREM` as inner three-level chain inputs
-[#211](https://github.com/gaoyu06/native-obfuscator/pull/211)
-(parent re-ran 281/281: 274 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `nestedIdivIremChainInputsCompileAndRunWithJavaParity`)
-on the post-[#210](https://github.com/gaoyu06/native-obfuscator/pull/210)
-three-level non-trapping tree. Active process:
+Last updated after landing four-level chain-input trees
+[#212](https://github.com/gaoyu06/native-obfuscator/pull/212)
+(parent re-ran 285/285: 278 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `fourLevelNestedChainInputsCompileAndRunWithJavaParity`)
+on the post-[#211](https://github.com/gaoyu06/native-obfuscator/pull/211)
+inner `IDIV`/`IREM` tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -194,10 +194,12 @@ legacy。不能当成 JDK 支持矩阵。
   [#211](https://github.com/gaoyu06/native-obfuscator/pull/211) admits
   `IDIV`/`IREM` as inner nodes of that same three-level walker
   (trapping stays in the retained prefix).
+  [#212](https://github.com/gaoyu06/native-obfuscator/pull/212) admits
+  exactly four binary levels of that walker.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
-  (four-or-more nested binaries),
+  (five-or-more nested binaries),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -341,6 +343,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated method-end catch handlers (#209) | 275 tests (`IrCompilerTest` 268 + `CodegenModeTest` 7). Parent re-ran 275/275 including `pathIdMethodEndHandlerCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Three-level non-trapping chain inputs (#210) | 278 tests (`IrCompilerTest` 271 + `CodegenModeTest` 7). Parent re-ran 278/278 including `threeImmediateThreeLevelSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | `IDIV`/`IREM` as inner three-level nodes (#211) | 281 tests (`IrCompilerTest` 274 + `CodegenModeTest` 7). Parent re-ran 281/281 including `nestedIdivIremChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Four-level chain-input trees (#212) | 285 tests (`IrCompilerTest` 278 + `CodegenModeTest` 7). Parent re-ran 285/285 including `fourLevelNestedChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -389,7 +392,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   prefix→suffix jumps/switches, other mixed try/catch placements
   beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
   suffixes or cover a chain call,
-  remaining multi-super shapes such as four-or-more nested
+  remaining multi-super shapes such as five-or-more nested
   binaries, extras still unassigned
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
@@ -409,9 +412,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #211 (`IDIV`/`IREM`
-  as inner three-level chain inputs). /
-  落地 #211 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #212 (four-level
+  chain-input trees). /
+  落地 #212 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
