@@ -16,7 +16,8 @@ The constructor split now covers these related prefix shapes:
 - suffix-protected try/catch entries targeting an isolated prefix handler that
   consumes the caught exception with `POP` or stores it in a safe non-receiver
   reference local with `ASTORE`, then either returns directly or uses a sole
-  `GOTO` edge to an isolated prefix `RETURN`;
+  `GOTO` edge to an isolated prefix `RETURN`, plus exact `ATHROW` and
+  `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception;
 - `ASTORE 0` writes whose stack input is proven to be the original constructor
   receiver, with every selected this/super call proven to consume that same
   receiver;
@@ -224,10 +225,11 @@ Try/catch entries are classified independently and fail closed:
   suffix start, the entry is admitted. `postProcess` clones the complete entry
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
-- Four exact mixed sequences are admitted when `start` and `end` are suffix
+- Six exact mixed sequences are admitted when `start` and `end` are suffix
   labels and `handler` is a prefix label: `POP; RETURN`,
-  `POP; GOTO ret`, `ASTORE n; RETURN`, and `ASTORE n; GOTO ret`, where
-  `ret` is a prefix label whose first executable instruction is `RETURN`.
+  `POP; GOTO ret`, `ASTORE n; RETURN`, `ASTORE n; GOTO ret`, `ATHROW`, and
+  `ASTORE n; ALOAD n; ATHROW`, where `ret` is a prefix label whose first
+  executable instruction is `RETURN`.
   Stack-map frames may separate the executable nodes. In every form the
   preceding executable instruction before `handler` must be `GOTO`, no jump or
   switch may target `handler`, and `handler` may not delimit a protected range.
@@ -235,10 +237,13 @@ Try/catch entries are classified independently and fail closed:
   switch target edge to `ret`; `ret` may not delimit a protected range, serve
   as an exception handler, or have a fallthrough predecessor.
 - The `ASTORE` forms require a nonzero reference slot that is not a category-2
-  hole. The next executable instruction must be the admitted `RETURN` or
-  `GOTO`; extra work and uses of the stored exception remain rejected. The
-  handler-local store dies on return and adds no hidden-bridge argument or
-  synthetic value.
+  hole. Return handlers require the next executable instruction to be the
+  admitted `RETURN` or `GOTO`. Rethrow handlers require the same local to be
+  loaded immediately before `ATHROW`. Extra work and other uses of the stored
+  exception remain rejected. The handler local adds no hidden-bridge argument
+  or synthetic value.
+- Rethrow handlers are admitted only in the two straight-line forms above;
+  prefix `GOTO`-to-rethrow variants remain rejected.
 - `createNativeBody` appends the isolated handler and optional return block to
   the suffix clone and preserves the original exception-table edge.
   `postProcess` omits both dead prefix blocks from the bytecode wrapper.
@@ -467,6 +472,19 @@ Synthetic bytecode unit tests in
 - `rejectsUnsafePrefixAstoreReturnHandlersBeforeMutation` covers receiver slot
   zero, a category-2 hole, extra handler work, a stored-exception use, a
   non-`RETURN` target, and an extra incoming edge to `ret`.
+- `admitsSuffixTryCatchWithIsolatedPrefixAthrowHandler` and
+  `admitsSuffixTryCatchWithIsolatedPrefixAstoreAthrowHandler` check that the
+  exact straight-line rethrow blocks and exception edges move to the
+  independent suffix while disappearing from the bytecode wrapper.
+- `rewrittenRelocatedPrefixAthrowHandlerPassesJvmVerification` loads the
+  rewritten owner plus hidden class and reaches the unresolved bridge on the
+  caught-path input after JVM verification.
+- `relocatedPrefixAthrowHandlerCompilesAndRunsWithJavaParity` compares normal
+  division and rethrown divide-by-zero paths through plain Java and the complete
+  CMake/g++ JNI transform under `java -Xverify:all -Xcheck:jni`.
+- `rejectsUnsafePrefixAthrowHandlersBeforeMutation` covers receiver slot zero,
+  `POP; ATHROW`, extra handler work, a missing reload, and another use of the
+  stored exception.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
