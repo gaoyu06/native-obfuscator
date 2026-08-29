@@ -269,7 +269,8 @@ public class NativeObfuscator {
                                  new ClassSourceBuilder(cppOutput, classNode.name, classIndexReference[0]++, stringPool)) {
                         StringBuilder instructions = new StringBuilder();
 
-                        for (int i = 0; i < classNode.methods.size(); i++) {
+                        int methodsToProcess = classNode.methods.size();
+                        for (int i = 0; i < methodsToProcess; i++) {
                             MethodNode method = classNode.methods.get(i);
 
                             if (!MethodProcessor.shouldProcess(method, selectedCodegen)) {
@@ -290,6 +291,8 @@ public class NativeObfuscator {
                                                         + "leaving constructor bytecode unchanged",
                                                 classNode.name, method.name, method.desc,
                                                 ex.getMessage());
+                                        classNode.methods.set(i, readOriginalMethod(
+                                                src, method.name, method.desc));
                                         continue;
                                     }
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
@@ -348,13 +351,21 @@ public class NativeObfuscator {
                 }
             });
 
-            if (platform == Platform.ANDROID) {
-                for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
-                    ClassWriter classWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-                    hiddenClass.accept(classWriter);
-                    Util.writeEntry(out, hiddenClass.name + ".class", classWriter.toByteArray());
+            // Hidden MethodHandle trampolines are ordinary symbolic call targets from the
+            // generated native code. Keep them loadable by the transformed application's
+            // class loader on every platform, including HOTSPOT. HOTSPOT additionally embeds
+            // them in the native library to preserve the existing eager DefineClass path.
+            for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
+                ClassWriter classWriter = new SafeClassWriter(metadataReader,
+                        ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+                hiddenClass.accept(classWriter);
+                byte[] rawData = classWriter.toByteArray();
+                Util.writeEntry(out, hiddenClass.name + ".class", rawData);
+                if (debug != null) {
+                    Util.writeEntry(debug, hiddenClass.name + ".class", rawData);
                 }
-            } else {
+            }
+            if (platform != Platform.ANDROID) {
                 for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
                     String hiddenClassFileName = "data_" + Util.escapeCppNameString(hiddenClass.name.replace('/', '_'));
 
@@ -370,10 +381,6 @@ public class NativeObfuscator {
                     List<Byte> data = new ArrayList<>(rawData.length);
                     for (byte b : rawData) {
                         data.add(b);
-                    }
-
-                    if (debug != null) {
-                        Util.writeEntry(debug, hiddenClass.name + ".class", rawData);
                     }
 
                     try (BufferedWriter hppWriter = Files.newBufferedWriter(cppOutput.resolve(hiddenClassFileName + ".hpp"))) {
@@ -460,6 +467,19 @@ public class NativeObfuscator {
         Files.write(cppDir.resolve("CMakeLists.txt"), cMakeBuilder.build().getBytes(StandardCharsets.UTF_8));
 
         return nativeDir;
+    }
+
+    private static MethodNode readOriginalMethod(byte[] classBytes, String name,
+                                                 String descriptor) {
+        ClassNode originalClass = new ClassNode(Opcodes.ASM9);
+        new ClassReader(classBytes).accept(originalClass, 0);
+        for (MethodNode method : originalClass.methods) {
+            if (method.name.equals(name) && method.desc.equals(descriptor)) {
+                return method;
+            }
+        }
+        throw new IllegalStateException(
+                "Original method not found: " + name + descriptor);
     }
 
     public Snippets getSnippets() {

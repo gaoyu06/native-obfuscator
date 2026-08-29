@@ -1,9 +1,14 @@
 package by.radioegor146.ir;
 
 import by.radioegor146.CodegenMode;
+import by.radioegor146.HiddenMethodsPool;
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
+import by.radioegor146.Platform;
+import by.radioegor146.bytecode.IndyPreprocessor;
+import by.radioegor146.bytecode.MethodHandleUtils;
+import by.radioegor146.bytecode.PreprocessorUtils;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
@@ -32,6 +37,11 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
 import java.io.File;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.WrongMethodTypeException;
+import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -51,6 +61,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class IrCompilerTest {
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
+
+    private static String identityString(String value) {
+        return value;
+    }
+
+    private static String acceptCharSequence(CharSequence value) {
+        return value.toString();
+    }
+
+    private static Object returnObject(String value) {
+        return new Object();
+    }
 
     @Test
     public void buildsAndEmitsAdd() {
@@ -217,6 +239,115 @@ public class IrCompilerTest {
                 2, owner, 0);
         compiler.processMethod(virtualInvoke);
         assertTrue(virtualInvoke.output.toString().contains("env->CallIntMethod"));
+    }
+
+    @Test
+    public void lowersPreprocessorIntrinsicsAndMethodHandleInvokesInIr() {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+
+        MethodContext locals = new MethodContext(obfuscator,
+                preprocessorLocalsMethod(), 0, owner(), 0);
+        compiler.processMethod(locals);
+        assertTrue(locals.output.toString().contains("utils::get_lookup(env, clazz)"));
+        assertTrue(locals.output.toString().contains("= classloader;"));
+        assertTrue(locals.output.toString().contains("= clazz;"));
+        assertFalse(locals.output.toString().contains("native.magic"));
+
+        MethodContext linkCallSite = new MethodContext(obfuscator,
+                linkCallSiteMethod(), 1, owner(), 0);
+        compiler.processMethod(linkCallSite);
+        assertTrue(linkCallSite.output.toString().contains("utils::link_call_site(env"));
+        assertFalse(linkCallSite.output.toString().contains("native.magic"));
+
+        MethodContext invokeReverse = new MethodContext(obfuscator,
+                invokeReverseMethod(), 2, owner(), 0);
+        compiler.processMethod(invokeReverse);
+        assertTrue(invokeReverse.output.toString().contains("env->CallStaticIntMethod"));
+        assertFalse(invokeReverse.output.toString().contains("native.magic"));
+
+        ClassNode invokeExactOwner = owner();
+        MethodContext invokeExact = new MethodContext(obfuscator,
+                methodHandleInvokeExactMethod(), 3, invokeExactOwner, 0);
+        compiler.processMethod(invokeExact);
+        assertTrue(invokeExact.output.toString().contains("env->CallStaticIntMethod"));
+        assertFalse(invokeExact.output.toString().contains("\"invokeExact\""));
+
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        ClassNode hidden = obfuscator.getHiddenMethodsPool().getClasses().get(0);
+        assertEquals("native0/hidden/Hidden0", hidden.name);
+        assertTrue(hidden.methods.stream()
+                .anyMatch(method -> method.name.startsWith("invokereverse")));
+        assertTrue(invokeExactOwner.methods.stream()
+                .anyMatch(method -> method.name.startsWith("mhinvokeexact")));
+    }
+
+    @Test
+    public void acceptsTypeDescriptorBootstrapParameterDuringIndyPreprocessing() {
+        MethodNode method = typeDescriptorBootstrapMethod();
+        new IndyPreprocessor().process(owner(), method, Platform.STD_JAVA);
+
+        boolean callsBootstrap = false;
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction
+                : method.instructions.toArray()) {
+            if (instruction instanceof LdcInsnNode
+                    && "Wrong 3 first arguments in bsm".equals(
+                    ((LdcInsnNode) instruction).cst)) {
+                throw new AssertionError("TypeDescriptor bootstrap was rejected");
+            }
+            if (instruction instanceof MethodInsnNode) {
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                callsBootstrap |= "example/Bootstrap".equals(invoke.owner)
+                        && "bootstrap".equals(invoke.name);
+            }
+        }
+        assertTrue(callsBootstrap);
+    }
+
+    @Test
+    public void generatedInvokeExactHelperPreservesExactMethodTypeChecks() throws Throwable {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode exactOwner = owner();
+        exactOwner.version = Opcodes.V1_8;
+        String callSiteDescriptor = "(Ljava/lang/String;)Ljava/lang/String;";
+        HiddenMethodsPool.HiddenMethod exactHelper = MethodHandleUtils.getInvokeHelper(
+                obfuscator, exactOwner, "invokeExact", callSiteDescriptor);
+        HiddenMethodsPool.HiddenMethod invokeHelper = MethodHandleUtils.getInvokeHelper(
+                obfuscator, exactOwner, "invoke", callSiteDescriptor);
+
+        assertEquals(exactOwner, exactHelper.getClassNode());
+        assertEquals(exactOwner, invokeHelper.getClassNode());
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+
+        ClassWriter exactWriter = new ClassWriter(
+                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+        exactOwner.accept(exactWriter);
+        Class<?> exactHelperClass =
+                new ByteArrayClassLoader().define(exactWriter.toByteArray());
+        Method exact = exactHelperClass.getMethod(exactHelper.getMethodNode().name,
+                MethodHandle.class, String.class);
+        Method invoke = exactHelperClass.getMethod(invokeHelper.getMethodNode().name,
+                MethodHandle.class, String.class);
+
+        MethodHandle exactTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "identityString",
+                MethodType.methodType(String.class, String.class));
+        MethodHandle adaptableTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "acceptCharSequence",
+                MethodType.methodType(String.class, CharSequence.class));
+        MethodHandle wrongReturnTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "returnObject",
+                MethodType.methodType(Object.class, String.class));
+
+        assertEquals("value", exact.invoke(null, exactTarget, "value"));
+        assertEquals("value", invoke.invoke(null, adaptableTarget, "value"));
+        InvocationTargetException error = assertThrows(InvocationTargetException.class,
+                () -> exact.invoke(null, adaptableTarget, "value"));
+        assertTrue(error.getCause() instanceof WrongMethodTypeException);
+        InvocationTargetException wrongReturn = assertThrows(
+                InvocationTargetException.class,
+                () -> invoke.invoke(null, wrongReturnTarget, "value"));
+        assertTrue(wrongReturn.getCause() instanceof ClassCastException);
     }
 
     @Test
@@ -3023,6 +3154,77 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode preprocessorLocalsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "preprocessorLocals", "()V", null, null);
+        method.instructions.add(PreprocessorUtils.LOOKUP_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(PreprocessorUtils.CLASSLOADER_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(PreprocessorUtils.CLASS_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode linkCallSiteMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "linkCallSite", "()V", null, null);
+        for (int i = 0; i < 6; i++) {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        }
+        method.instructions.add(PreprocessorUtils.LINK_CALL_SITE_METHOD.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private MethodNode invokeReverseMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "invokeReverse", "(Ljava/lang/invoke/MethodHandle;I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(PreprocessorUtils.INVOKE_REVERSE.apply("(I)I"));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode methodHandleInvokeExactMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "invokeExact", "(Ljava/lang/invoke/MethodHandle;I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/invoke/MethodHandle", "invokeExact", "(I)I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode typeDescriptorBootstrapMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "typeDescriptorBootstrap", "()Ljava/lang/Object;", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, "example/Bootstrap",
+                "bootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/invoke/TypeDescriptor;)"
+                        + "Ljava/lang/invoke/CallSite;",
+                false);
+        method.instructions.add(new InvokeDynamicInsnNode(
+                "dynamic", "()Ljava/lang/Object;", bootstrap));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
         return method;
     }
 

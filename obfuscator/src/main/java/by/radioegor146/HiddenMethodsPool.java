@@ -7,7 +7,9 @@ import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public class HiddenMethodsPool {
@@ -21,6 +23,8 @@ public class HiddenMethodsPool {
     private final HashMap<String, Integer> namePool = new HashMap<>();
     private final HashMap<String, HashMap<String, HiddenMethod>> methods = new HashMap<>();
     private final List<ClassNode> classes = new ArrayList<>();
+    private final Map<ClassNode, HashMap<String, HiddenMethod>> ownerMethods =
+            new IdentityHashMap<>();
 
     public static class HiddenMethod {
 
@@ -42,7 +46,13 @@ public class HiddenMethodsPool {
     }
 
     public HiddenMethod getMethod(String name, String desc, Consumer<MethodNode> creator) {
-        HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>()).get(desc);
+        return getMethod(name, desc, desc, creator);
+    }
+
+    public HiddenMethod getMethod(String name, String desc, String cacheKey,
+                                  Consumer<MethodNode> creator) {
+        HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>())
+                .get(cacheKey);
         if (existingMethod != null) {
             return existingMethod;
         }
@@ -62,8 +72,43 @@ public class HiddenMethodsPool {
         }
         classNode.methods.add(newMethod);
         HiddenMethod hiddenMethod = new HiddenMethod(classNode, newMethod);
-        methods.computeIfAbsent(name, unused -> new HashMap<>()).put(desc, hiddenMethod);
+        methods.computeIfAbsent(name, unused -> new HashMap<>()).put(cacheKey, hiddenMethod);
         return hiddenMethod;
+    }
+
+    public HiddenMethod getMethod(ClassNode owner, String name, String desc,
+                                  Consumer<MethodNode> creator) {
+        String cacheKey = name + '\0' + desc;
+        HiddenMethod existingMethod = ownerMethods
+                .computeIfAbsent(owner, unused -> new HashMap<>()).get(cacheKey);
+        if (existingMethod != null) {
+            return existingMethod;
+        }
+
+        String newName;
+        do {
+            newName = name + namePool.compute(
+                    name, (otherName, value) -> value == null ? 0 : value + 1);
+        } while (hasMethodNamed(owner, newName));
+
+        MethodNode newMethod = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC
+                | Opcodes.ACC_BRIDGE | Opcodes.ACC_SYNTHETIC,
+                newName, desc, null, new String[0]);
+        creator.accept(newMethod);
+        owner.methods.add(newMethod);
+        HiddenMethod hiddenMethod = new HiddenMethod(owner, newMethod);
+        ownerMethods.computeIfAbsent(owner, unused -> new HashMap<>())
+                .put(cacheKey, hiddenMethod);
+        return hiddenMethod;
+    }
+
+    private static boolean hasMethodNamed(ClassNode owner, String name) {
+        for (MethodNode method : owner.methods) {
+            if (method.name.equals(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public List<ClassNode> getClasses() {

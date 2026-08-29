@@ -1,6 +1,7 @@
 package by.radioegor146.instructions;
 
 import by.radioegor146.*;
+import by.radioegor146.bytecode.MethodHandleUtils;
 import by.radioegor146.bytecode.PreprocessorUtils;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -9,25 +10,8 @@ import org.objectweb.asm.tree.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Stream;
 
 public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
-
-    private static Type simplifyType(Type type) {
-        switch (type.getSort()) {
-            case Type.OBJECT:
-            case Type.ARRAY:
-                return Type.getObjectType("java/lang/Object");
-            case Type.METHOD:
-                throw new RuntimeException();
-        }
-        return type;
-    }
-
-    private static String simplifyDesc(String desc) {
-        return Type.getMethodType(simplifyType(Type.getReturnType(desc)), Arrays.stream(Type.getArgumentTypes(desc))
-                .map(MethodHandler::simplifyType).toArray(Type[]::new)).getDescriptor();
-    }
 
     @Override
     protected void process(MethodContext context, MethodInsnNode node) {
@@ -78,33 +62,8 @@ public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
         }
         if (PreprocessorUtils.isInvokeReverse(node)) {
             // stack - args, mh
-            String methodDesc = simplifyDesc(node.desc);
-            Type[] methodArguments = Type.getArgumentTypes(methodDesc);
-            methodArguments[methodArguments.length - 1] = Type.getObjectType("java/lang/invoke/MethodHandle");
-            methodDesc = Type.getMethodDescriptor(Type.getReturnType(methodDesc), methodArguments);
-            String mhDesc = simplifyDesc(Type.getMethodType(Type.getReturnType(node.desc),
-                    Util.reverse(Util.reverse(Arrays.stream(Type.getArgumentTypes(node.desc)))
-                            .skip(1)).toArray(Type[]::new)).getDescriptor());
-
-            HiddenMethodsPool.HiddenMethod hiddenMethod = context.obfuscator.getHiddenMethodsPool()
-                    .getMethod("invokereverse", methodDesc, method -> {
-                        method.visibleAnnotations = new ArrayList<>();
-                        method.visibleAnnotations.add(new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
-                        method.visibleAnnotations.add(new AnnotationNode("Ljdk/internal/vm/annotation/Hidden;"));
-                        int methodHandleIndex = 0;
-                        for (Type argument : Type.getArgumentTypes(mhDesc)) {
-                            methodHandleIndex += argument.getSize();
-                        }
-                        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, methodHandleIndex));
-                        int index = 0;
-                        for (Type argument : Type.getArgumentTypes(mhDesc)) {
-                            method.instructions.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), index));
-                            index += argument.getSize();
-                        }
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                                "java/lang/invoke/MethodHandle", "invoke", mhDesc));
-                        method.instructions.add(new InsnNode(Type.getReturnType(mhDesc).getOpcode(Opcodes.IRETURN)));
-                    });
+            HiddenMethodsPool.HiddenMethod hiddenMethod =
+                    MethodHandleUtils.getInvokeReverseHelper(context.obfuscator, node.desc);
 
             node = (MethodInsnNode) node.clone(null);
             node.name = hiddenMethod.getMethodNode().name;
@@ -116,30 +75,9 @@ public class MethodHandler extends GenericInstructionHandler<MethodInsnNode> {
                 (node.name.equals("invokeExact") || node.name.equals("invoke")) &&
                 node.getOpcode() == Opcodes.INVOKEVIRTUAL) {
             // stack - mh, args
-            String methodDesc = simplifyDesc(Type.getMethodType(Type.getReturnType(node.desc),
-                    Stream.concat(Arrays.stream(new Type[]{
-                            Type.getObjectType("java/lang/invoke/MethodHandle")
-                    }), Arrays.stream(Type.getArgumentTypes(node.desc))).toArray(Type[]::new)).getDescriptor());
-            Type[] methodArguments = Type.getArgumentTypes(methodDesc);
-            methodArguments[0] = Type.getObjectType("java/lang/invoke/MethodHandle");
-            methodDesc = Type.getMethodDescriptor(Type.getReturnType(methodDesc), methodArguments);
-            String mhDesc = simplifyDesc(node.desc);
-
-            HiddenMethodsPool.HiddenMethod hiddenMethod = context.obfuscator.getHiddenMethodsPool()
-                    .getMethod("mhinvoke", methodDesc, method -> {
-                        method.visibleAnnotations = new ArrayList<>();
-                        method.visibleAnnotations.add(new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
-                        method.visibleAnnotations.add(new AnnotationNode("Ljdk/internal/vm/annotation/Hidden;"));
-                        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-                        int index = 1;
-                        for (Type argument : Type.getArgumentTypes(mhDesc)) {
-                            method.instructions.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), index));
-                            index += argument.getSize();
-                        }
-                        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                                "java/lang/invoke/MethodHandle", "invoke", mhDesc));
-                        method.instructions.add(new InsnNode(Type.getReturnType(mhDesc).getOpcode(Opcodes.IRETURN)));
-                    });
+            HiddenMethodsPool.HiddenMethod hiddenMethod =
+                    MethodHandleUtils.getInvokeHelper(
+                            context.obfuscator, context.clazz, node.name, node.desc);
 
             node = (MethodInsnNode) node.clone(null);
             node.name = hiddenMethod.getMethodNode().name;
