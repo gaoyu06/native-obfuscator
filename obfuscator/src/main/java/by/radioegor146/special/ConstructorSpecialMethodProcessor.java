@@ -796,10 +796,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * call.
      *
      * <p>For three or more calls, only the empty-copy form is admitted. Every
-     * call must receive the original local-0 receiver and direct loads of
-     * declared constructor arguments, and must be immediately followed by
-     * RETURN. The canonical final return can then be shared by replacing every
-     * earlier return with a GOTO; this does not create multiple native exits.
+     * call must receive the original local-0 receiver and locally proven
+     * argument inputs, and must be immediately followed by RETURN. The
+     * canonical final return can then be shared by replacing every earlier
+     * return with a GOTO; this does not create multiple native exits.
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1021,8 +1021,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Restricts the 3+-return normalization to calls whose complete operand
-     * sequence is visible locally: ALOAD 0 followed only by direct loads of
-     * declared constructor arguments in invocation order.
+     * sequence is visible locally: ALOAD 0 followed by direct declared-argument
+     * loads, int-family constants, or one INEG over a direct declared
+     * int-family argument load.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1040,25 +1041,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             int inputIndex =
                     previousExecutableIndex(constructor, callIndex - 1);
             for (int i = callArguments.length - 1; i >= 0; i--) {
-                if (inputIndex < 0) {
+                Integer previousInput = previousProvenChainInput(
+                        constructor, inputIndex, callArguments[i],
+                        declaredArguments);
+                if (previousInput == null) {
                     return false;
                 }
-                AbstractInsnNode input =
-                        constructor.instructions.get(inputIndex);
-                if (!(input instanceof VarInsnNode)) {
-                    return false;
-                }
-                VarInsnNode load = (VarInsnNode) input;
-                Type declared = declaredArguments.get(load.var);
-                if (declared == null
-                        || load.getOpcode()
-                        != declared.getOpcode(Opcodes.ILOAD)
-                        || !sameInvocationCarrier(
-                        declared, callArguments[i])) {
-                    return false;
-                }
-                inputIndex =
-                        previousExecutableIndex(constructor, inputIndex - 1);
+                inputIndex = previousInput;
             }
             if (inputIndex < 0
                     || constructor.instructions.get(inputIndex).getOpcode()
@@ -1069,6 +1058,72 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return true;
+    }
+
+    private static Integer previousProvenChainInput(
+            MethodNode constructor, int inputIndex, Type expected,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isDirectDeclaredArgumentLoad(
+                input, expected, declaredArguments)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (!isIntFamily(expected)) {
+            return null;
+        }
+        if (isIntFamilyConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (input.getOpcode() != Opcodes.INEG) {
+            return null;
+        }
+        int operandIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (operandIndex < 0
+                || !isDirectDeclaredIntArgumentLoad(
+                constructor.instructions.get(operandIndex),
+                declaredArguments)) {
+            return null;
+        }
+        return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    private static boolean isDirectDeclaredArgumentLoad(
+            AbstractInsnNode input, Type expected,
+            Map<Integer, Type> declaredArguments) {
+        if (!(input instanceof VarInsnNode)) {
+            return false;
+        }
+        VarInsnNode load = (VarInsnNode) input;
+        Type declared = declaredArguments.get(load.var);
+        return declared != null
+                && load.getOpcode() == declared.getOpcode(Opcodes.ILOAD)
+                && sameInvocationCarrier(declared, expected);
+    }
+
+    private static boolean isDirectDeclaredIntArgumentLoad(
+            AbstractInsnNode input,
+            Map<Integer, Type> declaredArguments) {
+        if (!(input instanceof VarInsnNode)
+                || input.getOpcode() != Opcodes.ILOAD) {
+            return false;
+        }
+        Type declared =
+                declaredArguments.get(((VarInsnNode) input).var);
+        return declared != null && isIntFamily(declared);
+    }
+
+    private static boolean isIntFamilyConstant(AbstractInsnNode input) {
+        int opcode = input.getOpcode();
+        return opcode >= Opcodes.ICONST_M1
+                && opcode <= Opcodes.ICONST_5
+                || opcode == Opcodes.BIPUSH
+                || opcode == Opcodes.SIPUSH
+                || opcode == Opcodes.LDC
+                && ((LdcInsnNode) input).cst instanceof Integer;
     }
 
     private static boolean sameInvocationCarrier(
