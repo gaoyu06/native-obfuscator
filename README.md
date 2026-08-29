@@ -4,16 +4,17 @@ Java `.class` to C++ converter for use with JNI.
 
 The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in-process interpreter (`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
 
-**现状（中文）：** 默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。
+**现状（中文）：** 现行目标是把所有方法体迁到 typed CFG IR，停止字符串拼接生成，直到可以完整废弃 legacy。默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。
 
 ---
 
 ## Current status
 
-Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#151](https://github.com/gaoyu06/native-obfuscator/pull/151). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#151](https://github.com/gaoyu06/native-obfuscator/pull/151). Active goal: [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md). Status detail: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
+| Active goal | Move all method-body codegen onto IR, then delete the legacy snippet path. Not done. Default stays `legacy` until coverage |
 | Default generator | `legacy` (snippet / `cppsnippets.properties`) |
 | Opt-in IR | `--codegen=ir` — typed CFG through phase 20 (`LDIV`/`LREM`/`LNEG`). Per-method fallback to legacy when a construct is unsupported |
 | Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
@@ -205,6 +206,7 @@ Start at [`docs/README.md`](docs/README.md).
 
 | Doc | Role |
 | --- | --- |
+| [Current goal](docs/architecture/current-goal.md) | Active goal: IR-complete codegen, then delete legacy |
 | [Project status](docs/architecture/project-status.md) | What landed on master, what did not, what must not be claimed |
 | [IR compiler](docs/architecture/ir-compiler.md) | Typed CFG design |
 | [IR phase 18](docs/architecture/ir-phase18-status.md) | Primitive arrays and `MULTIANEWARRAY` |
