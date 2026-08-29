@@ -207,7 +207,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int diagnosticCallIndex = callIndexes.get(callIndexes.size() - 1);
         int suffixStartIndex = diagnosticCallIndex + 1;
         int wrapperEndIndex = suffixStartIndex;
-        Set<Integer> admittedJoinGotos = new HashSet<>();
+        Set<Integer> admittedPrefixSuffixBranches = new HashSet<>();
         DuplicatedSuffix duplicatedSuffix = null;
         if (callIndexes.size() > 1) {
             SharedSuffix sharedSuffix =
@@ -216,7 +216,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 suffixStartIndex = sharedSuffix.joinIndex;
                 wrapperEndIndex =
                         firstExecutableIndex(constructor, suffixStartIndex);
-                admittedJoinGotos.addAll(sharedSuffix.gotoIndexes);
+                admittedPrefixSuffixBranches.addAll(
+                        sharedSuffix.branchIndexes);
             } else {
                 duplicatedSuffix =
                         duplicatedSuffix(constructor, callIndexes);
@@ -249,12 +250,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         i, instruction);
             }
             // Prefix-local branches keep both edges in the retained bytecode, so
-            // the this/super call can still be reached. A branch whose target
-            // lands in the suffix would skip the mandatory chain call.
+            // the this/super call can still be reached. Cross-split branches are
+            // admitted only when sharedSuffix proved their exact post-call
+            // shape and validateChainControlFlow later proves one chain call on
+            // every suffix/return path.
             if (instruction instanceof JumpInsnNode) {
-                boolean admittedJoinGoto = admittedJoinGotos.contains(i);
+                boolean admittedPrefixSuffixBranch =
+                        admittedPrefixSuffixBranches.contains(i);
                 if (!prefixLabels.contains(((JumpInsnNode) instruction).label)
-                        && !admittedJoinGoto) {
+                        && !admittedPrefixSuffixBranch) {
                     throw unsupported(
                             "Constructor prefix branches across the this/super call",
                             i, instruction);
@@ -499,7 +503,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
-        Set<Integer> gotoIndexes = new HashSet<>();
+        Set<Integer> branchIndexes = new HashSet<>();
         for (int i = 0; i < callIndexes.size() - 1; i++) {
             int callIndex = callIndexes.get(i);
             int successorIndex =
@@ -509,14 +513,93 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
             AbstractInsnNode successor =
                     constructor.instructions.get(successorIndex);
-            if (!(successor instanceof JumpInsnNode)
-                    || successor.getOpcode() != Opcodes.GOTO
-                    || ((JumpInsnNode) successor).label != join) {
+            if (successor instanceof JumpInsnNode
+                    && successor.getOpcode() == Opcodes.GOTO
+                    && ((JumpInsnNode) successor).label == join) {
+                branchIndexes.add(successorIndex);
+                continue;
+            }
+
+            Integer conditionalBranch = conditionalJoinOrReturnBranch(
+                    constructor, callIndexes, i, join);
+            if (conditionalBranch == null) {
                 return null;
             }
-            gotoIndexes.add(successorIndex);
+            branchIndexes.add(conditionalBranch);
         }
-        return new SharedSuffix(joinIndex, gotoIndexes);
+        return new SharedSuffix(joinIndex, branchIndexes);
+    }
+
+    /**
+     * Proves one non-GOTO prefix-to-suffix edge. For exactly two chain calls,
+     * the first call may select the shared suffix with a declared int-family
+     * argument and otherwise return immediately:
+     *
+     * <pre>
+     * invokespecial owner-or-super.&lt;init&gt;
+     * iload declaredArgument
+     * ifne sharedSuffix
+     * return
+     * </pre>
+     *
+     * The no-handler and empty-entry-stack restrictions keep this a local
+     * control-flow proof. The full chain-count analysis subsequently proves
+     * that the join and every return are reached after exactly one chain call.
+     */
+    private static Integer conditionalJoinOrReturnBranch(
+            MethodNode constructor, List<Integer> callIndexes,
+            int callOrdinal, LabelNode join) {
+        if (callIndexes.size() != 2 || callOrdinal != 0
+                || !constructor.tryCatchBlocks.isEmpty()
+                || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
+            return null;
+        }
+
+        int loadIndex = firstExecutableIndex(
+                constructor, callIndexes.get(callOrdinal) + 1);
+        if (loadIndex >= constructor.instructions.size()) {
+            return null;
+        }
+        AbstractInsnNode load = constructor.instructions.get(loadIndex);
+        if (load.getOpcode() != Opcodes.ILOAD
+                || !isDeclaredIntArgument(
+                constructor, ((VarInsnNode) load).var)) {
+            return null;
+        }
+
+        int branchIndex = firstExecutableIndex(constructor, loadIndex + 1);
+        if (branchIndex >= constructor.instructions.size()) {
+            return null;
+        }
+        AbstractInsnNode branch = constructor.instructions.get(branchIndex);
+        if (!(branch instanceof JumpInsnNode)
+                || branch.getOpcode() != Opcodes.IFNE
+                || ((JumpInsnNode) branch).label != join) {
+            return null;
+        }
+
+        int returnIndex = firstExecutableIndex(constructor, branchIndex + 1);
+        if (returnIndex >= callIndexes.get(1)
+                || constructor.instructions.get(returnIndex).getOpcode()
+                != Opcodes.RETURN) {
+            return null;
+        }
+        return branchIndex;
+    }
+
+    private static boolean isDeclaredIntArgument(
+            MethodNode constructor, int candidateLocal) {
+        int local = 1;
+        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
+            if (local == candidateLocal) {
+                int sort = argument.getSort();
+                return sort == Type.BOOLEAN || sort == Type.BYTE
+                        || sort == Type.CHAR || sort == Type.SHORT
+                        || sort == Type.INT;
+            }
+            local += argument.getSize();
+        }
+        return false;
     }
 
     /**
@@ -2049,11 +2132,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static final class SharedSuffix {
         private final int joinIndex;
-        private final Set<Integer> gotoIndexes;
+        private final Set<Integer> branchIndexes;
 
-        private SharedSuffix(int joinIndex, Set<Integer> gotoIndexes) {
+        private SharedSuffix(int joinIndex, Set<Integer> branchIndexes) {
             this.joinIndex = joinIndex;
-            this.gotoIndexes = gotoIndexes;
+            this.branchIndexes = branchIndexes;
         }
     }
 
