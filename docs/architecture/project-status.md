@@ -37,9 +37,11 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
   caching remains on the legacy path.
 - **Opt-in interpreter.** `--backend=interpreter` (default `cpp`) lowers a
-  narrow static `int` slice to an ISA-v1 opcode stream plus a C++17 `switch`
-  dispatcher. Fable independently accepted the first increment with nits
-  ([#125](https://github.com/gaoyu06/native-obfuscator/pull/125)).
+  narrow static `int` slice to an opcode stream plus a C++17 `switch`
+  dispatcher. First increment [#124](https://github.com/gaoyu06/native-obfuscator/pull/124)
+  (Fable accept-with-nits [#125](https://github.com/gaoyu06/native-obfuscator/pull/125));
+  ISA v2 [#127](https://github.com/gaoyu06/native-obfuscator/pull/127) adds
+  multiply, bitwise ops, shifts, `INEG`, and `IDIV`/`IREM`.
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
 默认仍是 `--codegen=legacy` 与 `--backend=cpp`。IR 与解释器都需显式打开。
@@ -102,9 +104,10 @@ describe are **not** on current `master`.
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
 - Port the evaluator onto the current IR+interpreter tip, or keep it archived.
-- Widen the #124 interpreter ISA beyond the static `int` slice.
-- Admit `LUSHR` / `LXOR` so the #122 bench kernels can stay on IR.
-- Local-type mismatch on the two JDK 21 `RecordPatternsE2E` methods.
+- Widen the interpreter beyond the static `int` slice (long ops, objects).
+- Land [#128](https://github.com/gaoyu06/native-obfuscator/pull/128) (`LUSHR` /
+  `LXOR`) and [#126](https://github.com/gaoyu06/native-obfuscator/pull/126)
+  (JDK 21 E2E + local-type fix); they overlap `AsmToIr.java`.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答

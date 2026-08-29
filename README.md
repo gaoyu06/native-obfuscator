@@ -21,7 +21,7 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | JDK 17 IR fixtures | 11 `--release 17` programs matched HotSpot stdout on **one** Linux x86-64 VM under `--codegen=ir`. That is not a product “supports JDK 17” badge |
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
-| Interpreter | `--backend=interpreter` default off (`cpp`). Narrow static `int` ISA v1. Not a protection product |
+| Interpreter | `--backend=interpreter` default off (`cpp`). Static `int` ISA v2 (add/sub/mul/bitwise/shift/neg/div/rem). Not a protection product |
 | Shared evaluator | `--ir-lower=eval` remains a sibling stack; **not** on current `master` |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Native output can be much slower than HotSpot. No global “faster than Java” claim. Prefer a whitelist |
