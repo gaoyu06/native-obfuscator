@@ -2373,9 +2373,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves at most one FADD, FSUB, or FMUL over two float leaves. The
-     * separate one-level budget keeps nested float binaries fail-closed;
-     * FDIV, FREM, and FNEG are not admitted.
+     * Proves at most one FADD, FSUB, FMUL, FDIV, or FREM over two float
+     * leaves. The separate one-level budget keeps nested float binaries
+     * fail-closed; FNEG is not admitted.
      */
     private static Integer previousProvenFloatChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2388,7 +2388,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int opcode = input.getOpcode();
         if (opcode != Opcodes.FADD
                 && opcode != Opcodes.FSUB
-                && opcode != Opcodes.FMUL) {
+                && opcode != Opcodes.FMUL
+                && opcode != Opcodes.FDIV
+                && opcode != Opcodes.FREM) {
             return previousProvenFloatChainLeaf(
                     constructor, inputIndex, declaredArguments);
         }

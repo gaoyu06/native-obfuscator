@@ -73,9 +73,9 @@ The constructor split now covers these related prefix shapes:
   declared long-argument loads, `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or
   the admitted single-load `LNEG`, and whose shift counts remain proven
   int-family leaves;
-  one leaf-only `FADD`, `FSUB`, or `FMUL` for a float argument, whose leaves
-  are declared float-argument loads, `FCONST_0`, `FCONST_1`, `FCONST_2`, or
-  `LDC` of `Float`;
+  one leaf-only `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` for a float
+  argument, whose leaves are declared float-argument loads, `FCONST_0`,
+  `FCONST_1`, `FCONST_2`, or `LDC` of `Float`;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -196,11 +196,11 @@ One additional family is reduced to that same shared-join form:
   preserving Java long wrapping, negate semantics, bitwise semantics, JVM
   divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
   without reproducing those semantics in C++.
-- A float call argument may instead contain exactly one `FADD`, `FSUB`, or
-  `FMUL` over two non-recursive float leaves. A float leaf must be a matching
-  declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
-  `Float`. This proof has its own one-level binary budget: nested float
-  binaries, `FDIV`, `FREM`, `FNEG`, extra-local float loads, and computed
+- A float call argument may instead contain exactly one `FADD`, `FSUB`,
+  `FMUL`, `FDIV`, or `FREM` over two non-recursive float leaves. A float leaf
+  must be a matching declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`,
+  `FCONST_2`, or `LDC` of `Float`. This proof has its own one-level binary
+  budget: nested float binaries, `FNEG`, extra-local float loads, and computed
   double or reference inputs remain rejected. The admitted arithmetic stays
   in the retained bytecode prefix, preserving Java evaluation order, rounding,
   signed-zero, infinity, and NaN behavior without reproducing float arithmetic
@@ -818,6 +818,16 @@ Synthetic bytecode unit tests in
   both float shapes through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring exactly matching finite-value
   stdout.
+- `admitsThreeImmediateReturnsWithFdivAndFremOfProvenChainInputs` checks
+  leaf-only float division and remainder while retaining all three matching
+  operations, all three chain calls, two join `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateFdivFremSuperReturnsPassJvmVerification` selects all
+  three paths for both admitted opcodes and reaches each unresolved hidden
+  bridge only after the rewritten Java 8 classes pass JVM verification.
+- `threeImmediateFdivFremSuperReturnsCompileAndRunWithJavaParity` exercises
+  both float shapes with nonzero constant divisors through plain Java and the
+  complete CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring
+  exactly matching finite-value stdout.
 - `admitsThreeImmediateReturnsWithLsubAndLmulOfProvenChainInputs` checks the
   former `long-lsub` and `long-lmul` leftovers with only declared long loads
   and `LCONST_1` as operands, retaining all arithmetic and chain calls behind
@@ -887,8 +897,8 @@ Synthetic bytecode unit tests in
   mutation. The remaining non-int-family negative continues to reject `DADD`
   and `AALOAD`.
 - `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps nested float
-  binaries, extra-local float operands, `FDIV`, `FREM`, and `FNEG` fail-closed
-  without constructor or hidden-method mutation.
+  binaries, extra-local float operands, and `FNEG` fail-closed without
+  constructor or hidden-method mutation.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join
