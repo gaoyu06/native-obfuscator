@@ -289,7 +289,8 @@ public final class AsmToIr {
                         break;
                     case AbstractInsnNode.JUMP_INSN:
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
-                                || isBinaryIntJump(opcode) || isReferenceNullJump(opcode);
+                                || isBinaryIntJump(opcode) || isReferenceNullJump(opcode)
+                                || isReferenceCompareJump(opcode);
                         break;
                     case AbstractInsnNode.TABLESWITCH_INSN:
                     case AbstractInsnNode.LOOKUPSWITCH_INSN:
@@ -711,6 +712,9 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
         } else if (isReferenceNullJump(opcode)) {
+            popType(stack, IrType.REFERENCE, instruction);
+        } else if (isReferenceCompareJump(opcode)) {
+            popType(stack, IrType.REFERENCE, instruction);
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.TABLESWITCH || opcode == Opcodes.LOOKUPSWITCH) {
             popType(stack, IrType.I32, instruction);
@@ -1381,6 +1385,19 @@ public final class AsmToIr {
                             : IrNodes.ReferenceBranch.Condition.IS_NON_NULL;
             block.setTerminator(new IrNodes.ReferenceBranch(condition, reference,
                     irBlocks.get(target), irBlocks.get(rawBlock.getSuccessors().get(1)),
+                    instruction.getOriginalIndex()));
+            return;
+        }
+        if (isReferenceCompareJump(jump.getOpcode())) {
+            IrValue compareRight = pop(state, IrType.REFERENCE, instruction);
+            IrValue compareLeft = pop(state, IrType.REFERENCE, instruction);
+            IrNodes.ReferenceCompareBranch.Condition condition =
+                    jump.getOpcode() == Opcodes.IF_ACMPEQ
+                            ? IrNodes.ReferenceCompareBranch.Condition.EQ
+                            : IrNodes.ReferenceCompareBranch.Condition.NE;
+            block.setTerminator(new IrNodes.ReferenceCompareBranch(condition, compareLeft,
+                    compareRight, irBlocks.get(target),
+                    irBlocks.get(rawBlock.getSuccessors().get(1)),
                     instruction.getOriginalIndex()));
             return;
         }
@@ -2283,6 +2300,10 @@ public final class AsmToIr {
 
     private static boolean isReferenceNullJump(int opcode) {
         return opcode == Opcodes.IFNULL || opcode == Opcodes.IFNONNULL;
+    }
+
+    private static boolean isReferenceCompareJump(int opcode) {
+        return opcode == Opcodes.IF_ACMPEQ || opcode == Opcodes.IF_ACMPNE;
     }
 
     private static IrNodes.Branch.Condition condition(int opcode) {

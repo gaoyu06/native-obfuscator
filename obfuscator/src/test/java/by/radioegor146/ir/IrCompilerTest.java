@@ -1196,6 +1196,107 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersIfAcmpAsReferenceCompareConditions() {
+        MethodNode acmpEqMethod =
+                referenceCompareBranchMethod("acmpEq", Opcodes.IF_ACMPEQ);
+        IrMethod acmpEq = frontend.build("example/Math", acmpEqMethod);
+        IrNodes.ReferenceCompareBranch acmpEqBranch = acmpEq.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.ReferenceCompareBranch.class::isInstance)
+                .map(IrNodes.ReferenceCompareBranch.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrNodes.ReferenceCompareBranch.Condition.EQ,
+                acmpEqBranch.getCondition());
+        assertEquals(IrType.REFERENCE, acmpEqBranch.getLeft().getType());
+        assertEquals(IrType.REFERENCE, acmpEqBranch.getRight().getType());
+        assertTrue(acmpEq.toString().contains("branch if_acmpeq %arg0, %arg1"));
+        String acmpEqCpp = emitter.emitBody(acmpEq);
+        assertTrue(acmpEqCpp.contains("if (arg0 == arg1) {"));
+        assertFalse(acmpEqCpp.contains("nullptr) {"));
+
+        MethodNode acmpNeMethod =
+                referenceCompareBranchMethod("acmpNe", Opcodes.IF_ACMPNE);
+        IrMethod acmpNe = frontend.build("example/Math", acmpNeMethod);
+        IrNodes.ReferenceCompareBranch acmpNeBranch = acmpNe.getBlocks().stream()
+                .map(IrBlock::getTerminator)
+                .filter(IrNodes.ReferenceCompareBranch.class::isInstance)
+                .map(IrNodes.ReferenceCompareBranch.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrNodes.ReferenceCompareBranch.Condition.NE,
+                acmpNeBranch.getCondition());
+        assertEquals(IrType.REFERENCE, acmpNeBranch.getLeft().getType());
+        assertEquals(IrType.REFERENCE, acmpNeBranch.getRight().getType());
+        assertTrue(acmpNe.toString().contains("branch if_acmpne %arg0, %arg1"));
+        String acmpNeCpp = emitter.emitBody(acmpNe);
+        assertTrue(acmpNeCpp.contains("if (arg0 != arg1) {"));
+        assertFalse(acmpNeCpp.contains("nullptr) {"));
+    }
+
+    @Test
+    public void executesReferenceCompareSemanticsWhenToolchainAvailable() throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        assertTrue(gpp != null, "g++ is required for the IR IF_ACMP runtime test");
+        assertTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are required for the IR IF_ACMP runtime test");
+        assertTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are required for the IR IF_ACMP runtime test");
+
+        String acmpEqBody = emitter.emitBody(
+                frontend.build("example/Math",
+                        referenceCompareBranchMethod("acmpEq", Opcodes.IF_ACMPEQ)));
+        String acmpNeBody = emitter.emitBody(
+                frontend.build("example/Math",
+                        referenceCompareBranchMethod("acmpNe", Opcodes.IF_ACMPNE)));
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "static jint acmpeq(jobject arg0, jobject arg1) {\n"
+                + acmpEqBody
+                + "}\n"
+                + "static jint acmpne(jobject arg0, jobject arg1) {\n"
+                + acmpNeBody
+                + "}\n"
+                + "int main() {\n"
+                + "    jobject a = reinterpret_cast<jobject>(0x1000);\n"
+                + "    jobject b = reinterpret_cast<jobject>(0x2000);\n"
+                + "    jobject n = nullptr;\n"
+                // IF_ACMPEQ: 1 iff the same object, both null included.
+                + "    if (acmpeq(a, a) != 1) return 1;\n"
+                + "    if (acmpeq(a, b) != 0) return 2;\n"
+                + "    if (acmpeq(n, n) != 1) return 3;\n"
+                + "    if (acmpeq(a, n) != 0) return 4;\n"
+                // IF_ACMPNE: complement of the above.
+                + "    if (acmpne(a, a) != 0) return 5;\n"
+                + "    if (acmpne(a, b) != 1) return 6;\n"
+                + "    if (acmpne(n, n) != 0) return 7;\n"
+                + "    if (acmpne(a, n) != 1) return 8;\n"
+                + "    return 0;\n"
+                + "}\n";
+
+        Path directory = Files.createTempDirectory("ir-acmp-run");
+        Path sourceFile = directory.resolve("acmp.cpp");
+        Path binary = directory.resolve("acmp");
+        Path compilerOutput = directory.resolve("gpp-output.txt");
+        Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
+        Process compileProcess = new ProcessBuilder(gpp.toString(), "-std=c++17",
+                "-I" + jniInclude, "-I" + platformInclude,
+                sourceFile.toString(), "-o", binary.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(compilerOutput.toFile())
+                .start();
+        int compileExit = compileProcess.waitFor();
+        String output = new String(Files.readAllBytes(compilerOutput),
+                StandardCharsets.UTF_8);
+        assertEquals(0, compileExit, "g++ failed:\n" + output + "\nSource:\n" + source);
+
+        Process runProcess = new ProcessBuilder(binary.toString()).start();
+        assertEquals(0, runProcess.waitFor(),
+                "Generated IF_ACMP lowering took a wrong identity branch");
+    }
+
+    @Test
     public void popsUnusedCategoryOneInvokeResult() {
         MethodNode method = popUnusedCategoryOneInvokeResultMethod();
         IrMethod ir = frontend.build("example/Math", method);
@@ -2391,7 +2492,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.IF_ACMPEQ, error.getOpcode());
+        assertEquals(Opcodes.MONITORENTER, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -2592,6 +2693,8 @@ public class IrCompilerTest {
                 nullableInterfaceInvokeMethod(), returnAllocatedObjectMethod(),
                 returnNullMethod(), referenceNullBranchMethod("ifNull", Opcodes.IFNULL),
                 referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL),
+                referenceCompareBranchMethod("acmpEq", Opcodes.IF_ACMPEQ),
+                referenceCompareBranchMethod("acmpNe", Opcodes.IF_ACMPNE),
                 popUnusedCategoryOneInvokeResultMethod(), returnAllocatedObjectArrayMethod(),
                 instanceFieldRoundTripMethod(
                         "instanceIntField", "I", Opcodes.ILOAD, Opcodes.IRETURN),
@@ -4181,6 +4284,27 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode referenceCompareBranchMethod(String name, int opcode) {
+        // Returns 1 when the branch is taken, 0 on fall-through. For
+        // IF_ACMPEQ the branch is taken on identity equality, so the method
+        // returns 1 iff the two references are the same object (both null
+        // included). For IF_ACMPNE it returns 1 iff they differ.
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(Ljava/lang/Object;Ljava/lang/Object;)I", null, null);
+        LabelNode taken = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new JumpInsnNode(opcode, taken));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(taken);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode popUnusedCategoryOneInvokeResultMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "discardInvokeResult", "()V", null, null);
@@ -5438,24 +5562,18 @@ public class IrCompilerTest {
     }
 
     private MethodNode unsupportedWideOperationMethod() {
-        // LCMP, the previous sentinel here, is now admitted by the IR
-        // frontend. IF_ACMPEQ (a reference compare branch) is still outside
-        // the supported subset, so it keeps proving that rejection happens
-        // before any mutation.
+        // IF_ACMPEQ, the previous sentinel here, is now admitted by the IR
+        // frontend. MONITORENTER is still outside the supported subset (this
+        // PR does not implement monitors), so it keeps proving that rejection
+        // happens before any mutation.
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedWide", "(Ljava/lang/Object;Ljava/lang/Object;)I",
+                "unsupportedWide", "(Ljava/lang/Object;)V",
                 null, null);
-        LabelNode same = new LabelNode();
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        method.instructions.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, same));
-        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-        method.instructions.add(new InsnNode(Opcodes.IRETURN));
-        method.instructions.add(same);
-        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        method.instructions.add(new InsnNode(Opcodes.IRETURN));
-        method.maxLocals = 2;
-        method.maxStack = 2;
+        method.instructions.add(new InsnNode(Opcodes.MONITORENTER));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
         return method;
     }
 
