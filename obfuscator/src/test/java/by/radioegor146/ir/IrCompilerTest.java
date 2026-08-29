@@ -934,7 +934,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.POP2, error.getOpcode());
+        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -1412,7 +1412,103 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.POP2, error.getOpcode());
+        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void lowersEveryLegalWideStackShuffleFormAsSsaReordering() {
+        Type object = Type.getType(Object.class);
+
+        assertStackShuffle("dup2Form1IntFloat", Opcodes.DUP2,
+                new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE}, 0, 1, 0, 1);
+        assertStackShuffle("dup2Form1ReferenceInt", Opcodes.DUP2,
+                new Type[]{object, Type.INT_TYPE}, 0, 1, 0, 1);
+        assertStackShuffle("dup2Form2Long", Opcodes.DUP2,
+                new Type[]{Type.LONG_TYPE}, 0, 0);
+        assertStackShuffle("dup2Form2Double", Opcodes.DUP2,
+                new Type[]{Type.DOUBLE_TYPE}, 0, 0);
+
+        assertStackShuffle("dupX2Form1", Opcodes.DUP_X2,
+                new Type[]{object, Type.INT_TYPE, Type.FLOAT_TYPE}, 2, 0, 1, 2);
+        assertStackShuffle("dupX2Form2Long", Opcodes.DUP_X2,
+                new Type[]{Type.LONG_TYPE, object}, 1, 0, 1);
+        assertStackShuffle("dupX2Form2Double", Opcodes.DUP_X2,
+                new Type[]{Type.DOUBLE_TYPE, Type.FLOAT_TYPE}, 1, 0, 1);
+
+        assertStackShuffle("dup2X1Form1", Opcodes.DUP2_X1,
+                new Type[]{Type.FLOAT_TYPE, object, Type.INT_TYPE}, 1, 2, 0, 1, 2);
+        assertStackShuffle("dup2X1Form2Long", Opcodes.DUP2_X1,
+                new Type[]{object, Type.LONG_TYPE}, 1, 0, 1);
+        assertStackShuffle("dup2X1Form2Double", Opcodes.DUP2_X1,
+                new Type[]{Type.INT_TYPE, Type.DOUBLE_TYPE}, 1, 0, 1);
+
+        assertStackShuffle("dup2X2Form1", Opcodes.DUP2_X2,
+                new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE, object, Type.INT_TYPE},
+                2, 3, 0, 1, 2, 3);
+        assertStackShuffle("dup2X2Form2Long", Opcodes.DUP2_X2,
+                new Type[]{Type.FLOAT_TYPE, object, Type.LONG_TYPE}, 2, 0, 1, 2);
+        assertStackShuffle("dup2X2Form2Double", Opcodes.DUP2_X2,
+                new Type[]{object, Type.INT_TYPE, Type.DOUBLE_TYPE}, 2, 0, 1, 2);
+        assertStackShuffle("dup2X2Form3Long", Opcodes.DUP2_X2,
+                new Type[]{Type.LONG_TYPE, object, Type.FLOAT_TYPE}, 1, 2, 0, 1, 2);
+        assertStackShuffle("dup2X2Form3Double", Opcodes.DUP2_X2,
+                new Type[]{Type.DOUBLE_TYPE, Type.INT_TYPE, object}, 1, 2, 0, 1, 2);
+        assertStackShuffle("dup2X2Form4LongDouble", Opcodes.DUP2_X2,
+                new Type[]{Type.LONG_TYPE, Type.DOUBLE_TYPE}, 1, 0, 1);
+        assertStackShuffle("dup2X2Form4DoubleLong", Opcodes.DUP2_X2,
+                new Type[]{Type.DOUBLE_TYPE, Type.LONG_TYPE}, 1, 0, 1);
+
+        assertStackShuffle("pop2Form1IntFloat", Opcodes.POP2,
+                new Type[]{object, Type.INT_TYPE, Type.FLOAT_TYPE}, 0);
+        assertStackShuffle("pop2Form1ReferenceInt", Opcodes.POP2,
+                new Type[]{Type.FLOAT_TYPE, object, Type.INT_TYPE}, 0);
+        assertStackShuffle("pop2Form2Long", Opcodes.POP2,
+                new Type[]{Type.INT_TYPE, Type.LONG_TYPE}, 0);
+        assertStackShuffle("pop2Form2Double", Opcodes.POP2,
+                new Type[]{Type.FLOAT_TYPE, Type.DOUBLE_TYPE}, 0);
+    }
+
+    @Test
+    public void rejectsIllegalWideStackShuffleMixesBeforeMutation() {
+        Type object = Type.getType(Object.class);
+        assertIllegalStackShuffle(Opcodes.DUP2,
+                Type.LONG_TYPE, Type.INT_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP_X2,
+                object, Type.DOUBLE_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP2_X1,
+                Type.LONG_TYPE, Type.FLOAT_TYPE, object);
+        assertIllegalStackShuffle(Opcodes.DUP2_X1,
+                Type.DOUBLE_TYPE, Type.LONG_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP2_X2,
+                Type.LONG_TYPE, Type.INT_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP2_X2,
+                Type.DOUBLE_TYPE, object, Type.LONG_TYPE);
+        assertIllegalStackShuffle(Opcodes.POP2,
+                Type.DOUBLE_TYPE, Type.FLOAT_TYPE);
+    }
+
+    @Test
+    public void compilesSwapThenDup2X1MeasuredPattern() {
+        Type object = Type.getType(Object.class);
+        assertStackShuffle("swapThenDup2X1",
+                new int[]{Opcodes.SWAP, Opcodes.DUP2_X1},
+                new Type[]{object, Type.INT_TYPE, Type.FLOAT_TYPE},
+                2, 1, 0, 2, 1);
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseSeventeenStackOpsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseSeventeenStackOpsMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.NEWARRAY, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -2001,6 +2097,41 @@ public class IrCompilerTest {
                 swapMethod(Type.INT_TYPE, Type.FLOAT_TYPE),
                 swapMethod(Type.FLOAT_TYPE, Type.getType(Object.class)),
                 swapMethod(Type.getType(Object.class), Type.INT_TYPE),
+                stackShuffleMethod("smokeDup2Form1", new int[]{Opcodes.DUP2},
+                        new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE},
+                        new int[]{0, 1, 0, 1}),
+                stackShuffleMethod("smokeDup2Form2", new int[]{Opcodes.DUP2},
+                        new Type[]{Type.LONG_TYPE}, new int[]{0, 0}),
+                stackShuffleMethod("smokeDupX2Form1", new int[]{Opcodes.DUP_X2},
+                        new Type[]{Type.getType(Object.class), Type.INT_TYPE, Type.FLOAT_TYPE},
+                        new int[]{2, 0, 1, 2}),
+                stackShuffleMethod("smokeDupX2Form2", new int[]{Opcodes.DUP_X2},
+                        new Type[]{Type.DOUBLE_TYPE, Type.getType(Object.class)},
+                        new int[]{1, 0, 1}),
+                stackShuffleMethod("smokeSwapDup2X1Form1",
+                        new int[]{Opcodes.SWAP, Opcodes.DUP2_X1},
+                        new Type[]{Type.getType(Object.class), Type.INT_TYPE, Type.FLOAT_TYPE},
+                        new int[]{2, 1, 0, 2, 1}),
+                stackShuffleMethod("smokeDup2X1Form2", new int[]{Opcodes.DUP2_X1},
+                        new Type[]{Type.INT_TYPE, Type.DOUBLE_TYPE}, new int[]{1, 0, 1}),
+                stackShuffleMethod("smokeDup2X2Form1", new int[]{Opcodes.DUP2_X2},
+                        new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE,
+                                Type.getType(Object.class), Type.INT_TYPE},
+                        new int[]{2, 3, 0, 1, 2, 3}),
+                stackShuffleMethod("smokeDup2X2Form2", new int[]{Opcodes.DUP2_X2},
+                        new Type[]{Type.FLOAT_TYPE, Type.getType(Object.class),
+                                Type.LONG_TYPE}, new int[]{2, 0, 1, 2}),
+                stackShuffleMethod("smokeDup2X2Form3", new int[]{Opcodes.DUP2_X2},
+                        new Type[]{Type.DOUBLE_TYPE, Type.INT_TYPE,
+                                Type.getType(Object.class)}, new int[]{1, 2, 0, 1, 2}),
+                stackShuffleMethod("smokeDup2X2Form4", new int[]{Opcodes.DUP2_X2},
+                        new Type[]{Type.LONG_TYPE, Type.DOUBLE_TYPE},
+                        new int[]{1, 0, 1}),
+                stackShuffleMethod("smokePop2Form1", new int[]{Opcodes.POP2},
+                        new Type[]{Type.getType(Object.class), Type.INT_TYPE,
+                                Type.FLOAT_TYPE}, new int[]{0}),
+                stackShuffleMethod("smokePop2Form2", new int[]{Opcodes.POP2},
+                        new Type[]{Type.FLOAT_TYPE, Type.DOUBLE_TYPE}, new int[]{0}),
                 referenceArrayRoundTripMethod(false),
                 referenceArrayRoundTripMethod(true),
                 nullReferenceArrayLoadCatchMethod(),
@@ -2171,6 +2302,10 @@ public class IrCompilerTest {
         assertTrue(source.contains("std::fmod"));
         assertTrue(source.contains("std::isnan"));
         assertTrue(source.contains("IR codegen: example/Math.swap"));
+        assertTrue(source.contains("IR codegen: example/Math.smokeDup2Form1"));
+        assertTrue(source.contains("IR codegen: example/Math.smokeSwapDup2X1Form1"));
+        assertTrue(source.contains("IR codegen: example/Math.smokeDup2X2Form4"));
+        assertTrue(source.contains("IR codegen: example/Math.smokePop2Form2"));
         assertTrue(source.contains("IR codegen: example/Math.objectArrayRoundTrip"));
         assertTrue(source.contains("IR codegen: example/Math.stringArrayRoundTrip"));
         assertTrue(source.contains("env->GetObjectArrayElement"));
@@ -2456,6 +2591,83 @@ public class IrCompilerTest {
         assertEquals(0, obfuscator.getCachedStrings().size());
         assertEquals(0, obfuscator.getCachedFields().size());
         assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    private void assertStackShuffle(String name, int opcode, Type[] inputs,
+                                    int... expectedParameterIndexes) {
+        assertStackShuffle(name, new int[]{opcode}, inputs, expectedParameterIndexes);
+    }
+
+    private void assertStackShuffle(String name, int[] opcodes, Type[] inputs,
+                                    int... expectedParameterIndexes) {
+        MethodNode method = stackShuffleMethod(name, opcodes, inputs,
+                expectedParameterIndexes);
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock entry = ir.getBlocks().get(0);
+        IrBlock join = ir.getBlocks().get(1);
+        List<IrPhi> stackPhis = join.getPhis().stream()
+                .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
+                .collect(Collectors.toList());
+
+        assertEquals(expectedParameterIndexes.length, stackPhis.size(), name);
+        int slot = 0;
+        for (int i = 0; i < expectedParameterIndexes.length; i++) {
+            IrValue expected = ir.getParameters().get(expectedParameterIndexes[i]);
+            IrPhi phi = stackPhis.get(i);
+            assertEquals(slot, phi.getSlotIndex(), name + " stack slot " + i);
+            assertEquals(expected.getType(), phi.getResult().getType(),
+                    name + " carrier " + i);
+            assertEquals(expected, phi.getIncoming().get(entry),
+                    name + " SSA value " + i);
+            slot += expected.getType().getJvmSlots();
+        }
+
+        String cpp = emitter.emitBody(ir);
+        assertFalse(cpp.contains("env->"), name + " must be a pure SSA reorder");
+    }
+
+    private void assertIllegalStackShuffle(int opcode, Type... inputs) {
+        MethodNode method = stackShuffleMethod("illegalStack" + opcode,
+                new int[]{opcode}, inputs, new int[0]);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(opcode, error.getOpcode());
+        assertTrue(error.getMessage().contains("legal JVM form"));
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    private MethodNode stackShuffleMethod(String name, int[] opcodes, Type[] inputs,
+                                          int[] expectedParameterIndexes) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, Type.getMethodDescriptor(Type.VOID_TYPE, inputs), null, null);
+        int local = 0;
+        int inputSlots = 0;
+        for (Type input : inputs) {
+            method.instructions.add(new VarInsnNode(input.getOpcode(Opcodes.ILOAD), local));
+            local += input.getSize();
+            inputSlots += input.getSize();
+        }
+        for (int opcode : opcodes) {
+            method.instructions.add(new InsnNode(opcode));
+        }
+        LabelNode join = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(join);
+        for (int i = expectedParameterIndexes.length - 1; i >= 0; i--) {
+            Type output = inputs[expectedParameterIndexes[i]];
+            method.instructions.add(new InsnNode(
+                    output.getSize() == 2 ? Opcodes.POP2 : Opcodes.POP));
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = local;
+        method.maxStack = inputSlots + 2;
+        return method;
     }
 
     private MethodNode incrementFieldMethod() {
@@ -3143,6 +3355,9 @@ public class IrCompilerTest {
         method.instructions.add(nonNull);
         method.instructions.add(new InsnNode(Opcodes.LCONST_0));
         method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
+        method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxLocals = 1;
@@ -3716,9 +3931,57 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.LCONST_0));
         method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
+        method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
         method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseSeventeenStackOpsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedAfterPhaseSeventeenStackOps", "()V", null, null);
+
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.DUP2));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.DUP_X2));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+
+        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.SWAP));
+        method.instructions.add(new InsnNode(Opcodes.DUP2_X1));
+        for (int i = 0; i < 5; i++) {
+            method.instructions.add(new InsnNode(Opcodes.POP));
+        }
+
+        method.instructions.add(new InsnNode(Opcodes.LCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.DCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.DUP2_X2));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP2));
+
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_BYTE));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 6;
         return method;
     }
 

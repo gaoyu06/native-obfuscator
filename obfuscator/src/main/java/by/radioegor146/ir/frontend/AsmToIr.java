@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * Lowers the phase-two bytecode subset to typed block-local SSA. JVM locals and
@@ -237,6 +238,7 @@ public final class AsmToIr {
                                 || opcode == Opcodes.DUP
                                 || opcode == Opcodes.POP
                                 || opcode == Opcodes.SWAP
+                                || isWideStackOperation(opcode)
                                 || isIntBinaryOp(opcode)
                                 || isLongBinaryOp(opcode)
                                 || isFloatingBinaryOp(opcode)
@@ -498,6 +500,14 @@ public final class AsmToIr {
             }
             stack.set(belowIndex, top);
             stack.set(topIndex, below);
+        } else if (isWideStackOperation(opcode)) {
+            applyWideStackOperation(stack, opcode, instruction,
+                    new ToIntFunction<IrType>() {
+                        @Override
+                        public int applyAsInt(IrType type) {
+                            return type.getJvmSlots();
+                        }
+                    });
         } else if (isIntBinaryOp(opcode) || isIntDivRem(opcode)) {
             popType(stack, IrType.I32, instruction);
             popType(stack, IrType.I32, instruction);
@@ -947,6 +957,14 @@ public final class AsmToIr {
                 }
                 state.stack.set(belowIndex, top);
                 state.stack.set(topIndex, below);
+            } else if (isWideStackOperation(opcode)) {
+                applyWideStackOperation(state.stack, opcode, instruction,
+                        new ToIntFunction<IrValue>() {
+                            @Override
+                            public int applyAsInt(IrValue value) {
+                                return value.getType().getJvmSlots();
+                            }
+                        });
             } else if (isIntBinaryOp(opcode)) {
                 IrValue right = pop(state, IrType.I32, instruction);
                 IrValue left = pop(state, IrType.I32, instruction);
@@ -1415,6 +1433,150 @@ public final class AsmToIr {
         return value;
     }
 
+    /**
+     * Applies category-aware stack-only operations in both the type pass and
+     * value lowering. All operands are validated before the first mutation.
+     */
+    private static <T> void applyWideStackOperation(
+            List<T> stack, int opcode, CfgBuilder.Instruction instruction,
+            ToIntFunction<T> slots) {
+        int size = stack.size();
+        if (size < 1) {
+            throw unsupported("Operand stack underflow", instruction);
+        }
+        T value1 = stack.get(size - 1);
+        int category1 = slots.applyAsInt(value1);
+
+        if (opcode == Opcodes.DUP2) {
+            if (category1 == 2) {
+                stack.add(value1);
+                return;
+            }
+            if (category1 == 1 && size >= 2) {
+                T value2 = stack.get(size - 2);
+                if (slots.applyAsInt(value2) == 1) {
+                    stack.add(value2);
+                    stack.add(value1);
+                    return;
+                }
+            }
+            throw illegalWideStackForm("DUP2", instruction);
+        }
+
+        if (opcode == Opcodes.DUP_X2) {
+            if (category1 != 1) {
+                throw illegalWideStackForm("DUP_X2", instruction);
+            }
+            if (size < 2) {
+                throw unsupported("Operand stack underflow", instruction);
+            }
+            T value2 = stack.get(size - 2);
+            int category2 = slots.applyAsInt(value2);
+            if (category2 == 2) {
+                stack.add(size - 2, value1);
+                return;
+            }
+            if (category2 == 1 && size >= 3) {
+                T value3 = stack.get(size - 3);
+                if (slots.applyAsInt(value3) == 1) {
+                    stack.add(size - 3, value1);
+                    return;
+                }
+            }
+            throw illegalWideStackForm("DUP_X2", instruction);
+        }
+
+        if (opcode == Opcodes.DUP2_X1) {
+            if (category1 == 2) {
+                if (size >= 2) {
+                    T value2 = stack.get(size - 2);
+                    if (slots.applyAsInt(value2) == 1) {
+                        stack.add(size - 2, value1);
+                        return;
+                    }
+                }
+                throw illegalWideStackForm("DUP2_X1", instruction);
+            }
+            if (category1 == 1 && size >= 3) {
+                T value2 = stack.get(size - 2);
+                T value3 = stack.get(size - 3);
+                if (slots.applyAsInt(value2) == 1
+                        && slots.applyAsInt(value3) == 1) {
+                    stack.add(size - 3, value2);
+                    stack.add(size - 2, value1);
+                    return;
+                }
+            }
+            throw illegalWideStackForm("DUP2_X1", instruction);
+        }
+
+        if (opcode == Opcodes.DUP2_X2) {
+            if (category1 == 2) {
+                if (size < 2) {
+                    throw unsupported("Operand stack underflow", instruction);
+                }
+                T value2 = stack.get(size - 2);
+                int category2 = slots.applyAsInt(value2);
+                if (category2 == 2) {
+                    stack.add(size - 2, value1);
+                    return;
+                }
+                if (category2 == 1 && size >= 3) {
+                    T value3 = stack.get(size - 3);
+                    if (slots.applyAsInt(value3) == 1) {
+                        stack.add(size - 3, value1);
+                        return;
+                    }
+                }
+                throw illegalWideStackForm("DUP2_X2", instruction);
+            }
+            if (category1 == 1 && size >= 3) {
+                T value2 = stack.get(size - 2);
+                T value3 = stack.get(size - 3);
+                if (slots.applyAsInt(value2) != 1) {
+                    throw illegalWideStackForm("DUP2_X2", instruction);
+                }
+                int category3 = slots.applyAsInt(value3);
+                if (category3 == 2) {
+                    stack.add(size - 3, value2);
+                    stack.add(size - 2, value1);
+                    return;
+                }
+                if (category3 == 1 && size >= 4) {
+                    T value4 = stack.get(size - 4);
+                    if (slots.applyAsInt(value4) == 1) {
+                        stack.add(size - 4, value2);
+                        stack.add(size - 3, value1);
+                        return;
+                    }
+                }
+            }
+            throw illegalWideStackForm("DUP2_X2", instruction);
+        }
+
+        if (opcode == Opcodes.POP2) {
+            if (category1 == 2) {
+                stack.remove(size - 1);
+                return;
+            }
+            if (category1 == 1 && size >= 2
+                    && slots.applyAsInt(stack.get(size - 2)) == 1) {
+                stack.remove(size - 1);
+                stack.remove(size - 2);
+                return;
+            }
+            throw illegalWideStackForm("POP2", instruction);
+        }
+
+        throw new IllegalArgumentException("Not a wide stack operation: " + opcode);
+    }
+
+    private static UnsupportedIrConstructException illegalWideStackForm(
+            String mnemonic, CfgBuilder.Instruction instruction) {
+        return unsupported(mnemonic + " operand categories do not match a legal JVM form",
+                instruction);
+    }
+
     private int checkedLocal(int local, MethodNode method, CfgBuilder.Instruction instruction) {
         if (local < 0 || local >= method.maxLocals) {
             throw unsupported("Local index is outside maxLocals", instruction);
@@ -1571,6 +1733,12 @@ public final class AsmToIr {
 
     private static boolean isWide(IrType type) {
         return type == IrType.I64 || type == IrType.F64;
+    }
+
+    private static boolean isWideStackOperation(int opcode) {
+        return opcode == Opcodes.POP2 || opcode == Opcodes.DUP_X2
+                || opcode == Opcodes.DUP2 || opcode == Opcodes.DUP2_X1
+                || opcode == Opcodes.DUP2_X2;
     }
 
     private static boolean isFloatingBinaryOp(int opcode) {
