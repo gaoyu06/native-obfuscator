@@ -20,8 +20,9 @@ No.
 
 The focused `IrCompilerTest` and `CodegenModeTest` gate covers frontend
 construction, JVM verification, CMake/g++ JNI execution with Java parity, and
-pre-mutation rejection cases. Exact JUnit XML totals will be recorded after the
-required gate completes.
+pre-mutation rejection cases. JUnit XML reports `IrCompilerTest` 207/207 and
+`CodegenModeTest` 7/7, for 214 tests total with 0 failures, 0 errors, and
+0 skipped.
 
 ### (d) Design and follow-up
 
@@ -49,8 +50,9 @@ exception tables, and suffix extra-local forwarding remain future work.
 ### (c) 验证
 
 聚焦测试门禁 `IrCompilerTest` 与 `CodegenModeTest` 覆盖 IR 前端构建、JVM
-校验、CMake/g++ JNI 与 Java 输出一致性，以及改写前拒绝检查。所需门禁完成后，
-将补充 JUnit XML 的精确统计。
+校验、CMake/g++ JNI 与 Java 输出一致性，以及改写前拒绝检查。JUnit XML
+统计为 `IrCompilerTest` 207/207、`CodegenModeTest` 7/7，共 214 个测试，
+失败 0、错误 0、跳过 0。
 
 ### (d) 设计与后续
 
