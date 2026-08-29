@@ -1,8 +1,11 @@
 # Interpreter backend
 
-> **Not on current `master` as compiler code.** `--backend=interpreter` and
-> compact/link-only output lived on sibling stacks (PRs #17–#28). This file
-> remains a design note. See [project-status.md](project-status.md).
+> **First increment on `master`.** `--backend=interpreter` (default `cpp`)
+> landed via [#124](https://github.com/gaoyu06/native-obfuscator/pull/124);
+> Fable accept-with-nits is [#125](https://github.com/gaoyu06/native-obfuscator/pull/125).
+> See [interpreter-on-master-status.md](interpreter-on-master-status.md).
+> Older sibling stacks (#17–#28, compact/link-only) are still not the current
+> CLI. This file began as a design note.
 
 ## Status and scope
 

@@ -2,15 +2,15 @@
 
 Java `.class` to C++ converter for use with JNI.
 
-The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
+The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a default-off in-process interpreter (`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
 
-**现状（中文）：** 默认代码生成仍是 `legacy`。`--codegen=ir` 是可选的 typed CFG IR。C++ SDK（SHA-256 / HMAC-SHA-256 / AES-256-GCM / 字符串 length·hashCode·concat）会打进生成 JAR。五个 JDK 17 fixture 在 IR 下有过一次 Linux 对齐记录，**不能**写成“已支持 JDK 17”。共享 evaluator 与 opcode 解释器后端的**编译器代码**没有合进当前 master 主线。
+**现状（中文）：** 默认仍是 `--codegen=legacy` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR。`--backend=interpreter` 是默认关闭的窄整数切片。C++ SDK 会打进生成 JAR。JDK 17 IR 语料在一台 Linux VM 上有过 11/11 对齐记录，**不能**写成“已支持 JDK 17”。`--ir-lower=eval` 仍未进当前 master。
 
 ---
 
 ## Current status
 
-Recorded on `master` after the preferred-tip integration ([#118](https://github.com/gaoyu06/native-obfuscator/pull/118), plus the phase-18 Fable note in [#119](https://github.com/gaoyu06/native-obfuscator/pull/119)). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings [#120](https://github.com/gaoyu06/native-obfuscator/pull/120)–[#125](https://github.com/gaoyu06/native-obfuscator/pull/125). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
@@ -18,10 +18,11 @@ Recorded on `master` after the preferred-tip integration ([#118](https://github.
 | Opt-in IR | `--codegen=ir` — typed CFG, per-method fallback to legacy when a construct is unsupported |
 | Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
 | Java baseline | Historical README claim remains: **Java 8 is the only version this project has ever called fully supported.** 9+ and Android stay experimental |
-| JDK 17 IR fixtures | Admission 36/36 on five fixtures; after the runtime repair, those five native runs matched HotSpot stdout on **one** Linux x86-64 VM. That is not a product “supports JDK 17” badge |
+| JDK 17 IR fixtures | 11 `--release 17` programs matched HotSpot stdout on **one** Linux x86-64 VM under `--codegen=ir`. That is not a product “supports JDK 17” badge |
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
-| Shared evaluator / opcode VM | Documented as sibling stacks; **not** compiled into the current master compiler line |
+| Interpreter | `--backend=interpreter` default off (`cpp`). Narrow static `int` ISA v1. Not a protection product |
+| Shared evaluator | `--ir-lower=eval` remains a sibling stack; **not** on current `master` |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Native output can be much slower than HotSpot. No global “faster than Java” claim. Prefer a whitelist |
 
@@ -45,6 +46,7 @@ This tool **transpiles** bytecode to native. It does not pack binaries and does 
 
 ```text
 Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
+                         [--backend=<backend>]
                          [-b=<blackListFile>] [--custom-lib-dir=<dir>]
                          [-l=<librariesDirectory>] [-p=<platform>]
                          [--plain-lib-name=<libraryName>] [-w=<whiteListFile>]
@@ -63,6 +65,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-l` | Directory of dependent libraries (optional, recommended) |
 | `-p` | `hotspot` (default), `std_java`, or `android` |
 | `--codegen` | `legacy` (default) or `ir` |
+| `--backend` | `cpp` (default) or `interpreter` (narrow static `int` slice; default off) |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
 | `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
@@ -74,7 +77,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--jdk-home` | JDK with `include/jni.h` (defaults to `JAVA_HOME`) |
 | `--zig-install-dir` | Where Zig was installed (default `~/.native-obfuscator/zig/`) |
 
-`--codegen=ir` is opt-in. Unsupported methods fall back per-method to the legacy generator, except rejected `<init>` bodies, which are restored to the original bytecode (including `invokedynamic`) instead of being left with internal preprocessor markers.
+`--codegen=ir` is opt-in. Unsupported methods fall back per-method to the legacy generator, except rejected `<init>` bodies, which are restored to the original bytecode (including `invokedynamic`) instead of being left with internal preprocessor markers. `--backend=interpreter` is separately opt-in and default off.
 
 ### Platforms
 

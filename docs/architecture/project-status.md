@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)
-(`5f017e3`) and the phase-18 Fable review note
-[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) (`e997d71`).
+Last updated after landing [#120](https://github.com/gaoyu06/native-obfuscator/pull/120)–[#125](https://github.com/gaoyu06/native-obfuscator/pull/125)
+on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) /
+[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -33,19 +33,26 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
 - **E2E fixtures.** ClassicTest plus JDK 17 / 21 / 25 sample programs under
   `obfuscator/test_data/tests/`. Compiling a fixture with `javac --release 25`
   is not “JDK 25 supported.”
-- **Harnesses.** `benchmarks/run.py` and JNI member-lookup caching on the
-  legacy path.
+- **Harnesses.** `benchmarks/run.py` now runs JVM, `--codegen=legacy`, and
+  `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
+  caching remains on the legacy path.
+- **Opt-in interpreter.** `--backend=interpreter` (default `cpp`) lowers a
+  narrow static `int` slice to an ISA-v1 opcode stream plus a C++17 `switch`
+  dispatcher. Fable independently accepted the first increment with nits
+  ([#125](https://github.com/gaoyu06/native-obfuscator/pull/125)).
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
-默认仍是 `legacy`。IR 需显式 `--codegen=ir`。SDK 随生成 JAR 提供，不是独立产品。
-classfile 不再无条件写成 major 52。
+默认仍是 `--codegen=legacy` 与 `--backend=cpp`。IR 与解释器都需显式打开。
+SDK 随生成 JAR 提供，不是独立产品。classfile 不再无条件写成 major 52。
 
 ## Recorded measurements (do not invent more) / 已记录测量（勿编造）
 
 Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 `docs/architecture/ir-jdk17-runtime-fix.md`,
 `docs/benchmarks/ir-jdk17-e2e-phase17.md`,
-`docs/benchmarks/results-ir-eval-lower.md`.
+`docs/benchmarks/results-ir-eval-lower.md`,
+`docs/benchmarks/results-ir-vs-legacy-master.md`,
+`docs/benchmarks/ir-jdk17-e2e-corpus.md`.
 
 | Measurement | Result | Must not be read as |
 | --- | --- | --- |
@@ -53,7 +60,9 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Phase-18 IR admission, five JDK 17 fixtures | 36 inventory, **36 IR**, 0 fallback | “JDK 17 supported” |
 | Phase-18 IR admission, JDK 21 extra | 38 inventory, **36 IR**, 2 fallback (`ISTORE`/`ASTORE` local-type mismatches on `RecordPatternsE2E`) | JDK 21 support |
 | IR-mode E2E of those five fixtures on phase 17 (#112) | 5/5 CMake, **0/5** native (crashes) | Anything other than “admission ≠ behavior” |
-| Same five fixtures after the runtime repair (#115 / Sol rerun) | 5/5 stdout parity on one Linux x86-64 VM | Product JDK 17 support; other JVMs, Android, or arbitrary bytecode |
+| Same five fixtures after the runtime repair (#115 / Sol rerun) | 5/5 stdout parity on one Linux x86-64 VM | Product JDK 17 support |
+| Expanded JDK 17 IR E2E (#123) | 11/11 stdout parity, 82/82 IR admit, one Linux x86-64 VM (OpenJDK 21 host, `--release 17`) | “JDK 17 supported” |
+| Current-master bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | A portable speedup or a pure-IR timing for every kernel |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -63,16 +72,18 @@ Admission 不是行为正确性。五个 fixture 的 5/5 只是一台 Linux VM �
 
 ## What did not land as compiler code / 未作为编译器代码落地
 
-These stacks **conflict with the phase-18 `NativeObfuscator` line**. Their
-documents and reader/bench notes are in-tree; the compiler flags they describe
-are **not** on current `master`.
+These stacks **conflict with the phase-18 + #124 `NativeObfuscator` line**.
+Their documents and reader/bench notes are in-tree; the compiler flags they
+describe are **not** on current `master`.
 
 - Shared evaluator (`--ir-lower=eval`), PRs #42–#87
-- Opcode interpreter / compact encoding / link-only native output, PRs #17–#28
+- Older opcode interpreter / compact encoding / link-only output, PRs #17–#28
+  (superseded as a *first increment* by #124; those sibling flags are still
+  not the current CLI)
 - Standalone NativeStrings-on-master #27 (superseded by the SDK stack)
 
-未合入：`--ir-lower=eval`、opcode 解释器主线。文档在 `docs/architecture/` 与
-`docs/eval/`，不要当成当前 CLI 功能。
+未合入：`--ir-lower=eval`。旧 #17–#28 解释器栈已被 #124 的默认关闭切片取代，
+不要把旧 CLI 旗标当成当前功能。
 
 ## Defaults and policies that remain / 仍然有效的默认与政策
 
@@ -90,9 +101,9 @@ are **not** on current `master`.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Port the evaluator onto the phase-18 IR tip, or keep it archived.
-- Port or drop the opcode interpreter the same way.
-- Broader JDK 17+ behavioral corpus (not five fixtures).
+- Port the evaluator onto the current IR+interpreter tip, or keep it archived.
+- Widen the #124 interpreter ISA beyond the static `int` slice.
+- Admit `LUSHR` / `LXOR` so the #122 bench kernels can stay on IR.
 - Local-type mismatch on the two JDK 21 `RecordPatternsE2E` methods.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 

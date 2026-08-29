@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118/#119. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#125. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -46,6 +46,7 @@ that every phase is a separate product.
 
 | Document | Notes |
 | --- | --- |
+| [benchmarks/ir-jdk17-e2e-corpus.md](benchmarks/ir-jdk17-e2e-corpus.md) | 11-fixture IR behavioral E2E on one VM; not a support badge |
 | [audit/jdk17-e2e-status.md](audit/jdk17-e2e-status.md) | Legacy-path JDK 17 harness |
 | [audit/jdk21-25-e2e-status.md](audit/jdk21-25-e2e-status.md) / [audit/jdk25-e2e-status.md](audit/jdk25-e2e-status.md) | Extra fixtures; not “JDK 25 supported” |
 | [benchmarks/ir-jdk17-e2e-phase17.md](benchmarks/ir-jdk17-e2e-phase17.md) | IR-mode 0/5 crashes **before** the runtime repair |
@@ -60,7 +61,8 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 
 | Document | Notes |
 | --- | --- |
-| [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` |
+| [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + legacy + IR) |
+| [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Current-master three-mode bench; only `string-concat-hash` stayed fully IR |
 | [benchmarks/ir-admission-phase18-corpus.md](benchmarks/ir-admission-phase18-corpus.md) | Latest admission tables (ClassicTest 108/108 IR; JDK 17 36/36 admit; JDK 21 extra 36/38) |
 | [benchmarks/results-local.md](benchmarks/results-local.md) | Early local JVM vs JNI numbers |
 | [benchmarks/results-ir-vs-legacy.md](benchmarks/results-ir-vs-legacy.md) | IR vs legacy vs JVM (local) |
@@ -69,13 +71,14 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 
 ## Sibling stacks not in the master compiler / 未合入主线编译器的兄弟栈
 
-These directories record work that **did not** land as compiler code on the
-phase-18 line. Do not treat them as enabled CLI features on current `master`.
+`--ir-lower=eval` still did **not** land. The first default-off interpreter
+slice **did** land (#124). Older #17–#28 sibling flags are not the current CLI.
 
 | Document | Stack |
 | --- | --- |
-| [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` sibling |
-| [architecture/interpreter-backend.md](architecture/interpreter-backend.md) / [architecture/interpreter-isa.md](architecture/interpreter-isa.md) | Opcode interpreter design |
+| [architecture/interpreter-on-master-status.md](architecture/interpreter-on-master-status.md) | What `--backend=interpreter` actually does on master |
+| [reviews/interpreter-on-master-fable.md](reviews/interpreter-on-master-fable.md) | Fable accept-with-nits of #124 |
+| [architecture/ir-evaluator-backend.md](architecture/ir-evaluator-backend.md) | `--ir-lower=eval` sibling (not on master) |
 | [eval/](eval/) | Reader / recovery notes (requirement 7 unmet) |
 
 ## Research / 调研
