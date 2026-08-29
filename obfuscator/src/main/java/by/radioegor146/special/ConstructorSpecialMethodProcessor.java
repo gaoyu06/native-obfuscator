@@ -46,7 +46,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final int MAX_DISTINCT_SUFFIXES = 8;
     private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 4;
     private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 4;
-    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 3;
+    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 4;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2457,8 +2457,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a double operand with at most three DADD, DSUB, DMUL, DDIV, or
-     * DREM levels. Four-or-more nested binary levels remain rejected.
+     * Proves a double operand with at most four DADD, DSUB, DMUL, DDIV, or
+     * DREM levels. Five-or-more nested binary levels remain rejected.
      */
     private static Integer previousProvenDoubleChainOperand(
             MethodNode constructor, int inputIndex,
