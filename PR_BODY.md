@@ -24,7 +24,14 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML totals: pending verification.
+JUnit XML totals: **332 tests / 0 failures / 0 errors / 0 skipped**.
+
+- `IrCompilerTest`: 325 / 0 / 0 / 0
+- `CodegenModeTest`: 7 / 0 / 0 / 0
+- New testcases passed:
+  `admitsThreeLevelNestedFloatChainInputs()`,
+  `rewrittenThreeLevelNestedFloatChainInputsPassJvmVerification()`, and
+  `threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity()`.
 
 Ship-ready: **No**
 
@@ -50,6 +57,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML 汇总：等待验证。
+JUnit XML 汇总：**332 个测试 / 0 个失败 / 0 个错误 / 0 个跳过**。
+
+- `IrCompilerTest`：325 / 0 / 0 / 0
+- `CodegenModeTest`：7 / 0 / 0 / 0
+- 新增测试均已通过：
+  `admitsThreeLevelNestedFloatChainInputs()`、
+  `rewrittenThreeLevelNestedFloatChainInputsPassJvmVerification()` 和
+  `threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity()`。
 
 可发布：**否**
