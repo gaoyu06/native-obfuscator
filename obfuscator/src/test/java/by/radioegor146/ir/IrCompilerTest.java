@@ -61,16 +61,6 @@ public class IrCompilerTest {
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
 
-    private static final class ByteArrayClassLoader extends ClassLoader {
-        private ByteArrayClassLoader() {
-            super(IrCompilerTest.class.getClassLoader());
-        }
-
-        private Class<?> define(byte[] bytecode) {
-            return defineClass(null, bytecode, 0, bytecode.length);
-        }
-    }
-
     private static String identityString(String value) {
         return value;
     }
