@@ -8,24 +8,51 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers three related prefix shapes:
+The constructor split now covers four related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`; and
 - extra reference or primitive locals written in the prefix and read in the
-  suffix, when their incoming state at the chain call is provable.
+  suffix, when their incoming state at the chain call is provable; and
+- multiple direct this/super calls in a strict diamond that converges at one
+  shared suffix label.
 
 ## Current rule
 
-`split()` now classifies prefix branches by target:
+`split()` classifies prefix branches by target:
 
 - A prefix jump or switch whose every target label is also in the prefix
-  (instruction index `<= callIndex`) is **admitted**. Both edges remain in the
-  retained bytecode, so the this/super call is still reachable.
+  is **admitted**. Both edges remain in the retained bytecode, so a this/super
+  call is still reachable.
 - A prefix jump or switch whose target lands in the suffix is **rejected**
   (`Constructor prefix branches across the this/super call`); it would skip the
   mandatory chain call.
+- For a multi-call diamond, the one exception is the `GOTO` immediately after
+  each non-final chain call. It must target the exact shared join label. The
+  final chain call must fall through to that same label.
+
+Multiple direct this/super candidates are admitted only under a stricter
+fail-closed rule:
+
+- There must be at least two direct `<init>` calls targeting the constructor
+  owner or its direct superclass.
+- A count-state CFG analysis starts with zero chain calls, increments at every
+  candidate, and rejects a path that reaches another candidate after one call,
+  reaches the shared suffix with zero or multiple calls, or reaches a return
+  without exactly one call. Every candidate must be reachable.
+- The final candidate in bytecode order must be followed by a join label before
+  the first suffix instruction. Every earlier candidate's next executable
+  instruction must be `GOTO` to that exact label. This proves that all
+  successful prefix paths enter one identical suffix range.
+- The retained wrapper keeps the complete diamond, both chain calls, their
+  join label, and one hidden-bridge invocation. `createNativeBody` starts at
+  the shared join and emits that suffix once.
+
+Separate returns, distinct joins, post-call prefix work before convergence,
+unreachable candidates, and otherwise non-identical per-call suffixes remain
+rejected. This is intentionally a one-join diamond admission, not a general
+multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -70,20 +97,20 @@ Other guards remain unchanged:
 
 - Suffix jumps/switches into the prefix are rejected.
 - try/catch regions crossing the split are rejected.
-- Multiple this/super candidates are rejected.
+- Prefix `ASTORE 0` is rejected for both single- and multi-call shapes.
 - `jsr`/`ret` remains unsupported.
 
-A prefix branch into the suffix can bypass the mandatory chain call. Multiple
-this/super candidates require path-sensitive split exits rather than the current
-single `callIndex`. A cross-split exception region cannot preserve a bytecode
-handler edge from exceptions raised by the native suffix. Those cases therefore
-remain unsafe for this split shape.
+A prefix branch into the suffix can bypass the mandatory chain call. A
+cross-split exception region cannot preserve a bytecode handler edge from
+exceptions raised by the native suffix. Those cases therefore remain unsafe
+for this split shape.
 
 `createNativeBody` still emits the suffix only. `postProcess` keeps the prefix
-plus the this/super call in the source constructor and appends the bridge
-invocation. Prefix + this/super stay in bytecode; no uninitialized-this prefix
-code is IR-lowered. Label cloning in `cloneRange`/`createNativeBody` maps every
-label of the method, so cloned prefix branches resolve correctly.
+plus every admitted this/super call in the source constructor and appends one
+bridge invocation at the split. Prefix + this/super stay in bytecode; no
+uninitialized-this prefix code is IR-lowered. Label cloning in
+`cloneRange`/`createNativeBody` maps every label of the method, so cloned prefix
+branches resolve correctly.
 
 ## Verification
 
@@ -119,11 +146,20 @@ Synthetic bytecode unit tests in
 - `gappedPrefixExtraReferenceLocalCompilesAndRunsWithJavaParity` repeats that
   compile-and-run parity path with the extra stored at local 3 and local 2
   unused.
-- Negatives: prefix branch targeting a suffix label, suffix jump into the
-  prefix, try/catch crossing the split, multiple this/super candidates, and
-  prefix `ASTORE 0`. `rejectsConditionallyAssignedPrefixExtraBeforeMutation`
-  additionally proves that a one-branch-only extra assignment is rejected
-  before mutation.
+- `admitsMultipleSuperDiamondWithSharedSuffix` proves two retained direct
+  superclass calls converge on one hidden bridge and that the independent
+  native body contains only the shared suffix.
+- `rewrittenMultipleSuperDiamondPassesJvmVerification` serializes and loads
+  the rewritten subclass and its superclass; constructor invocation reaches
+  the unresolved native bridge only after JVM verification succeeds.
+- `multipleSuperDiamondCompilesAndRunsWithJavaParity` exercises positive and
+  negative constructor arguments through the plain Java class and the complete
+  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`; both runs print the
+  same superclass and shared-suffix field values.
+- Multi-call negatives cover prefix `ASTORE 0`, a zero-call edge into the
+  suffix, try/catch spanning a chain call and suffix code, a path that executes
+  two chain calls, and distinct per-call suffixes. Existing prefix-to-suffix,
+  suffix-to-prefix, and conditionally assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
@@ -136,9 +172,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 129 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 136 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 136 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 143 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

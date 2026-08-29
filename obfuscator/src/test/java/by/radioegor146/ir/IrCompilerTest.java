@@ -21,10 +21,12 @@ import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
@@ -631,6 +633,42 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsMultipleSuperDiamondWithSharedSuffix() {
+        ClassNode owner = constructorOwner(
+                "example/MultiSuper", "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "original", "I", null, null));
+        MethodNode constructor = multipleSuperDiamondConstructor(
+                owner.name, owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(context.output.toString().contains(
+                "env->SetIntField(obj"));
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertTrue(realOpcodes(constructor).contains(Opcodes.IFLT));
+        assertTrue(realOpcodes(constructor).contains(Opcodes.GOTO));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void rejectsPrefixBranchTargetingSuffixLabel() {
         ClassNode owner = constructorOwner("example/Skip", "java/lang/Object");
         UnsupportedIrConstructException error = assertThrows(
@@ -666,7 +704,7 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsMultipleThisOrSuperCandidates() {
+    public void rejectsPathThatExecutesTwoSuperCalls() {
         ClassNode owner = constructorOwner("example/Twice", "java/lang/Object");
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
@@ -674,7 +712,61 @@ public class IrCompilerTest {
                         owner, multipleSuperCallConstructor()));
         assertEquals(Opcodes.INVOKESPECIAL, error.getOpcode());
         assertTrue(error.getMessage().contains(
-                "Constructor has multiple possible this/super calls"));
+                "Constructor path can execute multiple this/super calls"));
+    }
+
+    @Test
+    public void rejectsMultipleSuperDiamondWithPrefixAstoreZero() {
+        ClassNode owner = constructorOwner(
+                "example/MultiReceiverStore", "example/MultiSuperBase");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, multipleSuperDiamondWithAstoreZero(
+                                owner.name, owner.superName)));
+        assertEquals(Opcodes.ASTORE, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor prefix changes local 0 before the bridge"));
+    }
+
+    @Test
+    public void rejectsMultipleSuperPathThatSkipsEveryChainCall() {
+        ClassNode owner = constructorOwner(
+                "example/MultiSkip", "example/MultiSuperBase");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, multipleSuperDiamondWithSkipPath(
+                                owner.name, owner.superName)));
+        assertEquals(Opcodes.IFEQ, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor prefix branches across the this/super call"));
+    }
+
+    @Test
+    public void rejectsTryCatchCoveringMultipleSuperChainAndSuffix() {
+        ClassNode owner = constructorOwner(
+                "example/MultiTry", "example/MultiSuperBase");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, multipleSuperDiamondWithCrossingTryCatch(
+                                owner.name, owner.superName)));
+        assertTrue(error.getMessage().contains(
+                "Constructor exception regions may not cross the this/super split"));
+    }
+
+    @Test
+    public void rejectsMultipleSuperCallsWithDifferentSuffixes() {
+        ClassNode owner = constructorOwner(
+                "example/MultiSuffix", "example/MultiSuperBase");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, multipleSuperDifferentSuffixConstructor(
+                                owner.superName)));
+        assertTrue(error.getMessage().contains(
+                "Constructor chain calls do not share one suffix join"));
     }
 
     @Test
@@ -957,6 +1049,40 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenMultipleSuperDiamondPassesJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperBase("example/VerifiedMultiBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedMulti", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "original", "I", null, null));
+        MethodNode constructor =
+                multipleSuperDiamondConstructor(owner.name, base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(-7));
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void prefixExtraReferenceLocalCompilesAndRunsWithJavaParity()
             throws Exception {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
@@ -969,6 +1095,79 @@ public class IrCompilerTest {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
                 "ir-gapped-prefix-extra-run",
                 "example/FlexCtorGappedExtraLocal", true);
+    }
+
+    @Test
+    public void multipleSuperDiamondCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the multi-super runtime test");
+
+        String ownerName = "example/MultiSuperRuntime";
+        String baseName = "example/MultiSuperRuntimeBase";
+        Path directory = Files.createTempDirectory("ir-multi-super-run");
+        Path inputJar = directory.resolve("multi-super.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperDiamondJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain multi-super Java run");
+        assertEquals(
+                "7" + System.lineSeparator()
+                        + "5" + System.lineSeparator()
+                        + "-5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Multi-super native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     private void prefixExtraLocalCompilesAndRunsWithJavaParity(
@@ -4501,6 +4700,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperDiamondJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "original", "I", null, null));
+        owner.methods.add(
+                multipleSuperDiamondConstructor(ownerName, baseName));
+        owner.methods.add(multipleSuperMain(ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createReferenceParameterAstoreJar(Path jarPath) throws IOException {
         ClassNode owner = constructorOwner(
                 "example/FlexCtorAstore", "java/lang/Object");
@@ -5280,6 +5508,179 @@ public class IrCompilerTest {
         return method;
     }
 
+    private ClassNode multipleSuperBase(String name) {
+        ClassNode base = constructorOwner(name, "java/lang/Object");
+        base.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "magnitude", "I", null, null));
+        MethodNode constructor = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        constructor.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, name, "magnitude", "I"));
+        constructor.instructions.add(new InsnNode(Opcodes.RETURN));
+        constructor.maxLocals = 2;
+        constructor.maxStack = 2;
+        base.methods.add(constructor);
+        return base;
+    }
+
+    private MethodNode multipleSuperDiamondConstructor(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "original", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode multipleSuperDiamondWithAstoreZero(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDiamondConstructor(owner, superName);
+        InsnList prefix = new InsnList();
+        prefix.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        prefix.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.insert(prefix);
+        return method;
+    }
+
+    private MethodNode multipleSuperDiamondWithSkipPath(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDiamondConstructor(owner, superName);
+        JumpInsnNode admittedGoto = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(JumpInsnNode.class::isInstance)
+                .map(JumpInsnNode.class::cast)
+                .filter(jump -> jump.getOpcode() == Opcodes.GOTO)
+                .findFirst().orElseThrow(AssertionError::new);
+        InsnList prefix = new InsnList();
+        prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        prefix.add(new JumpInsnNode(
+                Opcodes.IFEQ, admittedGoto.label));
+        method.instructions.insert(prefix);
+        return method;
+    }
+
+    private MethodNode multipleSuperDiamondWithCrossingTryCatch(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDiamondConstructor(owner, superName);
+        MethodInsnNode firstChain = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .findFirst().orElseThrow(AssertionError::new);
+        AbstractInsnNode suffixReturn =
+                method.instructions.getLast();
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.insertBefore(firstChain, start);
+        method.instructions.insertBefore(suffixReturn, end);
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/Throwable"));
+        return method;
+    }
+
+    private MethodNode multipleSuperDifferentSuffixConstructor(
+            String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode multipleSuperMain(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperPrint(
+                method, owner, 7, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, -5, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, -5, owner, "original");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private void appendMultipleSuperPrint(
+            MethodNode method, String owner, int value,
+            String fieldOwner, String fieldName) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>", "(I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, fieldOwner, fieldName, "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+    }
+
     private MethodNode prefixLocalBranchConstructor() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", "(I)V", null, null);
@@ -5386,6 +5787,35 @@ public class IrCompilerTest {
             }
         }
         return false;
+    }
+
+    private int directChainCallCount(
+            MethodNode method, ClassNode owner) {
+        int count = 0;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof MethodInsnNode
+                    && instruction.getOpcode() == Opcodes.INVOKESPECIAL) {
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                if ("<init>".equals(invoke.name)
+                        && (owner.name.equals(invoke.owner)
+                        || owner.superName.equals(invoke.owner))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private int hiddenBridgeCallCount(MethodNode method) {
+        int count = 0;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof MethodInsnNode
+                    && instruction.getOpcode() == Opcodes.INVOKESTATIC
+                    && ((MethodInsnNode) instruction).owner.contains("/hidden/")) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private MethodInsnNode retainedThisOrSuperCall(MethodNode method, ClassNode owner) {
