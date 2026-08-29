@@ -470,11 +470,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML records for the master baseline before this increment:
+JUnit XML records for this increment:
 
-- `IrCompilerTest`: 190 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 193 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 197 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 200 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

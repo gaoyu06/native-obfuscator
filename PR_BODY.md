@@ -20,7 +20,8 @@ change defaults or complete the production goal.
 
 There is no stacked review. The gate is the executed focused
 `IrCompilerTest` + `CodegenModeTest` suite, including the new compile-and-run
-CMake/g++ JNI harness under `java -Xverify:all -Xcheck:jni`.
+CMake/g++ JNI harness under `java -Xverify:all -Xcheck:jni`. JUnit XML records
+193 + 7 = 200 tests, with 0 failures, 0 errors, and 0 skipped.
 
 ## (d) Preconditions
 
@@ -48,7 +49,8 @@ int-family `ILOAD`、int-family 常量，或对已声明 int-family `ILOAD` 进�
 
 没有堆叠审查。门禁是已执行的 `IrCompilerTest` + `CodegenModeTest` 聚焦测试
 套件，其中包括新增的 CMake/g++ JNI 编译运行测试，并使用
-`java -Xverify:all -Xcheck:jni`。
+`java -Xverify:all -Xcheck:jni`。JUnit XML 记录为 193 + 7 = 200 项测试，
+失败 0 项、错误 0 项、跳过 0 项。
 
 ## (d) 前置条件
 
