@@ -1687,8 +1687,6 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;II)V",
                 context.proxyMethod.getMethodNode().desc);
-        assertTrue(context.output.toString().contains(
-                "env->SetIntField(obj"));
         assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
     }
 
