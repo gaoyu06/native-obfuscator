@@ -2,14 +2,21 @@
 
 This branch adds AES-256-GCM authenticated encryption and decryption to the
 callable C++ SDK surface and Java `NativePrimitives` facade. It is stacked on
-`cursor/sdk-hmac-sha256-6d81` (draft PR #72), which is stacked on
-NativeStrings (draft PR #46) and SDK v1 (PR #12). This is a neutral native
-crypto SDK API change, not an automatic transformation or obfuscation feature.
+`cursor/sdk-hmac-sha256-6d81`
+([draft PR #72](https://github.com/gaoyu06/native-obfuscator/pull/72)), which is
+stacked on NativeStrings
+([draft PR #46](https://github.com/gaoyu06/native-obfuscator/pull/46)) and SDK
+v1 ([PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)). This is a
+neutral native crypto SDK API change, not an automatic transformation or
+obfuscation feature.
 
 本分支为可调用的 C++ SDK 接口及 Java `NativePrimitives` facade 新增
 AES-256-GCM 认证加密与解密。分支基于 `cursor/sdk-hmac-sha256-6d81`
-（draft PR #72），后者依次基于 NativeStrings（draft PR #46）和 SDK v1
-（PR #12）。这是中性的 native crypto SDK API 改动，不是自动转换或混淆功能。
+（[draft PR #72](https://github.com/gaoyu06/native-obfuscator/pull/72)），后者
+依次基于 NativeStrings
+（[draft PR #46](https://github.com/gaoyu06/native-obfuscator/pull/46)）和 SDK
+v1（[PR #12](https://github.com/gaoyu06/native-obfuscator/pull/12)）。这是中性
+的 native crypto SDK API 改动，不是自动转换或混淆功能。
 
 ## (a) Change scope / 本次改动范围
 

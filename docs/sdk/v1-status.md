@@ -158,7 +158,9 @@ Unit: nanoseconds per complete sample.
 In this run, `NativeStrings` had the higher median (16,289,443.5 ns versus
 5,357,076 ns for Java). This is local diagnostic evidence, not a portable
 performance claim. The snippet-transpiled JNI comparison was not re-run because
-its harness lives in PR #10/#27 and is intentionally not duplicated here.
+its harness lives in [PR #10](https://github.com/gaoyu06/native-obfuscator/pull/10)
+and [PR #27](https://github.com/gaoyu06/native-obfuscator/pull/27) and is
+intentionally not duplicated here.
 
 Assembly command:
 
