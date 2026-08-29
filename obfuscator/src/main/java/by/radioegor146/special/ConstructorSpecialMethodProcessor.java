@@ -563,6 +563,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && labels.contains(tryCatch.handler);
     }
 
+    private static Set<LabelNode> labelsInRange(
+            MethodNode method, int startIndex, int endIndex) {
+        Set<LabelNode> labels = new HashSet<>();
+        for (int i = startIndex; i < endIndex; i++) {
+            AbstractInsnNode instruction = method.instructions.get(i);
+            if (instruction instanceof LabelNode) {
+                labels.add((LabelNode) instruction);
+            }
+        }
+        return labels;
+    }
+
     private static MultiSuperTryCatches distinctSuffixTryCatches(
             MethodNode constructor, List<Integer> callIndexes,
             DistinctSuffix distinctSuffix) {
@@ -1250,7 +1262,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             suffixes.add(suffix);
         }
         LinearSuffix canonical = suffixes.get(suffixes.size() - 1);
-        if (canonical.endIndex != constructor.instructions.size()) {
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Set<LabelNode> canonicalTailHandlers =
+                canonicalSuffixTailHandlers(
+                        constructor, canonical, indexes);
+        if (canonical.endIndex != constructor.instructions.size()
+                && canonicalTailHandlers == null) {
             return null;
         }
 
@@ -1317,14 +1334,34 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
         }
-        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Set<LabelNode> canonicalLabels = labelsInRange(
+                constructor, canonical.startIndex,
+                constructor.instructions.size());
+        Set<LabelNode> prefixLabels = labelsInRange(
+                constructor, 0, callIndexes.get(0));
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
-            if (!tryCatchLabelsBefore(
+            if (tryCatchLabelsBefore(
                     tryCatch, indexes, callIndexes.get(0))) {
-                throw new UnsupportedIrConstructException(
-                        "Constructor exception regions may not cross "
-                                + "the this/super split");
+                continue;
             }
+            if (tryCatchRangeLabelsInRange(
+                    tryCatch, indexes, canonical)
+                    && canonicalTailHandlers != null
+                    && canonicalTailHandlers.contains(tryCatch.handler)) {
+                continue;
+            }
+            RelocatedPrefixHandler relocated =
+                    relocatablePrefixHandler(
+                            constructor, prefixLabels, canonicalLabels,
+                            indexes, canonical.startIndex, tryCatch);
+            if (relocated != null
+                    && tryCatchRangeLabelsInRange(
+                    tryCatch, indexes, canonical)) {
+                continue;
+            }
+            throw new UnsupportedIrConstructException(
+                    "Constructor exception regions may not cross "
+                            + "the this/super split");
         }
 
         List<DuplicatedRange> discarded = new ArrayList<>();
@@ -1336,6 +1373,64 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new DuplicatedSuffix(
                 discarded, callIndexes.get(callIndexes.size() - 1),
                 canonical.startIndex);
+    }
+
+    /**
+     * Proves the only executable tail accepted after the canonical copy's
+     * normal RETURN: one suffix-owned handler that consumes the caught value
+     * and returns. The normal RETURN makes the handler unreachable by
+     * fallthrough; the generic split later clones the handler and its table
+     * into the independent IR body.
+     */
+    private static Set<LabelNode> canonicalSuffixTailHandlers(
+            MethodNode constructor, LinearSuffix canonical,
+            Map<LabelNode, Integer> indexes) {
+        if (canonical.endIndex == constructor.instructions.size()) {
+            return new HashSet<>();
+        }
+
+        Set<LabelNode> handlers = new HashSet<>();
+        for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
+            Integer handlerIndex = indexes.get(tryCatch.handler);
+            if (handlerIndex != null
+                    && handlerIndex >= canonical.endIndex) {
+                handlers.add(tryCatch.handler);
+            }
+        }
+        if (handlers.size() != 1) {
+            return null;
+        }
+
+        LabelNode handler = handlers.iterator().next();
+        int handlerIndex = indexes.get(handler);
+        int firstIndex =
+                firstExecutableIndex(constructor, handlerIndex + 1);
+        if (firstIndex >= constructor.instructions.size()
+                || !containsOnlyFrames(
+                constructor, handlerIndex + 1, firstIndex)
+                || hasNormalTarget(constructor, handler)
+                || isTryRangeBoundary(constructor, handler)) {
+            return null;
+        }
+        AbstractInsnNode first = constructor.instructions.get(firstIndex);
+        if (first.getOpcode() != Opcodes.POP
+                && relocatableCaughtExceptionLocal(
+                constructor, first) == null) {
+            return null;
+        }
+        int returnIndex =
+                firstExecutableIndex(constructor, firstIndex + 1);
+        if (returnIndex >= constructor.instructions.size()
+                || constructor.instructions.get(returnIndex)
+                .getOpcode() != Opcodes.RETURN
+                || !containsOnlyFrames(
+                constructor, firstIndex + 1, returnIndex)
+                || firstExecutableIndex(
+                constructor, returnIndex + 1)
+                != constructor.instructions.size()) {
+            return null;
+        }
+        return handlers;
     }
 
     /**
@@ -1857,7 +1952,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             AbstractInsnNode instruction = constructor.instructions.get(i);
             int opcode = instruction.getOpcode();
             if (opcode < 0) {
-                return null;
+                continue;
             }
             if (opcode == Opcodes.RETURN) {
                 return new LinearSuffix(callIndex + 1, i + 1);
@@ -1876,15 +1971,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static boolean sameLinearSuffix(
             MethodNode constructor, LinearSuffix left, LinearSuffix right) {
-        int leftLength = left.endIndex - left.startIndex;
-        int rightLength = right.endIndex - right.startIndex;
-        if (leftLength != rightLength) {
+        List<Integer> leftInstructions =
+                executableIndexes(constructor, left);
+        List<Integer> rightInstructions =
+                executableIndexes(constructor, right);
+        if (leftInstructions.size() != rightInstructions.size()) {
             return false;
         }
-        for (int i = 0; i < leftLength; i++) {
+        for (int i = 0; i < leftInstructions.size(); i++) {
             if (!sameLinearInstruction(
-                    constructor.instructions.get(left.startIndex + i),
-                    constructor.instructions.get(right.startIndex + i))) {
+                    constructor.instructions.get(leftInstructions.get(i)),
+                    constructor.instructions.get(rightInstructions.get(i)))) {
                 return false;
             }
         }
