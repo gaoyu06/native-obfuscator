@@ -233,6 +233,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             suffix.startIndex, suffix.endIndex);
                 }
             }
+            for (RelocatedPrefixHandler handler :
+                    split.relocatedPrefixHandlers) {
+                appendRelocatedRange(
+                        body, constructor, labels, split,
+                        handler.startIndex, handler.endIndex);
+                if (handler.returnStartIndex >= 0) {
+                    appendRelocatedRange(
+                            body, constructor, labels, split,
+                            handler.returnStartIndex,
+                            handler.returnEndIndex);
+                }
+            }
             for (TryCatchBlockNode tryCatch : split.suffixTryCatches) {
                 body.tryCatchBlocks.add(new TryCatchBlockNode(
                         labels.get(tryCatch.start), labels.get(tryCatch.end),
@@ -358,7 +370,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                             new HashSet<>(), extraLocals,
                             firstExtraLocal(constructor),
                             tryCatches.prefix, tryCatches.suffix,
-                            new ArrayList<>(), null, distinctSuffix);
+                            tryCatches.relocated, null, distinctSuffix);
                 }
                 suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
                 wrapperEndIndex = suffixStartIndex;
@@ -525,6 +537,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Map<LabelNode, Integer> indexes = labelIndexes(constructor);
         List<TryCatchBlockNode> prefix = new ArrayList<>();
         List<TryCatchBlockNode> suffix = new ArrayList<>();
+        Map<LabelNode, RelocatedPrefixHandler> relocatedByLabel =
+                new IdentityHashMap<>();
+        Set<LabelNode> suffixLabels = new HashSet<>();
+        for (LinearSuffix range : distinctSuffix.suffixes) {
+            for (int i = range.startIndex; i < range.endIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                if (instruction instanceof LabelNode) {
+                    suffixLabels.add((LabelNode) instruction);
+                }
+            }
+        }
+        Set<LabelNode> prefixLabels = new HashSet<>();
+        for (AbstractInsnNode instruction : constructor.instructions) {
+            if (instruction instanceof LabelNode
+                    && !suffixLabels.contains(instruction)) {
+                prefixLabels.add((LabelNode) instruction);
+            }
+        }
         int firstCallIndex = callIndexes.get(0);
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             if (tryCatchLabelsBefore(
@@ -539,14 +570,37 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     break;
                 }
             }
-            if (!whollyInOneSuffix) {
+            if (whollyInOneSuffix) {
+                suffix.add(tryCatch);
+                continue;
+            }
+
+            RelocatedPrefixHandler relocated =
+                    relocatablePrefixHandler(
+                            constructor, prefixLabels, suffixLabels, indexes,
+                            distinctSuffix.suffixes.get(0).startIndex,
+                            tryCatch);
+            boolean protectedInOneSuffix = false;
+            if (relocated != null) {
+                for (LinearSuffix range : distinctSuffix.suffixes) {
+                    if (tryCatchRangeLabelsInRange(
+                            tryCatch, indexes, range)) {
+                        protectedInOneSuffix = true;
+                        break;
+                    }
+                }
+            }
+            if (relocated == null || !protectedInOneSuffix) {
                 throw new UnsupportedIrConstructException(
                         "Constructor exception regions may not cross "
                                 + "the this/super split");
             }
             suffix.add(tryCatch);
+            relocatedByLabel.put(tryCatch.handler, relocated);
         }
-        return new MultiSuperTryCatches(prefix, suffix);
+        return new MultiSuperTryCatches(
+                prefix, suffix,
+                new ArrayList<>(relocatedByLabel.values()));
     }
 
     private static boolean tryCatchLabelsBefore(
@@ -569,6 +623,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return indexInRange(start, range)
                 && indexInRange(end, range)
                 && indexInRange(handler, range);
+    }
+
+    private static boolean tryCatchRangeLabelsInRange(
+            TryCatchBlockNode tryCatch, Map<LabelNode, Integer> indexes,
+            LinearSuffix range) {
+        Integer start = indexes.get(tryCatch.start);
+        Integer end = indexes.get(tryCatch.end);
+        return indexInRange(start, range) && indexInRange(end, range);
     }
 
     private static boolean indexInRange(
@@ -1310,7 +1372,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             int opcode = instruction.getOpcode();
             if (opcode >= 0) {
                 addExceptionSuccessors(
-                        constructor, labelIndexes, index, pending);
+                        constructor, labelIndexes, startIndex,
+                        index, pending);
             }
             if (opcode == Opcodes.RETURN) {
                 reachesReturn = true;
@@ -1427,14 +1490,19 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static void addExceptionSuccessors(
             MethodNode constructor, Map<LabelNode, Integer> labelIndexes,
-            int instructionIndex, ArrayDeque<Integer> pending) {
+            int suffixStartIndex, int instructionIndex,
+            ArrayDeque<Integer> pending) {
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
             Integer startIndex = labelIndexes.get(tryCatch.start);
             Integer endIndex = labelIndexes.get(tryCatch.end);
             Integer handlerIndex = labelIndexes.get(tryCatch.handler);
             if (startIndex != null && endIndex != null && handlerIndex != null
                     && instructionIndex >= startIndex
-                    && instructionIndex < endIndex) {
+                    && instructionIndex < endIndex
+                    // A backward handler is outside this candidate suffix.
+                    // Its exact isolated-prefix form is checked after all
+                    // suffix ranges have been discovered.
+                    && handlerIndex >= suffixStartIndex) {
                 pending.add(handlerIndex);
             }
         }
@@ -3516,12 +3584,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final class MultiSuperTryCatches {
         private final List<TryCatchBlockNode> prefix;
         private final List<TryCatchBlockNode> suffix;
+        private final List<RelocatedPrefixHandler> relocated;
 
         private MultiSuperTryCatches(
                 List<TryCatchBlockNode> prefix,
-                List<TryCatchBlockNode> suffix) {
+                List<TryCatchBlockNode> suffix,
+                List<RelocatedPrefixHandler> relocated) {
             this.prefix = prefix;
             this.suffix = suffix;
+            this.relocated = relocated;
         }
     }
 

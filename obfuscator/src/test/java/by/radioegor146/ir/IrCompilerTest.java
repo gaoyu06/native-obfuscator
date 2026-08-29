@@ -1843,6 +1843,111 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsRelocatedPrefixReturnHandlersOnTwoDistinctSuffixes() {
+        for (boolean storeException : new boolean[]{false, true}) {
+            String kind = storeException ? "astore" : "pop";
+            ClassNode owner = constructorOwner(
+                    "example/TwoSuffixRelocated"
+                            + (storeException ? "Astore" : "Pop"),
+                    "example/MultiSuperBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor =
+                    relocatedPrefixHandlerTwoDistinctSuffixConstructor(
+                            owner.name, owner.superName,
+                            storeException, false);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(III)V", nativeBody.desc, kind);
+            assertEquals(Arrays.asList(Opcodes.ILOAD, Opcodes.IFNE),
+                    realOpcodes(nativeBody).subList(0, 2), kind);
+            assertEquals(1, nativeBody.tryCatchBlocks.size(), kind);
+            assertTryCatchLabelsBelongTo(
+                    nativeBody, nativeBody.tryCatchBlocks.get(0));
+            java.util.List<Integer> nativeOpcodes =
+                    realOpcodes(nativeBody);
+            assertEquals(
+                    storeException ? Opcodes.ASTORE : Opcodes.POP,
+                    nativeOpcodes.get(nativeOpcodes.size() - 2), kind);
+            assertEquals(Opcodes.RETURN,
+                    nativeOpcodes.get(nativeOpcodes.size() - 1), kind);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(2, directChainCallCount(
+                    constructor, owner), kind);
+            assertEquals(2, hiddenBridgeCallCount(constructor), kind);
+            assertEquals(1L, distinctHiddenBridgeCount(constructor), kind);
+            assertTrue(constructor.tryCatchBlocks.isEmpty(), kind);
+            assertFalse(realOpcodes(constructor).contains(
+                    storeException ? Opcodes.ASTORE : Opcodes.POP), kind);
+            assertFalse(realOpcodes(constructor).contains(
+                    Opcodes.IDIV), kind);
+            assertTrue(context.output.toString().contains(
+                    "goto IR_CATCH_"), kind);
+            assertEquals(
+                    "(Ljava/lang/Object;III)V",
+                    context.proxyMethod.getMethodNode().desc, kind);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), kind);
+        }
+    }
+
+    @Test
+    public void rejectsRelocatedPrefixHandlerSpanningDistinctSuffixesBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedSpanningRelocatedCatch",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                relocatedPrefixHandlerTwoDistinctSuffixConstructor(
+                        owner.name, owner.superName, false, true);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        TryCatchBlockNode original = constructor.tryCatchBlocks.get(0);
+        LabelNode start = original.start;
+        LabelNode end = original.end;
+        LabelNode handler = original.handler;
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertTrue(error.getMessage().contains(
+                "Constructor exception regions may not cross "
+                        + "the this/super split"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertEquals(1, constructor.tryCatchBlocks.size());
+        assertSame(original, constructor.tryCatchBlocks.get(0));
+        assertSame(start, original.start);
+        assertSame(end, original.end);
+        assertSame(handler, original.handler);
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool()
+                .getClasses().isEmpty());
+    }
+
+    @Test
     public void rejectsCrossSuffixAndChainCoveringMultiSuperTryCatchBeforeMutation() {
         for (String shape : Arrays.asList("cross-suffix", "covers-chain")) {
             ClassNode owner = constructorOwner(
@@ -4804,6 +4909,94 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native distinct-suffix catch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the relocated multi-super catch test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the relocated multi-super catch test");
+
+        String ownerName = "example/MultiRelocatedCatchRuntime";
+        String baseName = "example/MultiRelocatedCatchRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-multi-relocated-catch-run");
+        Path inputJar = directory.resolve("multi-relocated-catch.jar");
+        Path outputDirectory = directory.resolve("output");
+        createRelocatedPrefixHandlerDistinctMultiSuperJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-jar", inputJar.toString()));
+        javaResult.check("plain relocated multi-super catch Java run");
+        assertEquals(
+                "4" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "2" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(2, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1L, distinctHiddenBridgeCount(
+                transformedConstructor));
+        assertTrue(transformedConstructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.POP));
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.IDIV));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("relocated multi-super catch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("relocated multi-super catch CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Relocated multi-super native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native relocated multi-super catch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -10968,6 +11161,38 @@ public class IrCompilerTest {
         }
     }
 
+    private void createRelocatedPrefixHandlerDistinctMultiSuperJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                relocatedPrefixHandlerTwoDistinctSuffixConstructor(
+                        ownerName, baseName, false, false));
+        owner.methods.add(
+                suffixOnlyDistinctMultiSuperTryCatchMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createBranchedDistinctSuffixJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -12777,6 +13002,63 @@ public class IrCompilerTest {
         method.tryCatchBlocks.add(new TryCatchBlockNode(
                 start, end, handler, "java/lang/ArithmeticException"));
         method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode relocatedPrefixHandlerTwoDistinctSuffixConstructor(
+            String owner, String superName, boolean storeException,
+            boolean spanSuffixes) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(II)V", null, null);
+        LabelNode handler = new LabelNode();
+        LabelNode dispatch = new LabelNode();
+        LabelNode negative = new LabelNode();
+        LabelNode start = new LabelNode();
+        LabelNode firstEnd = new LabelNode();
+        LabelNode secondEnd = new LabelNode();
+        method.instructions.add(new JumpInsnNode(
+                Opcodes.GOTO, dispatch));
+        method.instructions.add(handler);
+        method.instructions.add(storeException
+                ? new VarInsnNode(Opcodes.ASTORE, 3)
+                : new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(dispatch);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(firstEnd);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(secondEnd);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, spanSuffixes ? secondEnd : firstEnd, handler,
+                "java/lang/ArithmeticException"));
+        method.maxLocals = 4;
         method.maxStack = 3;
         return method;
     }
