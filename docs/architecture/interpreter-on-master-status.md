@@ -90,6 +90,24 @@ errors. Coverage includes exact `add`/`sumTo` opcode-stream goldens, explicit
 and a real `g++ -std=c++17 -Wall -Wextra -Werror` compile and execution of the
 dispatcher runtime.
 
+Generated shared-library compile:
+
+```text
+java -jar obfuscator/build/libs/obfuscator.jar \
+  /tmp/interpreter-default-proof-fixture.jar \
+  /tmp/interpreter-on-master-shared-library --backend=interpreter
+CC=gcc CXX=g++ cmake \
+  -S /tmp/interpreter-on-master-shared-library/cpp \
+  -B /tmp/interpreter-on-master-shared-library/native-build \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+CC=gcc CXX=g++ cmake --build \
+  /tmp/interpreter-on-master-shared-library/native-build --parallel 2
+```
+
+Result: configuration and compilation succeeded, including
+`native_jvm_interp.cpp`; CMake reported
+`[100%] Built target native_library`.
+
 Environment: Linux 6.12.94+, OpenJDK 21.0.10, Gradle 9.3.1, GCC/G++ 13.3.0,
 and CMake 3.28.3. The JDK value describes only the test environment; it is not
 a compatibility claim.
@@ -110,8 +128,9 @@ a compatibility claim.
   两次完整目录比较均以 0 退出，且不支持的方法仍使用当前 codegen 路径。
 - **(d) Integration evidence / 集成证据:** The 96-test focused suite and the
   9-test interpreter suite passed with GCC/G++; the dispatcher compiled and
-  executed under C++17; omitted `--backend` matched current master. Requirement
-  7 is not claimed, and no such evaluation was run. /
+  executed under C++17; the generated shared library built successfully; and
+  omitted `--backend` matched current master. Requirement 7 is not claimed, and
+  no such evaluation was run. /
   使用 GCC/G++ 的 96 项聚焦测试与 9 项解释器测试均通过；调度器以 C++17
-  编译并执行；省略 `--backend` 的输出与当前 master 一致。不声明满足要求 7，
-  也未运行该类评估。
+  编译并执行；生成的共享库构建成功；省略 `--backend` 的输出与当前 master
+  一致。不声明满足要求 7，也未运行该类评估。

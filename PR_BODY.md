@@ -33,13 +33,13 @@ when `--backend` is omitted.
 - **(d) Integration evidence / 集成证据:** The required focused suite passed
   96/96; the interpreter suite passed 9/9 and includes opcode-stream goldens,
   explicit fallback, generated-tree integration, and a real GCC/G++ C++17
-  dispatcher compile and execution. Both default-off `diff -r` commands exited
-  0 with no output. Requirement 7 is not claimed, and no such evaluation was
-  run. /
+  dispatcher compile and execution. The generated shared library built
+  successfully. Both default-off `diff -r` commands exited 0 with no output.
+  Requirement 7 is not claimed, and no such evaluation was run. /
   必需的聚焦测试 96/96 通过；解释器测试 9/9 通过，覆盖操作码流 golden、
   显式回退、生成目录集成，以及使用 GCC/G++ 对 C++17 调度器的真实编译与执行。
-  两次默认关闭的 `diff -r` 均以 0 退出且无输出。不声明满足要求 7，也未运行
-  该类评估。
+  生成的共享库构建成功。两次默认关闭的 `diff -r` 均以 0 退出且无输出。
+  不声明满足要求 7，也未运行该类评估。
 
 ## Verification / 验证
 
@@ -63,6 +63,14 @@ diff -r /tmp/interpreter-on-master-default-proof-2/master/cpp \
 diff -r /tmp/interpreter-on-master-default-proof-2/branch-no-flag/cpp \
   /tmp/interpreter-on-master-default-proof-2/branch-explicit-cpp/cpp
 # exit 0, no output
+
+CC=gcc CXX=g++ cmake \
+  -S /tmp/interpreter-on-master-shared-library/cpp \
+  -B /tmp/interpreter-on-master-shared-library/native-build \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+CC=gcc CXX=g++ cmake --build \
+  /tmp/interpreter-on-master-shared-library/native-build --parallel 2
+# [100%] Built target native_library
 ```
 
 Environment / 环境: Linux 6.12.94+, OpenJDK 21.0.10, Gradle 9.3.1,
