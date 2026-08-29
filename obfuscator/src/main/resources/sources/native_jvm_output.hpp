@@ -5,7 +5,7 @@
 #define NATIVE_JVM_OUTPUT_HPP_GUARD
 
 namespace native_jvm {
-    void prepare_lib(JNIEnv *env);
+    bool prepare_lib(JNIEnv *env);
 }
 
 #endif
