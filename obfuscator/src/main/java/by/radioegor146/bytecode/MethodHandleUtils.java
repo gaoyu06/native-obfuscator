@@ -10,6 +10,7 @@ import org.objectweb.asm.tree.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 public class MethodHandleUtils {
 
@@ -127,22 +128,22 @@ public class MethodHandleUtils {
     }
 
     public static HiddenMethodsPool.HiddenMethod getInvokeHelper(
-            NativeObfuscator obfuscator, String invokeName, String invokeDescriptor) {
+            NativeObfuscator obfuscator, ClassNode owner, String invokeName,
+            String invokeDescriptor) {
         if (!"invoke".equals(invokeName) && !"invokeExact".equals(invokeName)) {
             throw new IllegalArgumentException(
                     "Unsupported signature-polymorphic invocation " + invokeName);
         }
         boolean exact = "invokeExact".equals(invokeName);
-        String targetDescriptor = exact
-                ? invokeDescriptor : simplifyDescriptor(invokeDescriptor);
+        String targetDescriptor = invokeDescriptor;
         List<Type> helperArguments = new ArrayList<>();
         helperArguments.add(Type.getObjectType("java/lang/invoke/MethodHandle"));
         helperArguments.addAll(Arrays.asList(Type.getArgumentTypes(targetDescriptor)));
         String helperDescriptor = Type.getMethodDescriptor(
                 Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
-        return createInvokeHelper(obfuscator,
+        return createInvokeHelper(obfuscator, owner,
                 exact ? "mhinvokeexact" : "mhinvoke", helperDescriptor,
-                helperDescriptor, targetDescriptor, invokeName, !exact, 0);
+                helperDescriptor, targetDescriptor, invokeName, 0);
     }
 
     public static HiddenMethodsPool.HiddenMethod getInvokeReverseHelper(
@@ -163,47 +164,53 @@ public class MethodHandleUtils {
         helperArguments.add(Type.getObjectType("java/lang/invoke/MethodHandle"));
         String helperDescriptor = Type.getMethodDescriptor(
                 Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
-        return createInvokeHelper(obfuscator, "invokereverse", helperDescriptor,
-                helperDescriptor, targetDescriptor, "invoke", true,
+        return createInvokeHelper(obfuscator, null,
+                "invokereverse", helperDescriptor,
+                helperDescriptor, targetDescriptor, "invoke",
                 helperArguments.size() - 1);
     }
 
     private static HiddenMethodsPool.HiddenMethod createInvokeHelper(
-            NativeObfuscator obfuscator, String helperName, String helperDescriptor,
+            NativeObfuscator obfuscator, ClassNode owner, String helperName,
+            String helperDescriptor,
             String cacheKey, String targetDescriptor, String invokeName,
-            boolean eagerDefinition,
             int methodHandleArgument) {
+        Consumer<MethodNode> creator = method -> {
+            method.visibleAnnotations = new ArrayList<>();
+            method.visibleAnnotations.add(
+                    new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
+            method.visibleAnnotations.add(
+                    new AnnotationNode("Ljdk/internal/vm/annotation/Hidden;"));
+
+            Type[] helperArguments = Type.getArgumentTypes(helperDescriptor);
+            int[] localIndexes = new int[helperArguments.length];
+            int local = 0;
+            for (int i = 0; i < helperArguments.length; i++) {
+                localIndexes[i] = local;
+                local += helperArguments[i].getSize();
+            }
+
+            method.instructions.add(
+                    new VarInsnNode(Opcodes.ALOAD, localIndexes[methodHandleArgument]));
+            for (int i = 0; i < helperArguments.length; i++) {
+                if (i == methodHandleArgument) {
+                    continue;
+                }
+                Type argument = helperArguments[i];
+                method.instructions.add(new VarInsnNode(
+                        argument.getOpcode(Opcodes.ILOAD), localIndexes[i]));
+            }
+            method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                    "java/lang/invoke/MethodHandle", invokeName, targetDescriptor));
+            method.instructions.add(new InsnNode(
+                    Type.getReturnType(targetDescriptor).getOpcode(Opcodes.IRETURN)));
+        };
+        if (owner != null) {
+            return obfuscator.getHiddenMethodsPool().getMethod(
+                    owner, helperName, helperDescriptor, creator);
+        }
         return obfuscator.getHiddenMethodsPool().getMethod(
-                helperName, helperDescriptor, cacheKey, eagerDefinition, method -> {
-                    method.visibleAnnotations = new ArrayList<>();
-                    method.visibleAnnotations.add(
-                            new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
-                    method.visibleAnnotations.add(
-                            new AnnotationNode("Ljdk/internal/vm/annotation/Hidden;"));
-
-                    Type[] helperArguments = Type.getArgumentTypes(helperDescriptor);
-                    int[] localIndexes = new int[helperArguments.length];
-                    int local = 0;
-                    for (int i = 0; i < helperArguments.length; i++) {
-                        localIndexes[i] = local;
-                        local += helperArguments[i].getSize();
-                    }
-
-                    method.instructions.add(
-                            new VarInsnNode(Opcodes.ALOAD, localIndexes[methodHandleArgument]));
-                    for (int i = 0; i < helperArguments.length; i++) {
-                        if (i == methodHandleArgument) {
-                            continue;
-                        }
-                        Type argument = helperArguments[i];
-                        method.instructions.add(new VarInsnNode(
-                                argument.getOpcode(Opcodes.ILOAD), localIndexes[i]));
-                    }
-                    method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
-                            "java/lang/invoke/MethodHandle", invokeName, targetDescriptor));
-                    method.instructions.add(new InsnNode(
-                            Type.getReturnType(targetDescriptor).getOpcode(Opcodes.IRETURN)));
-                });
+                helperName, helperDescriptor, cacheKey, creator);
     }
 
     private static String simplifyDescriptor(String descriptor) {

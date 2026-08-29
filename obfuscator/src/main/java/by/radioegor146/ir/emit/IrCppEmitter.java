@@ -865,7 +865,7 @@ public final class IrCppEmitter {
                 && invoke.getKind() == IrNodes.Invoke.Kind.VIRTUAL) {
             HiddenMethodsPool.HiddenMethod helper =
                     MethodHandleUtils.getInvokeHelper(context.obfuscator,
-                            invoke.getName(), invoke.getDescriptor());
+                            context.clazz, invoke.getName(), invoke.getDescriptor());
             List<IrValue> arguments = new ArrayList<>();
             arguments.add(invoke.getReceiver());
             arguments.addAll(invoke.getArguments());

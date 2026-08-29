@@ -269,7 +269,8 @@ public class NativeObfuscator {
                                  new ClassSourceBuilder(cppOutput, classNode.name, classIndexReference[0]++, stringPool)) {
                         StringBuilder instructions = new StringBuilder();
 
-                        for (int i = 0; i < classNode.methods.size(); i++) {
+                        int methodsToProcess = classNode.methods.size();
+                        for (int i = 0; i < methodsToProcess; i++) {
                             MethodNode method = classNode.methods.get(i);
 
                             if (!MethodProcessor.shouldProcess(method, selectedCodegen)) {
@@ -351,7 +352,7 @@ public class NativeObfuscator {
             // Hidden MethodHandle trampolines are ordinary symbolic call targets from the
             // generated native code. Keep them loadable by the transformed application's
             // class loader on every platform, including HOTSPOT. HOTSPOT additionally embeds
-            // bootstrap-safe classes to preserve the existing eager DefineClass path.
+            // them in the native library to preserve the existing eager DefineClass path.
             for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
                 ClassWriter classWriter = new SafeClassWriter(metadataReader,
                         ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -364,9 +365,6 @@ public class NativeObfuscator {
             }
             if (platform != Platform.ANDROID) {
                 for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
-                    if (!hiddenMethodsPool.requiresEagerDefinition(hiddenClass)) {
-                        continue;
-                    }
                     String hiddenClassFileName = "data_" + Util.escapeCppNameString(hiddenClass.name.replace('/', '_'));
 
                     cMakeBuilder.addClassFile("output/" + hiddenClassFileName + ".hpp");

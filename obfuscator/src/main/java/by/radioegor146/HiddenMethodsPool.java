@@ -23,8 +23,8 @@ public class HiddenMethodsPool {
     private final HashMap<String, Integer> namePool = new HashMap<>();
     private final HashMap<String, HashMap<String, HiddenMethod>> methods = new HashMap<>();
     private final List<ClassNode> classes = new ArrayList<>();
-    private final HashMap<Boolean, ClassNode> currentClasses = new HashMap<>();
-    private final Map<ClassNode, Boolean> eagerDefinitions = new IdentityHashMap<>();
+    private final Map<ClassNode, HashMap<String, HiddenMethod>> ownerMethods =
+            new IdentityHashMap<>();
 
     public static class HiddenMethod {
 
@@ -51,12 +51,6 @@ public class HiddenMethodsPool {
 
     public HiddenMethod getMethod(String name, String desc, String cacheKey,
                                   Consumer<MethodNode> creator) {
-        return getMethod(name, desc, cacheKey, true, creator);
-    }
-
-    public HiddenMethod getMethod(String name, String desc, String cacheKey,
-                                  boolean eagerDefinition,
-                                  Consumer<MethodNode> creator) {
         HiddenMethod existingMethod = methods.computeIfAbsent(name, unused -> new HashMap<>())
                 .get(cacheKey);
         if (existingMethod != null) {
@@ -67,10 +61,7 @@ public class HiddenMethodsPool {
         MethodNode newMethod = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_BRIDGE |
                 Opcodes.ACC_SYNTHETIC, newName, desc, null, new String[0]);
         creator.accept(newMethod);
-        ClassNode classNode = currentClasses.get(eagerDefinition);
-        if (classNode != null && classNode.methods.size() > 10000) {
-            classNode = null;
-        }
+        ClassNode classNode = classes.isEmpty() ? null : classes.get(classes.size() - 1).methods.size() > 10000 ? null : classes.get(classes.size() - 1);
         if (classNode == null) {
             classNode = new ClassNode(Opcodes.ASM9);
             classNode.access = Opcodes.ACC_PUBLIC;
@@ -78,8 +69,6 @@ public class HiddenMethodsPool {
             classNode.name = baseName + "/Hidden" + classes.size();
             classNode.superName = Type.getInternalName(Object.class);
             classes.add(classNode);
-            currentClasses.put(eagerDefinition, classNode);
-            eagerDefinitions.put(classNode, eagerDefinition);
         }
         classNode.methods.add(newMethod);
         HiddenMethod hiddenMethod = new HiddenMethod(classNode, newMethod);
@@ -87,11 +76,42 @@ public class HiddenMethodsPool {
         return hiddenMethod;
     }
 
-    public List<ClassNode> getClasses() {
-        return classes;
+    public HiddenMethod getMethod(ClassNode owner, String name, String desc,
+                                  Consumer<MethodNode> creator) {
+        String cacheKey = name + '\0' + desc;
+        HiddenMethod existingMethod = ownerMethods
+                .computeIfAbsent(owner, unused -> new HashMap<>()).get(cacheKey);
+        if (existingMethod != null) {
+            return existingMethod;
+        }
+
+        String newName;
+        do {
+            newName = name + namePool.compute(
+                    name, (otherName, value) -> value == null ? 0 : value + 1);
+        } while (hasMethodNamed(owner, newName));
+
+        MethodNode newMethod = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC
+                | Opcodes.ACC_BRIDGE | Opcodes.ACC_SYNTHETIC,
+                newName, desc, null, new String[0]);
+        creator.accept(newMethod);
+        owner.methods.add(newMethod);
+        HiddenMethod hiddenMethod = new HiddenMethod(owner, newMethod);
+        ownerMethods.computeIfAbsent(owner, unused -> new HashMap<>())
+                .put(cacheKey, hiddenMethod);
+        return hiddenMethod;
     }
 
-    public boolean requiresEagerDefinition(ClassNode classNode) {
-        return Boolean.TRUE.equals(eagerDefinitions.get(classNode));
+    private static boolean hasMethodNamed(ClassNode owner, String name) {
+        for (MethodNode method : owner.methods) {
+            if (method.name.equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public List<ClassNode> getClasses() {
+        return classes;
     }
 }

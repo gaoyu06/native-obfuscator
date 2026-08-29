@@ -69,6 +69,10 @@ public class IrCompilerTest {
         return value.toString();
     }
 
+    private static Object returnObject(String value) {
+        return new Object();
+    }
+
     @Test
     public void buildsAndEmitsAdd() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
@@ -261,20 +265,19 @@ public class IrCompilerTest {
         assertTrue(invokeReverse.output.toString().contains("env->CallStaticIntMethod"));
         assertFalse(invokeReverse.output.toString().contains("native.magic"));
 
+        ClassNode invokeExactOwner = owner();
         MethodContext invokeExact = new MethodContext(obfuscator,
-                methodHandleInvokeExactMethod(), 3, owner(), 0);
+                methodHandleInvokeExactMethod(), 3, invokeExactOwner, 0);
         compiler.processMethod(invokeExact);
         assertTrue(invokeExact.output.toString().contains("env->CallStaticIntMethod"));
         assertFalse(invokeExact.output.toString().contains("\"invokeExact\""));
 
-        assertEquals(2, obfuscator.getHiddenMethodsPool().getClasses().size());
-        assertEquals("native0/hidden/Hidden0",
-                obfuscator.getHiddenMethodsPool().getClasses().get(0).name);
-        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().stream()
-                .flatMap(hidden -> hidden.methods.stream())
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        ClassNode hidden = obfuscator.getHiddenMethodsPool().getClasses().get(0);
+        assertEquals("native0/hidden/Hidden0", hidden.name);
+        assertTrue(hidden.methods.stream()
                 .anyMatch(method -> method.name.startsWith("invokereverse")));
-        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().stream()
-                .flatMap(hidden -> hidden.methods.stream())
+        assertTrue(invokeExactOwner.methods.stream()
                 .anyMatch(method -> method.name.startsWith("mhinvokeexact")));
     }
 
@@ -303,31 +306,27 @@ public class IrCompilerTest {
     @Test
     public void generatedInvokeExactHelperPreservesExactMethodTypeChecks() throws Throwable {
         NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode exactOwner = owner();
+        exactOwner.version = Opcodes.V1_8;
         String callSiteDescriptor = "(Ljava/lang/String;)Ljava/lang/String;";
         HiddenMethodsPool.HiddenMethod exactHelper = MethodHandleUtils.getInvokeHelper(
-                obfuscator, "invokeExact", callSiteDescriptor);
+                obfuscator, exactOwner, "invokeExact", callSiteDescriptor);
         HiddenMethodsPool.HiddenMethod invokeHelper = MethodHandleUtils.getInvokeHelper(
-                obfuscator, "invoke", callSiteDescriptor);
+                obfuscator, exactOwner, "invoke", callSiteDescriptor);
 
-        assertFalse(obfuscator.getHiddenMethodsPool()
-                .requiresEagerDefinition(exactHelper.getClassNode()));
-        assertTrue(obfuscator.getHiddenMethodsPool()
-                .requiresEagerDefinition(invokeHelper.getClassNode()));
+        assertEquals(exactOwner, exactHelper.getClassNode());
+        assertEquals(exactOwner, invokeHelper.getClassNode());
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
 
         ClassWriter exactWriter = new ClassWriter(
                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-        exactHelper.getClassNode().accept(exactWriter);
+        exactOwner.accept(exactWriter);
         Class<?> exactHelperClass =
                 new ByteArrayClassLoader().define(exactWriter.toByteArray());
-        ClassWriter invokeWriter = new ClassWriter(
-                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-        invokeHelper.getClassNode().accept(invokeWriter);
-        Class<?> invokeHelperClass =
-                new ByteArrayClassLoader().define(invokeWriter.toByteArray());
         Method exact = exactHelperClass.getMethod(exactHelper.getMethodNode().name,
                 MethodHandle.class, String.class);
-        Method invoke = invokeHelperClass.getMethod(invokeHelper.getMethodNode().name,
-                MethodHandle.class, Object.class);
+        Method invoke = exactHelperClass.getMethod(invokeHelper.getMethodNode().name,
+                MethodHandle.class, String.class);
 
         MethodHandle exactTarget = MethodHandles.lookup().findStatic(
                 IrCompilerTest.class, "identityString",
@@ -335,12 +334,19 @@ public class IrCompilerTest {
         MethodHandle adaptableTarget = MethodHandles.lookup().findStatic(
                 IrCompilerTest.class, "acceptCharSequence",
                 MethodType.methodType(String.class, CharSequence.class));
+        MethodHandle wrongReturnTarget = MethodHandles.lookup().findStatic(
+                IrCompilerTest.class, "returnObject",
+                MethodType.methodType(Object.class, String.class));
 
         assertEquals("value", exact.invoke(null, exactTarget, "value"));
         assertEquals("value", invoke.invoke(null, adaptableTarget, "value"));
         InvocationTargetException error = assertThrows(InvocationTargetException.class,
                 () -> exact.invoke(null, adaptableTarget, "value"));
         assertTrue(error.getCause() instanceof WrongMethodTypeException);
+        InvocationTargetException wrongReturn = assertThrows(
+                InvocationTargetException.class,
+                () -> invoke.invoke(null, wrongReturnTarget, "value"));
+        assertTrue(wrongReturn.getCause() instanceof ClassCastException);
     }
 
     @Test
