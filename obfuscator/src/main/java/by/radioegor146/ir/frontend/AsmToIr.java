@@ -206,7 +206,8 @@ public final class AsmToIr {
         if (!(constant instanceof Type)) {
             return null;
         }
-        switch (((Type) constant).getSort()) {
+        Type type = (Type) constant;
+        switch (type.getSort()) {
             case Type.BOOLEAN:
                 return "java/lang/Boolean";
             case Type.BYTE:
@@ -224,6 +225,38 @@ public final class AsmToIr {
             case Type.DOUBLE:
                 return "java/lang/Double";
             case Type.VOID:
+                return "java/lang/Void";
+            case Type.OBJECT:
+                // A CONSTANT_Class entry stores its name as text. ASM therefore
+                // reads synthetic primitive descriptors such as "I" back as an
+                // object-looking Type after a classfile round trip.
+                String name = type.getInternalName();
+                return name.length() == 1
+                        ? primitiveClassOwner(name.charAt(0)) : null;
+            default:
+                return null;
+        }
+    }
+
+    private static String primitiveClassOwner(char descriptor) {
+        switch (descriptor) {
+            case 'Z':
+                return "java/lang/Boolean";
+            case 'B':
+                return "java/lang/Byte";
+            case 'C':
+                return "java/lang/Character";
+            case 'S':
+                return "java/lang/Short";
+            case 'I':
+                return "java/lang/Integer";
+            case 'F':
+                return "java/lang/Float";
+            case 'J':
+                return "java/lang/Long";
+            case 'D':
+                return "java/lang/Double";
+            case 'V':
                 return "java/lang/Void";
             default:
                 return null;
