@@ -265,16 +265,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 }
             } else if (instruction instanceof TableSwitchInsnNode) {
                 TableSwitchInsnNode table = (TableSwitchInsnNode) instruction;
-                if (!prefixLabels.contains(table.dflt)
-                        || !prefixLabels.containsAll(table.labels)) {
+                if ((!prefixLabels.contains(table.dflt)
+                        || !prefixLabels.containsAll(table.labels))
+                        && !admittedPrefixSuffixBranches.contains(i)) {
                     throw unsupported(
                             "Constructor prefix branches across the this/super call",
                             i, instruction);
                 }
             } else if (instruction instanceof LookupSwitchInsnNode) {
                 LookupSwitchInsnNode lookup = (LookupSwitchInsnNode) instruction;
-                if (!prefixLabels.contains(lookup.dflt)
-                        || !prefixLabels.containsAll(lookup.labels)) {
+                if ((!prefixLabels.contains(lookup.dflt)
+                        || !prefixLabels.containsAll(lookup.labels))
+                        && !admittedPrefixSuffixBranches.contains(i)) {
                     throw unsupported(
                             "Constructor prefix branches across the this/super call",
                             i, instruction);
@@ -549,10 +551,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
             Integer conditionalBranch = conditionalJoinOrReturnBranch(
                     constructor, callIndexes, i, join);
-            if (conditionalBranch == null) {
+            if (conditionalBranch != null) {
+                branchIndexes.add(conditionalBranch);
+                continue;
+            }
+
+            Set<Integer> switchBranches = switchJoinOrReturnBranches(
+                    constructor, callIndexes, i, join, joinIndex);
+            if (switchBranches == null) {
                 return null;
             }
-            branchIndexes.add(conditionalBranch);
+            branchIndexes.addAll(switchBranches);
         }
         return new SharedSuffix(
                 joinIndex, branchIndexes, new HashSet<>());
@@ -662,6 +671,107 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static boolean isBinaryIntCompare(int opcode) {
         return opcode >= Opcodes.IF_ICMPEQ && opcode <= Opcodes.IF_ICMPLE;
+    }
+
+    /**
+     * Proves the switch counterpart of conditionalJoinOrReturnBranch. The exact
+     * admitted shape has one declared int-family argument load immediately
+     * after the first of exactly two chain calls:
+     *
+     * <pre>
+     * invokespecial owner-or-super.&lt;init&gt;
+     * iload declaredArgument
+     * tableswitch/lookupswitch {
+     *   sharedSuffix
+     *   immediateReturn
+     *   directGotoSharedSuffix
+     * }
+     * </pre>
+     *
+     * Every non-suffix target must remain before the second chain call and
+     * execute only RETURN or GOTO to the exact shared suffix as its first
+     * executable instruction. The full chain-count proof subsequently rejects
+     * any zero-call suffix/return path or path that invokes a second chain
+     * constructor.
+     */
+    private static Set<Integer> switchJoinOrReturnBranches(
+            MethodNode constructor, List<Integer> callIndexes,
+            int callOrdinal, LabelNode join, int joinIndex) {
+        if (callIndexes.size() != 2 || callOrdinal != 0
+                || !constructor.tryCatchBlocks.isEmpty()
+                || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
+            return null;
+        }
+
+        int loadIndex = firstExecutableIndex(
+                constructor, callIndexes.get(callOrdinal) + 1);
+        if (loadIndex >= constructor.instructions.size()) {
+            return null;
+        }
+        AbstractInsnNode load = constructor.instructions.get(loadIndex);
+        if (load.getOpcode() != Opcodes.ILOAD
+                || !isDeclaredIntArgument(
+                constructor, ((VarInsnNode) load).var)) {
+            return null;
+        }
+
+        int switchIndex = firstExecutableIndex(constructor, loadIndex + 1);
+        if (switchIndex >= constructor.instructions.size()) {
+            return null;
+        }
+        AbstractInsnNode switchInstruction =
+                constructor.instructions.get(switchIndex);
+        List<LabelNode> targets = new ArrayList<>();
+        if (switchInstruction instanceof TableSwitchInsnNode) {
+            TableSwitchInsnNode table =
+                    (TableSwitchInsnNode) switchInstruction;
+            targets.add(table.dflt);
+            targets.addAll(table.labels);
+        } else if (switchInstruction instanceof LookupSwitchInsnNode) {
+            LookupSwitchInsnNode lookup =
+                    (LookupSwitchInsnNode) switchInstruction;
+            targets.add(lookup.dflt);
+            targets.addAll(lookup.labels);
+        } else {
+            return null;
+        }
+
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Set<Integer> admittedBranches = new HashSet<>();
+        admittedBranches.add(switchIndex);
+        boolean reachesSharedSuffix = false;
+        int secondCallIndex = callIndexes.get(1);
+        for (LabelNode target : targets) {
+            if (target == join) {
+                reachesSharedSuffix = true;
+                continue;
+            }
+
+            Integer targetIndex = indexes.get(target);
+            if (targetIndex == null || targetIndex <= switchIndex
+                    || targetIndex >= joinIndex) {
+                return null;
+            }
+            int executableIndex =
+                    firstExecutableIndex(constructor, targetIndex + 1);
+            if (executableIndex >= secondCallIndex) {
+                return null;
+            }
+            AbstractInsnNode executable =
+                    constructor.instructions.get(executableIndex);
+            if (executable.getOpcode() == Opcodes.RETURN) {
+                continue;
+            }
+            if (executable instanceof JumpInsnNode
+                    && executable.getOpcode() == Opcodes.GOTO
+                    && ((JumpInsnNode) executable).label == join) {
+                admittedBranches.add(executableIndex);
+                reachesSharedSuffix = true;
+                continue;
+            }
+            return null;
+        }
+        return reachesSharedSuffix ? admittedBranches : null;
     }
 
     private static boolean isDeclaredIntArgument(

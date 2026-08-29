@@ -28,6 +28,10 @@ The constructor split now covers these related prefix shapes:
   or two declared int-family argument `ILOAD`s, a unary int-zero or binary
   `IF_ICMPxx` jump to the shared suffix, and immediate fallthrough `RETURN`,
   while the second call falls through to that suffix; and
+- exactly two direct this/super calls where the first call is followed by one
+  declared int-family argument `ILOAD` and `TABLESWITCH` or `LOOKUPSWITCH`,
+  every target is the shared suffix, an immediate `RETURN`, or a direct `GOTO`
+  to that suffix, and the second call falls through to the suffix; and
 - exactly two direct this/super calls where the first call returns immediately
   and the second falls through to the suffix, only when a forwarded extra local
   is unassigned at the exiting call but has one provable type on every path
@@ -48,7 +52,7 @@ The constructor split now covers these related prefix shapes:
   call is still reachable.
 - A prefix jump or switch whose target lands in the suffix is **rejected**
   (`Constructor prefix branches across the this/super call`) unless it matches
-  one of the two exact shared-suffix exceptions below.
+  one of the exact shared-suffix exceptions below.
 - For a multi-call diamond, the one exception is the `GOTO` immediately after
   each non-final chain call. It must target the exact shared join label. The
   final chain call must fall through to that same label.
@@ -62,6 +66,15 @@ The constructor split now covers these related prefix shapes:
   analysis requires both calls to consume the original constructor receiver
   with no older stack values. The count-state CFG proof still requires exactly
   one call at the join and at the early return.
+- One switch exception is admitted under the same two-call, empty-exception-
+  table, empty-chain-entry-stack, and original-receiver restrictions. The first
+  call must be followed by exactly one direct `ILOAD` of a declared int-family
+  constructor argument and then `TABLESWITCH` or `LOOKUPSWITCH`. Every case and
+  default must target the exact shared suffix label, an immediate prefix
+  `RETURN`, or a prefix label whose first executable instruction is a direct
+  `GOTO` to that suffix. The second call must fall through to the suffix. The
+  count-state proof rejects zero-call suffix/return paths and any switch target
+  that executes another chain call.
 - One prefix-exit exception is admitted only for exactly two chain calls with
   no exception table and empty chain-entry stacks. The first call must be
   followed immediately by `RETURN`; the final call must fall through directly
@@ -116,9 +129,11 @@ One additional family is reduced to that same shared-join form:
   `RETURN`.
 
 Three-or-more returns with computed or non-argument chain inputs, distinct
-joins, other conditional or switch forms, condition loads that are not direct
-declared int-family arguments, work between a chain call and an existing join,
-unreachable candidates, and non-identical per-call suffixes remain rejected.
+joins, other conditional or switch forms, condition/switch-key loads that are
+not direct declared int-family arguments, work between a chain call and an
+existing join or before a switch-target return, nonempty exception tables for
+the post-chain forms, unreachable candidates, and non-identical per-call
+suffixes remain rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
 multi-exit constructor rewriter.
 
@@ -295,6 +310,15 @@ Synthetic bytecode unit tests in
   three paths for every newly admitted compare through plain Java and the
   complete CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring
   identical stdout.
+- `admitsPostChainSwitchesToSharedSuffix` checks both switch opcodes with a
+  direct shared-suffix target, a prefix `GOTO` target, and an immediate-return
+  default while preserving both chain calls and one hidden bridge.
+- `rewrittenPostChainSwitchesPassJvmVerification` verifies the direct and
+  trampoline suffix cases, immediate-return default, and alternate second-call
+  path for both switch opcodes.
+- `postChainSwitchesCompileAndRunWithJavaParity` runs those cases through plain
+  Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsMultipleSuperWithIdenticalLinearSuffixCopies` proves that two
   separate, identical field-writing suffix copies produce one native body and
   normalize to a retained two-call wrapper with one hidden bridge.
@@ -362,9 +386,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 170 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 175 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 177 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 182 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
