@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -15,6 +16,9 @@ namespace {
 
 constexpr uint32_t SDK_ABI_VERSION = 1;
 constexpr uint64_t SHA256_SIZE = 32;
+constexpr uint64_t SHA256_BLOCK_SIZE = 64;
+constexpr uint64_t MAX_SHA256_INPUT_SIZE =
+        std::numeric_limits<uint64_t>::max() / 8;
 const uint8_t EMPTY_INPUT = 0;
 
 bool valid_bytes(no_sdk_bytes_v1 bytes) {
@@ -127,6 +131,40 @@ jbyteArray JNICALL jni_sha256(JNIEnv *env, jclass, jbyteArray input) {
     return result;
 }
 
+jbyteArray JNICALL jni_hmac_sha256(
+        JNIEnv *env, jclass, jbyteArray key, jbyteArray message) {
+    byte_array_copy copied_key;
+    byte_array_copy copied_message;
+    if (!copy_byte_array(env, key, "key", copied_key) ||
+        !copy_byte_array(env, message, "message", copied_message)) {
+        return nullptr;
+    }
+
+    uint8_t digest[SHA256_SIZE];
+    no_sdk_mut_bytes_v1 output = {digest, SHA256_SIZE};
+    const no_sdk_status_v1 status = no_sdk_hmac_sha256_v1(
+            as_bytes(copied_key), as_bytes(copied_message), output);
+    if (status != NO_SDK_OK_V1) {
+        throw_status(env, status);
+        return nullptr;
+    }
+
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(SHA256_SIZE));
+    if (result == nullptr || env->ExceptionCheck()) {
+        return nullptr;
+    }
+    env->SetByteArrayRegion(
+            result,
+            0,
+            static_cast<jsize>(SHA256_SIZE),
+            reinterpret_cast<const jbyte *>(digest));
+    if (env->ExceptionCheck()) {
+        env->DeleteLocalRef(result);
+        return nullptr;
+    }
+    return result;
+}
+
 jboolean JNICALL jni_constant_time_equals(
         JNIEnv *env, jclass, jbyteArray left, jbyteArray right) {
     if (left == nullptr) {
@@ -195,6 +233,60 @@ extern "C" no_sdk_status_v1 no_sdk_sha256_v1(
     return NO_SDK_OK_V1;
 }
 
+extern "C" no_sdk_status_v1 no_sdk_hmac_sha256_v1(
+        no_sdk_bytes_v1 key,
+        no_sdk_bytes_v1 message,
+        no_sdk_mut_bytes_v1 output_32) {
+    if (!valid_bytes(key) || !valid_bytes(message) || output_32.data == nullptr) {
+        return NO_SDK_NULL_V1;
+    }
+    if (output_32.capacity < SHA256_SIZE) {
+        return NO_SDK_BUFFER_TOO_SMALL_V1;
+    }
+    if (!representable_size(key.size) || !representable_size(message.size) ||
+        key.size > MAX_SHA256_INPUT_SIZE ||
+        message.size > MAX_SHA256_INPUT_SIZE - SHA256_BLOCK_SIZE) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
+
+    uint8_t key_block[SHA256_BLOCK_SIZE] = {};
+    if (key.size > SHA256_BLOCK_SIZE) {
+        calc_sha_256(
+                key_block,
+                key.data,
+                static_cast<std::size_t>(key.size));
+    } else if (key.size != 0) {
+        std::memcpy(
+                key_block,
+                key.data,
+                static_cast<std::size_t>(key.size));
+    }
+
+    uint8_t inner_pad[SHA256_BLOCK_SIZE];
+    uint8_t outer_pad[SHA256_BLOCK_SIZE];
+    for (std::size_t i = 0; i < SHA256_BLOCK_SIZE; ++i) {
+        inner_pad[i] = static_cast<uint8_t>(key_block[i] ^ 0x36);
+        outer_pad[i] = static_cast<uint8_t>(key_block[i] ^ 0x5c);
+    }
+
+    uint8_t inner_digest[SHA256_SIZE];
+    struct Sha_256 inner;
+    sha_256_init(&inner, inner_digest);
+    sha_256_write(&inner, inner_pad, sizeof(inner_pad));
+    sha_256_write(
+            &inner,
+            message.size == 0 ? &EMPTY_INPUT : message.data,
+            static_cast<std::size_t>(message.size));
+    sha_256_close(&inner);
+
+    struct Sha_256 outer;
+    sha_256_init(&outer, output_32.data);
+    sha_256_write(&outer, outer_pad, sizeof(outer_pad));
+    sha_256_write(&outer, inner_digest, sizeof(inner_digest));
+    sha_256_close(&outer);
+    return NO_SDK_OK_V1;
+}
+
 extern "C" no_sdk_status_v1 no_sdk_equal_constant_time_v1(
         no_sdk_bytes_v1 left,
         no_sdk_bytes_v1 right,
@@ -238,6 +330,11 @@ bool register_natives(JNIEnv *env) {
                     const_cast<char *>("nativeSha256"),
                     const_cast<char *>("([B)[B"),
                     reinterpret_cast<void *>(&jni_sha256)
+            },
+            {
+                    const_cast<char *>("nativeHmacSha256"),
+                    const_cast<char *>("([B[B)[B"),
+                    reinterpret_cast<void *>(&jni_hmac_sha256)
             },
             {
                     const_cast<char *>("nativeConstantTimeEquals"),

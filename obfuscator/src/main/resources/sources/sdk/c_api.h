@@ -35,6 +35,11 @@ no_sdk_status_v1 no_sdk_sha256_v1(
         no_sdk_bytes_v1 input,
         no_sdk_mut_bytes_v1 output_32);
 
+no_sdk_status_v1 no_sdk_hmac_sha256_v1(
+        no_sdk_bytes_v1 key,
+        no_sdk_bytes_v1 message,
+        no_sdk_mut_bytes_v1 output_32);
+
 no_sdk_status_v1 no_sdk_equal_constant_time_v1(
         no_sdk_bytes_v1 left,
         no_sdk_bytes_v1 right,

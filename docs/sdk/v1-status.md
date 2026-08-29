@@ -6,6 +6,7 @@ Java 8 class `by.radioegor146.sdk.NativePrimitives`:
 
 - `static int abiVersion()`
 - `static byte[] sha256(byte[] input)`
+- `static byte[] hmacSha256(byte[] key, byte[] message)`
 - `static boolean constantTimeEquals(byte[] left, byte[] right)`
 
 Java 8 class `by.radioegor146.sdk.NativeStrings`:
@@ -14,25 +15,44 @@ Java 8 class `by.radioegor146.sdk.NativeStrings`:
 - `static int hashCode(String value)`
 - `static String concat(String left, String right)`
 
-Null array arguments throw `NullPointerException`. Equality content work has no
-data-dependent exit for equal-length arrays; a length mismatch returns
-`false` before content comparison. V1 exposes no native allocation, free, raw
-address, or long-lived native context API. String operations use Java-compatible
-UTF-16 code-unit length, hash, and concatenation semantics.
+Null array arguments throw `NullPointerException`. HMAC-SHA-256 follows RFC
+2104 and accepts empty keys and messages. Equality content work has no
+data-dependent exit for equal-length arrays; a length mismatch returns `false`
+before content comparison. V1 exposes no native allocation, free, raw address,
+or long-lived native context API. String operations use Java-compatible UTF-16
+code-unit length, hash, and concatenation semantics.
 
 The generated class initializer invokes the generated `LoaderUnpack` or
 `LoaderPlain` class. `JNI_OnLoad` registers the private primitive and string JNI
 entry points with `RegisterNatives`. The primitive core also exports the C ABI symbols
-`no_sdk_abi_version_v1`, `no_sdk_sha256_v1`, and
-`no_sdk_equal_constant_time_v1`.
+`no_sdk_abi_version_v1`, `no_sdk_sha256_v1`,
+`no_sdk_hmac_sha256_v1`, and `no_sdk_equal_constant_time_v1`.
 
 ## Dependency and license
 
-SHA-256 uses `amosnier/sha-2` revision
+SHA-256 and HMAC-SHA-256 use `amosnier/sha-2` revision
 `565f65009bdd98267361b17d50cddd7c9beb3e6c`. It is available under Zero-Clause
 BSD or Unlicense. The complete license and upstream checksums are retained
 under `sources/sdk/third_party`. SDK integration code follows the repository's
 GPL-3.0-only license. No GPL/LGPL third-party dependency was added.
+
+## HMAC-SHA-256 vectors
+
+The generated-library verifier records and checks these full 256-bit published
+vectors:
+
+| Coverage | Source | Key | Message | Expected tag |
+| --- | --- | --- | --- | --- |
+| Empty key | BoringSSL `crypto/hmac_extra/hmac_tests.txt`, additional OpenSSL test | empty | ASCII `My test data` | `2274b195d90ce8e03406f4b526a47e0787a88a65479938f1a5baa3ce0f079776` |
+| Short key | RFC 4231 test case 2 | ASCII `Jefe` | ASCII `what do ya want for nothing?` | `5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843` |
+| Key longer than SHA-256 block | RFC 4231 test case 6 | 131 bytes of `aa` | ASCII `Test Using Larger Than Block-Size Key - Hash Key First` | `60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54` |
+| Empty message | Project Wycheproof HMAC-SHA-256 tcId 1, generator 0.8rc21 | `1e225cafb90339bba1b24076d4206c3e79c355805d851682bc818baa4f5a7779` | empty | `b175b57d89ea6cb606fb3363f2538abd73a4c00b4a1386905bac809004cf1933` |
+
+Sources:
+
+- <https://www.rfc-editor.org/rfc/rfc4231.html>
+- <https://boringssl.googlesource.com/boringssl/+/fd49993c3b94aef54669e095f1e6c417efb202aa/crypto/hmac_extra/hmac_tests.txt>
+- <https://boringssl.googlesource.com/boringssl/+/b19efcc1cf14d73bb4ce3fae62dae624aaec437f/third_party/wycheproof_testvectors/hmac_sha256_test.txt>
 
 ## Verification
 

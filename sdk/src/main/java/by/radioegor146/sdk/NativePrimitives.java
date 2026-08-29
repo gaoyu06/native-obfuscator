@@ -35,6 +35,22 @@ public final class NativePrimitives {
     }
 
     /**
+     * Computes the 32-byte HMAC-SHA-256 tag of {@code message} using
+     * {@code key}.
+     *
+     * @throws NullPointerException if either argument is {@code null}
+     */
+    public static byte[] hmacSha256(byte[] key, byte[] message) {
+        if (key == null) {
+            throw new NullPointerException("key");
+        }
+        if (message == null) {
+            throw new NullPointerException("message");
+        }
+        return nativeHmacSha256(key, message);
+    }
+
+    /**
      * Compares two arrays without data-dependent exits when their lengths are
      * equal. Length comparison is outside that scope, so unequal lengths
      * return {@code false} before comparing content.
@@ -54,6 +70,8 @@ public final class NativePrimitives {
     private static native int nativeAbiVersion();
 
     private static native byte[] nativeSha256(byte[] input);
+
+    private static native byte[] nativeHmacSha256(byte[] key, byte[] message);
 
     private static native boolean nativeConstantTimeEquals(byte[] left, byte[] right);
 }
