@@ -9,6 +9,7 @@
 #include <string>
 #include <cstdio>
 #include <unordered_set>
+#include <atomic>
 #include <mutex>
 #include <initializer_list>
 

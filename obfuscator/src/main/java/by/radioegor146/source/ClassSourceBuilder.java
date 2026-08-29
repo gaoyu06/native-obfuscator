@@ -54,10 +54,12 @@ public class ClassSourceBuilder implements AutoCloseable {
             cppWriter.append(String.format("    jclass cclasses[%d];\n", classes));
         }
         if (methods > 0) {
-            cppWriter.append(String.format("    jmethodID cmethods[%d];\n", methods));
+            cppWriter.append(String.format("    std::mutex cmethods_mtx[%d];\n", methods));
+            cppWriter.append(String.format("    std::atomic<jmethodID> cmethods[%d];\n", methods));
         }
         if (fields > 0) {
-            cppWriter.append(String.format("    jfieldID cfields[%d];\n", fields));
+            cppWriter.append(String.format("    std::mutex cfields_mtx[%d];\n", fields));
+            cppWriter.append(String.format("    std::atomic<jfieldID> cfields[%d];\n", fields));
         }
 
         cppWriter.append("\n");

@@ -22,7 +22,7 @@ public class FieldHandler extends GenericInstructionHandler<FieldInsnNode> {
 
         int classId = context.getCachedClasses().getId(node.owner);
 
-        context.output.append(String.format("if (!cclasses[%d]  || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } cclasses_mtx[%d].unlock(); %s } ",
+        String classCache = String.format("if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { cclasses_mtx[%d].lock(); if (!cclasses[%d] || env->IsSameObject(cclasses[%d], NULL)) { if (jclass clazz = %s) { cclasses[%d] = (jclass) env->NewWeakGlobalRef(clazz); env->DeleteLocalRef(clazz); } } cclasses_mtx[%d].unlock(); %s } ",
                 classId,
                 classId,
                 classId,
@@ -31,13 +31,24 @@ public class FieldHandler extends GenericInstructionHandler<FieldInsnNode> {
                 MethodProcessor.getClassGetter(context, node.owner),
                 classId,
                 classId,
-                trimmedTryCatchBlock));
+                trimmedTryCatchBlock);
+
+        if (isStatic) {
+            context.output.append(classCache);
+        }
 
         int fieldId = context.getCachedFields().getId(info);
         props.put("fieldid", context.getCachedFields().getPointer(info));
 
-        context.output.append(String.format("if (!cfields[%d]) { cfields[%d] = env->Get%sFieldID(%s, %s, %s); %s  } ",
+        context.output.append(String.format(
+                "if (!cfields[%d].load(std::memory_order_acquire)) { std::lock_guard<std::mutex> lock(cfields_mtx[%d]); if (!cfields[%d].load(std::memory_order_relaxed)) { ",
                 fieldId,
+                fieldId,
+                fieldId));
+        if (!isStatic) {
+            context.output.append(classCache);
+        }
+        context.output.append(String.format("cfields[%d].store(env->Get%sFieldID(%s, %s, %s), std::memory_order_release); %s } } ",
                 fieldId,
                 isStatic ? "Static" : "",
                 context.getCachedClasses().getPointer(node.owner),
