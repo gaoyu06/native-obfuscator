@@ -49,6 +49,9 @@ The constructor split now covers these related prefix shapes:
 - prefix-assigned extra locals read by identical straight-line suffix copies,
   including the saved receiver alias, when one compatible type is proven at
   every chain call and again at the normalized join; and
+- exception tables whose protected range and handler are wholly in the
+  canonical final identical suffix copy, plus canonical-suffix ranges targeting
+  one of the proven isolated prefix handlers; and
 - between two and eight reachable direct this/super calls whose separate
   nonempty suffixes end in `RETURN` and contain at least two CFG-distinct
   ranges, when every call consumes the original receiver through direct
@@ -136,12 +139,15 @@ One additional family is reduced to that same shared-join form:
 - With two or more candidates, each must be immediately followed by a
   straight-line suffix copy ending in `RETURN`. The copies may be empty, in
   which case each call is immediately followed by `RETURN`.
-- The copies may not contain labels, branches, switches, throws, nested
-  constructor calls, unsafe constants, or exception-table coverage. A
-  try/catch entry is accepted only when its start, end, and handler labels are
-  all before the first chain call, so the complete entry remains in the
-  retained prefix. Every executable instruction and operand in every copy must
-  match the final bytecode-order copy.
+- The copies may not contain branches, switches, throws, nested constructor
+  calls, or unsafe constants. Non-executable labels and frames are ignored when
+  comparing copies, while every executable instruction and operand must match
+  the final bytecode-order copy.
+- A try/catch entry is accepted when all three labels are before the first
+  chain call, or when all three labels are wholly in the canonical final copy.
+  A protected range wholly in that canonical copy may instead target one of
+  the already-proven isolated prefix handlers. The noncanonical copies may not
+  own any table labels, so normalization never leaves dangling entries.
 - With three or more candidates, each call's complete input sequence must
   additionally start with direct `ALOAD 0`, or a direct `ALOAD` of the proven
   original-receiver alias after the prefix overwrite described below. In
@@ -175,7 +181,9 @@ One additional family is reduced to that same shared-join form:
 - After all checks pass, every noncanonical suffix copy is replaced with
   `GOTO` and the final copy receives the shared join label. The existing
   strict-diamond split then retains every call and emits the canonical suffix
-  once behind one hidden bridge.
+  once behind one hidden bridge. Canonical suffix tables and any admitted
+  isolated prefix handlers follow the existing exception relocation pipeline:
+  the independent IR body owns them and the wrapper omits them.
 
 One bounded path-selected family uses the same single-bridge pipeline without
 normalizing the suffixes to one copied join:
@@ -238,12 +246,13 @@ candidates, unproven or suffix-only extra-local accesses, and path-selected
 per-call suffix sets above the bounded eight-call rule also remain rejected.
 Multi-call tables remain rejected when their labels mix prefix and suffix,
 span suffixes, cover a chain call, use a handler after the last suffix, or use
-an unproven prefix handler. The identical-copy one-join normalizer still admits
-prefix-only tables only. All-identical suffix sets that do not match that
-normalizer, non-identity `ASTORE 0` outside the exact single-call, strict-join,
-identical-copy, or path-id alias rules, and other unlisted catch forms remain
-rejected. This is intentionally a narrow set of proven constructor split forms,
-not a general multi-exit constructor rewriter.
+an unproven prefix handler. For identical-copy normalization, any suffix table
+must be wholly in the canonical final copy; tables in discarded copies and
+cross-copy ranges remain rejected. All-identical suffix sets that do not match
+that normalizer, non-identity `ASTORE 0` outside the exact single-call,
+strict-join, identical-copy, or path-id alias rules, and other unlisted catch
+forms remain rejected. This is intentionally a narrow set of proven constructor
+split forms, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -650,6 +659,20 @@ Synthetic bytecode unit tests in
 - `partlyIdenticalSuffixesCompileAndRunWithJavaParity` exercises positive,
   negative, and zero prefix paths with observable `4`, `5`, and `4` suffix
   results through plain Java and the complete CMake/g++ JNI transform under
+  `java -Xverify:all -Xcheck:jni`.
+- `admitsAndRewritesIdenticalSuffixCopiesWithSuffixOnlyTryCatch` proves a table
+  wholly in the canonical final copy is cloned into the one IR body and omitted
+  from the normalized one-bridge wrapper.
+- `admitsAndRewritesIdenticalSuffixCopiesWithRelocatedPrefixHandler` proves a
+  canonical protected range may target the existing isolated `POP; RETURN`
+  prefix-handler form, which is appended to the same IR body and removed from
+  the wrapper.
+- `rejectsIdenticalSuffixCopyTryCatchCrossingSplitBeforeMutation` keeps a table
+  that covers chain calls and crosses copied ranges fail-closed before bytecode,
+  hidden-method, or generated-source mutation.
+- `identicalSuffixCopiesWithSuffixTryCatchCompileAndRunWithJavaParity`
+  exercises both the wholly-canonical table and relocated-handler paths,
+  including divide-by-zero catches, under
   `java -Xverify:all -Xcheck:jni`.
 - `admitsFourSuperCallsWithPairwiseDistinctStraightLineSuffixes` proves the
   bounded dispatch and wrapper reconstruction also retain four chain calls

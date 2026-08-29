@@ -563,6 +563,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && labels.contains(tryCatch.handler);
     }
 
+    private static Set<LabelNode> labelsInRange(
+            MethodNode method, int startIndex, int endIndex) {
+        Set<LabelNode> labels = new HashSet<>();
+        for (int i = startIndex; i < endIndex; i++) {
+            AbstractInsnNode instruction = method.instructions.get(i);
+            if (instruction instanceof LabelNode) {
+                labels.add((LabelNode) instruction);
+            }
+        }
+        return labels;
+    }
+
     private static MultiSuperTryCatches distinctSuffixTryCatches(
             MethodNode constructor, List<Integer> callIndexes,
             DistinctSuffix distinctSuffix) {
@@ -1318,13 +1330,29 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        Set<LabelNode> canonicalLabels = labelsInRange(
+                constructor, canonical.startIndex, canonical.endIndex);
+        Set<LabelNode> prefixLabels = labelsInRange(
+                constructor, 0, callIndexes.get(0));
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
-            if (!tryCatchLabelsBefore(
-                    tryCatch, indexes, callIndexes.get(0))) {
-                throw new UnsupportedIrConstructException(
-                        "Constructor exception regions may not cross "
-                                + "the this/super split");
+            if (tryCatchLabelsBefore(
+                    tryCatch, indexes, callIndexes.get(0))
+                    || tryCatchLabelsInRange(
+                    tryCatch, indexes, canonical)) {
+                continue;
             }
+            RelocatedPrefixHandler relocated =
+                    relocatablePrefixHandler(
+                            constructor, prefixLabels, canonicalLabels,
+                            indexes, canonical.startIndex, tryCatch);
+            if (relocated != null
+                    && tryCatchRangeLabelsInRange(
+                    tryCatch, indexes, canonical)) {
+                continue;
+            }
+            throw new UnsupportedIrConstructException(
+                    "Constructor exception regions may not cross "
+                            + "the this/super split");
         }
 
         List<DuplicatedRange> discarded = new ArrayList<>();
@@ -1857,7 +1885,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             AbstractInsnNode instruction = constructor.instructions.get(i);
             int opcode = instruction.getOpcode();
             if (opcode < 0) {
-                return null;
+                continue;
             }
             if (opcode == Opcodes.RETURN) {
                 return new LinearSuffix(callIndex + 1, i + 1);
@@ -1876,15 +1904,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static boolean sameLinearSuffix(
             MethodNode constructor, LinearSuffix left, LinearSuffix right) {
-        int leftLength = left.endIndex - left.startIndex;
-        int rightLength = right.endIndex - right.startIndex;
-        if (leftLength != rightLength) {
+        List<Integer> leftInstructions =
+                executableIndexes(constructor, left);
+        List<Integer> rightInstructions =
+                executableIndexes(constructor, right);
+        if (leftInstructions.size() != rightInstructions.size()) {
             return false;
         }
-        for (int i = 0; i < leftLength; i++) {
+        for (int i = 0; i < leftInstructions.size(); i++) {
             if (!sameLinearInstruction(
-                    constructor.instructions.get(left.startIndex + i),
-                    constructor.instructions.get(right.startIndex + i))) {
+                    constructor.instructions.get(leftInstructions.get(i)),
+                    constructor.instructions.get(rightInstructions.get(i)))) {
                 return false;
             }
         }
