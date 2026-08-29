@@ -290,6 +290,8 @@ public class NativeObfuscator {
                                                         + "leaving constructor bytecode unchanged",
                                                 classNode.name, method.name, method.desc,
                                                 ex.getMessage());
+                                        classNode.methods.set(i, readOriginalMethod(
+                                                src, method.name, method.desc));
                                         continue;
                                     }
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
@@ -462,6 +464,19 @@ public class NativeObfuscator {
         Files.write(cppDir.resolve("CMakeLists.txt"), cMakeBuilder.build().getBytes(StandardCharsets.UTF_8));
 
         return nativeDir;
+    }
+
+    private static MethodNode readOriginalMethod(byte[] classBytes, String name,
+                                                 String descriptor) {
+        ClassNode originalClass = new ClassNode(Opcodes.ASM9);
+        new ClassReader(classBytes).accept(originalClass, 0);
+        for (MethodNode method : originalClass.methods) {
+            if (method.name.equals(name) && method.desc.equals(descriptor)) {
+                return method;
+            }
+        }
+        throw new IllegalStateException(
+                "Original method not found: " + name + descriptor);
     }
 
     public Snippets getSnippets() {
