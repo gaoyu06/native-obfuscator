@@ -2194,6 +2194,29 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void splitsReferenceAndIntReuseInTemporaryLocal() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "reuseTemporary", "()I", null, null);
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 21));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+
+        IrMethod ir = frontend.build("example/Math", method);
+
+        assertTrue(ir.toString().contains("return"));
+        assertEquals(1, method.maxLocals);
+        assertEquals(0, ((VarInsnNode) method.instructions.get(1)).var);
+        assertEquals(0, ((VarInsnNode) method.instructions.get(5)).var);
+    }
+
+    @Test
     public void rejectsIntStoreIntoInstanceReceiverLocal() {
         MethodNode method = new MethodNode(Opcodes.ASM9, 0,
                 "badStore", "()V", null, null);

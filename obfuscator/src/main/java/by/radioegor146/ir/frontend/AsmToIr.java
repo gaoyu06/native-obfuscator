@@ -46,6 +46,7 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        method = splitReferenceAndIntTemporarySlots(method);
         MethodShape shape = validateMethodShape(method);
         CfgBuilder.Graph graph = cfgBuilder.build(method);
         validateInstructions(graph);
@@ -382,6 +383,95 @@ public final class AsmToIr {
                 }
             }
         }
+    }
+
+    private MethodNode splitReferenceAndIntTemporarySlots(MethodNode source) {
+        int parameterSlots = (source.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
+        for (Type argument : Type.getArgumentTypes(source.desc)) {
+            parameterSlots += argument.getSize();
+        }
+
+        Map<Integer, List<IrType>> typesByLocal = new LinkedHashMap<>();
+        for (AbstractInsnNode node : source.instructions) {
+            IrType type = localInstructionType(node);
+            int local = localInstructionIndex(node);
+            if (type == null || local < parameterSlots) {
+                continue;
+            }
+            List<IrType> types = typesByLocal.computeIfAbsent(
+                    local, ignored -> new ArrayList<IrType>());
+            if (!types.contains(type)) {
+                types.add(type);
+            }
+        }
+
+        Map<Integer, IrType> primaryTypes = new HashMap<>();
+        Map<Integer, Integer> alternateSlots = new HashMap<>();
+        int nextLocal = source.maxLocals;
+        for (Map.Entry<Integer, List<IrType>> entry : typesByLocal.entrySet()) {
+            List<IrType> types = entry.getValue();
+            if (types.size() == 2
+                    && types.contains(IrType.I32)
+                    && types.contains(IrType.REFERENCE)) {
+                primaryTypes.put(entry.getKey(), types.get(0));
+                alternateSlots.put(entry.getKey(), nextLocal++);
+            }
+        }
+        if (alternateSlots.isEmpty()) {
+            return source;
+        }
+
+        MethodNode copy = new MethodNode(Opcodes.ASM9, source.access, source.name,
+                source.desc, source.signature,
+                source.exceptions.toArray(new String[source.exceptions.size()]));
+        source.accept(copy);
+        for (AbstractInsnNode node : copy.instructions) {
+            IrType type = localInstructionType(node);
+            int local = localInstructionIndex(node);
+            if (type == null || !alternateSlots.containsKey(local)
+                    || type == primaryTypes.get(local)) {
+                continue;
+            }
+            int alternate = alternateSlots.get(local);
+            if (node instanceof VarInsnNode) {
+                ((VarInsnNode) node).var = alternate;
+            } else {
+                ((IincInsnNode) node).var = alternate;
+            }
+        }
+        copy.maxLocals = nextLocal;
+        return copy;
+    }
+
+    private IrType localInstructionType(AbstractInsnNode node) {
+        int opcode = node.getOpcode();
+        if (opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
+                || node instanceof IincInsnNode) {
+            return IrType.I32;
+        }
+        if (opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE) {
+            return IrType.REFERENCE;
+        }
+        if (opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE) {
+            return IrType.I64;
+        }
+        if (opcode == Opcodes.FLOAD || opcode == Opcodes.FSTORE) {
+            return IrType.F32;
+        }
+        if (opcode == Opcodes.DLOAD || opcode == Opcodes.DSTORE) {
+            return IrType.F64;
+        }
+        return null;
+    }
+
+    private int localInstructionIndex(AbstractInsnNode node) {
+        if (node instanceof VarInsnNode) {
+            return ((VarInsnNode) node).var;
+        }
+        if (node instanceof IincInsnNode) {
+            return ((IincInsnNode) node).var;
+        }
+        return -1;
     }
 
     private Map<CfgBuilder.Block, List<IrType>> computeStackTypes(
