@@ -1,68 +1,73 @@
 ## English
 
-### (a) Scope
+### (a) Review scope
 
-Adds the first default-off interpreter allocation and constructor-invoke
-slice. ISA v4 gains appended reference `DUP` (53), `NEW` (54), and
-constructor-only `INVOKESPECIAL` (55), with explicit class/constructor side
-tables. The JNI dispatcher keeps allocation and construction separate through
-`AllocObject` and `CallNonvirtualVoidMethodA`, supports `int`/`long`/reference
-constructor arguments, and routes JNI exceptions through the existing ordered
-exception table.
+Independent Sol review of implementation
+[PR #152](https://github.com/gaoyu06/native-obfuscator/pull/152) at
+`8617b19c62349cf9b9d193c9557eaa0f1a0b71d7`. This stacked change adds only
+`docs/reviews/interpreter-isa-new-sol.md` and replaces the scratch PR body; it
+does not modify compiler or interpreter code.
 
-### (b) Ship-ready?
+### (b) Verdict and ship status
 
-**No.**
+**Accept.** Ship-ready: **No**.
 
-### (c) Review required?
+Java and C++ retain exact-match ISA v4. Opcodes 1–52 are unchanged
+(`ATHROW=52`), and both sides append only reference `DUP=53`, `NEW=54`, and
+constructor-only `INVOKESPECIAL=55`. Allocation and construction remain split
+between `AllocObject` and `CallNonvirtualVoidMethodA`; the interpreter path
+does not use `NewObject`.
 
-**Yes.** Sol-only review is acceptable.
+### (c) Independent verification
 
-### (d) Preconditions
+- Required interpreter/option suite: 25/25 passed.
+- `IrCompilerTest` plus `CodegenModeTest`: 109/109 passed.
+- JUnit XML total: 134 tests, 0 skipped, 0 failures, 0 errors.
+- Strict C++17 runtime harness: all 67 numbered checks completed.
+- Default versus explicit `--backend=cpp`: complete generated `cpp/` trees
+  matched; `diff -r` exited 0 with no output.
 
-- Opcodes 1–52 are numerically unchanged; `ATHROW` remains 52.
-- Java and C++ remain on ISA v4 with exact-match rejection.
-- The default backend remains `cpp`; `--codegen` remains `legacy`.
-- The default-off `diff -r` gate must exit 0.
-- Interpreter admission remains static-only.
-- Fields and virtual/static/interface invokes remain unsupported.
+Static review also confirmed reject-before-mutation admission and shared
+exception-table routing for allocation, lookup, and constructor failures.
+There are no nits or blocking issues.
 
-### Verification
+### (d) Stack and non-goals
 
-The required combined Gradle command passed 134 tests with 0 skipped,
-failures, or errors. The strict C++17 runtime harness completed 67 numbered
-checks. The default-versus-explicit-C++ `diff -r` exited 0 with no output.
+The future PR must use `cursor/interpreter-new-6d81-ac59` as its base, not
+`master`. This review does not flip defaults or add fields, instance methods,
+or virtual/static/interface invocation.
 
 ## 中文
 
-### （a）范围
+### （a）审查范围
 
-加入首个默认关闭的解释器对象分配与构造器调用增量。ISA v4 仅在现有操作码
-之后追加引用 `DUP`（53）、`NEW`（54）和仅限构造器的
-`INVOKESPECIAL`（55），并使用显式的类与构造器侧表。JNI 调度器通过
-`AllocObject` 与 `CallNonvirtualVoidMethodA` 将分配和构造保持为两个独立
-步骤，支持 `int`、`long` 和引用构造器参数，并将 JNI 异常交给现有的有序
-异常表处理。
+对实现 [PR #152](https://github.com/gaoyu06/native-obfuscator/pull/152)
+（`8617b19c62349cf9b9d193c9557eaa0f1a0b71d7`）进行独立 Sol 审查。
+此堆叠变更仅新增 `docs/reviews/interpreter-isa-new-sol.md` 并替换临时
+PR 说明，不修改编译器或解释器代码。
 
-### （b）可直接发布？
+### （b）结论与发布状态
 
-**否。**
+**接受。** Ship-ready：**No**。
 
-### （c）需要审查？
+Java 与 C++ 均保持 ISA v4 完全匹配。1–52 号操作码不变（`ATHROW=52`），
+双方仅追加引用 `DUP=53`、`NEW=54` 和仅限构造器的
+`INVOKESPECIAL=55`。对象分配和构造仍分别使用 `AllocObject` 与
+`CallNonvirtualVoidMethodA`；解释器路径未使用 `NewObject` 合并两步。
 
-**是。** 可仅由 Sol 审查。
+### （c）独立验证
 
-### （d）前置条件
+- 必需的解释器/选项测试：25/25 通过。
+- `IrCompilerTest` 与 `CodegenModeTest`：109/109 通过。
+- JUnit XML 合计：134 项，0 跳过、0 失败、0 错误。
+- 严格 C++17 运行时测试：全部 67 项编号检查完成。
+- 默认输出与显式 `--backend=cpp` 输出：完整 `cpp/` 目录一致，
+  `diff -r` 退出码为 0 且无输出。
 
-- 操作码 1–52 的数值保持不变；`ATHROW` 仍为 52。
-- Java 与 C++ 继续使用 ISA v4，并要求版本完全匹配。
-- 默认后端仍为 `cpp`；`--codegen` 仍为 `legacy`。
-- 默认关闭的 `diff -r` 门禁必须以 0 退出。
-- 解释器仍只接收静态方法。
-- 字段操作以及虚、静态、接口调用仍不支持。
+静态审查同时确认了变更前拒绝边界，以及分配、查找、构造失败共用原有异常表
+分派。没有小问题或阻塞问题。
 
-### 验证
+### （d）堆叠关系与非目标
 
-必需的 Gradle 组合命令共通过 134 项测试，跳过、失败和错误均为 0。
-严格的 C++17 运行时测试完成 67 项编号检查。默认输出与显式 C++ 输出之间的
-`diff -r` 以 0 退出且无差异输出。
+后续 PR 必须以 `cursor/interpreter-new-6d81-ac59` 为 base，而不是
+`master`。本审查不修改默认值，也不添加字段、实例方法或虚/静态/接口调用。
