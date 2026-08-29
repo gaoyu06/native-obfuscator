@@ -1217,7 +1217,10 @@ public final class IrNodes {
         public enum Operation {
             ADD("ladd"),
             SUBTRACT("lsub"),
-            MULTIPLY("lmul");
+            MULTIPLY("lmul"),
+            AND("land"),
+            OR("lor"),
+            XOR("lxor");
 
             private final String mnemonic;
 
@@ -1260,6 +1263,64 @@ public final class IrNodes {
 
         public IrValue getRight() {
             return right;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    /**
+     * JVM long shifts consume an i64 value and an i32 shift count.
+     */
+    public static final class LongShift implements IrInstruction {
+        public enum Operation {
+            SHL("lshl"),
+            SHR("lshr"),
+            USHR("lushr");
+
+            private final String mnemonic;
+
+            Operation(String mnemonic) {
+                this.mnemonic = mnemonic;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue value;
+        private final IrValue count;
+        private final int bytecodeOffset;
+
+        public LongShift(IrValue result, Operation operation, IrValue value, IrValue count,
+                         int bytecodeOffset) {
+            this.result = requireI64(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.value = requireI64(value, "value");
+            this.count = requireI32(count, "count");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getValue() {
+            return value;
+        }
+
+        public IrValue getCount() {
+            return count;
         }
 
         @Override
