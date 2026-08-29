@@ -13,6 +13,14 @@ java {
 
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
 
+sourceSets {
+    benchmark {
+        java.srcDir rootProject.file('benchmarks/src/main/java')
+    }
+}
+
+compileBenchmarkJava.options.encoding = 'UTF-8'
+
 if (!hasProperty('mainClass')) {
     ext.mainClass = 'by.radioegor146.Main'
 }
@@ -56,6 +64,24 @@ assemble.dependsOn(shadowJar)
 
 jar {
     manifest.attributes("Main-Class": getProperty('mainClass'))
+}
+
+def benchmarkJarTask = tasks.register('benchmarkJar', Jar) {
+    dependsOn compileBenchmarkJava
+    archiveFileName = 'transpiler-benchmarks.jar'
+    destinationDirectory = layout.buildDirectory.dir('benchmarks')
+    from sourceSets.benchmark.output
+    manifest.attributes('Main-Class': 'benchmarks.BenchmarkMain')
+}
+
+tasks.register('bench', Exec) {
+    group = 'verification'
+    description = 'Runs plain-JVM and transpiled-JNI benchmarks (not part of check).'
+    dependsOn shadowJar, benchmarkJar
+    workingDir rootProject.projectDir
+    commandLine 'python3', rootProject.file('benchmarks/run.py')
+    environment 'BENCH_OBFUSCATOR_JAR', shadowJar.archiveFile.get().asFile.absolutePath
+    environment 'BENCH_INPUT_JAR', benchmarkJarTask.get().archiveFile.get().asFile.absolutePath
 }
 
 ConcurrentHashMap<String, StringBuilder> testOutputs = new ConcurrentHashMap<>();
