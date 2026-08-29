@@ -73,10 +73,10 @@ The constructor split now covers these related prefix shapes:
   declared long-argument loads, `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or
   the admitted single-load `LNEG`, and whose shift counts remain proven
   int-family leaves;
-  one leaf-only `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` for a float
-  argument, whose leaves are declared float-argument loads, `FCONST_0`,
-  `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a direct
-  declared float-argument load;
+  a tree of at most two `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
+  a float argument, whose leaves are declared float-argument loads,
+  `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
+  direct declared float-argument load;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -197,17 +197,17 @@ One additional family is reduced to that same shared-join form:
   preserving Java long wrapping, negate semantics, bitwise semantics, JVM
   divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
   without reproducing those semantics in C++.
-- A float call argument may instead contain exactly one `FADD`, `FSUB`,
-  `FMUL`, `FDIV`, or `FREM` over two non-recursive float leaves. A float leaf
-  must be a matching declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`,
-  `FCONST_2`, or `LDC` of `Float`, or one `FNEG` whose sole operand is a
-  matching declared-argument `FLOAD`. This proof has its own one-level binary
-  budget, which `FNEG` does not consume: nested and extra-local float binaries,
-  extra-local float loads, `FNEG` of a constant, double `FNEG`, and `FNEG` of
-  an extra-local or computed value remain rejected, as do computed double or
-  reference inputs. The admitted arithmetic stays in the retained bytecode
-  prefix, preserving Java evaluation order, rounding, signed-zero, infinity,
-  and NaN behavior without reproducing float arithmetic in C++.
+- A float call argument may instead contain a tree of at most two `FADD`,
+  `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
+  declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
+  `Float`, or one `FNEG` whose sole operand is a matching declared-argument
+  `FLOAD`. This proof has its own two-level binary budget, which `FNEG` does
+  not consume: three-or-more nested float binaries, extra-local float loads,
+  `FNEG` of a constant, double `FNEG`, and `FNEG` of an extra-local or
+  computed value remain rejected, as do computed double or reference inputs.
+  The admitted arithmetic stays in the retained bytecode prefix, preserving
+  Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
+  without reproducing float arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -909,9 +909,16 @@ Synthetic bytecode unit tests in
   or computed `LNEG` operands fail-closed without constructor or hidden-method
   mutation. The remaining non-int-family negative continues to reject `DADD`
   and `AALOAD`.
-- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps nested float
-  binaries, extra-local float operands, and `FNEG` fail-closed without
-  constructor or hidden-method mutation.
+- `admitsTwoLevelNestedFloatChainInputs`,
+  `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
+  `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
+  two-level float trees with outer and inner `FDIV` positions and a two-sided
+  `FADD` tree. The retained prefix executes every float operation, all paths
+  share one hidden bridge, rewritten Java 8 classes verify, and the complete
+  CMake/g++ JNI transform matches plain Java.
+- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps three-or-more
+  nested float binaries, extra-local float operands, and unsafe `FNEG` forms
+  fail-closed without constructor or hidden-method mutation.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join

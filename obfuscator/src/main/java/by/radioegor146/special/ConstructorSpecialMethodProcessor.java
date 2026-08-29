@@ -45,7 +45,7 @@ import java.util.TreeMap;
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
     private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 4;
-    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 1;
+    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 2;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2373,9 +2373,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves at most one FADD, FSUB, FMUL, FDIV, or FREM over two float
-     * leaves. The separate one-level budget keeps nested float binaries
-     * fail-closed; an admitted FNEG leaf does not consume that binary budget.
+     * Proves a float operand with at most two FADD, FSUB, FMUL, FDIV, or FREM
+     * levels. The separate two-level budget keeps three-or-more nested float
+     * binaries fail-closed; an admitted FNEG leaf does not consume that binary
+     * budget.
      */
     private static Integer previousProvenFloatChainOperand(
             MethodNode constructor, int inputIndex,
