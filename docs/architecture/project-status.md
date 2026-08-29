@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the post-#180 leftover inventory
-[#181](https://github.com/gaoyu06/native-obfuscator/pull/181)
-(measurement only on `c99b158`: ClassicTest 108/108 IR, JDK 17 82/82,
-JDK 21 47/47, JDK 25 21/21; 0 leftovers; not coverage-complete)
-on the post-[#180](https://github.com/gaoyu06/native-obfuscator/pull/180)
-identical-suffix tree. Active process:
+Last updated after landing leaf-only `IADD` chain inputs
+[#182](https://github.com/gaoyu06/native-obfuscator/pull/182)
+(parent re-ran 187/187: 180 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#181](https://github.com/gaoyu06/native-obfuscator/pull/181)
+inventory tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -111,11 +111,14 @@ legacy。不能当成 JDK 支持矩阵。
   [#180](https://github.com/gaoyu06/native-obfuscator/pull/180) admits
   3+ reachable this/super calls whose empty or nonempty straight-line
   suffix copies are instruction-identical (one join, one hidden
-  bridge). Non-identity `ASTORE 0`, unproven prefix→suffix
-  jumps/switches, other mixed try/catch placements, remaining
-  multi-super shapes (unlisted computed inputs, non-identical
-  suffixes), and extras still unassigned on a bridge-taking path
-  are still rejected.
+  bridge).
+  [#182](https://github.com/gaoyu06/native-obfuscator/pull/182) admits
+  one leaf-only `IADD` whose both operands are already-proven
+  int-family chain inputs. Non-identity `ASTORE 0`, unproven
+  prefix→suffix jumps/switches, other mixed try/catch placements,
+  remaining multi-super shapes (nested `IADD`, other arithmetic,
+  non-identical suffixes), and extras still unassigned on a
+  bridge-taking path are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -227,6 +230,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | 3+ computed/constant chain inputs (#179) | 183 tests (`IrCompilerTest` 176 + `CodegenModeTest` 7). Parent re-ran 183/183 including `threeImmediateSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | 3+ identical nonempty suffixes (#180) | 187 tests (`IrCompilerTest` 180 + `CodegenModeTest` 7). Parent re-ran 187/187 including `threeIdenticalNonemptySuffixCopiesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#180 leftover inventory (#181) | Measurement only on `c99b158`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Leaf-only `IADD` chain inputs (#182) | 187 tests (`IrCompilerTest` 180 + `CodegenModeTest` 7). Parent re-ran 187/187 including `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -273,8 +277,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
-  placements, remaining multi-super shapes such as unlisted
-  computed inputs or non-identical suffixes, extras still
+  placements, remaining multi-super shapes such as nested `IADD`
+  / other arithmetic or non-identical suffixes, extras still
   unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
@@ -292,8 +296,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #181 (post-#180
-  leftover inventory). / 落地 #181 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #182 (leaf-only
+  `IADD` chain inputs). / 落地 #182 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
