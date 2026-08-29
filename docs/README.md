@@ -11,7 +11,7 @@ with an older brief.
 | Document | Language | What it is |
 | --- | --- | --- |
 | [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Active goal: IR-complete codegen, then delete legacy. |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#151. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#156. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -23,7 +23,9 @@ with an older brief.
 | [architecture/ir-compiler.md](architecture/ir-compiler.md) | Typed CFG IR (implemented on master as `--codegen=ir`; original “docs only” header is historical) |
 | [architecture/ir-examples.md](architecture/ir-examples.md) | Teaching examples, not a dump of current emitter output |
 | [architecture/ir-migration-plan.md](architecture/ir-migration-plan.md) | Historical migration rationale; IR path now exists |
-| [architecture/ir-phase20-status.md](architecture/ir-phase20-status.md) | Latest IR increment on master (`LDIV`/`LREM`/`LNEG`) |
+| [architecture/ir-lcmp-status.md](architecture/ir-lcmp-status.md) | IR `LCMP` / `LongCompare` (#153) |
+| [reviews/ir-lcmp-fable.md](reviews/ir-lcmp-fable.md) | Fable accept of #153 |
+| [architecture/ir-phase20-status.md](architecture/ir-phase20-status.md) | Phase 20 IR increment (`LDIV`/`LREM`/`LNEG`) |
 | [architecture/ir-flex-ctor-status.md](architecture/ir-flex-ctor-status.md) | Prefix-local constructor branches (#146); not a JDK 25 badge |
 | [reviews/ir-phase20-sol.md](reviews/ir-phase20-sol.md) / [reviews/ir-phase20-fable.md](reviews/ir-phase20-fable.md) | Independent accepts of phase 20 |
 | [architecture/ir-phase19-status.md](architecture/ir-phase19-status.md) | Long bitwise + shifts |
