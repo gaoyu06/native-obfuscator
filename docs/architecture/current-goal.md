@@ -53,14 +53,14 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #220 (three-level nested long chain inputs)
+   `master` after #221 (four-level nested long chain inputs)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
    beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
    suffixes or cover a chain call,
    remaining multi-super shapes such as five-or-more nested
-   int binaries, four-or-more nested long
+   int binaries, five-or-more nested long
    binaries, float/double/reference computed inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
