@@ -1156,7 +1156,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int opcode = input.getOpcode();
         if (opcode == Opcodes.IADD
                 || opcode == Opcodes.ISUB
-                || opcode == Opcodes.IMUL) {
+                || opcode == Opcodes.IMUL
+                || opcode == Opcodes.IAND
+                || opcode == Opcodes.IOR
+                || opcode == Opcodes.IXOR) {
             Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, inputIndex - 1),
@@ -1173,8 +1176,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one non-recursive int-family input. Deliberately excluding IADD,
-     * ISUB, and IMUL here keeps the admitted binary expression to exactly one
-     * level.
+     * ISUB, IMUL, IAND, IOR, and IXOR here keeps the admitted binary
+     * expression to exactly one level.
      */
     private static Integer previousProvenIntChainOperand(
             MethodNode constructor, int inputIndex,
