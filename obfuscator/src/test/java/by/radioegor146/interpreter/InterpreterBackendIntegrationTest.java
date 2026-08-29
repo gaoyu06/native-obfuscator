@@ -67,12 +67,12 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(14, occurrences(generated, "_interp_code[]"));
+        assertEquals(15, occurrences(generated, "_interp_code[]"));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_i("));
         assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_j("));
-        assertEquals(2, occurrences(generated,
+        assertEquals(3, occurrences(generated,
                 "native_jvm::interp::execute_l("));
         assertTrue(generated.contains(
                         "native_jvm::interp::store_long(interp_locals + 2"),
@@ -80,6 +80,9 @@ public class InterpreterBackendIntegrationTest {
         assertTrue(generated.contains(
                         "interp_ref_locals[2] = arg1;"),
                 "reference after a long must begin at JVM local slot 2");
+        assertTrue(generated.contains(
+                        "jarray JNICALL __ngen_native_arrayIdentity"),
+                "array descriptors must use the JNI array carrier");
         assertTrue(generated.contains(
                         "utils::throw_re(env, \"java/lang/ArithmeticException\""),
                 "division status must become a pending JNI exception");
@@ -120,7 +123,7 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(14, occurrences(generated, "_interp_code[]"));
+        assertEquals(15, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
                         "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
                 "unsupported I2L must use the active IR codegen");
@@ -318,6 +321,16 @@ public class InterpreterBackendIntegrationTest {
         identity.visitInsn(Opcodes.ARETURN);
         identity.visitMaxs(0, 0);
         identity.visitEnd();
+
+        MethodVisitor arrayIdentity = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "arrayIdentity",
+                "([Ljava/lang/Object;)[Ljava/lang/Object;", null, null);
+        arrayIdentity.visitCode();
+        arrayIdentity.visitVarInsn(Opcodes.ALOAD, 0);
+        arrayIdentity.visitInsn(Opcodes.ARETURN);
+        arrayIdentity.visitMaxs(0, 0);
+        arrayIdentity.visitEnd();
 
         MethodVisitor identityAfterLong = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
