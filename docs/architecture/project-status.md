@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing one `DNEG` over a declared double `DLOAD`
-[#232](https://github.com/gaoyu06/native-obfuscator/pull/232)
-(parent re-ran 348/348: 341 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateDnegSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#231](https://github.com/gaoyu06/native-obfuscator/pull/231)
-leaf-only `DDIV`/`DREM` tree. Active process:
+Last updated after landing two-level nested double chain inputs
+[#233](https://github.com/gaoyu06/native-obfuscator/pull/233)
+(parent re-ran 351/351: 344 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `twoLevelNestedDoubleChainInputsCompileAndRunWithJavaParity`)
+on the post-[#232](https://github.com/gaoyu06/native-obfuscator/pull/232)
+`DNEG` double leaf. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -244,12 +244,15 @@ legacy。不能当成 JDK 支持矩阵。
   leaf-only `DDIV` and `DREM` over the same double leaves.
   [#232](https://github.com/gaoyu06/native-obfuscator/pull/232) admits
   one `DNEG` over a declared double `DLOAD` as a double leaf.
+  [#233](https://github.com/gaoyu06/native-obfuscator/pull/233) admits
+  exactly two nested double binary levels, including mixed inner/outer
+  `DDIV`.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (five-or-more nested int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries, extra-local float operands,
-  nested double binaries, extra-local double operands,
+  three-or-more nested double binaries, extra-local double operands,
   reference computed inputs),
   and extras still unassigned on a bridge-taking path are still
   rejected.
@@ -415,6 +418,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Leaf-only `DSUB`/`DMUL` double chain inputs (#230) | 342 tests (`IrCompilerTest` 335 + `CodegenModeTest` 7). Parent re-ran 342/342 including `threeImmediateDsubDmulSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `DDIV`/`DREM` double chain inputs (#231) | 345 tests (`IrCompilerTest` 338 + `CodegenModeTest` 7). Parent re-ran 345/345 including `threeImmediateDdivDremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | One `DNEG` over a declared double `DLOAD` (#232) | 348 tests (`IrCompilerTest` 341 + `CodegenModeTest` 7). Parent re-ran 348/348 including `threeImmediateDnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Two-level nested double chain inputs (#233) | 351 tests (`IrCompilerTest` 344 + `CodegenModeTest` 7). Parent re-ran 351/351 including `twoLevelNestedDoubleChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -466,7 +470,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   remaining multi-super shapes such as five-or-more nested
   int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries, extra-local
-  float operands, nested double binaries, extra-local
+  float operands, three-or-more nested double binaries, extra-local
   double operands, extras still unassigned
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
@@ -486,9 +490,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #232 (one `DNEG`
-  over a declared double `DLOAD`). /
-  落地 #232 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #233 (two-level
+  nested double binaries). /
+  落地 #233 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

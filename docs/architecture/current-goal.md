@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #232 (one `DNEG` over a declared `DLOAD`)
+   `master` after #233 (two-level nested double binaries)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -62,7 +62,7 @@ The goal is complete only when all of the following are true:
    remaining multi-super shapes such as five-or-more nested
    int binaries, five-or-more nested long
    binaries, five-or-more nested float binaries, extra-local float operands,
-   nested double binaries, extra-local double operands, reference computed
+   three-or-more nested double binaries, extra-local double operands, reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
