@@ -58,7 +58,8 @@ verification, and compile-and-run Java parity for both `LSUB` and `LMUL`.
 
 Pushed branch / 已推送分支: `cursor/ir-ctor-lsub-lmul-6d81-d927`
 
-HEAD SHA / HEAD 提交: `a7d82bdc81b27424a9b41cba33c731f2912e57e6`
+Tested HEAD SHA / 已验证 HEAD 提交（随后仅提交本 PR body）:
+`a7d82bdc81b27424a9b41cba33c731f2912e57e6`
 
 Files changed / 变更文件:
 - `obfuscator/src/main/java/by/radioegor146/special/ConstructorSpecialMethodProcessor.java`
