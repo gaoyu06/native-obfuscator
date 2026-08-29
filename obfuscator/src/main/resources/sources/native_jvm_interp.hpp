@@ -5,7 +5,7 @@
 
 namespace native_jvm::interp {
 
-    constexpr std::uint16_t ISA_VERSION = 1;
+    constexpr std::uint16_t ISA_VERSION = 2;
 
     enum class opcode : std::uint8_t {
         ipush = 1,
@@ -26,7 +26,23 @@ namespace native_jvm::interp {
         if_icmpgt = 16,
         if_icmple = 17,
         goto_ = 18,
-        ireturn = 19
+        ireturn = 19,
+        imul = 20,
+        iand = 21,
+        ior = 22,
+        ixor = 23,
+        ishl = 24,
+        ishr = 25,
+        iushr = 26,
+        ineg = 27,
+        idiv = 28,
+        irem = 29
+    };
+
+    enum class execution_result : std::uint8_t {
+        success,
+        invalid_stream,
+        arithmetic_exception
     };
 
     struct method_desc {
@@ -42,8 +58,8 @@ namespace native_jvm::interp {
         std::int32_t *stack;
     };
 
-    bool execute_i(const method_desc &method, frame &current_frame,
-                   std::int32_t *result) noexcept;
+    execution_result execute_i(const method_desc &method, frame &current_frame,
+                               std::int32_t *result) noexcept;
 }
 
 #endif

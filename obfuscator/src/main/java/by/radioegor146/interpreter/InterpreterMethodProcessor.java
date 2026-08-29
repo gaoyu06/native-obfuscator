@@ -40,7 +40,8 @@ public final class InterpreterMethodProcessor {
         appendCodeArray(context, dataName, compiled.getCode());
         context.output.append("static const native_jvm::interp::method_desc ")
                 .append(dataName)
-                .append("_method = { native_jvm::interp::ISA_VERSION, ")
+                .append("_method = { ")
+                .append(InterpreterMethodEmitter.ISA_VERSION).append(", ")
                 .append(compiled.getMaxStack()).append(", ")
                 .append(compiled.getMaxLocals()).append(", ")
                 .append(dataName)
@@ -69,9 +70,18 @@ public final class InterpreterMethodProcessor {
         context.output.append(
                 "    native_jvm::interp::frame interp_frame = { interp_locals, interp_stack };\n");
         context.output.append("    std::int32_t interp_result = 0;\n");
-        context.output.append("    if (!native_jvm::interp::execute_i(")
+        context.output.append(
+                "    native_jvm::interp::execution_result interp_status = native_jvm::interp::execute_i(")
                 .append(dataName)
-                .append("_method, interp_frame, &interp_result)) {\n");
+                .append("_method, interp_frame, &interp_result);\n");
+        context.output.append(
+                "    if (interp_status == native_jvm::interp::execution_result::arithmetic_exception) {\n");
+        context.output.append(
+                "        utils::throw_re(env, \"java/lang/ArithmeticException\", \"integer / by zero\", -1);\n");
+        context.output.append("        return (jint) 0;\n");
+        context.output.append("    }\n");
+        context.output.append(
+                "    if (interp_status != native_jvm::interp::execution_result::success) {\n");
         context.output.append(
                 "        env->FatalError(\"invalid native_jvm interpreter opcode stream\");\n");
         context.output.append("        return (jint) 0;\n");

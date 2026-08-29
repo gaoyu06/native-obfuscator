@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class InterpreterBackendIntegrationTest {
 
     @Test
-    public void defaultOutputIsUnchangedAndInterpreterFallsBackPerMethod()
+    public void defaultOutputIsUnchangedAndWidenedIsaFallsBackPerMethod()
             throws Exception {
         Path root = Files.createTempDirectory(
                 "native-jvm-interpreter-integration-");
@@ -67,12 +67,14 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(2, occurrences(generated, "_interp_code[]"));
-        assertEquals(2, occurrences(generated,
+        assertEquals(6, occurrences(generated, "_interp_code[]"));
+        assertEquals(6, occurrences(generated,
                 "native_jvm::interp::execute_i("));
         assertTrue(generated.contains(
-                        "cstack0.i = cstack0.i * cstack1.i;"),
-                "unsupported multiply must use the active legacy codegen");
+                        "utils::throw_re(env, \"java/lang/ArithmeticException\""),
+                "division status must become a pending JNI exception");
+        assertTrue(generated.contains("cstack0.j = cstack0.i;"),
+                "unsupported I2L must use the active legacy codegen");
     }
 
     @Test
@@ -105,10 +107,10 @@ public class InterpreterBackendIntegrationTest {
 
         String generated = read(interpreterOutput.resolve(
                 "cpp/output/InterpreterFixture_0.cpp"));
-        assertEquals(2, occurrences(generated, "_interp_code[]"));
+        assertEquals(6, occurrences(generated, "_interp_code[]"));
         assertTrue(generated.contains(
-                        "// IR codegen: InterpreterFixture.multiply(II)I"),
-                "unsupported multiply must use the active IR codegen");
+                        "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
+                "unsupported I2L must use the active IR codegen");
     }
 
     private static void writeFixtureJar(Path destination) throws IOException {
@@ -164,6 +166,58 @@ public class InterpreterBackendIntegrationTest {
         multiply.visitInsn(Opcodes.IRETURN);
         multiply.visitMaxs(0, 0);
         multiply.visitEnd();
+
+        MethodVisitor bitwise = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "bitwise", "(II)I", null, null);
+        bitwise.visitCode();
+        bitwise.visitVarInsn(Opcodes.ILOAD, 0);
+        bitwise.visitVarInsn(Opcodes.ILOAD, 1);
+        bitwise.visitInsn(Opcodes.IAND);
+        bitwise.visitVarInsn(Opcodes.ILOAD, 0);
+        bitwise.visitVarInsn(Opcodes.ILOAD, 1);
+        bitwise.visitInsn(Opcodes.IOR);
+        bitwise.visitInsn(Opcodes.IXOR);
+        bitwise.visitInsn(Opcodes.IRETURN);
+        bitwise.visitMaxs(0, 0);
+        bitwise.visitEnd();
+
+        MethodVisitor shift = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "shift", "(II)I", null, null);
+        shift.visitCode();
+        shift.visitVarInsn(Opcodes.ILOAD, 0);
+        shift.visitVarInsn(Opcodes.ILOAD, 1);
+        shift.visitInsn(Opcodes.ISHL);
+        shift.visitVarInsn(Opcodes.ILOAD, 0);
+        shift.visitVarInsn(Opcodes.ILOAD, 1);
+        shift.visitInsn(Opcodes.IUSHR);
+        shift.visitInsn(Opcodes.IXOR);
+        shift.visitInsn(Opcodes.IRETURN);
+        shift.visitMaxs(0, 0);
+        shift.visitEnd();
+
+        MethodVisitor divide = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "divide", "(II)I", null, null);
+        divide.visitCode();
+        divide.visitVarInsn(Opcodes.ILOAD, 0);
+        divide.visitVarInsn(Opcodes.ILOAD, 1);
+        divide.visitInsn(Opcodes.IDIV);
+        divide.visitInsn(Opcodes.IRETURN);
+        divide.visitMaxs(0, 0);
+        divide.visitEnd();
+
+        MethodVisitor unsupportedConversion = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "unsupportedConversion", "(I)I", null, null);
+        unsupportedConversion.visitCode();
+        unsupportedConversion.visitVarInsn(Opcodes.ILOAD, 0);
+        unsupportedConversion.visitInsn(Opcodes.I2L);
+        unsupportedConversion.visitInsn(Opcodes.L2I);
+        unsupportedConversion.visitInsn(Opcodes.IRETURN);
+        unsupportedConversion.visitMaxs(0, 0);
+        unsupportedConversion.visitEnd();
 
         writer.visitEnd();
         try (JarOutputStream jar = new JarOutputStream(
