@@ -13,8 +13,8 @@ The constructor split now covers seven related prefix shapes:
 - branches and switches that remain entirely in the retained prefix;
 - try/catch entries whose start, end, and handler labels all remain in the
   retained prefix;
-- try/catch entries with prefix start and handler labels whose end is exactly
-  the first suffix label at the split boundary;
+- suffix-protected try/catch entries targeting an isolated prefix
+  `POP; RETURN` handler that has no normal incoming edge;
 - `ASTORE 0` writes whose stack input is proven to be the original constructor
   receiver, with every selected this/super call proven to consume that same
   receiver;
@@ -127,12 +127,13 @@ Try/catch entries are classified independently and fail closed:
   suffix start, the entry is admitted. `postProcess` clones the complete entry
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
-- One exact mixed placement is also admitted: `start` and `handler` are prefix
-  labels, and `end` is the first node at the suffix start. The protected
-  interval therefore contains only instructions retained in bytecode,
-  including the selected this/super call. `postProcess` places the cloned end
-  label before bridge argument loads and invocation, preserving the original
-  handler edges while leaving the bridge and native suffix outside the range.
+- One exact mixed placement is also admitted: `start` and `end` are suffix
+  labels, while `handler` is a prefix label immediately followed by
+  `POP; RETURN`. The instruction immediately before the handler must be
+  `GOTO`, no jump or switch may target the handler, and the label may not also
+  delimit a protected range. `createNativeBody` appends this isolated handler
+  to the suffix clone and preserves the original exception-table edge.
+  `postProcess` omits the now-dead prefix copy from the bytecode wrapper.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
 - Every other mixed placement is rejected, including a prefix protected range
@@ -208,14 +209,14 @@ Synthetic bytecode unit tests in
 - `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` compares normal
   and caught inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`.
-- `admitsPrefixTryCatchEndingExactlyAtConstructorSplit` checks that the one
-  admitted mixed placement stays in the bytecode wrapper and ends before the
-  bridge.
-- `rewrittenBoundaryEndingPrefixTryCatchPassesJvmVerification` exercises both
-  the retained catch path and the unresolved bridge path after class loading.
-- `boundaryEndingPrefixTryCatchCompilesAndRunsWithJavaParity` compares normal
-  and caught inputs through plain Java and the complete CMake/g++ JNI transform
-  under `-Xverify:all -Xcheck:jni`.
+- `admitsSuffixTryCatchWithIsolatedPrefixReturnHandler` checks that the one
+  admitted mixed handler is present in the independent suffix CFG and absent
+  from the bytecode wrapper.
+- `rewrittenRelocatedPrefixReturnHandlerPassesJvmVerification` loads the
+  rewritten owner and reaches the unresolved bridge after JVM verification.
+- `relocatedPrefixReturnHandlerCompilesAndRunsWithJavaParity` compares normal
+  division and caught divide-by-zero paths through plain Java and the complete
+  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
 - Multi-call negatives cover a non-identity prefix `ASTORE 0`, a zero-call edge
