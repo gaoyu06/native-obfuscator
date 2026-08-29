@@ -76,8 +76,10 @@ JUnit XML 位于 `obfuscator/build/test-results/test/`：
 
 **No / 否。**
 
-Pushed branch / 推送分支: `cursor/ir-ctor-nested-long-6d81-f45f`  
-HEAD SHA: `8c81f993744756afcfea3a09c86d2d9e6b942bb7` (verified implementation HEAD before this handoff-document commit)  
+Pushed branch / 推送分支: `cursor/ir-ctor-nested-long-6d81-f45f`
+
+HEAD SHA: `8c81f993744756afcfea3a09c86d2d9e6b942bb7` (verified implementation HEAD before this handoff-document commit)
+
 Files changed / 变更文件:
 - `PR_BODY.md`
 - `docs/architecture/ir-flex-ctor-status.md`
