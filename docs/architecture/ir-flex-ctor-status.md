@@ -69,8 +69,10 @@ The constructor split now covers these related prefix shapes:
   receiver plus locally proven arguments (matching direct declared-argument
   loads; one leaf-only `LADD`, `LSUB`, `LMUL`, `LAND`, `LOR`, or `LXOR` for a
   long argument whose operands are declared long-argument loads, `LCONST_0`,
-  `LCONST_1`, or `LDC` of `Long`; int-family constants; or one `INEG` over a
-  direct declared int-family argument load,
+  `LCONST_1`, or `LDC` of `Long`; one leaf-only `LSHL`, `LSHR`, or `LUSHR`
+  over one such long value leaf and a proven int-family count leaf;
+  int-family constants; or one `INEG` over a direct declared int-family
+  argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs).
@@ -174,12 +176,16 @@ One additional family is reduced to that same shared-join form:
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
 - A long call argument may instead be exactly one `LADD`, `LSUB`, `LMUL`,
-  `LAND`, `LOR`, or `LXOR` over two non-recursive long leaves. Each leaf must
-  be a matching declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC`
-  of `Long`. This proof has its own explicit one-level budget: nested long
-  binaries, extra-local `LLOAD`, `LDIV`, `LREM`, shifts, and `LNEG` remain
-  rejected. The retained bytecode prefix executes admitted operations,
-  preserving Java long wrapping and bitwise semantics.
+  `LAND`, `LOR`, or `LXOR` over two non-recursive long leaves, or one `LSHL`,
+  `LSHR`, or `LUSHR` over one non-recursive long value leaf followed by one
+  proven int-family count leaf. A long leaf must be a matching
+  declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`, or `LDC` of `Long`; an
+  int-family count leaf uses the existing declared-argument `ILOAD` and
+  int-family constant proof. This proof has its own explicit one-level budget:
+  nested long binaries, extra-local value or count loads, `LDIV`, `LREM`, and
+  `LNEG` remain rejected. The retained bytecode prefix executes admitted
+  operations, preserving Java long wrapping, bitwise semantics, and JVM
+  mask-63 shift-count behavior without reproducing that mask in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -793,10 +799,21 @@ Synthetic bytecode unit tests in
 - `threeImmediateLongBitwiseSuperReturnsCompileAndRunWithJavaParity` exercises
   all three long bitwise families through plain Java and the complete CMake/g++
   JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithShiftProvenLongChainInputs` checks leaf-only
+  `LSHL`, `LSHR`, and `LUSHR` over a declared long load and an int-family
+  constant leaf, retaining all shift operations and chain calls behind one
+  hidden bridge.
+- `rewrittenThreeImmediateLongShiftSuperReturnsPassJvmVerification` selects
+  every rewritten long-shift path and reaches the unresolved hidden bridge only
+  after the rewritten classes pass JVM verification.
+- `threeImmediateLongShiftSuperReturnsCompileAndRunWithJavaParity` exercises
+  signed and unsigned long shifts through plain Java and the complete CMake/g++
+  JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nested `LADD`,
-  extra-local long operands, `LDIV`, `LREM`, long shifts, and `LNEG`
-  fail-closed without constructor or hidden-method mutation. The existing
-  non-int-family negative continues to reject `FADD`, `DADD`, and `AALOAD`.
+  extra-local long operands, extra-local long-shift value and int-count
+  operands, `LDIV`, `LREM`, and `LNEG` fail-closed without constructor or
+  hidden-method mutation. The existing non-int-family negative continues to
+  reject `FADD`, `DADD`, and `AALOAD`.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
   leaf-only `ILOAD; ICONST_2; IDIV` and `ILOAD; ICONST_2; IREM` chain
   arguments, retains both operations with all three calls and two join
@@ -977,9 +994,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 288 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 291 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 295 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 298 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

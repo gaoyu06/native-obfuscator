@@ -2264,9 +2264,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one admitted long binary whose operands are non-recursive long
-     * leaves. The separate one-level budget prevents the int-family depth
-     * bound from admitting nested long arithmetic.
+     * Proves one admitted long binary whose operands are non-recursive leaves.
+     * Long shifts consume an int-family count leaf after their long value leaf;
+     * the other admitted binaries consume two long leaves. The separate
+     * one-level budget prevents the int-family depth bound from admitting
+     * nested long arithmetic.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2277,14 +2279,35 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         int opcode = input.getOpcode();
+        boolean longShift = opcode == Opcodes.LSHL
+                || opcode == Opcodes.LSHR
+                || opcode == Opcodes.LUSHR;
         if ((opcode != Opcodes.LADD
                 && opcode != Opcodes.LSUB
                 && opcode != Opcodes.LMUL
                 && opcode != Opcodes.LAND
                 && opcode != Opcodes.LOR
-                && opcode != Opcodes.LXOR)
+                && opcode != Opcodes.LXOR
+                && !longShift)
                 || remainingBinaryLevels == 0) {
             return null;
+        }
+        if (longShift) {
+            int countIndex =
+                    previousExecutableIndex(constructor, inputIndex - 1);
+            if (countIndex < 0) {
+                return null;
+            }
+            AbstractInsnNode count =
+                    constructor.instructions.get(countIndex);
+            if (!isDirectDeclaredIntArgumentLoad(count, declaredArguments)
+                    && !isIntFamilyConstant(count)) {
+                return null;
+            }
+            return previousProvenLongChainLeaf(
+                    constructor,
+                    previousExecutableIndex(constructor, countIndex - 1),
+                    declaredArguments);
         }
         Integer beforeRight = previousProvenLongChainLeaf(
                 constructor,
