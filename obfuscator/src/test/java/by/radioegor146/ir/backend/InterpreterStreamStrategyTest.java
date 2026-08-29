@@ -116,6 +116,15 @@ public class InterpreterStreamStrategyTest {
 
     @Test
     public void serializesI64ArithmeticBitwiseAndShiftOpcodes() {
+        MethodNode addMethod = longBinaryMethod("longAdd", Opcodes.LADD);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = context(obfuscator, addMethod);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context, IrLoweringMode.EVAL);
+        assertTrue(context.output.toString().contains(
+                "native_jvm::ir_eval::evaluate_i64(env, ir_method_data"));
+        assertFalse(context.output.toString().contains("// IR codegen:"));
+
         int[] binaryBytecode = {
                 Opcodes.LADD, Opcodes.LSUB, Opcodes.LMUL,
                 Opcodes.LAND, Opcodes.LOR, Opcodes.LXOR

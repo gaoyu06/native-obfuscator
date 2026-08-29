@@ -41,6 +41,14 @@ anti-analysis feature. Issue #53 evaluator median remains `N/A`.
 - Do not back-fill issue #53 with invented measurements.
 - Do not flip the `legacy`, `cpp`, or `direct` defaults.
 
+## Verification
+
+- Focused CLI/evaluator suite: 16/16 passed.
+- Existing direct-IR and interpreter-dispatch suites: 96/96 passed.
+- Omitted-vs-explicit-direct `diff -r`: exit 0 for default legacy and IR.
+- Generated evaluator CMake project: GCC/G++ configure, compile, and link
+  completed with exit 0.
+
 # 中文
 
 ## (a) 范围
@@ -77,3 +85,10 @@ protector、混淆产品或 anti-analysis 功能。#53 的 evaluator median 仍�
 - 确认省略 `--ir-lower` 与显式 `direct` 一致，包括默认 legacy 生成树。
 - 不得为 #53 补写虚构测量值。
 - 不得改变 `legacy`、`cpp` 或 `direct` 默认值。
+
+## 验证
+
+- 聚焦 CLI/evaluator 测试：16/16 通过。
+- 现有 direct-IR 与 interpreter 分派测试：96/96 通过。
+- 省略与显式 `direct` 的两组 `diff -r`：退出码均为 0。
+- 生成的 evaluator CMake 工程：GCC/G++ 配置、编译、链接退出码为 0。

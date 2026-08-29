@@ -143,8 +143,81 @@ separate capability extension is reviewed.
 ## Port verification
 
 The default-off generation checks use one fixture with a static `(II)I`
-add/subtract/multiply method and an unsupported unary-int method. They compare
-complete generated output trees, inspect evaluator C++ output, and verify that
-the unsupported method reaches the existing per-method legacy fallback. Exact
-commands and exit codes are recorded here after running the focused suite on
-the committed port.
+add/subtract/multiply method and an unsupported unary-int method. The fixture
+was compiled to `build/ir-eval-fixture.jar`, then the committed compiler jar was
+run as follows:
+
+```bash
+java -jar obfuscator/build/libs/obfuscator.jar \
+  build/ir-eval-fixture.jar build/proof-default
+java -jar obfuscator/build/libs/obfuscator.jar --ir-lower=direct \
+  build/ir-eval-fixture.jar build/proof-default-direct
+java -jar obfuscator/build/libs/obfuscator.jar --codegen=ir \
+  build/ir-eval-fixture.jar build/proof-ir-implicit
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=direct \
+  build/ir-eval-fixture.jar build/proof-ir-direct
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=eval \
+  build/ir-eval-fixture.jar build/proof-ir-eval
+```
+
+Default-off comparisons:
+
+```bash
+diff -r build/proof-default/cpp build/proof-default-direct/cpp
+# exit 0
+
+diff -r build/proof-ir-implicit build/proof-ir-direct
+# exit 0
+
+test ! -e build/proof-default/cpp/native_jvm_eval.cpp &&
+  test ! -e build/proof-default/cpp/native_jvm_eval.hpp &&
+  test ! -e build/proof-ir-direct/cpp/native_jvm_eval.cpp &&
+  test ! -e build/proof-ir-direct/cpp/native_jvm_eval.hpp
+# exit 0
+```
+
+Evaluator and fallback inspection:
+
+```bash
+rg -n \
+  'IR evaluator data: EvalFixture\.(add|subtract|multiply)|native_jvm::ir_eval::evaluate_i32' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; all three methods have data plus evaluate_i32
+
+! rg -n 'IR codegen: EvalFixture\.(add|subtract|multiply)' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; no direct structured body for those methods
+
+rg -n '// negate\(I\)I|jvalue cstack0|// INEG' \
+  build/proof-ir-eval/cpp/output/EvalFixture_0.cpp
+# exit 0; the unsupported unary node used the legacy fallback
+```
+
+The focused command was:
+
+```bash
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.CodegenModeTest \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+```
+
+Result: 16/16 passed, 0 skipped, 0 failures, 0 errors. The unchanged direct-IR
+and interpreter-dispatch suites passed 96/96:
+
+```bash
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest
+```
+
+Finally, the complete generated evaluator target configured and linked:
+
+```bash
+cmake -S build/proof-ir-eval/cpp -B build/proof-ir-eval/cpp/build \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+cmake --build build/proof-ir-eval/cpp/build --parallel 2
+# exit 0
+```
