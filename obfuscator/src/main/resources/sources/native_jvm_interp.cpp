@@ -380,10 +380,6 @@ namespace native_jvm::interp {
                             break;
                         case opcode::idiv:
                             if (right_value == 0) {
-                                if (env == nullptr) {
-                                    return execution_result::
-                                            arithmetic_exception;
-                                }
                                 jthrowable exception = create_exception(
                                         env,
                                         "java/lang/ArithmeticException",
@@ -417,10 +413,6 @@ namespace native_jvm::interp {
                             break;
                         case opcode::irem:
                             if (right_value == 0) {
-                                if (env == nullptr) {
-                                    return execution_result::
-                                            arithmetic_exception;
-                                }
                                 jthrowable exception = create_exception(
                                         env,
                                         "java/lang/ArithmeticException",
@@ -501,10 +493,6 @@ namespace native_jvm::interp {
                             std::int64_t signed_right =
                                     long_from_unsigned(right);
                             if (signed_right == 0) {
-                                if (env == nullptr) {
-                                    return execution_result::
-                                            arithmetic_exception;
-                                }
                                 jthrowable exception = create_exception(
                                         env,
                                         "java/lang/ArithmeticException",

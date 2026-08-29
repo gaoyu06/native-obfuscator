@@ -219,7 +219,8 @@ public class InterpreterRuntimeTest {
                 "    std::int32_t stack[2] = {};\n" +
                 "    std::int32_t result = 0;\n" +
                 "    frame f = { locals, stack };\n" +
-                "    return native_jvm::interp::execute_i(method, f, &result);\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_i(method, f, &result, &env);\n" +
                 "}\n" +
                 "\n" +
                 "static bool run_unary(const method_desc &method,\n" +
@@ -267,7 +268,8 @@ public class InterpreterRuntimeTest {
                 "    native_jvm::interp::store_long(locals, a);\n" +
                 "    native_jvm::interp::store_long(locals + 2, b);\n" +
                 "    frame f = { locals, stack };\n" +
-                "    return native_jvm::interp::execute_j(method, f, &result);\n" +
+                "    JNIEnv env;\n" +
+                "    return native_jvm::interp::execute_j(method, f, &result, &env);\n" +
                 "}\n" +
                 "\n" +
                 "static bool run_long_shift(const method_desc &method,\n" +
@@ -434,13 +436,13 @@ public class InterpreterRuntimeTest {
                 "                    std::numeric_limits<std::int32_t>::min(), -1,\n" +
                 "                    std::numeric_limits<std::int32_t>::min())) return 17;\n" +
                 "    if (run_binary_status(div_method, 1, 0) !=\n" +
-                "            execution_result::arithmetic_exception) return 18;\n" +
+                "            execution_result::pending_exception) return 18;\n" +
                 "    if (!run_binary(rem_method, -7, 3, -1)) return 19;\n" +
                 "    if (!run_binary(rem_method,\n" +
                 "                    std::numeric_limits<std::int32_t>::min(), -1,\n" +
                 "                    0)) return 20;\n" +
                 "    if (run_binary_status(rem_method, 1, 0) !=\n" +
-                "            execution_result::arithmetic_exception) return 21;\n" +
+                "            execution_result::pending_exception) return 21;\n" +
                 "    if (!run_sum(-3, 0)) return 22;\n" +
                 "    if (!run_sum(0, 0)) return 23;\n" +
                 "    if (!run_sum(10, 45)) return 24;\n" +
@@ -475,13 +477,13 @@ public class InterpreterRuntimeTest {
                 "                    std::numeric_limits<std::int64_t>::min(), -1,\n" +
                 "                    std::numeric_limits<std::int64_t>::min())) return 41;\n" +
                 "    if (run_long_binary_status(long_div_method, 1, 0) !=\n" +
-                "            execution_result::arithmetic_exception) return 42;\n" +
+                "            execution_result::pending_exception) return 42;\n" +
                 "    if (!run_long_binary(long_rem_method, -7, 3, -1)) return 43;\n" +
                 "    if (!run_long_binary(long_rem_method,\n" +
                 "                    std::numeric_limits<std::int64_t>::min(), -1,\n" +
                 "                    0)) return 44;\n" +
                 "    if (run_long_binary_status(long_rem_method, 1, 0) !=\n" +
-                "            execution_result::arithmetic_exception) return 45;\n" +
+                "            execution_result::pending_exception) return 45;\n" +
                 "    if (!run_long_unary(long_store_method,\n" +
                 "                    INT64_C(0x1020304050607080),\n" +
                 "                    INT64_C(0x1020304050607080))) return 46;\n" +

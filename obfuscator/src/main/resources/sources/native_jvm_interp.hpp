@@ -67,7 +67,6 @@ namespace native_jvm::interp {
     enum class execution_result : std::uint8_t {
         success,
         invalid_stream,
-        arithmetic_exception,
         pending_exception
     };
 
