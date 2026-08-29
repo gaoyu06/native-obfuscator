@@ -36,9 +36,66 @@ Status recorded on 2026-08-29 from `origin/master` at `37f7d03`.
 
 ## Verification
 
-The required Java and C++ test suite, generated-project checks, and detached
-master/default/explicit-C++ directory comparisons are recorded after the
-implementation is run.
+The required command completed with `BUILD SUCCESSFUL`: 128 tests, 0 skipped,
+0 failures, and 0 errors.
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
+  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+The per-class counts were:
+
+```text
+MainBackendOptionTest:                    2
+InterpreterMethodEmitterTest:           14
+InterpreterRuntimeTest:                  1
+InterpreterBackendIntegrationTest:       2
+IrCompilerTest:                         102
+CodegenModeTest:                          7
+Total:                                  128
+```
+
+All suites reported 0 skipped, 0 failures, and 0 errors. The runtime test
+compiled the ISA v4 dispatcher with
+`g++ -std=c++17 -Wall -Wextra -Werror` and executed 54 numbered checks,
+including object identity/null, both null branches, reference local
+load/store, reference return, all existing i32/i64 cases, and an ISA v3
+mismatch rejection.
+
+The integration fixture generated 15 interpreted methods: six i32, six i64,
+and three reference/array methods. The object identity method has descriptor
+`(Ljava/lang/Object;)Ljava/lang/Object;`; a mixed
+`(JLjava/lang/Object;)Ljava/lang/Object;` method places its reference argument
+at local slot 2. An object-array identity method verifies the JNI array
+carrier. A method containing an unsupported object operation used each
+selected fallback path. The complete generated CMake project configured with
+GCC/G++ 13.3.0 and built successfully through
+`[100%] Built target native_library`.
+
+## Default-off generated-tree proof
+
+The same `DefaultOffFixture` JAR was processed by detached `origin/master` at
+`37f7d03`, this branch with no backend option, and this branch with
+`--backend=cpp`.
+
+```text
+diff -r /tmp/interpreter-objects-proof/master/cpp \
+  /tmp/interpreter-objects-proof/branch-default/cpp
+# exit 0, no output
+
+diff -r /tmp/interpreter-objects-proof/branch-default/cpp \
+  /tmp/interpreter-objects-proof/branch-cpp/cpp
+# exit 0, no output
+```
+
+Both complete-tree comparisons exited 0. The no-option output therefore
+matches both detached master and explicit C++ output.
 
 ## (a)(b)(c)(d) / （a）（b）（c）（d）
 
@@ -58,6 +115,9 @@ implementation is run.
   default backend remains C++. /
   操作码 1–45 保持稳定，ISA 版本必须完全匹配，不支持的方法继续逐方法回退，
   默认后端仍为 C++。
-- **(d) Evidence / 证据:** Exact test counts and complete generated-tree
-  comparison results are recorded after verification. /
-  完成验证后记录准确的测试数量与完整生成目录比较结果。
+- **(d) Evidence / 证据:** All 128 required tests passed with no skips or
+  failures; the strict C++17 runtime executable ran all 54 checks; the
+  generated shared library built; and both complete-tree comparisons exited
+  0 with no output. /
+  128 项必需测试全部通过，无跳过或失败；严格编译的 C++17 运行时可执行文件完成
+  54 项检查；生成的共享库构建成功；两次完整目录比较均以 0 退出且无输出。

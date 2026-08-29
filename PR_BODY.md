@@ -28,8 +28,52 @@ dispatch are outside this increment. The dispatcher makes no JNI call.
 
 ## Verification
 
-Verification results and exact test counts will be recorded after running the
-required suite and both complete generated-tree comparisons.
+The required command completed with `BUILD SUCCESSFUL`: **128 tests, 0
+skipped, 0 failures, 0 errors**.
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.MainBackendOptionTest \
+  --tests by.radioegor146.interpreter.InterpreterMethodEmitterTest \
+  --tests by.radioegor146.interpreter.InterpreterRuntimeTest \
+  --tests by.radioegor146.interpreter.InterpreterBackendIntegrationTest \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+```text
+MainBackendOptionTest:                    2
+InterpreterMethodEmitterTest:           14
+InterpreterRuntimeTest:                  1
+InterpreterBackendIntegrationTest:       2
+IrCompilerTest:                         102
+CodegenModeTest:                          7
+Total:                                  128
+```
+
+The runtime test compiled with
+`g++ -std=c++17 -Wall -Wextra -Werror` and executed 54 numbered i32, i64,
+reference identity/null, local load/store, null-branch, return, and
+version-mismatch checks.
+
+The integration fixture kept object, mixed long/object, and object-array
+identity methods on the interpreter. Its complete generated CMake project
+compiled and linked through `[100%] Built target native_library`.
+
+Both complete generated-tree comparisons exited 0 with no output:
+
+```text
+diff -r /tmp/interpreter-objects-proof/master/cpp \
+  /tmp/interpreter-objects-proof/branch-default/cpp
+# exit 0
+
+diff -r /tmp/interpreter-objects-proof/branch-default/cpp \
+  /tmp/interpreter-objects-proof/branch-cpp/cpp
+# exit 0
+```
+
+The no-option output therefore matches detached `origin/master` at `37f7d03`
+and explicit `--backend=cpp`.
 
 ## (a)(b)(c)(d) / （a）（b）（c）（d）
 
@@ -47,7 +91,9 @@ required suite and both complete generated-tree comparisons.
   fallback, and default generation remains C++/legacy. /
   操作码 1–45 保持不变，ISA 版本继续严格检查，不支持的方法保留逐方法回退，
   默认生成方式仍为 C++/legacy。
-- **(d) Evidence / 证据:** Exact required-suite counts and detached-master
-  complete-tree comparison results will be inserted after verification. /
-  验证完成后将填写必需测试套件的准确数量及 detached master 的完整目录比较
-  结果。
+- **(d) Evidence / 证据:** All 128 required tests passed with no skips or
+  failures; the strict C++17 runtime executable completed 54 checks; the
+  generated shared library built; and both complete-tree comparisons exited
+  0. /
+  128 项必需测试全部通过，无跳过或失败；严格编译的 C++17 运行时可执行文件完成
+  54 项检查；生成的共享库构建成功；两次完整目录比较均以 0 退出。
