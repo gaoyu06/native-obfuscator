@@ -82,11 +82,17 @@ pending-NPE 异常出口、对六种不支持 primitive sort 的前置拒绝，�
    `docs/architecture/ir-phase10-review.md`.
    静态证据与逐项审查结论记录在
    `docs/architecture/ir-phase10-review.md`。
-2. The required GCC/G++ Gradle re-run and actual JUnit XML counts will be
-   recorded after the documentation-only review commit is pushed.
-   文档审查 commit 推送后，将记录规定的 GCC/G++ Gradle 重跑结果及实际 JUnit
-   XML 计数。
-3. When g++ and JNI headers are present, the review requires
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped.
-   当 g++ 与 JNI headers 存在时，审查要求
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 不得跳过。
+2. The required `CC=gcc CXX=g++` Gradle re-run completed successfully. Actual
+   JUnit XML counts are `IrCompilerTest` 47 and `CodegenModeTest` 2, total 49;
+   skipped, failures, and errors are all zero.
+   规定的 `CC=gcc CXX=g++` Gradle 重跑成功。JUnit XML 实际计数为
+   `IrCompilerTest` 47、`CodegenModeTest` 2，共 49；跳过、失败、错误均为零。
+3. g++ and JNI headers were present. The
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` testcase completed
+   without a `<skipped>` child. The retained translation unit contains 50
+   `JNICALL` definitions, and an independent `g++ -std=c++17 -fsyntax-only`
+   check exited zero with no diagnostics.
+   g++ 与 JNI headers 均存在。
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` testcase 已完成，
+   且没有 `<skipped>` 子节点。保留的 translation unit 包含 50 个 `JNICALL`
+   定义；独立的 `g++ -std=c++17 -fsyntax-only` 检查以零退出且无诊断。

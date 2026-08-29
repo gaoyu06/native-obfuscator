@@ -87,7 +87,7 @@ None. No compiler-code change was required.
 
 ## Independent re-run
 
-Command:
+Command run on 2026-08-29 UTC:
 
 ```text
 CC=gcc CXX=g++ ./gradlew :obfuscator:test \
@@ -96,5 +96,30 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --rerun-tasks
 ```
 
-JUnit XML counts and the g++ smoke result will be recorded here from the review
-branch's independent re-run.
+Result: `BUILD SUCCESSFUL`.
+
+Counts read directly from
+`obfuscator/build/test-results/test/TEST-by.radioegor146.ir.IrCompilerTest.xml`
+and
+`obfuscator/build/test-results/test/TEST-by.radioegor146.CodegenModeTest.xml`:
+
+```text
+IrCompilerTest: tests=47, skipped=0, failures=0, errors=0 (time=0.637 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.093 s)
+Total: 49 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The available toolchain was GCC/g++ 13.3.0 with OpenJDK 21.0.10 and its JNI
+headers. The XML records
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` as a completed testcase
+in 0.253 s with no `<skipped>` child. The retained translation unit,
+`/tmp/ir-compile-smoke883781148437369594/ir-smoke.cpp`, contains 50 `JNICALL`
+definitions. An independent re-run of the same syntax check also exited zero
+with no diagnostics:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke883781148437369594/ir-smoke.cpp
+```
