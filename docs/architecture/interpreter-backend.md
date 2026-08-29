@@ -1,5 +1,9 @@
 # Interpreter backend
 
+> **Not on current `master` as compiler code.** `--backend=interpreter` and
+> compact/link-only output lived on sibling stacks (PRs #17–#28). This file
+> remains a design note. See [project-status.md](project-status.md).
+
 ## Status and scope
 
 This document specifies an **optional second backend** for the transpiler: a

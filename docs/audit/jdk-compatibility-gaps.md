@@ -1,8 +1,17 @@
 # JDK 17+ compatibility gaps
 
+> **Historical audit** of `master` @ `e7ca4c8`. After
+> [#118](https://github.com/gaoyu06/native-obfuscator/pull/118), processed
+> classes **keep their input major version** (Java 8 floor only). The
+> `classNode.version = 52` write path quoted below is no longer current.
+> Five JDK 17 fixtures later matched HotSpot stdout on one Linux VM under
+> `--codegen=ir`; that is still not a support badge. See
+> [../architecture/project-status.md](../architecture/project-status.md) and
+> [../architecture/ir-jdk17-runtime-fix.md](../architecture/ir-jdk17-runtime-fix.md).
+
 ## Compatibility boundary
 
-The parser is ASM 9.8 (`obfuscator/build.gradle:32-34`) and uses `ClassNode(Opcodes.ASM9)` (`NativeObfuscator.java:196-198,233-235`), so reading many modern class files is not the primary limitation. The critical write path is:
+The parser is ASM 9.8 (`obfuscator/build.gradle`) and uses `ClassNode(Opcodes.ASM9)`, so reading many modern class files is not the primary limitation. The critical write path **on the audited commit** was:
 
 ```java
 classNode.version = 52;

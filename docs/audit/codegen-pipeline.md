@@ -1,6 +1,14 @@
 # Code-generation pipeline audit
 
-Scope: source at commit `e7ca4c87deca403f692698fd74652d856f3c162f`. This is an implementation audit, not a design promise.
+> **Historical audit** of `master` @ `e7ca4c8`. The current tree still has the
+> legacy snippet path as the CLI default, plus `--codegen=ir`. Constructors can
+> be admitted on IR; rejected `<init>` bodies are restored from original
+> bytes. Classfiles are no longer unconditionally stamped to major 52. See
+> [../architecture/project-status.md](../architecture/project-status.md).
+
+Scope: source at commit `e7ca4c87deca403f692698fd74652d856f3c162f`. This is an
+implementation audit of that commit, not a design promise and not a description
+of current `master`.
 
 ## End-to-end path
 

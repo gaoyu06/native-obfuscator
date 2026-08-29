@@ -1,5 +1,10 @@
 # Human decision matrix
 
+> Still open. Preferred tips landed on `master` (#118); these D1–D24 decisions
+> are **not** automatically approved by that landing. No support badge or
+> “goal complete” claim follows from the merge. Current tree:
+> [project-status.md](project-status.md).
+
 This matrix separates decisions that change product promises or risk ownership
 from implementation work that can be prepared autonomously. “Recommendation”
 is the default for planning, not an approval.

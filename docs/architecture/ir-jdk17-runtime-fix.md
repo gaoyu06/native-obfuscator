@@ -1,5 +1,12 @@
 # IR JDK 17 runtime repair evidence
 
+> **On master.** Preferred tip
+> [#115](https://github.com/gaoyu06/native-obfuscator/pull/115) (not unfixed
+> [#113](https://github.com/gaoyu06/native-obfuscator/pull/113)) landed in
+> [#118](https://github.com/gaoyu06/native-obfuscator/pull/118). This page is
+> still **not** a “supports JDK 17” badge. See
+> [project-status.md](project-status.md).
+
 ## Scope
 
 This change repairs the five JDK 17 fixtures measured against the phase-17 IR
@@ -7,10 +14,10 @@ tip. It is narrow runtime evidence, not a claim that JDK 17 is product-supported
 The command-line default remains `legacy`; every transformed run below opted in
 with `--codegen=ir`.
 
-The compiler base was draft PR #108 commit
+The compiler base at measurement time was draft PR #108 commit
 `5a6f6097524c1fe42cd82be2425f5e6736667688`. Fixture sources were fetched from
 `origin/cursor/test-jdk17-e2e-harness-6d81` at
-`7389820175f72eac2a062e9ae9a2917ec8815aed`.
+`7389820175f72eac2a062e9ae9a2917ec8815aed`. Both lines are now on `master`.
 
 ## Changes
 

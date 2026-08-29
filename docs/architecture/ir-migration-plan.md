@@ -1,6 +1,10 @@
 # IR Migration Plan
 
-Status: **Plan only (docs).** No code changes land in this PR.
+> **Historical plan.** The IR path it describes is on `master` as
+> `--codegen=ir` (default still `legacy`). Later phase notes and
+> [project-status.md](project-status.md) supersede the original PR-slicing
+> schedule. This file is kept as the migration rationale, not as current
+> “not implemented” status.
 
 Companion to [`ir-compiler.md`](./ir-compiler.md) (the design) and
 [`ir-examples.md`](./ir-examples.md) (worked examples). This document is the

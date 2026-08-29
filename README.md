@@ -1,217 +1,206 @@
 # native-obfuscator
-Java .class to .cpp converter for use with JNI
 
-Currently, fully supports only Java 8. Java 9+ and Android support is entirely experimental
+Java `.class` to C++ converter for use with JNI.
 
-Warning: blacklist/whitelist usage is recommended because this tool slows down code significantly (like do not obfuscate full Minecraft .jar)
+The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes an opt-in typed CFG IR path (`--codegen=ir`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a production-support claim.
 
-Also, this tool does not particularly obfuscate your code; it just transpiles it to native. Remember to use protectors like VMProtect, Themida, or obfuscator-llvm (in case of clang usage)
+**现状（中文）：** 默认代码生成仍是 `legacy`。`--codegen=ir` 是可选的 typed CFG IR。C++ SDK（SHA-256 / HMAC-SHA-256 / AES-256-GCM / 字符串 length·hashCode·concat）会打进生成 JAR。五个 JDK 17 fixture 在 IR 下有过一次 Linux 对齐记录，**不能**写成“已支持 JDK 17”。共享 evaluator 与 opcode 解释器后端的**编译器代码**没有合进当前 master 主线。
 
 ---
 
-### To run this tool, you need to have these tools installed:
-1. JDK 8
+## Current status
 
-    - For Windows:
-        
-        I recommend downloading Oracle JDK 8, though you need to have some login credentials on Oracle.
-    - For Linux/MacOS:
-    
-        Google "your distro install jdk 8", and install the required packages
-2. CMake
-   
-    - For Windows:
-     
-        Download the latest release from [CMake](https://cmake.org/download/)
-    
-    - For Linux/MacOS:
-    
-        Google "your distro install cmake" and install the required package (default - `apt/yum/brew install cmake`)
-3. C++/C compiler toolchain
+Recorded on `master` after the preferred-tip integration ([#118](https://github.com/gaoyu06/native-obfuscator/pull/118), plus the phase-18 Fable note in [#119](https://github.com/gaoyu06/native-obfuscator/pull/119)). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
-    - For Windows:
-    
-        Download the freeware version of MSVS from [Microsoft](https://visualstudio.microsoft.com/ru/)
-        and select Visual C++ compiler in opt-ins
-      
-        Or install mingw if you have any experience with this.
-     
-    - For Linux/MacOS:
-        
-        Google "your distro install g++"
-      
+| Topic | What is true |
+| --- | --- |
+| Default generator | `legacy` (snippet / `cppsnippets.properties`) |
+| Opt-in IR | `--codegen=ir` — typed CFG, per-method fallback to legacy when a construct is unsupported |
+| Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
+| Java baseline | Historical README claim remains: **Java 8 is the only version this project has ever called fully supported.** 9+ and Android stay experimental |
+| JDK 17 IR fixtures | Admission 36/36 on five fixtures; after the runtime repair, those five native runs matched HotSpot stdout on **one** Linux x86-64 VM. That is not a product “supports JDK 17” badge |
+| ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
+| C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
+| Shared evaluator / opcode VM | Documented as sibling stacks; **not** compiled into the current master compiler line |
+| Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
+| Performance | Native output can be much slower than HotSpot. No global “faster than Java” claim. Prefer a whitelist |
+
+Use a blacklist/whitelist. Transpiling a whole application JAR (for example a game client) is usually the wrong default.
+
+This tool **transpiles** bytecode to native. It does not pack binaries and does not, by itself, hide algorithm identity from analysis.
+
 ---
 
-### General usage:
-```
-Usage: native-obfuscator [-ahV] [--debug] [-b=<blackListFile>]
-                         [--custom-lib-dir=<customLibraryDirectory>]
+## Prerequisites
+
+1. **JDK** — JDK 8 is enough for the historical path. The current test/E2E work was also run with newer JDKs (for example 21) as the *host* compiler. You still need a JDK with `jni.h` when compiling generated C++.
+2. **CMake** — [cmake.org](https://cmake.org/download/) or your distro package.
+3. **C/C++ toolchain** — MSVC or MinGW on Windows; `g++` on Linux/macOS. Default Clang in some environments cannot link `libstdc++`; the recorded IR E2E used `CC=gcc CXX=g++`.
+4. Optional: **Zig** for `--use-zig` (see below).
+5. Optional for the full test suite: [Krakatau](https://github.com/Storyyeller/Krakatau) (`krak2`) on `PATH`.
+
+---
+
+## Usage
+
+```text
+Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
+                         [-b=<blackListFile>] [--custom-lib-dir=<dir>]
                          [-l=<librariesDirectory>] [-p=<platform>]
                          [--plain-lib-name=<libraryName>] [-w=<whiteListFile>]
+                         [--use-zig] [--zig-targets=<targets>]
+                         [--zig-path=<file>] [--jdk-home=<file>]
+                         [--zig-install-dir=<dir>]
                          <jarFile> <outputDirectory>
-Transpiles .jar file into .cpp files and generates output .jar file
-      <jarFile>           Jar file to transpile
-      <outputDirectory>   Output directory
-  -a, --annotations       Use annotations to ignore/include native obfuscation
-  -b, --black-list=<blackListFile>
-                          File with a list of blacklist classes/methods for
-                            transpilation
-      --custom-lib-dir=<customLibraryDirectory>
-                          Custom library directory for LoaderUnpack
-      --debug             Enable generation of debug .jar file (non-executable)
-  -h, --help              Show this help message and exit.
-  -l, --libraries=<librariesDirectory>
-                          Directory for dependent libraries
-  -p, --platform=<platform>
-                          Target platform: hotspot - standard standalone
-                            HotSpot JRE, std_java - java standard, android -
-                            for Android builds (w/o DefineClass)
-      --plain-lib-name=<libraryName>
-                          Plain library name for LoaderPlain
-  -V, --version           Print version information and exit.
-  -w, --white-list=<whiteListFile>
-                          File with a list of whitelist classes/methods for
-                            transpilation
 ```
 
-#### Arguments:
-`<jarFile>` - input .jar file to obfuscate
+### Arguments
 
-`<outputDirectory>` - output directory where C++/new .jar file where be created
+| Argument | Meaning |
+| --- | --- |
+| `<jarFile>` | Input JAR |
+| `<outputDirectory>` | Where the transformed JAR and `cpp/` tree are written |
+| `-l` | Directory of dependent libraries (optional, recommended) |
+| `-p` | `hotspot` (default), `std_java`, or `android` |
+| `--codegen` | `legacy` (default) or `ir` |
+| `-a` | Enable `@Native` / `@NotNative` annotation processing |
+| `-w` / `-b` | Whitelist / blacklist files |
+| `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
+| `--custom-lib-dir` | Directory inside the JAR for packed libraries (default printed as `native0/` unless overridden) |
+| `--debug` | Also write a non-executable debug JAR |
+| `--use-zig` | Compile generated C++ with Zig and pack the shared libraries |
+| `--zig-targets` | Comma-separated Zig targets (default `host`) |
+| `--zig-path` | Zig executable (overrides installed / `PATH`) |
+| `--jdk-home` | JDK with `include/jni.h` (defaults to `JAVA_HOME`) |
+| `--zig-install-dir` | Where Zig was installed (default `~/.native-obfuscator/zig/`) |
 
-`-l <librariesDirectory>` - directory where dependant libraries should be, optional, but preferable
+`--codegen=ir` is opt-in. Unsupported methods fall back per-method to the legacy generator, except rejected `<init>` bodies, which are restored to the original bytecode (including `invokedynamic`) instead of being left with internal preprocessor markers.
 
-`-p <platform>` - JVM platform to run library on
+### Platforms
 
-Three options are available:
- - `hotspot`: will use HotSpot JVM internals and should work with most obfuscators (even with stack trace checking as well)
- - `std_java`: will use only minor JVM internals that must be available on all JVMs
- - `android`: use this method when building library for Android. Will use no JVM internals, as well as no DefineClass for hidden methods (obfuscators that rely on stack for string/name obfuscator will not work due to the fact that some methods will not be hidden)
+- `hotspot` — HotSpot internals; works with many existing obfuscators, including some stack-trace checks.
+- `std_java` — fewer JVM internals; intended to be more portable across JVMs.
+- `android` — no `DefineClass` for hidden methods. Stack-based string/name schemes that need those hidden methods will not work.
 
-`-a` - enable annotation processing
+### Annotations
 
-To use annotations for black/whitelisting methods/classes as `native` you can add the following library to your project:
+Maven coordinates: `com.github.radioegor146.native-obfuscator:annotations:master-SNAPSHOT` (add [JitPack](https://jitpack.io)).
 
-`com.github.radioegor146.native-obfuscator:annotations:master-SNAPSHOT`
+- `@Native` — include the class or method
+- `@NotNative` — skip a method inside a `@Native` class
 
-Also, you need to add [JitPack](https://jitpack.io) to your repositories.
+Whitelist/blacklist win over annotations.
 
-You can add `@Native` annotation to include classes/methods to the native obfuscation process and add `@NotNative` annotation to ignore methods in classes marked as `@Native`
+Format:
 
-Whitelist/Blacklist has higher priority than annotations.
-
-`-w <whiteList>` - path to .txt file for whitelist of methods and classes if required
-
-`-b <blackList>` - path to a .txt file for a blacklist of methods and classes if required
-
-Both of them should come in such form:
-```
+```text
 <class>
 <class>#<method name>#<method descriptor>
 mypackage/myotherpackage/Class1
 mypackage/myotherpackage/Class1#doSomething!()V
 mypackage/myotherpackage/Class1$SubClass#doOther!(I)V
 ```
-It uses internal names of classes and method descriptors for filtering (you can read more about it by googling "java internal class names" or "java method descriptors")
 
-Also, you can use a wildcard matcher like these:
-```
-mypackage/myotherpackage/*
-mypackage/myotherpackagewithnested/**
-mypackage/myotherpackage/*/Class1
-mypackage/myotherpackagewithnested/**/Class1
-mypackage/myotherpackage/Class*
-```
-`*` matches a single entry (divided by `/`) in the class/package name
+Wildcards: `*` is one `/`-separated segment; `**` is any remaining segments.
 
-`**` matches all entries in class/package name
+### Basic flow
 
+1. `java -jar native-obfuscator.jar <input.jar> <output-dir>`
+2. Optional IR: add `--codegen=ir`
+3. `cmake .` in the generated `cpp/` directory (recorded IR builds used `CC=gcc CXX=g++`)
+4. `cmake --build . --config Release`
+5. Copy the shared library from `build/libs/` into the loader path printed on stdout (`native0/` by default), named like:
 
-`--plain-lib-name` - if you ship your .jar separately from the result native libraries, or you use it for Android, you can specify the name of the native library that it will try to search while using.
+   ```text
+   x64-windows.dll
+   x64-linux.so
+   x86-windows.dll
+   x64-macos.dylib
+   arm64-linux.so
+   arm64-windows.dll
+   ```
 
-`--custom-lib-dir` - if you want to set custom directory for storing libraries inside the jar
+6. `java -jar <output.jar>`
 
-If you want to ship your .jar with native libraries in it, you should omit that argument, and after building native files, add them in the form of
-```
-x64-windows.dll
-x64-linux.so
-x86-windows.dll
-x64-macos.dylib
-arm64-linux.so
-arm64-windows.dll
-```
-to the directory of the .jar file that this tool will print in `stdout` (by default `native0/` or custom if `--custom-lib-dir` is present)
-
-#### Basic usage:
-1. Transpile your code using `java -jar native-obfuscator.jar <input jar> <output directory>`
-2. Run `cmake .` in the result `cpp` directory
-3. Add changes to .cpp code if necessary
-4. Run `cmake --build . --config Release` in result `cpp` directory to build .so/.dll file
-5. Copy result .dll/.so from `build/libs/` to the path specified in the previous paragraph.
-6. Run created .jar `java -jar <output jar>` and enjoy!
+Omit `--plain-lib-name` if you want natives packed into the JAR after you copy them into that loader directory.
 
 ---
 
-### Zig toolchain support
+## Zig toolchain
 
-Steps 2–5 can be replaced with a single `--use-zig` flag that compiles the
-generated cpp/ tree directly with the Zig toolchain (no CMake / no host
-compiler required, cross-compilation built in).
+Steps 2–5 can be replaced with `--use-zig` (no CMake / no host compiler; cross-compilation is built in).
 
-#### Install Zig
-
-```
+```text
 java -jar native-obfuscator.jar install-zig [--version <x.y.z>] [--install-dir <path>] [--force]
 ```
 
-Downloads the official Zig release (SHA-256 verified), extracts it under
-`~/.native-obfuscator/zig/` by default, and writes an `installed.json` marker
-so subsequent builds can locate it.
+Downloads an official Zig release (SHA-256 verified) into `~/.native-obfuscator/zig/` by default.
 
-Options:
-- `--version` – pin a specific stable version. Defaults to the latest stable in `https://ziglang.org/download/index.json`.
-- `--install-dir` – custom install root.
-- `--force` – re-download even if already installed.
-- `--index-url` – use a mirror of the release index.
-
-#### Transpile + build in one shot
-
-```
+```text
 java -jar native-obfuscator.jar --use-zig \
      [--zig-targets x64-windows,x64-linux,arm64-linux] \
      [--jdk-home <path-to-jdk>] \
      <input.jar> <output-dir>
 ```
 
-- `--use-zig` – after transpilation, invoke `zig c++` for each requested target and pack the resulting shared library back into the produced jar (or into `<output-dir>/native-libs/` when `--plain-lib-name` is used).
-- `--zig-targets` – comma-separated list. Defaults to `host`. Known targets:
-  `x64-linux`, `x64-windows`, `x64-macos`, `arm64-linux`, `arm64-windows`,
-  `arm64-macos`, `x86-linux`, `x86-windows`, `arm32-linux`, plus `host`.
-- `--zig-path` – use a specific `zig` executable instead of the installed/PATH one.
-- `--jdk-home` – JDK whose `include/jni.h` should be used (defaults to `JAVA_HOME`, then `java.home`). `jni_md.h` is supplied as a portable shim per target, so the JDK's host-specific subfolder is not required.
-- `--zig-install-dir` – tell the build where Zig was installed (only needed if you used a non-default `--install-dir`).
-
-The compiled libraries are named according to LoaderUnpack's convention
-(`x64-windows.dll`, `x64-linux.so`, `arm64-macos.dylib`, …) and dropped into
-the output jar under the loader directory printed at the end of step 1.
+Known targets include `x64-linux`, `x64-windows`, `x64-macos`, `arm64-linux`, `arm64-windows`, `arm64-macos`, `x86-linux`, `x86-windows`, `arm32-linux`, and `host`.
 
 ---
 
-### Building the tool by yourself
-1. Run `gradlew assemble` to force gradle not to run tests after the build
+## C++ SDK (generated JARs)
+
+Generated JARs can include `by.radioegor146.sdk.NativePrimitives` and `NativeStrings`. This is **not** a separately versioned product SDK.
+
+Primitives (see [`docs/sdk/v1-status.md`](docs/sdk/v1-status.md)):
+
+- `abiVersion()`
+- `sha256(byte[])`
+- `hmacSha256(byte[] key, byte[] message)`
+- `aes256GcmEncrypt` / `aes256GcmDecrypt` (32-byte key, 12-byte nonce, 16-byte tag; do not reuse a nonce with the same key)
+- `constantTimeEquals(byte[], byte[])`
+
+Strings: Java-compatible UTF-16 `length`, `hashCode`, and `concat`. Recorded string benches were **slower than HotSpot**.
 
 ---
 
-### Tests
-You need to have [Krakatau](https://github.com/Storyyeller/Krakatau) installed to your PATH, because test suite is using `krak2` for some tests
+## Building and tests
 
-1. Run `gradlew build` to assemble and run full test suite
+```text
+./gradlew assemble          # skip tests
+./gradlew build             # assemble + full suite (needs krak2 for some cases)
+```
 
-This tool uses tests from [huzpsb/JavaObfuscatorTest](https://github.com/huzpsb/JavaObfuscatorTest)
+Focused IR suite used during the integration:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+ClassicTest-style fixtures live under `obfuscator/test_data/`. Some of that corpus comes from [huzpsb/JavaObfuscatorTest](https://github.com/huzpsb/JavaObfuscatorTest).
 
 ---
 
-In case of any problems, feel free to open an issue or contact me at [re146.dev](https://re146.dev)
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md).
+
+| Doc | Role |
+| --- | --- |
+| [Project status](docs/architecture/project-status.md) | What landed on master, what did not, what must not be claimed |
+| [IR compiler](docs/architecture/ir-compiler.md) | Typed CFG design |
+| [IR phase 18](docs/architecture/ir-phase18-status.md) | Primitive arrays and `MULTIANEWARRAY` |
+| [JDK 17 IR runtime repair](docs/architecture/ir-jdk17-runtime-fix.md) | Version / indy / `invokeExact` |
+| [SDK v1](docs/sdk/v1-status.md) | Java API and C ABI |
+| [Benchmarks](docs/benchmarks/README.md) | How to run the harness; do not invent numbers |
+| [Historical options brief](docs/architecture/goal-status-and-options.md) | Pre-landing maintainer snapshot (now superseded as *current* status) |
+
+---
+
+## Issues
+
+Open an issue on this repository, or contact the original author at [re146.dev](https://re146.dev).
 
 ### Stargazers over time
 

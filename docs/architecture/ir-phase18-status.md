@@ -1,5 +1,11 @@
 # IR phase 18 status
 
+> **On master.** This increment landed with the preferred-tip integration
+> ([#118](https://github.com/gaoyu06/native-obfuscator/pull/118)). Independent
+> accepts: Sol [#116](https://github.com/gaoyu06/native-obfuscator/pull/116),
+> Fable [#119](https://github.com/gaoyu06/native-obfuscator/pull/119).
+> Current public status: [project-status.md](project-status.md).
+
 Phase 18 extends the optional direct Java bytecode → typed CFG IR → C++/JNI
 compiler with every primitive `NEWARRAY`, the corresponding primitive
 array loads and stores, and rectangular primitive/reference
@@ -8,13 +14,13 @@ methods retain per-method legacy fallback, and
 `sources/cppsnippets.properties` remains present. This phase is direct IR
 only and does not change the evaluator or reader.
 
-Required base:
+Required base at the time this note was written:
 `cursor/ir-compiler-phase17-6d81-2b77` at
 `5a6f6097524c1fe42cd82be2425f5e6736667688`
 ([draft PR #108](https://github.com/gaoyu06/native-obfuscator/pull/108)).
 Sol review [#109](https://github.com/gaoyu06/native-obfuscator/pull/109)
-accepted that exact tip without a compiler change. The base is PR #108, not
-`master`.
+accepted that exact tip without a compiler change. That base is now on
+`master` via #118.
 
 ## Primitive arrays
 

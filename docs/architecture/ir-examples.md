@@ -1,7 +1,8 @@
 # IR Examples: bytecode → IR → C++
 
-Status: **Illustrative (docs only).** The IR text and C++ below are proposals to
-make [`ir-compiler.md`](./ir-compiler.md) concrete. No compiler emits this yet.
+> **Illustrative.** A real `--codegen=ir` emitter is on `master`; the listings
+> below are teaching examples from the original design PR, not a dump of
+> current compiler output. See [project-status.md](project-status.md).
 
 Each example shows four things:
 

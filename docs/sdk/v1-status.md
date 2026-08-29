@@ -1,5 +1,11 @@
 # Native SDK v1 status
 
+> **On master in generated JARs** after
+> [#118](https://github.com/gaoyu06/native-obfuscator/pull/118) (preferred AES
+> tip includes the 32-bit `plaintext.size+16` overflow fix). This is not a
+> separately versioned product SDK. Current tree:
+> [../architecture/project-status.md](../architecture/project-status.md).
+
 ## Surface
 
 Java 8 class `by.radioegor146.sdk.NativePrimitives`:
