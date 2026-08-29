@@ -2088,6 +2088,43 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeDivRemMultiReturn",
+                "example/MultiSuperBase");
+        MethodNode constructor =
+                multipleSuperThreeIdivIremReturnsConstructor(owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IDIV));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IREM));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeArithmeticMultiReturn",
@@ -2256,7 +2293,10 @@ public class IrCompilerTest {
                 "iand-extra-local", "ior-extra-local",
                 "ixor-extra-local", "ishl-extra-local",
                 "ishr-extra-local", "iushr-extra-local",
-                "three-level-iadd", "idiv",
+                "three-level-iadd",
+                "nested-idiv", "nested-irem",
+                "idiv-inner", "irem-inner",
+                "idiv-extra-local", "irem-extra-local",
                 "astore-zero", "post-call", "skip-super",
                 "exception-table")) {
             ClassNode owner = constructorOwner(
@@ -3471,6 +3511,46 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(1, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
+    }
+
+    @Test
+    public void rewrittenThreeImmediateIdivIremSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeDivRemBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeDivRem", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                multipleSuperThreeIdivIremReturnsConstructor(base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int argument : new int[]{11, -22, 0}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IDIV));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IREM));
     }
 
     @Test
@@ -5195,6 +5275,96 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the div/rem three-return runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the div/rem three-return runtime test");
+
+        String ownerName = "example/ThreeDivRemReturnRuntime";
+        String baseName = "example/ThreeDivRemReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-div-rem-return-run");
+        Path inputJar = directory.resolve("three-div-rem-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeIdivIremReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain div/rem three-return multi-super Java run");
+        assertEquals(
+                "5" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IDIV));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IREM));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("div/rem three-return multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("div/rem three-return multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Div/rem three-return native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native div/rem three-return multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -10668,6 +10838,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeIdivIremReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(
+                multipleSuperThreeIdivIremReturnsConstructor(baseName));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeNestedInputsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -12594,6 +12794,46 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode multipleSuperThreeIdivIremReturnsConstructor(
+            String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+        method.instructions.add(new InsnNode(Opcodes.IREM));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(zero);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode multipleSuperThreeIsubImulReturnsConstructor(
             String superName) {
         MethodNode method = new MethodNode(
@@ -12955,7 +13195,9 @@ public class IrCompilerTest {
                 || "ixor-extra-local".equals(shape)
                 || "ishl-extra-local".equals(shape)
                 || "ishr-extra-local".equals(shape)
-                || "iushr-extra-local".equals(shape);
+                || "iushr-extra-local".equals(shape)
+                || "idiv-extra-local".equals(shape)
+                || "irem-extra-local".equals(shape);
 
         if (extraLocalOperand) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -12997,7 +13239,10 @@ public class IrCompilerTest {
                 && !"nested-ishr".equals(shape)
                 && !"nested-iushr".equals(shape)
                 && !"three-level-iadd".equals(shape)
-                && !"idiv".equals(shape)
+                && !"nested-idiv".equals(shape)
+                && !"nested-irem".equals(shape)
+                && !"idiv-inner".equals(shape)
+                && !"irem-inner".equals(shape)
                 && !"post-call".equals(shape)) {
             throw new IllegalArgumentException("Unknown shape " + shape);
         }
@@ -13037,6 +13282,12 @@ public class IrCompilerTest {
         } else if ("iushr-extra-local".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        } else if ("idiv-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+        } else if ("irem-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IREM));
         } else if ("nested-iadd".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
@@ -13089,9 +13340,26 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.IADD));
             method.instructions.add(new InsnNode(Opcodes.ICONST_3));
             method.instructions.add(new InsnNode(Opcodes.IADD));
-        } else if ("idiv".equals(shape)) {
+        } else if ("nested-idiv".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+        } else if ("nested-irem".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IREM));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IREM));
+        } else if ("idiv-inner".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("irem-inner".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IREM));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
         }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, superName,
