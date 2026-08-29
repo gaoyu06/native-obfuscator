@@ -8,7 +8,7 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers nine related prefix shapes:
+The constructor split now covers these related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
 - try/catch entries whose start, end, and handler labels all remain in the
@@ -21,9 +21,12 @@ The constructor split now covers nine related prefix shapes:
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
-  suffix, when their incoming state at the chain call is provable; and
+  suffix, when their incoming state at the chain call is provable;
 - multiple direct this/super calls in a strict diamond that converges at one
-  shared suffix label; and
+  shared suffix label;
+- exactly two direct this/super calls where the first call is followed by a
+  declared int-argument `ILOAD`, `IFNE` to the shared suffix, and immediate
+  fallthrough `RETURN`, while the second call falls through to that suffix; and
 - exactly two direct this/super calls whose separate straight-line suffix
   copies, including immediate `RETURN` copies, are proven
   instruction-for-instruction identical.
@@ -36,11 +39,18 @@ The constructor split now covers nine related prefix shapes:
   is **admitted**. Both edges remain in the retained bytecode, so a this/super
   call is still reachable.
 - A prefix jump or switch whose target lands in the suffix is **rejected**
-  (`Constructor prefix branches across the this/super call`); it would skip the
-  mandatory chain call.
+  (`Constructor prefix branches across the this/super call`) unless it matches
+  one of the two exact shared-suffix exceptions below.
 - For a multi-call diamond, the one exception is the `GOTO` immediately after
   each non-final chain call. It must target the exact shared join label. The
   final chain call must fall through to that same label.
+- One non-`GOTO` exception is admitted only for exactly two chain calls with no
+  exception table. The first call must be followed by `ILOAD` of a declared
+  int-family constructor argument, `IFNE` to the exact shared join, and an
+  immediate fallthrough `RETURN`; the second call must fall through to the
+  join. Receiver-stack analysis requires both calls to consume the original
+  constructor receiver with no older stack values. The count-state CFG proof
+  still requires exactly one call at the join and at the early return.
 
 Multiple direct this/super candidates are admitted only under a stricter
 fail-closed rule:
@@ -52,9 +62,9 @@ fail-closed rule:
   reaches the shared suffix with zero or multiple calls, or reaches a return
   without exactly one call. Every candidate must be reachable.
 - The final candidate in bytecode order must be followed by a join label before
-  the first suffix instruction. Every earlier candidate's next executable
-  instruction must be `GOTO` to that exact label. This proves that all
-  successful prefix paths enter one identical suffix range.
+  the first suffix instruction. In the strict-diamond form, every earlier
+  candidate's next executable instruction must be `GOTO` to that exact label.
+  This proves that all suffix-taking prefix paths enter one identical range.
 - The retained wrapper keeps the complete diamond, both chain calls, their
   join label, and one hidden-bridge invocation. `createNativeBody` starts at
   the shared join and emits that suffix once.
@@ -76,10 +86,11 @@ One additional shape is reduced to that same shared-join form:
   split then retains both calls and emits the canonical suffix once behind one
   hidden bridge. For the empty-copy case, that suffix contains only `RETURN`.
 
-Three-or-more immediate separate returns, distinct joins, work between a chain
-call and an existing join, unreachable candidates, and non-identical per-call
-suffixes remain rejected. This is intentionally a narrow normalization to the
-proven one-join form, not a general multi-exit constructor rewriter.
+Three-or-more immediate separate returns, distinct joins, other conditional or
+switch forms, condition loads that are not declared int-family arguments, work
+between a chain call and an existing join, unreachable candidates, and
+non-identical per-call suffixes remain rejected. This is intentionally a narrow
+set of proven one-join forms, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
