@@ -32,7 +32,18 @@ satisfied.
 
 ## Validation
 
-Focused JUnit/CMake/g++ gate results will be recorded here after execution.
+Passed:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+JUnit XML records 158 `IrCompilerTest` tests and 7 `CodegenModeTest` tests:
+165 total, 0 failures, 0 errors, and 0 skipped. The focused runtime test builds
+the generated library with CMake/g++ and checks both retained chain-call paths
+with `java -Xverify:all -Xcheck:jni` against plain-Java stdout.
 
 # 中文
 
@@ -63,4 +74,15 @@ Focused JUnit/CMake/g++ gate results will be recorded here after execution.
 
 ## 验证
 
-聚焦的 JUnit/CMake/g++ 门槛结果将在实际执行后记录于此。
+以下门槛已通过：
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+JUnit XML 记录：`IrCompilerTest` 158 项，`CodegenModeTest` 7 项；合计
+165 项，0 失败、0 错误、0 跳过。聚焦运行时测试使用 CMake/g++ 构建生成的
+库，并以 `java -Xverify:all -Xcheck:jni` 执行两条保留的构造调用路径，
+其标准输出与普通 Java 执行完全一致。
