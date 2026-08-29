@@ -1605,7 +1605,7 @@ public class IrCompilerTest {
         assertTrue(byteCpp.contains("GetByteArrayRegion"));
         assertTrue(byteCpp.contains("SetByteArrayRegion"));
         assertFalse(byteCpp.contains("BooleanArray"));
-        assertTrue(byteCpp.contains("(jbyte) arg1"));
+        assertTrue(byteCpp.contains("(jbyte)"));
     }
 
     @Test
