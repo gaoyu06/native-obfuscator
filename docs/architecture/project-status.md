@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing primitive `Class` `LDC`
-[#167](https://github.com/gaoyu06/native-obfuscator/pull/167)
-(parent re-ran 149/149: 142 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `primitiveClassLdcCompilesAndRunsWithHotSpotParity`)
-on the post-[#166](https://github.com/gaoyu06/native-obfuscator/pull/166)
-prefix-catch tree. Active process:
+Last updated after landing interface-hosted proven `ConstantDynamic`
+[#168](https://github.com/gaoyu06/native-obfuscator/pull/168)
+(parent re-ran 152/152: 145 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `interfaceConstantDynamicCompilesAndRunsWithHotSpotParity`)
+on the post-[#167](https://github.com/gaoyu06/native-obfuscator/pull/167)
+primitive `Class` `LDC` tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -44,8 +44,13 @@ legacy。不能当成 JDK 支持矩阵。
   resolver, plus raw `MethodHandle` / `MethodType` `LDC`.
   [#167](https://github.com/gaoyu06/native-obfuscator/pull/167) admits
   primitive `Class` `LDC` via wrapper `TYPE` `GETSTATIC` on a private
-  copy. Unsafe condy shapes (non-static, varargs, interface-owner,
-  malformed) stay reject-before-mutation. Unsupported methods fall back per-method.
+  copy.
+  [#168](https://github.com/gaoyu06/native-obfuscator/pull/168) admits
+  the same proven `ConstantDynamic` shape in a public non-annotation
+  interface via a hidden companion cache and an uncached interface
+  bootstrap bridge. Unsafe condy shapes (non-static, varargs,
+  malformed, cyclic) stay reject-before-mutation. Unsupported methods
+  fall back per-method.
   Rejected constructors are restored from the original class bytes so
   indy preprocessor markers are not left in output.
   [#146](https://github.com/gaoyu06/native-obfuscator/pull/146) admits
@@ -166,6 +171,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Shared-suffix multi-super diamonds (#165) | 143 tests (`IrCompilerTest` 136 + `CodegenModeTest` 7). Parent re-ran 143/143 including `multipleSuperDiamondCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix-only constructor try/catch (#166) | 148 tests (`IrCompilerTest` 141 + `CodegenModeTest` 7). Parent re-ran 148/148 including `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Primitive `Class` `LDC` (#167) | 149 tests (`IrCompilerTest` 142 + `CodegenModeTest` 7). Parent re-ran 149/149 including `primitiveClassLdcCompilesAndRunsWithHotSpotParity` | Complete LDC coverage or a default flip |
+| Interface-hosted proven `ConstantDynamic` (#168) | 152 tests (`IrCompilerTest` 145 + `CodegenModeTest` 7). Parent re-ran 152/152 including `interfaceConstantDynamicCompilesAndRunsWithHotSpotParity` | Complete condy coverage or a default flip |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -214,7 +220,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   that is not an admitted join, mixed prefix/suffix try/catch,
   non-diamond multi-super, conditionally assigned extras) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
-  subroutines). Unsafe condy shapes stay fail-closed. In-tree fixture admission
+  subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#162](https://github.com/gaoyu06/native-obfuscator/pull/162),
   measured on post-#161 master) observed 0 leftovers; that is not
   coverage-complete.
@@ -229,8 +235,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #167 (primitive
-  Class LDC). / 落地 #167 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #168 (interface
+  ConstantDynamic). / 落地 #168 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

@@ -11,7 +11,7 @@ with an older brief.
 | Document | Language | What it is |
 | --- | --- | --- |
 | [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Active goal: IR-complete codegen, then delete legacy. |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#167. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#168. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -25,7 +25,7 @@ with an older brief.
 | [architecture/ir-migration-plan.md](architecture/ir-migration-plan.md) | Historical migration rationale; IR path now exists |
 | [architecture/ir-flex-ctor-status.md](architecture/ir-flex-ctor-status.md) | Constructor split through prefix-only try/catch (#146/#160/#163–#166) |
 | [architecture/ir-class-ldc-status.md](architecture/ir-class-ldc-status.md) | Primitive `Class` `LDC` via wrapper `TYPE` (#167) |
-| [architecture/ir-condy-status.md](architecture/ir-condy-status.md) | Proven `ConstantDynamic` + raw MH/MT `LDC` (#161) |
+| [architecture/ir-condy-status.md](architecture/ir-condy-status.md) | Proven `ConstantDynamic` + raw MH/MT `LDC` (#161); interface companions (#168) |
 | [architecture/ir-indy-status.md](architecture/ir-indy-status.md) | IR `invokedynamic` via preprocessor (#159) |
 | [architecture/ir-monitors-status.md](architecture/ir-monitors-status.md) | IR monitors / synchronized (#158) |
 | [architecture/ir-if-acmp-status.md](architecture/ir-if-acmp-status.md) | IR `IF_ACMPEQ` / `IF_ACMPNE` (#157) |
