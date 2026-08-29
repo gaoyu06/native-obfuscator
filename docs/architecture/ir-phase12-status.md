@@ -115,9 +115,9 @@ Result: `BUILD SUCCESSFUL`.
 Counts read directly from Gradle's JUnit XML:
 
 ```text
-IrCompilerTest: tests=56, skipped=0, failures=0, errors=0 (time=0.563 s)
-CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.117 s)
-Total: 58 tests, 0 skipped, 0 failures, 0 errors
+IrCompilerTest: tests=57, skipped=0, failures=0, errors=0 (time=0.524 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.085 s)
+Total: 59 tests, 0 skipped, 0 failures, 0 errors
 ```
 
 Phase-12 coverage includes:
@@ -127,7 +127,9 @@ Phase-12 coverage includes:
 - a constructor that delegates through `this(I)V`;
 - object and array field stores through `SetObjectField`;
 - an unsupported opcode after the constructor-chain call, proving rejection
-  before constructor, output, bridge, or cache mutation; and
+  before constructor, output, bridge, or cache mutation;
+- serialization and JVM verification of the rewritten constructor plus hidden
+  native bridge class; and
 - the retained phase-9 array-return, phase-10 field, and phase-11 interface and
   non-constructor-special invoke regressions.
 
@@ -141,20 +143,20 @@ openjdk version "21.0.10" 2026-01-20
 JNI headers: present
 ```
 
-`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran in 0.168 s and has
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran in 0.162 s and has
 no `<skipped>` child in the JUnit XML. Its retained 61-method translation unit
 contains the phase-12 constructor bridges and the phase-9 through phase-11
 regressions.
 
 The exact retained unit
-`/tmp/ir-compile-smoke137585144312697538/ir-smoke.cpp` was also checked
+`/tmp/ir-compile-smoke17002103531268511540/ir-smoke.cpp` was also checked
 independently with:
 
 ```text
 g++ -std=c++17 -fsyntax-only \
   -I/usr/lib/jvm/java-21-openjdk-amd64/include \
   -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
-  /tmp/ir-compile-smoke137585144312697538/ir-smoke.cpp
+  /tmp/ir-compile-smoke17002103531268511540/ir-smoke.cpp
 ```
 
 g++ exited zero with empty diagnostics.

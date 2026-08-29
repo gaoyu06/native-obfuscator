@@ -108,10 +108,10 @@ local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留�
    必须基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）
    比较，不得改用 `master` 或仅含文档的审阅分支 #82/#83。
 2. Re-run the focused command with `CC=gcc CXX=g++ --rerun-tasks` and inspect
-   the JUnit XML. Recorded result: `IrCompilerTest` 56 plus
-   `CodegenModeTest` 2, total 58; zero skipped, failures, or errors.
+   the JUnit XML. Recorded result: `IrCompilerTest` 57 plus
+   `CodegenModeTest` 2, total 59; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦命令并读取 JUnit XML。
-   记录结果为 `IrCompilerTest` 56 加 `CodegenModeTest` 2，共 58；跳过、失败、
+   记录结果为 `IrCompilerTest` 57 加 `CodegenModeTest` 2，共 59；跳过、失败、
    错误均为零。
 3. With g++ and JNI headers present, require
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped
