@@ -33,22 +33,24 @@ per-method fallback for unsupported IR.
 
 ## (c) Review verdict / 审查结论
 
-**Accept, subject to the focused re-run in (d).** The serializer/native opcode
-map agrees, i64 arithmetic uses unsigned 64-bit carriers, `I2L` sign-extends,
-`L2I` truncates, and generated `roundTrip(J)J` uses `evaluate_i64` without a
-direct or legacy body.
+**Accept.** The serializer/native opcode map agrees, i64 arithmetic uses
+unsigned 64-bit carriers, `I2L` sign-extends, `L2I` truncates, and generated
+`roundTrip(J)J` uses `evaluate_i64` without a direct or legacy body.
 
-**接受，但以 (d) 的聚焦复测为最终依据。** serializer/native opcode 映射一致；
-i64 算术使用无符号 64 位载体，`I2L` 执行符号扩展，`L2I` 执行截断；
-生成的 `roundTrip(J)J` 使用 `evaluate_i64`，不包含 direct 或 legacy 方法体。
+**接受。** serializer/native opcode 映射一致；i64 算术使用无符号 64 位载体，
+`I2L` 执行符号扩展，`L2I` 执行截断；生成的 `roundTrip(J)J` 使用
+`evaluate_i64`，不包含 direct 或 legacy 方法体。
 
 ## (d) Verification / 验证
 
-The required post-commit `CC=gcc CXX=g++` focused re-run is pending. It covers
-`CodegenModeTest`, `IrCompilerTest`, and `InterpreterStreamStrategyTest`; the
-final documentation commit will replace this sentence with the observed
-per-class and total counts.
+The post-commit `CC=gcc CXX=g++` focused re-run passed **31/31**, with 0
+skipped, failures, or errors: `CodegenModeTest` 4/4, `IrCompilerTest` 18/18,
+and `InterpreterStreamStrategyTest` 9/9. The g++ translation-unit check and
+linked native harness both ran. The harness covered i64 arithmetic wraparound,
+negative `I2L`, low-32-bit `L2I`, and `(J)J` value transport.
 
-所要求的 post-commit `CC=gcc CXX=g++` 聚焦复测尚待执行，覆盖
-`CodegenModeTest`、`IrCompilerTest` 与 `InterpreterStreamStrategyTest`。
-最终文档提交会用实测的各测试类及总计数替换本段。
+post-commit `CC=gcc CXX=g++` 聚焦复测共 **31/31** 通过，0 skipped、0
+failures、0 errors：`CodegenModeTest` 4/4、`IrCompilerTest` 18/18、
+`InterpreterStreamStrategyTest` 9/9。g++ 翻译单元检查与链接后的 native
+harness 均实际执行；harness 覆盖了 i64 算术回绕、负数 `I2L`、低 32 位
+`L2I` 截断与 `(J)J` 值传递。

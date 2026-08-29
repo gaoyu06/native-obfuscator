@@ -5,9 +5,8 @@ Review target: PR #68 (`cursor/ir-eval-i64-6d81`), based on
 
 ## Verdict
 
-**Accept, subject to the focused re-run recorded below.** Static review found no
-correctness defect in the i64 evaluator slice. No implementation code was
-changed by this review.
+**Accept.** Static review and the focused re-run found no correctness defect in
+the i64 evaluator slice. No implementation code was changed by this review.
 
 ## Findings
 
@@ -86,7 +85,17 @@ Command (with `CC=gcc CXX=g++`):
 ./gradlew :obfuscator:test \
   --tests by.radioegor146.CodegenModeTest \
   --tests by.radioegor146.ir.IrCompilerTest \
-  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest \
+  --rerun-tasks --console=plain
 ```
 
-Result: pending the required post-commit review-branch re-run.
+Result: **31/31 passed**, with 0 skipped, 0 failures, and 0 errors:
+
+- `CodegenModeTest`: 4/4
+- `IrCompilerTest`: 18/18
+- `InterpreterStreamStrategyTest`: 9/9
+
+The evaluator translation-unit g++ check and the linked native evaluator
+harness both ran rather than being skipped. The harness covered i64 add,
+subtract, and multiply wraparound, negative `I2L`, low-32-bit `L2I`, and
+`(J)J` value transport.
