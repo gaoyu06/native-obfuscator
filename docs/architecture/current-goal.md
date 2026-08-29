@@ -53,15 +53,16 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #213 (leaf-only `LADD` long chain inputs)
+   `master` after #214 (leaf-only `LSUB`/`LMUL` long chain inputs)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
    beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
    suffixes or cover a chain call,
    remaining multi-super shapes such as five-or-more nested
-   int binaries, nested/`LSUB`/`LMUL`/other long computed inputs,
-   float/double/reference computed inputs, or more than eight
+   int binaries, nested/`LAND`/`LOR`/`LXOR`/`LDIV`/other long
+   computed inputs, float/double/reference computed inputs, or more
+   than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
