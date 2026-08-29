@@ -144,6 +144,9 @@ public final class IrCppEmitter {
         if (instruction instanceof IrNodes.FloatingCompare) {
             return emitFloatingCompare((IrNodes.FloatingCompare) instruction);
         }
+        if (instruction instanceof IrNodes.LongCompare) {
+            return emitLongCompare((IrNodes.LongCompare) instruction);
+        }
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
         }
@@ -381,6 +384,24 @@ public final class IrCppEmitter {
                 new CppAst.IntLiteral(compare.getNanResult().getValue()), ordered);
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(compare.getResult()), result));
+    }
+
+    private List<CppAst.Statement> emitLongCompare(IrNodes.LongCompare compare) {
+        // LCMP is the ordered half of emitFloatingCompare on the signed i64
+        // carrier: longs have no NaN, so there is no std::isnan guard. A
+        // subtract-based lowering would misorder on overflow, so this stays a
+        // direct signed three-way compare.
+        CppAst.Expression left = new CppAst.Cast("int64_t",
+                expression(compare.getLeft()));
+        CppAst.Expression right = new CppAst.Cast("int64_t",
+                expression(compare.getRight()));
+        CppAst.Expression value = new CppAst.Conditional(
+                new CppAst.Binary(left, ">", right),
+                new CppAst.IntLiteral(1),
+                new CppAst.Conditional(new CppAst.Binary(left, "<", right),
+                        new CppAst.IntLiteral(-1), new CppAst.IntLiteral(0)));
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(compare.getResult()), value));
     }
 
     private CppAst.Expression shiftAmount(CppAst.Expression right) {

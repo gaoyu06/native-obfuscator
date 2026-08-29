@@ -2391,7 +2391,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LCMP, error.getOpcode());
+        assertEquals(Opcodes.IF_ACMPEQ, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -2399,6 +2399,96 @@ public class IrCompilerTest {
         assertEquals(0, obfuscator.getCachedStrings().size());
         assertEquals(0, obfuscator.getCachedFields().size());
         assertEquals(0, obfuscator.getCachedMethods().size());
+    }
+
+    @Test
+    public void lowersLongCompareAsSignedTernaryWithoutNanGuardOrSubtract() {
+        IrMethod ir = frontend.build("example/Math", longCompareMethod());
+        String pretty = ir.toString();
+        assertTrue(pretty.contains(" = lcmp %arg0, %arg1"));
+
+        IrNodes.LongCompare compare = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.LongCompare.class::isInstance)
+                .map(IrNodes.LongCompare.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrType.I64, compare.getLeft().getType());
+        assertEquals(IrType.I64, compare.getRight().getType());
+        assertEquals(IrType.I32, compare.getResult().getType());
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("((int64_t) arg0 > (int64_t) arg1) ? 1 :"));
+        assertTrue(cpp.contains("((int64_t) arg0 < (int64_t) arg1) ? -1 : 0"));
+        assertFalse(cpp.contains("std::isnan"));
+        assertFalse(cpp.contains("arg0 - "));
+        assertFalse(cpp.contains("- (int64_t) arg1"));
+        assertFalse(cpp.contains("- (uint64_t) arg1"));
+    }
+
+    @Test
+    public void longCompareResultDrivesIntZeroBranch() {
+        IrMethod ir = frontend.build("example/Math", longCompareBranchMethod());
+        String pretty = ir.toString();
+        assertTrue(pretty.contains("lcmp"));
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("((int64_t) arg0 > (int64_t) arg1) ? 1 :"));
+        assertTrue(cpp.contains(" >= 0) {"));
+    }
+
+    @Test
+    public void executesLongCompareSemanticsWhenToolchainAvailable() throws Exception {
+        Path gpp = executableOnPath("g++");
+        Path javaHome = Paths.get(System.getProperty("java.home"));
+        Path jniInclude = javaHome.resolve("include");
+        Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
+        assertTrue(gpp != null, "g++ is required for the IR LCMP runtime test");
+        assertTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are required for the IR LCMP runtime test");
+        assertTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are required for the IR LCMP runtime test");
+
+        String body = emitter.emitBody(frontend.build("example/Math", longCompareMethod()));
+        String min = "(-9223372036854775807LL - 1LL)";
+        String max = "9223372036854775807LL";
+        String source = "#include <jni.h>\n"
+                + "#include <cstdint>\n"
+                + "static jint lcmp(jlong arg0, jlong arg1) {\n"
+                + body
+                + "}\n"
+                + "int main() {\n"
+                + "    if (lcmp(1LL, 2LL) != -1) return 1;\n"
+                + "    if (lcmp(2LL, 1LL) != 1) return 2;\n"
+                + "    if (lcmp(5LL, 5LL) != 0) return 3;\n"
+                + "    if (lcmp(" + min + ", -1LL) != -1) return 4;\n"
+                + "    if (lcmp(-1LL, " + min + ") != 1) return 5;\n"
+                + "    if (lcmp(" + min + ", " + min + ") != 0) return 6;\n"
+                // A subtract-based lowering overflows on MIN vs MAX and
+                // misorders both directions below.
+                + "    if (lcmp(" + min + ", " + max + ") != -1) return 7;\n"
+                + "    if (lcmp(" + max + ", " + min + ") != 1) return 8;\n"
+                + "    return 0;\n"
+                + "}\n";
+
+        Path directory = Files.createTempDirectory("ir-lcmp-run");
+        Path sourceFile = directory.resolve("lcmp.cpp");
+        Path binary = directory.resolve("lcmp");
+        Path compilerOutput = directory.resolve("gpp-output.txt");
+        Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
+        Process compileProcess = new ProcessBuilder(gpp.toString(), "-std=c++17",
+                "-I" + jniInclude, "-I" + platformInclude,
+                sourceFile.toString(), "-o", binary.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(compilerOutput.toFile())
+                .start();
+        int compileExit = compileProcess.waitFor();
+        String output = new String(Files.readAllBytes(compilerOutput),
+                StandardCharsets.UTF_8);
+        assertEquals(0, compileExit, "g++ failed:\n" + output + "\nSource:\n" + source);
+
+        Process runProcess = new ProcessBuilder(binary.toString()).start();
+        assertEquals(0, runProcess.waitFor(),
+                "Generated LCMP lowering returned a wrong three-way result");
     }
 
     @Test
@@ -2481,6 +2571,7 @@ public class IrCompilerTest {
                 checkCastCatchMethod(), longArithmeticMethod(), longBitwiseShiftMethod(),
                 longDivRemMethod(), longNegateMethod(), longDivideCatchMethod(),
                 wrappingLongShiftMethod(), longConversionMethod(),
+                longCompareMethod(), longCompareBranchMethod(),
                 wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
                 virtualStringInvokeMethod(), staticStringInvokeMethod(),
                 staticVoidLongInvokeMethod(),
@@ -2772,6 +2863,10 @@ public class IrCompilerTest {
         assertTrue(source.contains(
                 "IR codegen: example/Math.wrappingLongShift()J"));
         assertTrue(source.contains("IR codegen: example/Math.longConversion(I)I"));
+        assertTrue(source.contains("IR codegen: example/Math.longCompare(JJ)I"));
+        assertTrue(source.contains(
+                "IR codegen: example/Math.longCompareBranch(JJ)I"));
+        assertTrue(source.contains("((int64_t) arg0 > (int64_t) arg1) ? 1 :"));
         assertTrue(source.contains("IR codegen: example/Math.widePhi(JI)J"));
         assertTrue(source.contains("IR codegen: example/Math.constructObject()I"));
         assertTrue(source.contains("env->AllocObject(cclasses["));
@@ -5291,6 +5386,36 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode longCompareMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longCompare", "(JJ)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LCMP));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode longCompareBranchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longCompareBranch", "(JJ)I", null, null);
+        LabelNode notLess = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LCMP));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFGE, notLess));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(notLess);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 4;
+        return method;
+    }
+
     private MethodNode wideStackPhiMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "widePhi", "(JI)J", null, null);
@@ -5313,14 +5438,24 @@ public class IrCompilerTest {
     }
 
     private MethodNode unsupportedWideOperationMethod() {
+        // LCMP, the previous sentinel here, is now admitted by the IR
+        // frontend. IF_ACMPEQ (a reference compare branch) is still outside
+        // the supported subset, so it keeps proving that rejection happens
+        // before any mutation.
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedWide", "(JJ)I", null, null);
-        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
-        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
-        method.instructions.add(new InsnNode(Opcodes.LCMP));
+                "unsupportedWide", "(Ljava/lang/Object;Ljava/lang/Object;)I",
+                null, null);
+        LabelNode same = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, same));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
-        method.maxLocals = 4;
-        method.maxStack = 4;
+        method.instructions.add(same);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
         return method;
     }
 

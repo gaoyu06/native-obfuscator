@@ -207,6 +207,12 @@ public final class IrMethod {
                     + compare.getMnemonic() + " " + compare.getLeft()
                     + ", " + compare.getRight();
         }
+        if (instruction instanceof IrNodes.LongCompare) {
+            IrNodes.LongCompare compare = (IrNodes.LongCompare) instruction;
+            return compare.getResult() + ":" + compare.getResult().getType() + " = "
+                    + compare.getMnemonic() + " " + compare.getLeft()
+                    + ", " + compare.getRight();
+        }
         if (instruction instanceof IrNodes.IntDivRem) {
             IrNodes.IntDivRem binary = (IrNodes.IntDivRem) instruction;
             return binary.getResult() + ":" + binary.getResult().getType() + " = "
