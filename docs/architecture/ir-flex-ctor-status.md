@@ -20,10 +20,10 @@ The constructor split now covers these related prefix shapes:
   `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception, for
   both single-super and bounded path-id distinct-suffix constructors;
 - identity-preserving `ASTORE 0` writes, plus receiver-alias forwarding for a
-  single call or the exact two-call `GOTO` shared-join diamond where the
-  original receiver is saved in another local before local 0 receives a
-  different reference and every selected this/super call is proven to consume
-  the saved receiver;
+  single call, the exact two-call `GOTO` shared-join diamond, or bounded path-id
+  distinct suffixes where the original receiver is saved in another local
+  before local 0 receives a different reference and every selected this/super
+  call is proven to consume the saved receiver;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
@@ -47,9 +47,10 @@ The constructor split now covers these related prefix shapes:
   instruction-for-instruction identical; and
 - between two and eight reachable direct this/super calls whose separate
   nonempty suffixes end in `RETURN` and contain at least two CFG-distinct
-  ranges, when every call consumes the original `ALOAD 0` receiver and only
-  locally proven chain arguments; repeated suffix CFGs remain separate path-id
-  ranges, and any suffix may additionally contain one closed int-family
+  ranges, when every call consumes the original receiver through direct
+  `ALOAD 0` or the proven prefix alias and uses only locally proven chain
+  arguments; repeated suffix CFGs remain separate path-id ranges, and any
+  suffix may additionally contain one closed int-family
   conditional branch, or one closed
   `TABLESWITCH`/`LOOKUPSWITCH` over a proven int-family load, whose arms stay in
   that suffix and reach `RETURN`; prefix-assigned extras read by those suffixes
@@ -168,13 +169,15 @@ One bounded path-selected family uses the same single-bridge pipeline without
 normalizing the suffixes to one copied join:
 
 - Between two and eight reachable candidates are required, with an empty
-  chain-entry stack. Each call must receive direct `ALOAD 0` and the same
-  locally proven argument-input families used by the bounded multi-return
-  proof. Exception entries are admitted only when all three labels are before
-  the first chain call, or when all three labels are wholly inside one proven
-  nonempty suffix range. A protected range wholly inside one suffix may also
-  target one of the already-proven isolated prefix handlers; the handler and
-  optional isolated return block are relocated with that suffix table.
+  chain-entry stack. Each call must receive direct `ALOAD 0`, or a direct load
+  of the saved original-receiver alias after the exact prefix overwrite
+  described below, and the same locally proven argument-input families used by
+  the bounded multi-return proof. Exception entries are admitted only when all
+  three labels are before the first chain call, or when all three labels are
+  wholly inside one proven nonempty suffix range. A protected range wholly
+  inside one suffix may also target one of the already-proven isolated prefix
+  handlers; the handler and optional isolated return block are relocated with
+  that suffix table.
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
   Any suffix may contain one unary `IFxx` over a direct declared int-family
   `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
@@ -210,9 +213,9 @@ normalizing the suffixes to one copied join:
   parameters and packed extras. It therefore does not reuse a live extra slot,
   receiver slot, or category-2 parameter slot.
 
-Extra-local or aliased chain inputs, binary expression trees deeper than two
-levels, nested `IDIV`/`IREM`, `IDIV`/`IREM` used as an inner binary, other
-binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
+Unproven extra-local or aliased chain inputs, binary expression trees deeper
+than two levels, nested `IDIV`/`IREM`, `IDIV`/`IREM` used as an inner binary,
+other binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
 fields, method calls, stack duplication, computed or rewritten receivers, or
 any other unlisted input remain rejected.
 Distinct joins, other conditional or switch forms,
@@ -225,10 +228,10 @@ Multi-call tables remain rejected when their labels mix prefix and suffix,
 span suffixes, cover a chain call, use a handler after the last suffix, or use
 an unproven prefix handler. The identical-copy one-join normalizer still admits
 prefix-only tables only. All-identical suffix sets that do not match that
-normalizer, non-identity `ASTORE 0` in multi-call identical-copy or path-id
-forms, and other unlisted catch forms remain rejected. This is intentionally a
-narrow set of proven constructor split forms, not a general multi-exit
-constructor rewriter.
+normalizer, non-identity `ASTORE 0` in multi-call identical-copy forms or
+outside the exact path-id alias rule, and other unlisted catch forms remain
+rejected. This is intentionally a narrow set of proven constructor split
+forms, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -254,9 +257,15 @@ It also classifies writes to reference/array constructor-argument locals:
 - The same alias-forwarding rule applies to the exact two-call shared-join
   diamond when the earlier call has one direct `GOTO` to the join, the final
   call falls through to that join, and receiver-frame analysis proves that both
-  calls consume the original receiver through the alias. This does not extend
-  the post-call IF/switch, immediate-prefix-return, identical-copy, or path-id
-  families.
+  calls consume the original receiver through the alias.
+- It also applies to bounded path-id distinct suffixes when every `ASTORE 0`
+  occurs before the first chain call and directly stores `ACONST_NULL` or a
+  declared reference argument, every call directly loads the proven original-
+  receiver alias, and all normal distinct-suffix argument, stack, exception,
+  and extra-local proofs pass. A suffix read of that alias is forwarded only
+  when its packed extra is definitely assigned at every bridge-taking call.
+  This does not extend the post-call IF/switch, immediate-prefix-return, or
+  identical-copy families.
 - The wrapper deliberately continues to load local 0 as the first hidden-
   bridge argument. It does not substitute the alias: suffix `ALOAD 0` observes
   the overwritten Java local. If the suffix reads the alias, the existing
@@ -268,7 +277,8 @@ It also classifies writes to reference/array constructor-argument locals:
   loader without changing the IR meaning of local 0 or using the receiver alias
   for instance operations.
 - Non-identity `ASTORE 0` remains rejected for every other multi-call
-  shared-join form, identical-copy normalization, and path-id suffix selection.
+  shared-join form, identical-copy normalization, and every path-id shape
+  outside the exact rule above.
 
 Prefix stores into non-parameter locals are classified separately:
 
@@ -307,8 +317,8 @@ Other guards remain unchanged:
 - All other try/catch label placements crossing the split are rejected.
 - Prefix `ASTORE 0` is rejected when the selected chain call is not proven to
   consume the original receiver. Outside the exact two-call `GOTO` shared-join
-  diamond, multi-call shapes still require every store to be
-  identity-preserving.
+  diamond and bounded path-id rule, multi-call shapes still require every store
+  to be identity-preserving.
 - `jsr`/`ret` remains unsupported.
 
 A prefix branch into the suffix can bypass the mandatory chain call. A
@@ -460,6 +470,17 @@ Synthetic bytecode unit tests in
   suffix read of the forwarded receiver alias through the complete CMake/g++
   JNI transform under `java -Xverify:all -Xcheck:jni`, requiring identical
   stdout.
+- `admitsAndRewritesReceiverAliasPathIdDistinctSuffixes` proves two retained
+  path-selected calls consume the saved receiver, local 0 remains the first
+  bridge body argument, the suffix alias read is packed as an extra, owner-
+  `Class` metadata precedes the path id, and both rewritten paths verify with
+  one hidden bridge.
+- `rejectsPathIdDistinctSuffixUsingOverwrittenReceiverBeforeMutation` keeps a
+  two-suffix path-id shape fail-closed when one call consumes overwritten local
+  0, without allocating a hidden method.
+- `receiverAliasDistinctSuffixesCompileAndRunWithJavaParity` exercises both
+  path ids and a null local-0 overwrite through the complete CMake/g++ JNI
+  transform under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsPostChainConditionalBranchToSharedSuffix` proves the exact
   `ILOAD; IFNE sharedSuffix; RETURN` post-call shape emits only the shared
   suffix as the independent native body, preserves the conditional branch and
