@@ -96,10 +96,48 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --rerun-tasks
 ```
 
+Result on 2026-08-29: `BUILD SUCCESSFUL`.
+
+Counts read directly from Gradle's JUnit XML:
+
+```text
+IrCompilerTest: tests=82, skipped=0, failures=0, errors=0 (time=0.853 s)
+CodegenModeTest: tests=3, skipped=0, failures=0, errors=0 (time=0.131 s)
+Total: 85 tests, 0 skipped, 0 failures, 0 errors
+```
+
 `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` is an assertion-based
 g++ gate, not an assumption-based skip. Its retained translation unit is also
 checked independently with `g++ -std=c++17 -fsyntax-only` and the active JDK
 JNI include directories.
+
+The smoke testcase ran in 0.389 s and has no `<skipped>` child in the JUnit
+XML. Its retained translation unit contains exactly 140 `JNICALL` functions,
+including 12 phase-17 stack-shuffle smoke methods covering both `DUP2` forms,
+both `DUP_X2` forms, both `DUP2_X1` forms (including `SWAP` first), all four
+`DUP2_X2` forms, and both `POP2` forms.
+
+Environment:
+
+```text
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+openjdk version "21.0.10" 2026-01-20
+JNI headers: /usr/lib/jvm/java-21-openjdk-amd64/include
+```
+
+The retained unit
+`/tmp/ir-compile-smoke1357741817635517067/ir-smoke.cpp` was independently
+checked with:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke1357741817635517067/ir-smoke.cpp
+```
+
+`g++` exited zero with empty diagnostics.
 
 The focused tests cover every legal form in the tables with mixed `I32`,
 `F32`, `REFERENCE`, `I64`, and `F64` carriers as applicable; illegal category
