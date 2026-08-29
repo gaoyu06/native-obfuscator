@@ -6,40 +6,46 @@ Preferred base / 首选基线:
 
 ## Summary / 摘要
 
-The optional Java bytecode → typed CFG IR → C++/JNI lowering path now supports
-reference-returning method bodies, typed null values and branches, and
-category-one discard. The default remains `legacy`. Detailed evidence is in
-`docs/architecture/ir-phase9-status.md`.
+This review accepts the phase-9 Java bytecode → typed CFG IR → C++/JNI
+lowering after fixing array-return JNI carrier matching. The reviewed path
+supports reference-returning method bodies, typed null values and branches, and
+category-one discard. The default remains `legacy`. Review evidence is in
+`docs/architecture/ir-phase9-review.md`.
 
-可选的 Java 字节码 → typed CFG IR → C++/JNI lowering 路径现支持引用返回方法体、
-typed null 值与分支，以及 category-one 丢弃。默认值仍为 `legacy`。详细证据见
-`docs/architecture/ir-phase9-status.md`。
+本次审查修复数组返回的 JNI carrier 匹配后，接受第九阶段 Java 字节码 → typed CFG
+IR → C++/JNI lowering。审查后的路径支持引用返回方法体、typed null 值与分支及
+category-one 丢弃。默认值仍为 `legacy`。审查证据见
+`docs/architecture/ir-phase9-review.md`。
 
 ## (a) Change scope / 本次改动范围
 
-- Admits `ARETURN` for object/array method descriptors through the existing
-  `IrType.REFERENCE` / `jobject` carrier. Unprotected JNI failures return
-  `nullptr` with the exception pending.
+- Reviews `ARETURN` descriptor/carrier matching and fixes array-return
+  functions by casting the coarsened `jobject` SSA value to the shell's
+  `jarray` return type. Object returns keep the existing carrier. Unprotected
+  JNI failures return `nullptr` with the exception pending.
 - Adds a typed `ACONST_NULL` IR value that emits `nullptr`.
 - Adds dedicated structured reference conditions for `IFNULL` and `IFNONNULL`;
   they are not represented as integer compares.
 - Admits `POP` only for one-slot/category-one values. `POP2`, category-two
   `POP`, and other category-two stack manipulation still fall back.
-- Adds focused regressions for allocated-object return, null return, both null
-  branch directions, category-one discard, category-two rejection, and
-  fallback-before-mutation after newly admitted operations.
+- Adds a regression for allocated-array return and expands the retained g++
+  translation unit. Existing focused regressions cover allocated-object and
+  null returns, both null branch directions, category-one discard,
+  category-two rejection, and fallback-before-mutation.
 - Keeps constructor method bodies excluded, the default `legacy`, and all
   existing snippets.
 
-- 通过现有 `IrType.REFERENCE` / `jobject` carrier 为对象/数组方法描述符接纳
-  `ARETURN`；未受保护的 JNI 失败会在异常保持 pending 时返回 `nullptr`。
+- 审查 `ARETURN` 的描述符/carrier 匹配，并在数组返回函数边界将统一的 `jobject`
+  SSA 值显式转换为 JNI 外壳要求的 `jarray`；对象返回保持现有 carrier。未受保护的
+  JNI 失败会在异常保持 pending 时返回 `nullptr`。
 - 新增 typed `ACONST_NULL` IR 值并发射 `nullptr`。
 - 为 `IFNULL` 与 `IFNONNULL` 新增专用 structured reference condition；不会将其
   表示为整数比较。
 - 仅为单 slot/category-one 值接纳 `POP`；`POP2`、对 category-two 值的 `POP`
   及其他 category-two stack manipulation 仍会 fallback。
-- 新增聚焦回归，覆盖分配对象返回、null 返回、null 分支两个方向、category-one
-  丢弃、category-two 拒绝，以及新接纳操作之后的 mutation 前 fallback。
+- 新增分配数组返回回归并扩展保留的 g++ translation unit。已有聚焦回归覆盖分配
+  对象与 null 返回、null 分支两个方向、category-one 丢弃、category-two 拒绝，
+  以及新接纳操作之后的 mutation 前 fallback。
 - 构造器方法体仍不处理，默认值仍为 `legacy`，全部现有 snippets 均保留。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
@@ -63,12 +69,14 @@ native 运行时等价性门禁。
 
 **Yes / 是。**
 
-Review reference return descriptor/carrier matching, JNI default returns on
-exceptional exits, explicit reference-null branch typing and control-flow,
-category-one `POP` validation, and fallback-before-mutation.
+Yes. This branch contains that review. It found and fixed the array-return
+carrier mismatch, then rechecked JNI default returns on exceptional exits,
+explicit reference-null branch typing and control flow, category-one `POP`
+validation, and fallback-before-mutation. Verdict: **Accept**.
 
-需要审查引用返回描述符/carrier 匹配、异常出口的 JNI 默认返回、显式 reference-null
-分支 typing 与控制流、category-one `POP` 校验，以及 mutation 前 fallback。
+是。本分支即该审查结果。审查发现并修复了数组返回 carrier 不匹配，随后重新核对
+异常出口的 JNI 默认返回、显式 reference-null 分支 typing 与控制流、category-one
+`POP` 校验及 mutation 前 fallback。结论：**接受**。
 
 ## (d) Review preconditions / Review 前置条件
 
@@ -77,22 +85,24 @@ category-one `POP` validation, and fallback-before-mutation.
    必须基于 `cursor/ir-compiler-phase8-6d81` 的 `95eb5ffd…` 比较与落地，不得改用
    `master` 或仅审查分支，并保持编译器堆叠顺序。
 2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 42
-   plus `CodegenModeTest` 2, total 44; zero skipped, failures, or errors.
+   inspect the actual JUnit XML counts. Reviewed result: `IrCompilerTest` 43
+   plus `CodegenModeTest` 2, total 45; zero skipped, failures, or errors. The
+   additional test is the array-return regression.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。记录结果为 42 + 2，共 44 个测试；跳过、失败、错误均为零。
+   XML 计数。审查结果为 43 + 2，共 45 个测试；跳过、失败、错误均为零。新增的
+   一个测试是数组返回回归。
 3. When g++ and JNI headers are present, require the g++ testcase to remain
    unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit. Recorded result: the unskipped
-   39-method smoke and independent syntax check both exited zero.
+   retained generated translation unit. Reviewed result: the unskipped
+   40-method smoke and independent syntax check both exited zero.
    当 g++ 与 JNI headers 存在时，必须确认 g++ 测试未跳过，并对保留的同一份生成
-   translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录结果：未跳过的
-   39-method 烟测及独立语法检查均以零退出。
+   translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。审查结果：未跳过的
+   40-method smoke 及独立语法检查均以零退出。
 4. Require supported-platform/JDK CI and native runtime-parity checks before
    any production decision.
    任何生产决策前都必须通过受支持平台/JDK 的 CI 及 native 运行时等价性检查。
-5. During conflict resolution, retain exception routing, constructor-method
-   exclusion, exact JNI carriers, explicit reference branch semantics,
+5. During conflict resolution, retain the array-return `jarray` cast, exception
+   routing, constructor-method exclusion, explicit reference branch semantics,
    fallback-before-mutation, the `legacy` default, and existing snippets.
-   解决冲突时必须保留异常路由、构造器方法体排除策略、精确 JNI carrier、显式引用
-   分支语义、mutation 前 fallback、`legacy` 默认值及现有 snippets。
+   解决冲突时必须保留数组返回的 `jarray` 转换、异常路由、构造器方法体排除策略、
+   显式引用分支语义、mutation 前 fallback、`legacy` 默认值及现有 snippets。
