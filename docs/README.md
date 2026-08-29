@@ -26,6 +26,8 @@ with an older brief.
 | [architecture/ir-p19-jdk21-integration.md](architecture/ir-p19-jdk21-integration.md) | How #128 and #126 were combined |
 | [architecture/ir-phase18-status.md](architecture/ir-phase18-status.md) | Primitive arrays + `MULTIANEWARRAY` |
 | [architecture/ir-jdk17-runtime-fix.md](architecture/ir-jdk17-runtime-fix.md) | Classfile version, indy packaging, `invokeExact` trampolines |
+| [reviews/ir-phase19-fable.md](reviews/ir-phase19-fable.md) | Fable accept-with-nits of long bitwise/shifts |
+| [reviews/opcode-backend-v2-sol.md](reviews/opcode-backend-v2-sol.md) | Sol accept-with-nits of interpreter ISA v2 |
 | [reviews/ir-phase18-sol.md](reviews/ir-phase18-sol.md) / [reviews/ir-phase18-fable.md](reviews/ir-phase18-fable.md) | Independent accepts of phase 18 (docs-only) |
 | [reviews/ir-jdk17-runtime-fix-sol.md](reviews/ir-jdk17-runtime-fix-sol.md) / [reviews/ir-jdk17-runtime-fix-fable.md](reviews/ir-jdk17-runtime-fix-fable.md) | Sol reject+fix, then Fable accept of the runtime-fix tip |
 
