@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class InterpreterRuntimeTest {
 
     @Test
-    public void compilesAndExecutesIntegerAndLongIsaWithGpp() throws Exception {
+    public void compilesAndExecutesIntegerLongAndReferenceIsaWithGpp()
+            throws Exception {
         Assumptions.assumeTrue(hasGpp(), "g++ is not available");
         Path directory = Files.createTempDirectory(
                 "native-jvm-interpreter-runtime-");
@@ -24,6 +25,12 @@ public class InterpreterRuntimeTest {
                 directory.resolve("native_jvm_interp.hpp"));
         copyResource("sources/native_jvm_interp.cpp",
                 directory.resolve("native_jvm_interp.cpp"));
+        Files.write(directory.resolve("jni.h"),
+                ("#ifndef INTERPRETER_TEST_JNI_H\n" +
+                        "#define INTERPRETER_TEST_JNI_H\n" +
+                        "struct _jobject {};\n" +
+                        "using jobject = _jobject *;\n" +
+                        "#endif\n").getBytes(StandardCharsets.UTF_8));
         Files.write(directory.resolve("runtime_test.cpp"),
                 harness().getBytes(StandardCharsets.UTF_8));
 
@@ -48,30 +55,30 @@ public class InterpreterRuntimeTest {
                 "using native_jvm::interp::method_desc;\n" +
                 "\n" +
                 "static const std::uint8_t add_code[] = { 2,0,0, 2,1,0, 4, 19 };\n" +
-                "static const method_desc add_method = { 3, 2, 2, add_code, sizeof(add_code) };\n" +
-                "static const method_desc mismatched_add_method = { 2, 2, 2, add_code, sizeof(add_code) };\n" +
+                "static const method_desc add_method = { 4, 2, 2, add_code, sizeof(add_code) };\n" +
+                "static const method_desc mismatched_add_method = { 3, 2, 2, add_code, sizeof(add_code) };\n" +
                 "static const std::uint8_t sub_code[] = { 2,0,0, 2,1,0, 5, 19 };\n" +
-                "static const method_desc sub_method = { 3, 2, 2, sub_code, sizeof(sub_code) };\n" +
+                "static const method_desc sub_method = { 4, 2, 2, sub_code, sizeof(sub_code) };\n" +
                 "static const std::uint8_t mul_code[] = { 2,0,0, 2,1,0, 20, 19 };\n" +
-                "static const method_desc mul_method = { 3, 2, 2, mul_code, sizeof(mul_code) };\n" +
+                "static const method_desc mul_method = { 4, 2, 2, mul_code, sizeof(mul_code) };\n" +
                 "static const std::uint8_t and_code[] = { 2,0,0, 2,1,0, 21, 19 };\n" +
-                "static const method_desc and_method = { 3, 2, 2, and_code, sizeof(and_code) };\n" +
+                "static const method_desc and_method = { 4, 2, 2, and_code, sizeof(and_code) };\n" +
                 "static const std::uint8_t or_code[] = { 2,0,0, 2,1,0, 22, 19 };\n" +
-                "static const method_desc or_method = { 3, 2, 2, or_code, sizeof(or_code) };\n" +
+                "static const method_desc or_method = { 4, 2, 2, or_code, sizeof(or_code) };\n" +
                 "static const std::uint8_t xor_code[] = { 2,0,0, 2,1,0, 23, 19 };\n" +
-                "static const method_desc xor_method = { 3, 2, 2, xor_code, sizeof(xor_code) };\n" +
+                "static const method_desc xor_method = { 4, 2, 2, xor_code, sizeof(xor_code) };\n" +
                 "static const std::uint8_t shl_code[] = { 2,0,0, 2,1,0, 24, 19 };\n" +
-                "static const method_desc shl_method = { 3, 2, 2, shl_code, sizeof(shl_code) };\n" +
+                "static const method_desc shl_method = { 4, 2, 2, shl_code, sizeof(shl_code) };\n" +
                 "static const std::uint8_t shr_code[] = { 2,0,0, 2,1,0, 25, 19 };\n" +
-                "static const method_desc shr_method = { 3, 2, 2, shr_code, sizeof(shr_code) };\n" +
+                "static const method_desc shr_method = { 4, 2, 2, shr_code, sizeof(shr_code) };\n" +
                 "static const std::uint8_t ushr_code[] = { 2,0,0, 2,1,0, 26, 19 };\n" +
-                "static const method_desc ushr_method = { 3, 2, 2, ushr_code, sizeof(ushr_code) };\n" +
+                "static const method_desc ushr_method = { 4, 2, 2, ushr_code, sizeof(ushr_code) };\n" +
                 "static const std::uint8_t neg_code[] = { 2,0,0, 27, 19 };\n" +
-                "static const method_desc neg_method = { 3, 1, 1, neg_code, sizeof(neg_code) };\n" +
+                "static const method_desc neg_method = { 4, 1, 1, neg_code, sizeof(neg_code) };\n" +
                 "static const std::uint8_t div_code[] = { 2,0,0, 2,1,0, 28, 19 };\n" +
-                "static const method_desc div_method = { 3, 2, 2, div_code, sizeof(div_code) };\n" +
+                "static const method_desc div_method = { 4, 2, 2, div_code, sizeof(div_code) };\n" +
                 "static const std::uint8_t rem_code[] = { 2,0,0, 2,1,0, 29, 19 };\n" +
-                "static const method_desc rem_method = { 3, 2, 2, rem_code, sizeof(rem_code) };\n" +
+                "static const method_desc rem_method = { 4, 2, 2, rem_code, sizeof(rem_code) };\n" +
                 "static const std::uint8_t sum_code[] = {\n" +
                 "    1,0,0,0,0, 3,1,0, 1,0,0,0,0, 3,2,0,\n" +
                 "    2,2,0, 2,0,0, 15,54,0,0,0,\n" +
@@ -79,35 +86,43 @@ public class InterpreterRuntimeTest {
                 "    2,2,0, 1,1,0,0,0, 4, 3,2,0,\n" +
                 "    18,16,0,0,0, 2,1,0, 19\n" +
                 "};\n" +
-                "static const method_desc sum_method = { 3, 4, 3, sum_code, sizeof(sum_code) };\n" +
+                "static const method_desc sum_method = { 4, 4, 3, sum_code, sizeof(sum_code) };\n" +
                 "static const std::uint8_t long_add_code[] = { 31,0,0, 31,2,0, 33, 43 };\n" +
-                "static const method_desc long_add_method = { 3, 4, 4, long_add_code, sizeof(long_add_code) };\n" +
+                "static const method_desc long_add_method = { 4, 4, 4, long_add_code, sizeof(long_add_code) };\n" +
                 "static const std::uint8_t long_sub_code[] = { 31,0,0, 31,2,0, 34, 43 };\n" +
-                "static const method_desc long_sub_method = { 3, 4, 4, long_sub_code, sizeof(long_sub_code) };\n" +
+                "static const method_desc long_sub_method = { 4, 4, 4, long_sub_code, sizeof(long_sub_code) };\n" +
                 "static const std::uint8_t long_mul_code[] = { 31,0,0, 31,2,0, 35, 43 };\n" +
-                "static const method_desc long_mul_method = { 3, 4, 4, long_mul_code, sizeof(long_mul_code) };\n" +
+                "static const method_desc long_mul_method = { 4, 4, 4, long_mul_code, sizeof(long_mul_code) };\n" +
                 "static const std::uint8_t long_and_code[] = { 31,0,0, 31,2,0, 36, 43 };\n" +
-                "static const method_desc long_and_method = { 3, 4, 4, long_and_code, sizeof(long_and_code) };\n" +
+                "static const method_desc long_and_method = { 4, 4, 4, long_and_code, sizeof(long_and_code) };\n" +
                 "static const std::uint8_t long_or_code[] = { 31,0,0, 31,2,0, 37, 43 };\n" +
-                "static const method_desc long_or_method = { 3, 4, 4, long_or_code, sizeof(long_or_code) };\n" +
+                "static const method_desc long_or_method = { 4, 4, 4, long_or_code, sizeof(long_or_code) };\n" +
                 "static const std::uint8_t long_xor_code[] = { 31,0,0, 31,2,0, 38, 43 };\n" +
-                "static const method_desc long_xor_method = { 3, 4, 4, long_xor_code, sizeof(long_xor_code) };\n" +
+                "static const method_desc long_xor_method = { 4, 4, 4, long_xor_code, sizeof(long_xor_code) };\n" +
                 "static const std::uint8_t long_shl_code[] = { 31,0,0, 2,2,0, 39, 43 };\n" +
-                "static const method_desc long_shl_method = { 3, 3, 3, long_shl_code, sizeof(long_shl_code) };\n" +
+                "static const method_desc long_shl_method = { 4, 3, 3, long_shl_code, sizeof(long_shl_code) };\n" +
                 "static const std::uint8_t long_shr_code[] = { 31,0,0, 2,2,0, 40, 43 };\n" +
-                "static const method_desc long_shr_method = { 3, 3, 3, long_shr_code, sizeof(long_shr_code) };\n" +
+                "static const method_desc long_shr_method = { 4, 3, 3, long_shr_code, sizeof(long_shr_code) };\n" +
                 "static const std::uint8_t long_ushr_code[] = { 31,0,0, 2,2,0, 41, 43 };\n" +
-                "static const method_desc long_ushr_method = { 3, 3, 3, long_ushr_code, sizeof(long_ushr_code) };\n" +
+                "static const method_desc long_ushr_method = { 4, 3, 3, long_ushr_code, sizeof(long_ushr_code) };\n" +
                 "static const std::uint8_t long_neg_code[] = { 31,0,0, 42, 43 };\n" +
-                "static const method_desc long_neg_method = { 3, 2, 2, long_neg_code, sizeof(long_neg_code) };\n" +
+                "static const method_desc long_neg_method = { 4, 2, 2, long_neg_code, sizeof(long_neg_code) };\n" +
                 "static const std::uint8_t long_div_code[] = { 31,0,0, 31,2,0, 44, 43 };\n" +
-                "static const method_desc long_div_method = { 3, 4, 4, long_div_code, sizeof(long_div_code) };\n" +
+                "static const method_desc long_div_method = { 4, 4, 4, long_div_code, sizeof(long_div_code) };\n" +
                 "static const std::uint8_t long_rem_code[] = { 31,0,0, 31,2,0, 45, 43 };\n" +
-                "static const method_desc long_rem_method = { 3, 4, 4, long_rem_code, sizeof(long_rem_code) };\n" +
+                "static const method_desc long_rem_method = { 4, 4, 4, long_rem_code, sizeof(long_rem_code) };\n" +
                 "static const std::uint8_t long_store_code[] = { 31,0,0, 32,2,0, 31,2,0, 43 };\n" +
-                "static const method_desc long_store_method = { 3, 2, 4, long_store_code, sizeof(long_store_code) };\n" +
+                "static const method_desc long_store_method = { 4, 2, 4, long_store_code, sizeof(long_store_code) };\n" +
                 "static const std::uint8_t long_push_code[] = { 30,8,7,6,5,4,3,2,1, 43 };\n" +
-                "static const method_desc long_push_method = { 3, 2, 0, long_push_code, sizeof(long_push_code) };\n" +
+                "static const method_desc long_push_method = { 4, 2, 0, long_push_code, sizeof(long_push_code) };\n" +
+                "static const std::uint8_t ref_identity_code[] = { 47,0,0, 49 };\n" +
+                "static const method_desc ref_identity_method = { 4, 1, 1, ref_identity_code, sizeof(ref_identity_code) };\n" +
+                "static const std::uint8_t ref_store_code[] = { 47,0,0, 48,1,0, 47,1,0, 49 };\n" +
+                "static const method_desc ref_store_method = { 4, 1, 2, ref_store_code, sizeof(ref_store_code) };\n" +
+                "static const std::uint8_t ifnull_code[] = { 47,0,0, 50,12,0,0,0, 47,0,0, 49, 46,49 };\n" +
+                "static const method_desc ifnull_method = { 4, 1, 1, ifnull_code, sizeof(ifnull_code) };\n" +
+                "static const std::uint8_t ifnonnull_code[] = { 47,0,0, 51,12,0,0,0, 46,49, 46,49, 47,0,0,49 };\n" +
+                "static const method_desc ifnonnull_method = { 4, 1, 1, ifnonnull_code, sizeof(ifnonnull_code) };\n" +
                 "\n" +
                 "static bool run_binary(const method_desc &method,\n" +
                 "                       std::int32_t a, std::int32_t b,\n" +
@@ -218,7 +233,22 @@ public class InterpreterRuntimeTest {
                 "           result == expected;\n" +
                 "}\n" +
                 "\n" +
+                "static bool run_reference(const method_desc &method,\n" +
+                "                          jobject value, jobject expected) {\n" +
+                "    std::int32_t locals[2] = {};\n" +
+                "    std::int32_t stack[2] = {};\n" +
+                "    jobject ref_locals[2] = { value, nullptr };\n" +
+                "    jobject ref_stack[2] = {};\n" +
+                "    jobject result = nullptr;\n" +
+                "    frame f = { locals, stack, ref_locals, ref_stack };\n" +
+                "    return native_jvm::interp::execute_l(method, f, &result) ==\n" +
+                "                   execution_result::success &&\n" +
+                "           result == expected;\n" +
+                "}\n" +
+                "\n" +
                 "int main() {\n" +
+                "    _jobject object_storage;\n" +
+                "    jobject object = &object_storage;\n" +
                 "    if (!run_binary(add_method, 7, -3, 4)) return 1;\n" +
                 "    if (!run_binary(add_method,\n" +
                 "                    std::numeric_limits<std::int32_t>::max(), 1,\n" +
@@ -302,6 +332,13 @@ public class InterpreterRuntimeTest {
                 "                    INT64_C(0x1020304050607080))) return 46;\n" +
                 "    if (!run_long_constant(long_push_method,\n" +
                 "                    INT64_C(0x0102030405060708))) return 47;\n" +
+                "    if (!run_reference(ref_identity_method, object, object)) return 48;\n" +
+                "    if (!run_reference(ref_identity_method, nullptr, nullptr)) return 49;\n" +
+                "    if (!run_reference(ref_store_method, object, object)) return 50;\n" +
+                "    if (!run_reference(ifnull_method, object, object)) return 51;\n" +
+                "    if (!run_reference(ifnull_method, nullptr, nullptr)) return 52;\n" +
+                "    if (!run_reference(ifnonnull_method, object, object)) return 53;\n" +
+                "    if (!run_reference(ifnonnull_method, nullptr, nullptr)) return 54;\n" +
                 "    return 0;\n" +
                 "}\n";
     }

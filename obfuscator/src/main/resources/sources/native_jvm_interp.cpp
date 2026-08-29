@@ -116,11 +116,15 @@ namespace native_jvm::interp {
     namespace {
     execution_result execute(const method_desc &method, frame &current_frame,
                              std::int32_t *int_result,
-                             std::int64_t *long_result) noexcept {
+                             std::int64_t *long_result,
+                             jobject *ref_result) noexcept {
+        unsigned int result_count = int_result != nullptr ? 1U : 0U;
+        result_count += long_result != nullptr ? 1U : 0U;
+        result_count += ref_result != nullptr ? 1U : 0U;
         if (method.isa_version != ISA_VERSION || method.code == nullptr ||
                 method.code_len == 0 || current_frame.locals == nullptr ||
                 current_frame.stack == nullptr ||
-                (int_result == nullptr) == (long_result == nullptr)) {
+                result_count != 1U) {
             return execution_result::invalid_stream;
         }
 
@@ -156,6 +160,38 @@ namespace native_jvm::interp {
                         return execution_result::invalid_stream;
                     }
                     current_frame.locals[local] = current_frame.stack[--sp];
+                    break;
+                }
+                case opcode::aconst_null:
+                    if (current_frame.ref_stack == nullptr ||
+                            sp >= method.max_stack) {
+                        return execution_result::invalid_stream;
+                    }
+                    current_frame.ref_stack[sp++] = nullptr;
+                    break;
+                case opcode::aload: {
+                    std::uint16_t local;
+                    if (!read_u16(method, pc, local) ||
+                            current_frame.ref_locals == nullptr ||
+                            current_frame.ref_stack == nullptr ||
+                            local >= method.max_locals ||
+                            sp >= method.max_stack) {
+                        return execution_result::invalid_stream;
+                    }
+                    current_frame.ref_stack[sp++] =
+                            current_frame.ref_locals[local];
+                    break;
+                }
+                case opcode::astore: {
+                    std::uint16_t local;
+                    if (!read_u16(method, pc, local) ||
+                            current_frame.ref_locals == nullptr ||
+                            current_frame.ref_stack == nullptr ||
+                            local >= method.max_locals || sp == 0) {
+                        return execution_result::invalid_stream;
+                    }
+                    current_frame.ref_locals[local] =
+                            current_frame.ref_stack[--sp];
                     break;
                 }
                 case opcode::lpush: {
@@ -443,6 +479,25 @@ namespace native_jvm::interp {
                     }
                     break;
                 }
+                case opcode::ifnull:
+                case opcode::ifnonnull: {
+                    std::uint32_t target;
+                    if (!read_u32(method, pc, target) ||
+                            current_frame.ref_stack == nullptr || sp == 0) {
+                        return execution_result::invalid_stream;
+                    }
+                    jobject value = current_frame.ref_stack[--sp];
+                    bool taken =
+                            (current == opcode::ifnull && value == nullptr) ||
+                            (current == opcode::ifnonnull && value != nullptr);
+                    if (taken) {
+                        if (!valid_target(method, target)) {
+                            return execution_result::invalid_stream;
+                        }
+                        pc = target;
+                    }
+                    break;
+                }
                 case opcode::goto_: {
                     std::uint32_t target;
                     if (!read_u32(method, pc, target) ||
@@ -466,6 +521,13 @@ namespace native_jvm::interp {
                     *long_result = long_from_unsigned(
                             long_bits(current_frame.stack + sp));
                     return execution_result::success;
+                case opcode::areturn:
+                    if (current_frame.ref_stack == nullptr || sp == 0 ||
+                            ref_result == nullptr) {
+                        return execution_result::invalid_stream;
+                    }
+                    *ref_result = current_frame.ref_stack[--sp];
+                    return execution_result::success;
                 default:
                     return execution_result::invalid_stream;
             }
@@ -476,11 +538,16 @@ namespace native_jvm::interp {
 
     execution_result execute_i(const method_desc &method, frame &current_frame,
                                std::int32_t *result) noexcept {
-        return execute(method, current_frame, result, nullptr);
+        return execute(method, current_frame, result, nullptr, nullptr);
     }
 
     execution_result execute_j(const method_desc &method, frame &current_frame,
                                std::int64_t *result) noexcept {
-        return execute(method, current_frame, nullptr, result);
+        return execute(method, current_frame, nullptr, result, nullptr);
+    }
+
+    execution_result execute_l(const method_desc &method, frame &current_frame,
+                               jobject *result) noexcept {
+        return execute(method, current_frame, nullptr, nullptr, result);
     }
 }
