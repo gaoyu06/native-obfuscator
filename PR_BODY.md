@@ -35,6 +35,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+JUnit XML result: 260 `IrCompilerTest` cases plus 7 `CodegenModeTest`
+cases, 267 total, with 0 failures, 0 errors, and 0 skipped.
+
 ## (d) Preconditions
 
 - Current `origin/master` includes #205 receiver-alias forwarding and its
@@ -69,6 +72,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.ir.IrCompilerTest \
   --tests by.radioegor146.CodegenModeTest
 ```
+
+JUnit XML 结果：`IrCompilerTest` 260 项，`CodegenModeTest` 7 项，共
+267 项；失败 0、错误 0、跳过 0。
 
 ## (d) 前置条件
 
