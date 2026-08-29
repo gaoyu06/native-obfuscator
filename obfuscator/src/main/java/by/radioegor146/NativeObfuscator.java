@@ -1,6 +1,8 @@
 package by.radioegor146;
 
 import by.radioegor146.bytecode.PreprocessorRunner;
+import by.radioegor146.interpreter.InterpreterMethodEmitter;
+import by.radioegor146.interpreter.InterpreterMethodProcessor;
 import by.radioegor146.ir.IrMethodCompiler;
 import by.radioegor146.ir.UnsupportedIrConstructException;
 import by.radioegor146.ir.emit.MethodShellEmitter;
@@ -48,6 +50,7 @@ public class NativeObfuscator {
     private final Snippets snippets;
     private final StringPool stringPool;
     private final MethodProcessor methodProcessor;
+    private final InterpreterMethodProcessor interpreterMethodProcessor;
     private final IrMethodCompiler irMethodCompiler;
 
     private final NodeCache<String> cachedStrings;
@@ -100,6 +103,7 @@ public class NativeObfuscator {
         cachedFields = new NodeCache<>("(cfields[%d].load(std::memory_order_acquire))");
         MethodShellEmitter shellEmitter = new MethodShellEmitter(this);
         methodProcessor = new MethodProcessor(this, shellEmitter);
+        interpreterMethodProcessor = new InterpreterMethodProcessor();
         irMethodCompiler = new IrMethodCompiler(shellEmitter);
     }
 
@@ -109,7 +113,7 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
         return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
                 customLibraryDirectory, platform, useAnnotations, generateDebugJar,
-                CodegenMode.LEGACY);
+                CodegenMode.LEGACY, CompilerBackend.CPP);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -117,7 +121,18 @@ public class NativeObfuscator {
                           String customLibraryDirectory,
                           Platform platform, boolean useAnnotations, boolean generateDebugJar,
                           CodegenMode codegenMode) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, CompilerBackend.CPP);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, CompilerBackend backend) throws IOException {
         final CodegenMode selectedCodegen = Objects.requireNonNull(codegenMode, "codegenMode");
+        final CompilerBackend selectedBackend = Objects.requireNonNull(backend, "backend");
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -141,6 +156,10 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm.hpp", cppDir);
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
+        if (selectedBackend == CompilerBackend.INTERPRETER) {
+            Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
+            Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
+        }
 
         Path sdkDir = cppDir.resolve("sdk");
         Path sdkThirdPartyDir = sdkDir.resolve("third_party");
@@ -185,6 +204,10 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.h");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.cpp");
+        if (selectedBackend == CompilerBackend.INTERPRETER) {
+            cMakeBuilder.addMainFile("native_jvm_interp.hpp");
+            cMakeBuilder.addMainFile("native_jvm_interp.cpp");
+        }
 
         if (platform == Platform.HOTSPOT) {
             cMakeBuilder.addFlag("USE_HOTSPOT");
@@ -312,7 +335,9 @@ public class NativeObfuscator {
                     cachedFields.clear();
 
                     try (ClassSourceBuilder cppBuilder =
-                                 new ClassSourceBuilder(cppOutput, classNode.name, classIndexReference[0]++, stringPool)) {
+                                 new ClassSourceBuilder(cppOutput, classNode.name,
+                                         classIndexReference[0]++, stringPool,
+                                         selectedBackend == CompilerBackend.INTERPRETER)) {
                         StringBuilder instructions = new StringBuilder();
 
                         int methodsToProcess = classNode.methods.size();
@@ -328,7 +353,13 @@ public class NativeObfuscator {
                             }
 
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
-                            if (selectedCodegen == CodegenMode.IR) {
+                            InterpreterMethodEmitter.CompiledMethod interpreted =
+                                    selectedBackend == CompilerBackend.INTERPRETER
+                                            ? InterpreterMethodEmitter.tryCompile(classNode, method)
+                                            : null;
+                            if (interpreted != null) {
+                                interpreterMethodProcessor.processMethod(context, interpreted);
+                            } else if (selectedCodegen == CodegenMode.IR) {
                                 try {
                                     irMethodCompiler.processMethod(context);
                                 } catch (UnsupportedIrConstructException ex) {
