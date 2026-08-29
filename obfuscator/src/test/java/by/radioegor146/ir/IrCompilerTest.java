@@ -80,6 +80,11 @@ public class IrCompilerTest {
             Opcodes.IF_ICMPLT, Opcodes.IF_ICMPGE,
             Opcodes.IF_ICMPGT, Opcodes.IF_ICMPLE
     };
+    private static final String[] TWO_LEVEL_CHAIN_INPUT_SHAPES = {
+            "nested-iadd", "nested-isub", "nested-imul",
+            "nested-iand", "nested-ior", "nested-ixor",
+            "nested-ishl", "nested-ishr", "nested-iushr"
+    };
 
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
@@ -2198,16 +2203,60 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNestedProvenChainInputs() {
+        int[] outerOpcodes = {
+                Opcodes.IADD, Opcodes.ISUB, Opcodes.IMUL,
+                Opcodes.IAND, Opcodes.IOR, Opcodes.IXOR,
+                Opcodes.ISHL, Opcodes.ISHR, Opcodes.IUSHR
+        };
+        for (int i = 0; i < TWO_LEVEL_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = TWO_LEVEL_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    "example/ThreeNested"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    threeImmediateReturnsConstructorWithShape(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(I)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertTrue(realOpcodes(constructor).contains(outerOpcodes[i]),
+                    shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+        }
+    }
+
+    @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
-                "extra-local", "iadd-extra-local", "nested-iadd",
+                "extra-local", "iadd-extra-local",
                 "isub-extra-local", "imul-extra-local",
                 "iand-extra-local", "ior-extra-local",
                 "ixor-extra-local", "ishl-extra-local",
                 "ishr-extra-local", "iushr-extra-local",
-                "nested-isub", "nested-imul",
-                "nested-iand", "nested-ior", "nested-ixor",
-                "nested-ishl", "nested-ishr", "nested-iushr", "idiv",
+                "three-level-iadd", "idiv",
                 "astore-zero", "post-call", "skip-super",
                 "exception-table")) {
             ClassNode owner = constructorOwner(
@@ -2215,7 +2264,7 @@ public class IrCompilerTest {
                             + shape.replace("-", ""),
                     "example/MultiSuperBase");
             MethodNode constructor =
-                    rejectedThreeImmediateReturnsConstructor(
+                    threeImmediateReturnsConstructorWithShape(
                             owner.superName, shape);
             int instructionCount = constructor.instructions.size();
             java.util.List<Integer> opcodes = realOpcodes(constructor);
@@ -3421,6 +3470,45 @@ public class IrCompilerTest {
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.IADD));
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNestedInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeNestedInputsBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeNestedInputs", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsConstructorWithShape(
+                        base.name, "nested-iadd");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int argument : new int[]{7, -7, 0}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(argument));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
     }
 
@@ -5107,6 +5195,92 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNestedInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the nested-input runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the nested-input runtime test");
+
+        String ownerName = "example/ThreeNestedInputRuntime";
+        String baseName = "example/ThreeNestedInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-nested-input-run");
+        Path inputJar = directory.resolve("three-nested-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeNestedInputsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain nested-input multi-super Java run");
+        assertEquals(
+                "14" + System.lineSeparator()
+                        + "22" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.IADD));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("nested-input multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("nested-input multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Nested-input native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native nested-input multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -10494,6 +10668,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeNestedInputsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsConstructorWithShape(
+                baseName, "nested-iadd"));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeIsubImulReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -12735,7 +12939,7 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode rejectedThreeImmediateReturnsConstructor(
+    private MethodNode threeImmediateReturnsConstructorWithShape(
             String superName, String shape) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
@@ -12792,6 +12996,7 @@ public class IrCompilerTest {
                 && !"nested-ishl".equals(shape)
                 && !"nested-ishr".equals(shape)
                 && !"nested-iushr".equals(shape)
+                && !"three-level-iadd".equals(shape)
                 && !"idiv".equals(shape)
                 && !"post-call".equals(shape)) {
             throw new IllegalArgumentException("Unknown shape " + shape);
@@ -12877,6 +13082,13 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.IADD));
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        } else if ("three-level-iadd".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
         } else if ("idiv".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IDIV));

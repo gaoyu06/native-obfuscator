@@ -1681,8 +1681,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Restricts the 3+-return normalization to calls whose complete operand
      * sequence is visible locally: ALOAD 0 followed by direct declared-argument
      * loads, int-family constants, one INEG over a direct declared int-family
-     * argument load, or one admitted int binary operation over two such
-     * int-family inputs.
+     * argument load, or an admitted int binary tree of at most two levels over
+     * those int-family leaves.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1734,15 +1734,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         int opcode = input.getOpcode();
-        if (opcode == Opcodes.IADD
-                || opcode == Opcodes.ISUB
-                || opcode == Opcodes.IMUL
-                || opcode == Opcodes.IAND
-                || opcode == Opcodes.IOR
-                || opcode == Opcodes.IXOR
-                || opcode == Opcodes.ISHL
-                || opcode == Opcodes.ISHR
-                || opcode == Opcodes.IUSHR) {
+        if (isProvenIntChainBinary(opcode)) {
             Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, inputIndex - 1),
@@ -1758,11 +1750,37 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one non-recursive int-family input. Deliberately excluding IADD,
-     * ISUB, IMUL, IAND, IOR, IXOR, ISHL, ISHR, and IUSHR here keeps the
-     * admitted binary expression to exactly one level.
+     * Proves an int-family operand containing at most one binary operation.
+     * Its operands must be leaves, so the caller can admit exactly one outer
+     * binary level without recursively accepting deeper trees.
      */
     private static Integer previousProvenIntChainOperand(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        if (inputIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (isProvenIntChainBinary(input.getOpcode())) {
+            Integer beforeRight = previousProvenIntChainLeaf(
+                    constructor,
+                    previousExecutableIndex(constructor, inputIndex - 1),
+                    declaredArguments);
+            if (beforeRight == null) {
+                return null;
+            }
+            return previousProvenIntChainLeaf(
+                    constructor, beforeRight, declaredArguments);
+        }
+        return previousProvenIntChainLeaf(
+                constructor, inputIndex, declaredArguments);
+    }
+
+    /**
+     * Proves one non-recursive int-family leaf: a declared load, constant, or
+     * one INEG over a direct declared load.
+     */
+    private static Integer previousProvenIntChainLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments) {
         if (inputIndex < 0) {
@@ -1785,6 +1803,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    private static boolean isProvenIntChainBinary(int opcode) {
+        return opcode == Opcodes.IADD
+                || opcode == Opcodes.ISUB
+                || opcode == Opcodes.IMUL
+                || opcode == Opcodes.IAND
+                || opcode == Opcodes.IOR
+                || opcode == Opcodes.IXOR
+                || opcode == Opcodes.ISHL
+                || opcode == Opcodes.ISHR
+                || opcode == Opcodes.IUSHR;
     }
 
     private static boolean isDirectDeclaredArgumentLoad(
