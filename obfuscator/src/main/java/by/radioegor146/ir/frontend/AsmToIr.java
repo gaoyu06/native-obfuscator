@@ -50,6 +50,7 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        method = DynamicConstantSupport.lower(owner, method);
         method = admitInvokeDynamic(owner, method);
         method = splitReferenceAndIntTemporarySlots(method);
         MethodShape shape = validateMethodShape(method);
@@ -176,9 +177,9 @@ public final class AsmToIr {
      * bootstrap argument arity, or a constant carrier it does not know how to box)
      * are rejected before any mutation: the copy is discarded and the caller's
      * method is left byte-for-byte unchanged, so the method stays safe to fall
-     * back per method. {@code LDC} of {@code ConstantDynamic} is not handled by the
-     * preprocessor and is left in place; it is rejected later by the ordinary
-     * unsupported-constant validation, also before mutation.
+     * back per method. Loadable dynamic, method-handle, and method-type constants
+     * have already been lowered on a private copy by
+     * {@link DynamicConstantSupport} before this pass runs.
      */
     private MethodNode admitInvokeDynamic(String owner, MethodNode method) {
         boolean hasDynamic = false;
