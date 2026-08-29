@@ -184,6 +184,12 @@ public final class IrMethod {
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
         }
+        if (instruction instanceof IrNodes.LongShift) {
+            IrNodes.LongShift shift = (IrNodes.LongShift) instruction;
+            return shift.getResult() + ":" + shift.getResult().getType() + " = "
+                    + shift.getOperation().getMnemonic() + " " + shift.getValue()
+                    + ", " + shift.getCount();
+        }
         if (instruction instanceof IrNodes.FloatingBinary) {
             IrNodes.FloatingBinary binary = (IrNodes.FloatingBinary) instruction;
             return binary.getResult() + ":" + binary.getResult().getType() + " = "
