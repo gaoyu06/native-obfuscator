@@ -454,6 +454,9 @@ extern "C" no_sdk_status_v1 no_sdk_aes_256_gcm_encrypt_v1(
         return NO_SDK_SIZE_OVERFLOW_V1;
     }
     const uint64_t required_size = plaintext.size + AES_GCM_TAG_SIZE;
+    if (!representable_size(required_size)) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
     if (ciphertext_and_tag.capacity < required_size) {
         return NO_SDK_BUFFER_TOO_SMALL_V1;
     }
