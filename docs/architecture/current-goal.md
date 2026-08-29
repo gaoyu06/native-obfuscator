@@ -53,14 +53,14 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #172 (identical-suffix multi-super copies) include at
-   least: remaining constructor-split rejects (non-identity prefix
+   `master` after #173 (immediate two-call multi-super returns) include
+   at least: remaining constructor-split rejects (non-identity prefix
    `ASTORE 0` / receiver-alias forwarding, prefix branch into suffix
    that is not an admitted join, other mixed prefix/suffix try/catch
-   placements, remaining multi-super shapes such as immediate separate
-   returns, post-call work, or non-identical suffixes, conditionally
-   assigned extras), remaining unsafe/unproven condy shapes
-   (non-static, varargs, malformed, cyclic; stay
+   placements, remaining multi-super shapes such as three-or-more
+   separate returns, post-call work, or non-identical suffixes,
+   conditionally assigned extras), remaining unsafe/unproven condy
+   shapes (non-static, varargs, malformed, cyclic; stay
    reject-before-mutation), and `jsr` / `ret` (obsolete; reject is
    fine). In-tree ClassicTest / JDK fixture admission (#169
    measurement on post-#168 master) observed no leftover methods; that
