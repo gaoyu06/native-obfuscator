@@ -53,10 +53,10 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #204 (path-id distinct-suffix receiver-alias
+   `master` after #205 (identical-copy receiver-alias
    forwarding)
    include at least: remaining
-   constructor-split rejects (identical-copy `ASTORE 0` aliasing,
+   constructor-split rejects (identical-copy suffix extras,
    unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
    beyond #171/#184/#187/#188/#200/#201 such as tables that span
