@@ -50,12 +50,13 @@ public final class IrMethodCompiler {
     public void processMethod(MethodContext context, IrLoweringMode loweringMode) {
         MethodNode bytecodeBody = context.method;
         if ("<init>".equals(context.method.name)) {
-            // Validate the complete constructor before creating either C++ state
-            // or the verifier-safe bridge. The emitted helper starts immediately
-            // after the mandatory this/super call retained in bytecode.
-            frontend.build(context.clazz.name, context.method);
+            // Validate the split before the general frontend so path-sensitive
+            // prefix-local diagnostics are reported before any C++ or bridge
+            // state is created. The emitted helper starts immediately after the
+            // mandatory this/super call retained in bytecode.
             bytecodeBody = ConstructorSpecialMethodProcessor.createNativeBody(
                     context.clazz, context.method);
+            frontend.build(context.clazz.name, context.method);
         }
         DynamicConstantSupport.validateResolverInstallation(
                 context.clazz, bytecodeBody);
