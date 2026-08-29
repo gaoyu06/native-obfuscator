@@ -358,6 +358,21 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsPrefixWritesToForwardedReferenceLocalsBeforeMutation()
+            throws Exception {
+        Class<?> parameterClass = rejectConstructorPrefixReferenceWrite(
+                "example/ParameterPrefix",
+                referenceParameterReassignedBeforeSuperConstructor());
+        parameterClass.getConstructor(String.class, Object.class)
+                .newInstance("value", new Object());
+
+        Class<?> receiverClass = rejectConstructorPrefixReferenceWrite(
+                "example/ReceiverPrefix",
+                receiverReassignedBeforeSuperConstructor());
+        receiverClass.getConstructor(Object.class).newInstance(new Object());
+    }
+
+    @Test
     public void rewrittenConstructorPassesJvmVerification() throws Exception {
         ClassNode owner = constructorOwner("example/Verified", "java/lang/Object");
         owner.version = Opcodes.V1_8;
@@ -1605,6 +1620,31 @@ public class IrCompilerTest {
                 .findFirst().orElseThrow(AssertionError::new);
     }
 
+    private Class<?> rejectConstructorPrefixReferenceWrite(
+            String ownerName, MethodNode constructor) {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.ASTORE, error.getOpcode());
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+        return new ByteArrayClassLoader().define(writeClass(owner));
+    }
+
     private void assertInvokeRejectedBeforeMutation(MethodNode method, int opcode) {
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
@@ -1987,6 +2027,36 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode referenceParameterReassignedBeforeSuperConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/String;Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode receiverReassignedBeforeSuperConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
         method.maxStack = 1;
         return method;
     }

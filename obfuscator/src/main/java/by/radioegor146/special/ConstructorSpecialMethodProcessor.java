@@ -138,6 +138,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     "Constructor has no direct this/super constructor call");
         }
 
+        Set<Integer> forwardedReferenceLocals = forwardedReferenceLocals(constructor);
         for (int i = 0; i <= callIndex; i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
             if (instruction instanceof JumpInsnNode
@@ -145,6 +146,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     || instruction instanceof LookupSwitchInsnNode) {
                 throw unsupported(
                         "Control flow before the this/super call cannot be split safely",
+                        i, instruction);
+            }
+            if (instruction.getOpcode() == Opcodes.ASTORE
+                    && forwardedReferenceLocals.contains(
+                    ((VarInsnNode) instruction).var)) {
+                throw unsupported(
+                        "Constructor prefix changes a reference local forwarded to the bridge",
                         i, instruction);
             }
         }
@@ -189,6 +197,20 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return new ConstructorSplit(callIndex);
+    }
+
+    private static Set<Integer> forwardedReferenceLocals(MethodNode constructor) {
+        Set<Integer> locals = new HashSet<>();
+        locals.add(0);
+        int local = 1;
+        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
+            if (argument.getSort() == Type.OBJECT
+                    || argument.getSort() == Type.ARRAY) {
+                locals.add(local);
+            }
+            local += argument.getSize();
+        }
+        return locals;
     }
 
     private static UnsupportedIrConstructException unsupported(

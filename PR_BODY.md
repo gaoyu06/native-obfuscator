@@ -43,8 +43,12 @@ static native bridge 执行，local 0 表示为 `REFERENCE`。构造函数本身
   pending.
 - Leaves an unsupported constructor as unchanged Java bytecode instead of
   sending it to the constructor-excluding legacy method shell.
+- Conservatively rejects a prefix `ASTORE` to local 0 or a forwarded
+  reference/array parameter. This review fix prevents a wrong local-0 receiver
+  and bridge calls whose verifier type no longer matches the descriptor.
 - Adds simple-field/getter, subclass `super(...)`, delegated `this(...)`,
-  object/array field, fallback-before-mutation, and retained g++ smoke coverage.
+  object/array field, prefix reference-local safety, fallback-before-mutation,
+  and retained g++ smoke coverage.
 - Preserves phase-9 array returns, phase-10 fields, phase-11 invokes, the
   `legacy` default, and all snippet resources.
 
@@ -63,8 +67,11 @@ static native bridge 执行，local 0 表示为 `REFERENCE`。构造函数本身
 - 无保护异常出口继续以 JNI `void` 返回，并保持异常 pending。
 - 不受支持的构造函数保持原 Java 字节码，不会送入本就排除构造函数的 legacy
   method shell。
+- 保守拒绝在前缀中通过 `ASTORE` 覆盖 local 0 或需要转发的引用/数组参数。
+  该审阅修复可防止 local 0 接收错误对象，以及 bridge 调用的 verifier 类型与
+  descriptor 不匹配。
 - 新增简单字段/ getter、子类 `super(...)`、委托 `this(...)`、对象/数组字段、
-  mutation 前 fallback 及保留的 g++ smoke 覆盖。
+  前缀引用 local 安全、mutation 前 fallback 及保留的 g++ smoke 覆盖。
 - 保留 phase-9 数组返回、phase-10 字段、phase-11 invoke、`legacy` 默认值及
   全部 snippet resources。
 
@@ -108,19 +115,15 @@ local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留�
    必须基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）
    比较，不得改用 `master` 或仅含文档的审阅分支 #82/#83。
 2. Re-run the focused command with `CC=gcc CXX=g++ --rerun-tasks` and inspect
-   the JUnit XML. Recorded result: `IrCompilerTest` 57 plus
-   `CodegenModeTest` 2, total 59; zero skipped, failures, or errors.
+   the JUnit XML. Review-branch counts will be recorded after that run.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦命令并读取 JUnit XML。
-   记录结果为 `IrCompilerTest` 57 加 `CodegenModeTest` 2，共 59；跳过、失败、
-   错误均为零。
+   审阅分支的实际计数将在该次运行后记录。
 3. With g++ and JNI headers present, require
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped
    and independently run `g++ -std=c++17 -fsyntax-only` on the retained unit.
-   The recorded 61-method smoke and independent check both exited zero.
    当 g++ 与 JNI headers 存在时，必须确认
    `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录的 61-method smoke 与
-   独立检查均以零退出。
+   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。
 4. Inspect a successful constructor rewrite: `<init>` must remain non-native,
    retain exactly its direct `this(...)`/`super(...)` prefix, invoke the hidden
    bridge with initialized `this` plus descriptor arguments, and return `V`.
@@ -140,4 +143,5 @@ local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留�
    `sources/cppsnippets.properties`。
 
 Detailed evidence / 详细证据:
+`docs/architecture/ir-phase12-review.md` and
 `docs/architecture/ir-phase12-status.md`.

@@ -56,6 +56,8 @@ A constructor is admitted only when:
 - it has one direct constructor-chain call whose owner is the current class or
   direct superclass;
 - the prefix through that call is linear;
+- the prefix does not overwrite local 0 or a reference/array parameter local
+  that the wrapper forwards to the bridge;
 - suffix branches and switches do not target the prefix;
 - exception regions are wholly inside the initialized suffix; and
 - the suffix can be independently lowered with receiver and descriptor
@@ -179,6 +181,8 @@ The following constructors remain Java bytecode methods:
   `super(...)` call;
 - constructors with branches or switches before that call, a suffix edge back
   into the prefix, or an exception region crossing the split;
+- constructors that overwrite local 0 or a forwarded reference/array parameter
+  local before the constructor-chain call;
 - constructor suffixes that depend on non-parameter locals initialized only in
   the retained prefix;
 - `java.lang.Object.<init>` itself, which has no superclass constructor-chain
