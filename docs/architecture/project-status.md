@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing interpreter ISA v4
-[#148](https://github.com/gaoyu06/native-obfuscator/pull/148)
+Last updated after landing interpreter exception dispatch
+[#150](https://github.com/gaoyu06/native-obfuscator/pull/150)
 (Sol accept
-[#149](https://github.com/gaoyu06/native-obfuscator/pull/149))
-on the post-[#146](https://github.com/gaoyu06/native-obfuscator/pull/146)
-constructor-split tree.
+[#151](https://github.com/gaoyu06/native-obfuscator/pull/151))
+on the post-[#148](https://github.com/gaoyu06/native-obfuscator/pull/148)
+ISA v4 tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -62,8 +62,11 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   ([#148](https://github.com/gaoyu06/native-obfuscator/pull/148); Sol accept
   [#149](https://github.com/gaoyu06/native-obfuscator/pull/149)) adds a first
   reference slice (`ACONST_NULL`/`ALOAD`/`ASTORE`/`ARETURN`/`IFNULL`/`IFNONNULL`,
-  parallel `jobject` slots, `execute_l`). Still static-only.
-  `NEW`, invoke, fields, and exception dispatch remain outside this backend.
+  parallel `jobject` slots, `execute_l`). [#150](https://github.com/gaoyu06/native-obfuscator/pull/150)
+  (Sol accept [#151](https://github.com/gaoyu06/native-obfuscator/pull/151))
+  adds `ATHROW` (52) and an ordered exception table (typed / catch-all;
+  `/0` can transfer to a covering handler). Still static-only.
+  `NEW`, invoke, and fields remain outside this backend.
 - **Opt-in evaluator.** `--ir-lower=eval` (default `direct`) is consulted only
   when `--codegen=ir` successfully builds an `IrMethod`.
   [#137](https://github.com/gaoyu06/native-obfuscator/pull/137) (Sol
@@ -113,6 +116,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-phase-19 bench (#132; Fable accept-with-nits #133) | Same harness on `76ebedd`; all three kernels stayed fully IR (four `// IR codegen:` markers; zero fallback log lines). File: `results-ir-vs-legacy-phase19.md` | A portable speedup or “native beats HotSpot” |
 | Phase-20 focused tests (#134) | 97 `IrCompilerTest` + 5 `CodegenModeTest` = 102 | A complete compiler test suite |
 | Interpreter ISA v4 focused+regression (#148; Sol accept #149) | 128 tests (2 option + 14 emitter + 1 runtime + 2 integration + 102 IR + 7 codegen). Sol re-ran 26/26 (omitted IrCompilerTest). Default-off `diff -r` of generated `cpp/` exited 0 | A production interpreter or object/exception coverage |
+| Interpreter exception dispatch (#150; Sol accept #151) | 131 tests (22 interpreter/option + 109 IR/codegen). Sol re-ran 29/29. Runtime harness 61 checks. Default-off `diff -r` exited 0 | Complete catch/finally or instance methods |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -151,13 +155,15 @@ tree. Close them as superseded, do not merge.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Widen the interpreter to `NEW` / invoke / fields and exception dispatch.
+- Admit `LCMP` (and remaining IR leftovers such as `IF_ACMPEQ`) so fewer
+  methods fall back to legacy.
+- Widen the interpreter to `NEW` / invoke / fields.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #148/#149 (interpreter
-  ISA v4). / 落地 #148/#149 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #150/#151 (interpreter
+  exception dispatch). / 落地 #150/#151 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。

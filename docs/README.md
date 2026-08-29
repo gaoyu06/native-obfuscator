@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#149. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#151. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -84,6 +84,8 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 
 | Document | Stack |
 | --- | --- |
+| [architecture/interpreter-isa-exceptions-status.md](architecture/interpreter-isa-exceptions-status.md) | Interpreter `ATHROW` + exception table (#150) |
+| [reviews/interpreter-isa-exceptions-sol.md](reviews/interpreter-isa-exceptions-sol.md) | Sol accept of #150 |
 | [architecture/interpreter-isa-objects-status.md](architecture/interpreter-isa-objects-status.md) | Interpreter ISA v4 reference slice (#148) |
 | [reviews/interpreter-isa-objects-sol.md](reviews/interpreter-isa-objects-sol.md) | Sol accept of #148 |
 | [architecture/interpreter-isa-i64-status.md](architecture/interpreter-isa-i64-status.md) | Interpreter ISA v3 i64 slice (#140) |
