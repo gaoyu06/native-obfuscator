@@ -105,7 +105,7 @@ public final class IrCppEmitter {
             return emitBinary((IrNodes.Binary) instruction);
         }
         if (instruction instanceof IrNodes.LongBinary) {
-            return emitLongBinary((IrNodes.LongBinary) instruction);
+            return emitLongBinary(method, block, (IrNodes.LongBinary) instruction, context);
         }
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
@@ -191,7 +191,9 @@ public final class IrCppEmitter {
                 new CppAst.Cast("uint32_t", right)));
     }
 
-    private List<CppAst.Statement> emitLongBinary(IrNodes.LongBinary binary) {
+    private List<CppAst.Statement> emitLongBinary(IrMethod method, IrBlock block,
+                                                  IrNodes.LongBinary binary,
+                                                  MethodContext context) {
         String operator;
         switch (binary.getOperation()) {
             case ADD:
@@ -203,6 +205,10 @@ public final class IrCppEmitter {
             case MULTIPLY:
                 operator = "*";
                 break;
+            case DIVIDE:
+                return emitLongDivision(method, block, binary, context, "/");
+            case REMAINDER:
+                return emitLongDivision(method, block, binary, context, "%");
             default:
                 throw new IllegalStateException("Unknown long binary operation "
                         + binary.getOperation());
@@ -212,6 +218,48 @@ public final class IrCppEmitter {
                 new CppAst.Cast("uint64_t", expression(binary.getRight()))));
         return Collections.<CppAst.Statement>singletonList(
                 new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitLongDivision(IrMethod method, IrBlock block,
+                                                    IrNodes.LongBinary binary,
+                                                    MethodContext context,
+                                                    String operator) {
+        if (context == null) {
+            throw new IllegalStateException(
+                    "Long division IR emission requires a method emission context");
+        }
+        CppAst.Expression left = expression(binary.getLeft());
+        CppAst.Expression right = expression(binary.getRight());
+        CppAst.Expression result = variable(binary.getResult());
+
+        List<CppAst.Statement> zeroDivisor = new ArrayList<>();
+        zeroDivisor.add(new CppAst.ExpressionStatement(new CppAst.Call(
+                "utils::throw_re", Arrays.asList(
+                variable("env"),
+                pool(context.getStringPool().getOffset("java/lang/ArithmeticException")),
+                pool(context.getStringPool().getOffset("/ by zero")),
+                new CppAst.IntLiteral(binary.getSourceLine())))));
+        zeroDivisor.addAll(exceptionalExit(method, block));
+
+        CppAst.Expression overflow = new CppAst.Binary(
+                new CppAst.Binary(left, "==", new CppAst.LongLiteral(Long.MIN_VALUE)),
+                "&&",
+                new CppAst.Binary(right, "==", new CppAst.LongLiteral(-1)));
+        CppAst.Expression overflowValue = binary.getOperation()
+                == IrNodes.LongBinary.Operation.DIVIDE
+                ? left : new CppAst.LongLiteral(0);
+
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(new CppAst.If(
+                new CppAst.Binary(right, "==", new CppAst.LongLiteral(0)),
+                new CppAst.Block(zeroDivisor), null));
+        statements.add(new CppAst.If(overflow,
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                        new CppAst.Assignment(result, overflowValue))),
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                        new CppAst.Assignment(result,
+                                new CppAst.Binary(left, operator, right))))));
+        return statements;
     }
 
     private CppAst.Expression shiftAmount(CppAst.Expression right) {

@@ -609,7 +609,9 @@ public final class IrNodes {
         public enum Operation {
             ADD("ladd"),
             SUBTRACT("lsub"),
-            MULTIPLY("lmul");
+            MULTIPLY("lmul"),
+            DIVIDE("ldiv"),
+            REMAINDER("lrem");
 
             private final String mnemonic;
 
@@ -627,14 +629,16 @@ public final class IrNodes {
         private final IrValue left;
         private final IrValue right;
         private final int bytecodeOffset;
+        private final int sourceLine;
 
         public LongBinary(IrValue result, Operation operation, IrValue left, IrValue right,
-                          int bytecodeOffset) {
+                          int bytecodeOffset, int sourceLine) {
             this.result = requireI64(result, "result");
             this.operation = Objects.requireNonNull(operation, "operation");
             this.left = requireI64(left, "left");
             this.right = requireI64(right, "right");
             this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
         }
 
         @Override
@@ -657,6 +661,10 @@ public final class IrNodes {
         @Override
         public int getBytecodeOffset() {
             return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
         }
     }
 

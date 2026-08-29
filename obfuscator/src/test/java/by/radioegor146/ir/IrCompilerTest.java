@@ -90,6 +90,35 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void buildsAndEmitsJvmLongDivisionAndRemainder() {
+        MethodNode divide = longBinaryMethod("divide", Opcodes.LDIV);
+        MethodNode remainder = longBinaryMethod("remainder", Opcodes.LREM);
+        assertTrue(frontend.build("example/Math", divide).toString().contains(" = ldiv "));
+        assertTrue(frontend.build("example/Math", remainder).toString().contains(" = lrem "));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+        MethodContext divideContext = new MethodContext(obfuscator, divide, 0, owner(), 0);
+        MethodContext remainderContext = new MethodContext(
+                obfuscator, remainder, 1, owner(), 0);
+        compiler.processMethod(divideContext);
+        compiler.processMethod(remainderContext);
+
+        String divideCpp = divideContext.output.toString();
+        assertTrue(divideCpp.contains("utils::throw_re(env"));
+        assertTrue(divideCpp.contains("(arg1 == 0LL)"));
+        assertTrue(divideCpp.contains("(arg0 == ((jlong) 0x8000000000000000ULL))"));
+        assertTrue(divideCpp.contains("(arg1 == -1LL)"));
+        assertTrue(divideCpp.contains("v2 = arg0;"));
+        assertTrue(divideCpp.contains("v2 = (arg0 / arg1);"));
+
+        String remainderCpp = remainderContext.output.toString();
+        assertTrue(remainderCpp.contains("utils::throw_re(env"));
+        assertTrue(remainderCpp.contains("v2 = 0LL;"));
+        assertTrue(remainderCpp.contains("v2 = (arg0 % arg1);"));
+    }
+
+    @Test
     public void integratedEmitterUsesExistingJniSignatureStyleWithoutLegacySlots() {
         MethodNode method = addMethod();
         ClassNode owner = new ClassNode(Opcodes.ASM9);
@@ -362,6 +391,8 @@ public class IrCompilerTest {
                 addMethod(), sumToMethod(), subMulMethod(), incrementFieldMethod(),
                 staticInvokeMethod(), virtualInvokeMethod(), bitwiseShiftMethod(),
                 unaryMethod(), intArrayMethod(), stringLengthMethod(),
+                longBinaryMethod("divide", Opcodes.LDIV),
+                longBinaryMethod("remainder", Opcodes.LREM),
                 arrayBoundsCatchMethod("catchBounds", "java/lang/ArrayIndexOutOfBoundsException"),
                 arrayBoundsCatchMethod("rethrowBounds", "java/lang/NullPointerException"),
                 explicitThrowCatchMethod(), arrayBoundsCatchMethod("catchAny", null)
@@ -659,6 +690,18 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.LMUL));
         method.instructions.add(new InsnNode(Opcodes.LRETURN));
         method.maxLocals = 5;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode longBinaryMethod(String name, int opcode) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(opcode));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 4;
         method.maxStack = 4;
         return method;
     }

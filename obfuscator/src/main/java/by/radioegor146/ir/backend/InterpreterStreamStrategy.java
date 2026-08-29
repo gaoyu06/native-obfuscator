@@ -47,6 +47,8 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
     private static final int OP_LRETURN = 0x28;
     private static final int OP_I2L = 0x29;
     private static final int OP_L2I = 0x2a;
+    private static final int OP_LDIV = 0x2b;
+    private static final int OP_LREM = 0x2c;
 
     private static final int ZERO_REGISTER = 0xffff;
     private static final int MAX_REGISTER_COUNT = 0xffff;
@@ -254,7 +256,7 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 ? "evaluate_i64" : "evaluate_i32";
         if (method.getParameters().isEmpty()) {
             out.append("    return native_jvm::ir_eval::").append(evaluator)
-                    .append("(ir_method_data, ")
+                    .append("(env, ir_method_data, ")
                     .append("sizeof(ir_method_data), nullptr, 0);\n");
         } else {
             out.append("    const jlong ir_method_args[] = { ");
@@ -272,7 +274,7 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
             }
             out.append(" };\n");
             out.append("    return native_jvm::ir_eval::").append(evaluator)
-                    .append("(ir_method_data, ")
+                    .append("(env, ir_method_data, ")
                     .append("sizeof(ir_method_data), ir_method_args, ")
                     .append(method.getParameters().size()).append(");\n");
         }
@@ -424,6 +426,12 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                     break;
                 case MULTIPLY:
                     writer.u8(OP_LMUL);
+                    break;
+                case DIVIDE:
+                    writer.u8(OP_LDIV);
+                    break;
+                case REMAINDER:
+                    writer.u8(OP_LREM);
                     break;
                 default:
                     throw new IllegalStateException("Validated long operation changed");

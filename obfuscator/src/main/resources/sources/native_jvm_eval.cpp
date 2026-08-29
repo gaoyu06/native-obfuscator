@@ -1,6 +1,7 @@
 #include "native_jvm_eval.hpp"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace native_jvm::ir_eval {
@@ -27,6 +28,8 @@ namespace {
     constexpr std::uint8_t OP_LRETURN = 0x28;
     constexpr std::uint8_t OP_I2L = 0x29;
     constexpr std::uint8_t OP_L2I = 0x2a;
+    constexpr std::uint8_t OP_LDIV = 0x2b;
+    constexpr std::uint8_t OP_LREM = 0x2c;
 
     constexpr std::uint16_t ZERO_REGISTER = 0xffff;
     constexpr std::size_t HEADER_SIZE = 8;
@@ -133,9 +136,21 @@ namespace {
                 return false;
         }
     }
+
+    void throw_arithmetic_exception(JNIEnv *env) {
+        if (env == nullptr) {
+            return;
+        }
+        jclass exception_class = env->FindClass("java/lang/ArithmeticException");
+        if (exception_class == nullptr) {
+            return;
+        }
+        env->ThrowNew(exception_class, "/ by zero");
+        env->DeleteLocalRef(exception_class);
+    }
 }
 
-std::uint64_t evaluate_bits(const std::uint8_t *data, std::size_t size,
+std::uint64_t evaluate_bits(JNIEnv *env, const std::uint8_t *data, std::size_t size,
                             const jlong *arguments, std::size_t argument_count) {
     Reader reader(data, size);
     if (size < HEADER_SIZE
@@ -266,7 +281,9 @@ std::uint64_t evaluate_bits(const std::uint8_t *data, std::size_t size,
             }
             case OP_LADD:
             case OP_LSUB:
-            case OP_LMUL: {
+            case OP_LMUL:
+            case OP_LDIV:
+            case OP_LREM: {
                 const std::uint16_t destination = reader.u16();
                 const std::uint16_t left = reader.u16();
                 const std::uint16_t right = reader.u16();
@@ -286,6 +303,26 @@ std::uint64_t evaluate_bits(const std::uint8_t *data, std::size_t size,
                     case OP_LMUL:
                         registers[destination] = registers[left] * registers[right];
                         break;
+                    case OP_LDIV:
+                    case OP_LREM: {
+                        const jlong left_value = bits_to_jlong(registers[left]);
+                        const jlong right_value = bits_to_jlong(registers[right]);
+                        if (right_value == 0) {
+                            throw_arithmetic_exception(env);
+                            return 0;
+                        }
+                        if (left_value == std::numeric_limits<jlong>::min()
+                                && right_value == -1) {
+                            registers[destination] =
+                                    opcode == OP_LDIV ? registers[left] : 0;
+                            break;
+                        }
+                        const jlong result = opcode == OP_LDIV
+                                ? left_value / right_value
+                                : left_value % right_value;
+                        registers[destination] = jlong_bits(result);
+                        break;
+                    }
                     default:
                         return 0;
                 }
@@ -362,14 +399,14 @@ std::uint64_t evaluate_bits(const std::uint8_t *data, std::size_t size,
     return 0;
 }
 
-jint evaluate_i32(const std::uint8_t *data, std::size_t size,
+jint evaluate_i32(JNIEnv *env, const std::uint8_t *data, std::size_t size,
                   const jlong *arguments, std::size_t argument_count) {
     return bits_to_jint(static_cast<std::uint32_t>(
-            evaluate_bits(data, size, arguments, argument_count)));
+            evaluate_bits(env, data, size, arguments, argument_count)));
 }
 
-jlong evaluate_i64(const std::uint8_t *data, std::size_t size,
+jlong evaluate_i64(JNIEnv *env, const std::uint8_t *data, std::size_t size,
                    const jlong *arguments, std::size_t argument_count) {
-    return bits_to_jlong(evaluate_bits(data, size, arguments, argument_count));
+    return bits_to_jlong(evaluate_bits(env, data, size, arguments, argument_count));
 }
 }

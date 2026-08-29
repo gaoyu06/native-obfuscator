@@ -733,7 +733,8 @@ public final class AsmToIr {
                 IrValue right = pop(state, IrType.I64, instruction);
                 IrValue left = pop(state, IrType.I64, instruction);
                 state.stack.add(blockLongBinary(irMethod, block, longBinaryOperation(opcode),
-                        left, right, instruction.getOriginalIndex()));
+                        left, right, instruction.getOriginalIndex(),
+                        instruction.getSourceLine()));
             } else if (isIntUnaryOp(opcode)) {
                 IrValue operand = pop(state, IrType.I32, instruction);
                 IrValue result = irMethod.newInstructionValue(IrType.I32);
@@ -962,9 +963,10 @@ public final class AsmToIr {
 
     private IrValue blockLongBinary(IrMethod method, IrBlock block,
                                     IrNodes.LongBinary.Operation operation,
-                                    IrValue left, IrValue right, int offset) {
+                                    IrValue left, IrValue right, int offset, int sourceLine) {
         IrValue result = method.newInstructionValue(IrType.I64);
-        block.addInstruction(new IrNodes.LongBinary(result, operation, left, right, offset));
+        block.addInstruction(new IrNodes.LongBinary(result, operation, left, right, offset,
+                sourceLine));
         return result;
     }
 
@@ -1047,7 +1049,8 @@ public final class AsmToIr {
     }
 
     private static boolean isLongBinaryOp(int opcode) {
-        return opcode == Opcodes.LADD || opcode == Opcodes.LSUB || opcode == Opcodes.LMUL;
+        return opcode == Opcodes.LADD || opcode == Opcodes.LSUB || opcode == Opcodes.LMUL
+                || opcode == Opcodes.LDIV || opcode == Opcodes.LREM;
     }
 
     private static IrNodes.Binary.Operation binaryOperation(int opcode) {
@@ -1098,6 +1101,10 @@ public final class AsmToIr {
                 return IrNodes.LongBinary.Operation.SUBTRACT;
             case Opcodes.LMUL:
                 return IrNodes.LongBinary.Operation.MULTIPLY;
+            case Opcodes.LDIV:
+                return IrNodes.LongBinary.Operation.DIVIDE;
+            case Opcodes.LREM:
+                return IrNodes.LongBinary.Operation.REMAINDER;
             default:
                 throw new IllegalArgumentException("Not a long binary opcode: " + opcode);
         }

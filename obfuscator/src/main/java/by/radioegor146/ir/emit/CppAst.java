@@ -369,9 +369,11 @@ public final class CppAst {
 
     private static String allowedOperator(String value) {
         if ("+".equals(value) || "-".equals(value) || "*".equals(value)
+                || "/".equals(value) || "%".equals(value)
                 || "==".equals(value) || "!=".equals(value) || "<".equals(value)
                 || ">=".equals(value) || ">".equals(value) || "<=".equals(value)
-                || "||".equals(value) || "&".equals(value) || "|".equals(value)
+                || "||".equals(value) || "&&".equals(value)
+                || "&".equals(value) || "|".equals(value)
                 || "^".equals(value) || "<<".equals(value) || ">>".equals(value)) {
             return value;
         }

@@ -54,7 +54,8 @@ public class InterpreterStreamStrategyTest {
 
         String cpp = context.output.toString();
         assertTrue(cpp.contains("static const std::uint8_t ir_method_data[]"));
-        assertTrue(cpp.contains("native_jvm::ir_eval::evaluate_i32"));
+        assertTrue(cpp.contains(
+                "native_jvm::ir_eval::evaluate_i32(env, ir_method_data"));
         assertTrue(cpp.contains("const jlong ir_method_args[] = { "
                 + "static_cast<jlong>(arg0), static_cast<jlong>(arg1) };"));
         assertFalse(cpp.contains("// IR codegen:"));
@@ -130,6 +131,8 @@ public class InterpreterStreamStrategyTest {
         byte[] add = lower(longBinaryMethod("addLong", Opcodes.LADD)).getMethodData();
         byte[] subtract = lower(longBinaryMethod("subtractLong", Opcodes.LSUB)).getMethodData();
         byte[] multiply = lower(longBinaryMethod("multiplyLong", Opcodes.LMUL)).getMethodData();
+        byte[] divide = lower(longBinaryMethod("divideLong", Opcodes.LDIV)).getMethodData();
+        byte[] remainder = lower(longBinaryMethod("remainderLong", Opcodes.LREM)).getMethodData();
         byte[] i2l = lower(i2lMethod()).getMethodData();
         byte[] l2i = lower(l2iMethod()).getMethodData();
 
@@ -142,6 +145,8 @@ public class InterpreterStreamStrategyTest {
         assertLongBinaryOpcode(add, 0x25);
         assertLongBinaryOpcode(subtract, 0x26);
         assertLongBinaryOpcode(multiply, 0x27);
+        assertLongBinaryOpcode(divide, 0x2b);
+        assertLongBinaryOpcode(remainder, 0x2c);
 
         assertNotNull(i2l);
         assertEquals(21, i2l.length);
@@ -167,6 +172,8 @@ public class InterpreterStreamStrategyTest {
         assertTrue(cpp.contains("OP_LRETURN = 0x28;"));
         assertTrue(cpp.contains("OP_I2L = 0x29;"));
         assertTrue(cpp.contains("OP_L2I = 0x2a;"));
+        assertTrue(cpp.contains("OP_LDIV = 0x2b;"));
+        assertTrue(cpp.contains("OP_LREM = 0x2c;"));
     }
 
     @Test
@@ -202,9 +209,19 @@ public class InterpreterStreamStrategyTest {
         assertEvaluatorMethod(generated, "// sumTo(I)I");
         assertEvaluatorMethod(generated, "// run(I)I");
         assertEvaluatorMethod(generated, "// roundTrip(J)J");
+        assertEvaluatorMethod(generated, "// divide(JJ)J");
+        assertEvaluatorMethod(generated, "// remainder(JJ)J");
         String longMethod = generatedMethod(generated, "// roundTrip(J)J");
         assertTrue(longMethod.contains("native_jvm::ir_eval::evaluate_i64"));
         assertTrue(longMethod.contains("const jlong ir_method_args[] = { arg0 };"));
+        String divideMethod = generatedMethod(generated, "// divide(JJ)J");
+        assertTrue(divideMethod.contains("native_jvm::ir_eval::evaluate_i64"));
+        assertTrue(divideMethod.contains(
+                "const jlong ir_method_args[] = { arg0, arg1 };"));
+        String remainderMethod = generatedMethod(generated, "// remainder(JJ)J");
+        assertTrue(remainderMethod.contains("native_jvm::ir_eval::evaluate_i64"));
+        assertTrue(remainderMethod.contains(
+                "const jlong ir_method_args[] = { arg0, arg1 };"));
     }
 
     @Test
@@ -249,12 +266,33 @@ public class InterpreterStreamStrategyTest {
                 longBinaryMethod("subtractLong", Opcodes.LSUB)).getMethodData();
         byte[] longMultiplyData = lower(
                 longBinaryMethod("multiplyLong", Opcodes.LMUL)).getMethodData();
+        byte[] longDivideData = lower(
+                longBinaryMethod("divideLong", Opcodes.LDIV)).getMethodData();
+        byte[] longRemainderData = lower(
+                longBinaryMethod("remainderLong", Opcodes.LREM)).getMethodData();
+        byte[] doubleDivideData = lower(doubleDivideMethod()).getMethodData();
         byte[] i2lData = lower(i2lMethod()).getMethodData();
         byte[] l2iData = lower(l2iMethod()).getMethodData();
         byte[] longIdentityData = lower(longIdentityMethod()).getMethodData();
         Path harness = directory.resolve("harness.cpp");
         String source = "#include \"native_jvm_eval.hpp\"\n"
                 + "#include <iostream>\n"
+                + "#include <string>\n"
+                + "static bool pending_exception = false;\n"
+                + "static int exception_count = 0;\n"
+                + "static std::string exception_class_name;\n"
+                + "static std::string exception_message;\n"
+                + "static jclass JNICALL fake_find_class(JNIEnv *, const char *name) {\n"
+                + "    exception_class_name = name;\n"
+                + "    return reinterpret_cast<jclass>(static_cast<std::uintptr_t>(1));\n"
+                + "}\n"
+                + "static jint JNICALL fake_throw_new(JNIEnv *, jclass, const char *message) {\n"
+                + "    pending_exception = true;\n"
+                + "    ++exception_count;\n"
+                + "    exception_message = message;\n"
+                + "    return 0;\n"
+                + "}\n"
+                + "static void JNICALL fake_delete_local_ref(JNIEnv *, jobject) {}\n"
                 + "static const std::uint8_t add_data[] = { " + bytes(addData) + " };\n"
                 + "static const std::uint8_t sum_data[] = { " + bytes(sumData) + " };\n"
                 + "static const std::uint8_t sub_mul_data[] = { "
@@ -273,11 +311,22 @@ public class InterpreterStreamStrategyTest {
                 + bytes(longSubtractData) + " };\n"
                 + "static const std::uint8_t long_mul_data[] = { "
                 + bytes(longMultiplyData) + " };\n"
+                + "static const std::uint8_t long_div_data[] = { "
+                + bytes(longDivideData) + " };\n"
+                + "static const std::uint8_t long_rem_data[] = { "
+                + bytes(longRemainderData) + " };\n"
+                + "static const std::uint8_t double_div_data[] = { "
+                + bytes(doubleDivideData) + " };\n"
                 + "static const std::uint8_t i2l_data[] = { " + bytes(i2lData) + " };\n"
                 + "static const std::uint8_t l2i_data[] = { " + bytes(l2iData) + " };\n"
                 + "static const std::uint8_t long_identity_data[] = { "
                 + bytes(longIdentityData) + " };\n"
                 + "int main() {\n"
+                + "    JNINativeInterface_ functions = {};\n"
+                + "    functions.FindClass = fake_find_class;\n"
+                + "    functions.ThrowNew = fake_throw_new;\n"
+                + "    functions.DeleteLocalRef = fake_delete_local_ref;\n"
+                + "    JNIEnv fake_env = { &functions };\n"
                 + "    const jlong add_args[] = { 3, 4 };\n"
                 + "    const jlong sum_args[] = { 6 };\n"
                 + "    const jlong sub_mul_args[] = { 8, 3 };\n"
@@ -289,41 +338,69 @@ public class InterpreterStreamStrategyTest {
                 + "    const jlong long_sub_args[] = { "
                 + "static_cast<jlong>(0x8000000000000000ULL), 1 };\n"
                 + "    const jlong long_mul_args[] = { 9223372036854775807LL, 2 };\n"
+                + "    const jlong signed_div_args[] = { -7, 3 };\n"
+                + "    const jlong min_div_args[] = { "
+                + "static_cast<jlong>(0x8000000000000000ULL), -1 };\n"
+                + "    const jlong zero_div_args[] = { 99, 0 };\n"
                 + "    const jlong i2l_args[] = { -2147483648LL };\n"
                 + "    const jlong l2i_args[] = { 4294967297LL };\n"
                 + "    const jlong identity_args[] = { -1234567890123456789LL };\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(add_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, add_data, "
                 + "sizeof(add_data), add_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(sum_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, sum_data, "
                 + "sizeof(sum_data), sum_args, 1) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(sub_mul_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, sub_mul_data, "
                 + "sizeof(sub_mul_data), sub_mul_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(and_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, and_data, "
                 + "sizeof(and_data), bitwise_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(or_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, or_data, "
                 + "sizeof(or_data), bitwise_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(xor_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, xor_data, "
                 + "sizeof(xor_data), bitwise_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(shl_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, shl_data, "
                 + "sizeof(shl_data), shl_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(shr_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, shr_data, "
                 + "sizeof(shr_data), right_shift_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(ushr_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, ushr_data, "
                 + "sizeof(ushr_data), right_shift_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(kernel_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, kernel_data, "
                 + "sizeof(kernel_data), kernel_args, 1) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_add_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, long_add_data, "
                 + "sizeof(long_add_data), long_add_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_sub_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, long_sub_data, "
                 + "sizeof(long_sub_data), long_sub_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_mul_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, long_mul_data, "
                 + "sizeof(long_mul_data), long_mul_args, 2) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i64(i2l_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, i2l_data, "
                 + "sizeof(i2l_data), i2l_args, 1) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i32(l2i_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i32(nullptr, l2i_data, "
                 + "sizeof(l2i_data), l2i_args, 1) << '\\n';\n"
-                + "    std::cout << native_jvm::ir_eval::evaluate_i64(long_identity_data, "
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, "
+                + "long_identity_data, "
                 + "sizeof(long_identity_data), identity_args, 1) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, "
+                + "long_div_data, sizeof(long_div_data), signed_div_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, "
+                + "long_rem_data, sizeof(long_rem_data), signed_div_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, "
+                + "long_div_data, sizeof(long_div_data), min_div_args, 2) << '\\n';\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(nullptr, "
+                + "long_rem_data, sizeof(long_rem_data), min_div_args, 2) << '\\n';\n"
+                + "    pending_exception = false;\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(&fake_env, "
+                + "long_div_data, sizeof(long_div_data), zero_div_args, 2) << '\\n';\n"
+                + "    std::cout << pending_exception << ':' << exception_count << ':'\n"
+                + "              << exception_class_name << ':' << exception_message << '\\n';\n"
+                + "    pending_exception = false;\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(&fake_env, "
+                + "long_rem_data, sizeof(long_rem_data), zero_div_args, 2) << '\\n';\n"
+                + "    std::cout << pending_exception << ':' << exception_count << ':'\n"
+                + "              << exception_class_name << ':' << exception_message << '\\n';\n"
+                + "    pending_exception = false;\n"
+                + "    std::cout << native_jvm::ir_eval::evaluate_i64(&fake_env, "
+                + "double_div_data, sizeof(double_div_data), zero_div_args, 2) << '\\n';\n"
+                + "    std::cout << pending_exception << ':' << exception_count << ':'\n"
+                + "              << exception_class_name << ':' << exception_message << '\\n';\n"
                 + "}\n";
         Files.write(harness, source.getBytes(StandardCharsets.UTF_8));
 
@@ -342,7 +419,11 @@ public class InterpreterStreamStrategyTest {
         assertEquals("7\n15\n15\n8\n14\n6\n2\n-2\n2147483646\n"
                         + runIrFriendlyIntKernel(10) + "\n"
                         + "-9223372036854775808\n9223372036854775807\n-2\n"
-                        + "-2147483648\n1\n-1234567890123456789\n",
+                        + "-2147483648\n1\n-1234567890123456789\n"
+                        + "-2\n-1\n-9223372036854775808\n0\n"
+                        + "0\n1:1:java/lang/ArithmeticException:/ by zero\n"
+                        + "0\n1:2:java/lang/ArithmeticException:/ by zero\n"
+                        + "0\n1:3:java/lang/ArithmeticException:/ by zero\n",
                 normalizeNewlines(read(runtimeOutput)));
     }
 
@@ -418,6 +499,21 @@ public class InterpreterStreamStrategyTest {
         method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
         method.instructions.add(new InsnNode(opcode));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 4;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode doubleDivideMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "doubleDivide", "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
         method.instructions.add(new InsnNode(Opcodes.LRETURN));
         method.maxLocals = 4;
         method.maxStack = 4;
@@ -553,6 +649,8 @@ public class InterpreterStreamStrategyTest {
         writeSumTo(writer);
         writeIrFriendlyIntKernel(writer);
         writeLongRoundTrip(writer);
+        writeLongBinary(writer, "divide", Opcodes.LDIV);
+        writeLongBinary(writer, "remainder", Opcodes.LREM);
         writer.visitEnd();
 
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
@@ -651,6 +749,18 @@ public class InterpreterStreamStrategyTest {
         method.visitVarInsn(Opcodes.LLOAD, 0);
         method.visitVarInsn(Opcodes.LSTORE, 2);
         method.visitVarInsn(Opcodes.LLOAD, 2);
+        method.visitInsn(Opcodes.LRETURN);
+        method.visitMaxs(0, 0);
+        method.visitEnd();
+    }
+
+    private void writeLongBinary(ClassWriter writer, String name, int opcode) {
+        MethodVisitor method = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, name, "(JJ)J", null, null);
+        method.visitCode();
+        method.visitVarInsn(Opcodes.LLOAD, 0);
+        method.visitVarInsn(Opcodes.LLOAD, 2);
+        method.visitInsn(opcode);
         method.visitInsn(Opcodes.LRETURN);
         method.visitMaxs(0, 0);
         method.visitEnd();

@@ -172,7 +172,8 @@ public final class CfgBuilder {
         return opcode == Opcodes.ARRAYLENGTH || opcode == Opcodes.IALOAD
                 || opcode == Opcodes.IASTORE || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.INVOKESTATIC
-                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.ATHROW;
+                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.LDIV
+                || opcode == Opcodes.LREM || opcode == Opcodes.ATHROW;
     }
 
     private static UnsupportedIrConstructException unsupported(String message,
