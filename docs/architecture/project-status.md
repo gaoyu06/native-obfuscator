@@ -1,12 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing identical-copy receiver-alias
-forwarding
-[#205](https://github.com/gaoyu06/native-obfuscator/pull/205)
-(parent re-ran 263/263: 256 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `receiverAliasIdenticalSuffixCopiesCompileAndRunWithJavaParity`)
-on the post-[#204](https://github.com/gaoyu06/native-obfuscator/pull/204)
-path-id alias tree. Active process:
+Last updated after landing identical-copy prefix extras
+[#206](https://github.com/gaoyu06/native-obfuscator/pull/206)
+(parent re-ran 267/267: 260 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity`)
+on the post-[#205](https://github.com/gaoyu06/native-obfuscator/pull/205)
+identical-copy alias tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -181,7 +180,10 @@ legacy。不能当成 JDK 支持矩阵。
   the same alias proof on bounded path-id distinct suffixes.
   [#205](https://github.com/gaoyu06/native-obfuscator/pull/205) admits
   the same alias proof on two-or-more identical suffix copies.
-  Identical-copy suffix extras, unproven
+  [#206](https://github.com/gaoyu06/native-obfuscator/pull/206) admits
+  prefix-assigned extras on those identical copies, including a
+  suffix read of the alias extra.
+  Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes, cover a chain call, or use a
   method-end handler), remaining multi-super shapes
@@ -323,6 +325,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Shared-join diamond receiver-alias forwarding (#203) | 256 tests (`IrCompilerTest` 249 + `CodegenModeTest` 7). Parent re-ran 256/256 including `receiverAliasMultipleSuperDiamondCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Path-id distinct-suffix receiver-alias forwarding (#204) | 259 tests (`IrCompilerTest` 252 + `CodegenModeTest` 7). Parent re-ran 259/259 including `receiverAliasDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Identical-copy receiver-alias forwarding (#205) | 263 tests (`IrCompilerTest` 256 + `CodegenModeTest` 7). Parent re-ran 263/263 including `receiverAliasIdenticalSuffixCopiesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Identical-copy prefix extras (#206) | 267 tests (`IrCompilerTest` 260 + `CodegenModeTest` 7). Parent re-ran 267/267 including `identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -367,8 +370,7 @@ tree. Close them as superseded, do not merge.
 Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
-  leftover constructor-split rejects (identical-copy suffix extras,
-  unproven
+  leftover constructor-split rejects (unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   beyond #171/#184/#187/#188/#200/#201 such as tables that span
   suffixes, cover a chain call, or use a method-end handler,
@@ -391,9 +393,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #205 (identical-copy
-  receiver-alias forwarding). /
-  落地 #205 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #206 (identical-copy
+  prefix extras). /
+  落地 #206 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
