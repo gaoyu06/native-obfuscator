@@ -1660,10 +1660,13 @@ public class IrCompilerTest {
 
         String cpp = compileToCpp(method, 0);
         int firstGuard = cpp.indexOf("arg0 < 0");
+        int firstThrow = cpp.indexOf("utils::throw_re", firstGuard);
         int secondGuard = cpp.indexOf("arg1 < 0");
+        int secondThrow = cpp.indexOf("utils::throw_re", secondGuard);
         int allocation = cpp.indexOf("utils::create_multidim_array_value<5>");
-        assertTrue(firstGuard >= 0 && secondGuard > firstGuard && allocation > secondGuard);
-        assertEquals(2, countOccurrences(cpp, "utils::throw_re"));
+        assertTrue(firstGuard >= 0 && firstThrow > firstGuard
+                && secondGuard > firstThrow && secondThrow > secondGuard
+                && allocation > secondThrow);
         assertTrue(cpp.contains("goto IR_CATCH_0;"));
     }
 

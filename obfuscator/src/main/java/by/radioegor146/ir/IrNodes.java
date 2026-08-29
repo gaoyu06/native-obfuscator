@@ -950,10 +950,9 @@ public final class IrNodes {
 
         public ArrayLoad(IrValue result, IrValue array, IrValue index, ArrayType arrayType,
                          int bytecodeOffset, int sourceLine) {
-            this.arrayType = Objects.requireNonNull(arrayType, "arrayType")
-                    .resolveByteOrBoolean(array.getReferenceDescriptor());
-            this.result = requireType(result, this.arrayType.getElementType(), "result");
             this.array = requireReference(array, "array");
+            this.arrayType = Objects.requireNonNull(arrayType, "arrayType");
+            this.result = requireType(result, this.arrayType.getElementType(), "result");
             this.index = requireI32(index, "index");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
@@ -977,7 +976,7 @@ public final class IrNodes {
         }
 
         public ArrayType getArrayType() {
-            return arrayType;
+            return arrayType.resolveByteOrBoolean(array.getReferenceDescriptor());
         }
 
         @Override
@@ -1002,8 +1001,7 @@ public final class IrNodes {
                           int bytecodeOffset, int sourceLine) {
             this.array = requireReference(array, "array");
             this.index = requireI32(index, "index");
-            this.arrayType = Objects.requireNonNull(arrayType, "arrayType")
-                    .resolveByteOrBoolean(array.getReferenceDescriptor());
+            this.arrayType = Objects.requireNonNull(arrayType, "arrayType");
             this.value = requireType(value, this.arrayType.getElementType(), "value");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
@@ -1031,7 +1029,7 @@ public final class IrNodes {
         }
 
         public ArrayType getArrayType() {
-            return arrayType;
+            return arrayType.resolveByteOrBoolean(array.getReferenceDescriptor());
         }
 
         @Override

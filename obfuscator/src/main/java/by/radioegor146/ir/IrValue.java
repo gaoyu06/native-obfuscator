@@ -18,7 +18,7 @@ public final class IrValue {
     private final Kind kind;
     private final String debugName;
     private final String cppParameterName;
-    private final String referenceDescriptor;
+    private String referenceDescriptor;
 
     IrValue(int id, IrType type, Kind kind, String debugName, String cppParameterName) {
         this(id, type, kind, debugName, cppParameterName, null);
@@ -64,6 +64,22 @@ public final class IrValue {
      */
     public String getReferenceDescriptor() {
         return referenceDescriptor;
+    }
+
+    public void refineReferenceDescriptor(String descriptor) {
+        if (descriptor == null) {
+            return;
+        }
+        if (type != IrType.REFERENCE) {
+            throw new IllegalStateException(
+                    "Only reference values may carry a reference descriptor");
+        }
+        if (referenceDescriptor == null) {
+            referenceDescriptor = descriptor;
+        } else if (!referenceDescriptor.equals(descriptor)) {
+            throw new IllegalStateException("Conflicting reference descriptors "
+                    + referenceDescriptor + " and " + descriptor);
+        }
     }
 
     public String getIrName() {

@@ -152,6 +152,7 @@ public final class AsmToIr {
         }
 
         connectPhis(graph, reachable, inputs, outputs, irBlocks);
+        propagateReferenceDescriptors(irMethod);
         return irMethod;
     }
 
@@ -1352,6 +1353,55 @@ public final class AsmToIr {
             }
             phi.addIncoming(irBlocks.get(predecessor), output.locals[local]);
         }
+    }
+
+    private void propagateReferenceDescriptors(IrMethod method) {
+        boolean changed;
+        do {
+            changed = false;
+            for (IrBlock block : method.getBlocks()) {
+                for (IrPhi phi : block.getPhis()) {
+                    IrValue result = phi.getResult();
+                    if (result.getType() != IrType.REFERENCE
+                            || result.getReferenceDescriptor() != null) {
+                        continue;
+                    }
+                    String descriptor = null;
+                    boolean conflict = false;
+                    for (IrValue incoming : phi.getIncoming().values()) {
+                        String candidate = incoming.getReferenceDescriptor();
+                        if (candidate == null) {
+                            continue;
+                        }
+                        if (descriptor == null) {
+                            descriptor = candidate;
+                        } else if (!descriptor.equals(candidate)) {
+                            conflict = true;
+                            break;
+                        }
+                    }
+                    if (!conflict && descriptor != null) {
+                        result.refineReferenceDescriptor(descriptor);
+                        changed = true;
+                    }
+                }
+                for (by.radioegor146.ir.IrInstruction instruction
+                        : block.getInstructions()) {
+                    if (!(instruction instanceof IrNodes.ArrayLoad)
+                            || instruction.getResult().getType() != IrType.REFERENCE
+                            || instruction.getResult().getReferenceDescriptor() != null) {
+                        continue;
+                    }
+                    IrNodes.ArrayLoad load = (IrNodes.ArrayLoad) instruction;
+                    String descriptor = arrayComponentDescriptor(
+                            load.getArray().getReferenceDescriptor());
+                    if (descriptor != null) {
+                        load.getResult().refineReferenceDescriptor(descriptor);
+                        changed = true;
+                    }
+                }
+            }
+        } while (changed);
     }
 
     private IrValue pushConstant(IrMethod method, IrBlock block, ValueState state, int value,
