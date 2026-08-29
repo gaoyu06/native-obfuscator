@@ -8,13 +8,16 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers five related prefix shapes:
+The constructor split now covers six related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
 - try/catch entries whose start, end, and handler labels all remain in the
   retained prefix;
+- `ASTORE 0` writes whose stack input is proven to be the original constructor
+  receiver, with every selected this/super call proven to consume that same
+  receiver;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
-  those bridge parameters widened to `java/lang/Object`; and
+  those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
   suffix, when their incoming state at the chain call is provable; and
 - multiple direct this/super calls in a strict diamond that converges at one
@@ -66,10 +69,18 @@ It also classifies writes to reference/array constructor-argument locals:
   parameter with an `Object`.
 - Unmodified argument descriptors remain exact; array descriptor information is
   not erased globally.
-- A prefix `ASTORE 0` is still **rejected**. Local 0 can stop naming the
-  initialized receiver while another prefix-only alias carries
-  `uninitializedThis` through the chain call. The bridge has no general way to
-  forward that alias or reconstruct receiver identity for the suffix.
+- A prefix `ASTORE 0` is **admitted only when a must-style stack/local CFG
+  analysis proves its input is the original constructor receiver**. Copies
+  through `ALOAD`/`ASTORE` locals and JVM stack shuffles preserve this identity;
+  merges retain it only when every incoming path agrees. The analysis also
+  requires each selected chain call to consume that receiver.
+- The wrapper can then continue to load local 0 after the chain call for the
+  hidden bridge. If any `ASTORE 0` input or chain-call receiver is unreachable,
+  ambiguous, or not the original receiver, `split()` rejects before bridge or
+  C++ mutation.
+- General alias forwarding remains unsupported. In particular, replacing local
+  0 with another object while a prefix-only alias carries `uninitializedThis`
+  through the chain call is rejected.
 
 Prefix stores into non-parameter locals are classified separately:
 
@@ -99,7 +110,8 @@ Other guards remain unchanged:
 
 - Suffix jumps/switches into the prefix are rejected.
 - try/catch regions crossing the split are rejected.
-- Prefix `ASTORE 0` is rejected for both single- and multi-call shapes.
+- Prefix `ASTORE 0` that is not proven identity-preserving is rejected for both
+  single- and multi-call shapes.
 - `jsr`/`ret` remains unsupported.
 
 A prefix branch into the suffix can bypass the mandatory chain call. A
@@ -139,6 +151,11 @@ Synthetic bytecode unit tests in
 - A prefix `Object`-to-`String` parameter-slot `ASTORE` is admitted with an
   `Object` bridge/suffix entry descriptor. Serializing and loading the rewritten
   class reaches the unresolved native bridge, proving JVM verification.
+- An identity-preserving `ALOAD 0; DUP; ASTORE 0` prefix is retained with the
+  this/super call while the field-writing suffix moves behind the hidden bridge.
+  A serialized rewritten class verifies and reaches the unresolved bridge, and
+  the full CMake/g++ transform has stdout parity under
+  `java -Xverify:all -Xcheck:jni`.
 - `forwardsPrefixExtraReferenceAndIntLocalsIntoSuffixDescriptors` checks linear
   reference and `int` extras in the independent suffix and hidden bridge
   descriptors, including identity local mappings for contiguous extras.
@@ -185,10 +202,11 @@ Synthetic bytecode unit tests in
   under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments of the start, end, and handler labels.
-- Multi-call negatives cover prefix `ASTORE 0`, a zero-call edge into the
-  suffix, try/catch spanning a chain call and suffix code, a path that executes
-  two chain calls, and distinct per-call suffixes. Existing prefix-to-suffix,
-  suffix-to-prefix, and conditionally assigned extra-local negatives remain.
+- Multi-call negatives cover a non-identity prefix `ASTORE 0`, a zero-call edge
+  into the suffix, try/catch spanning a chain call and suffix code, a path that
+  executes two chain calls, and distinct per-call suffixes. Existing
+  prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
+  negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
@@ -201,9 +219,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 141 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 148 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 148 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 155 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
