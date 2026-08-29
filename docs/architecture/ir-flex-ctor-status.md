@@ -46,6 +46,9 @@ The constructor split now covers these related prefix shapes:
 - exactly two direct this/super calls whose separate straight-line suffix
   copies, including immediate `RETURN` copies, are proven
   instruction-for-instruction identical; and
+- prefix-assigned extra locals read by identical straight-line suffix copies,
+  including the saved receiver alias, when one compatible type is proven at
+  every chain call and again at the normalized join; and
 - between two and eight reachable direct this/super calls whose separate
   nonempty suffixes end in `RETURN` and contain at least two CFG-distinct
   ranges, when every call consumes the original receiver through direct
@@ -163,9 +166,12 @@ One additional family is reduced to that same shared-join form:
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
   direct value must be `ACONST_NULL` or `ALOAD` of a declared reference
-  argument. The suffix may enter with only the receiver and declared
-  constructor arguments; reads of locals at or above the first extra-local
-  index remain rejected, so a copied suffix cannot read the receiver alias.
+  argument. A copied suffix may read an extra local only when a matching store
+  precedes the first chain call and the local has one compatible type on every
+  path reaching every chain call. Suffix-copy stores do not establish a
+  forwarded value because noncanonical copies are discarded. The second
+  strict-diamond split repeats the definite-assignment/type proof at the
+  normalized join and packs each admitted extra.
 - After all checks pass, every noncanonical suffix copy is replaced with
   `GOTO` and the final copy receives the shared join label. The existing
   strict-diamond split then retains every call and emits the canonical suffix
@@ -268,8 +274,10 @@ It also classifies writes to reference/array constructor-argument locals:
   every `ASTORE 0` is prefix-only and directly stores `ACONST_NULL` or a
   declared reference argument (apart from identity-preserving stores). For
   three or more copies, each selected call must directly load the receiver or
-  its proven alias. Copied suffixes remain extra-free and therefore cannot read
-  the alias local. Normalization still emits one join and one hidden bridge.
+  its proven alias. Copied suffixes may read the alias local, or another
+  prefix-assigned extra, only when the extra has one compatible type at every
+  selected call and is definitely assigned at the normalized join.
+  Normalization still emits one join and one hidden bridge.
 - It also applies to bounded path-id distinct suffixes when every `ASTORE 0`
   occurs before the first chain call and directly stores `ACONST_NULL` or a
   declared reference argument, every call directly loads the proven original-
@@ -498,6 +506,20 @@ Synthetic bytecode unit tests in
   three-copy normalization retains every alias-based chain call, replaces the
   earlier copies with one or two join `GOTO`s, and emits one owner-`Class`-
   aware hidden bridge for the canonical extra-free suffix.
+- `admitsAndRewritesIdenticalSuffixCopiesWithPrefixExtra` proves a
+  prefix-assigned `int` read by both identical copies is packed into the one
+  canonical native suffix, while the retained calls converge through one
+  normalization `GOTO` on one hidden bridge.
+- `admitsAndRewritesReceiverAliasIdenticalSuffixCopiesReadingAlias` proves the
+  saved receiver alias can also be packed and loaded by the canonical suffix;
+  local 0 remains the wrapper's first bridge argument and owner-`Class`
+  metadata remains present.
+- `rejectsIdenticalSuffixCopyWithUnassignedExtraBeforeMutation` keeps an extra
+  assigned on only one chain-call path fail-closed before normalization,
+  hidden-method allocation, or constructor mutation.
+- `identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity` exercises
+  both chain-call paths through the complete CMake/g++ JNI transform under
+  `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `rejectsIdenticalSuffixCopyUsingOverwrittenReceiverBeforeMutation` keeps the
   copied-suffix form fail-closed when one call consumes overwritten local 0,
   without allocating a hidden method or changing bytecode.

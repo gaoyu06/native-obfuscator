@@ -1265,6 +1265,58 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsAndRewritesIdenticalSuffixCopiesWithPrefixExtra() {
+        ClassNode owner = constructorOwner(
+                "example/IdenticalCopiesPrefixExtra",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                identicalSuffixCopiesWithPrefixExtraConstructor(
+                        owner.name, owner.superName, false);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(II)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(nativeBody, Opcodes.ILOAD));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
+        assertEquals(
+                "(Ljava/lang/Object;II)V",
+                context.proxyMethod.getMethodNode().desc);
+
+        MethodInsnNode bridge = hiddenBridgeCalls(constructor).get(0);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.ILOAD, argument.getOpcode());
+        assertEquals(2, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ILOAD, argument.getOpcode());
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(0, ((VarInsnNode) argument).var);
+    }
+
+    @Test
     public void admitsMultipleSuperWithImmediateSeparateReturns() {
         ClassNode owner = constructorOwner(
                 "example/MultiReturn", "example/MultiSuperBase");
@@ -2365,6 +2417,88 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsAndRewritesReceiverAliasIdenticalSuffixCopiesReadingAlias() {
+        ClassNode base =
+                multipleSuperBase("example/IdenticalAliasReadBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/IdenticalAliasRead", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                receiverAliasIdenticalSuffixCopiesReadingAliasConstructor(
+                        base.name);
+        owner.methods.add(constructor);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Object;"
+                        + "Ljava/lang/Class;)V",
+                nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.POP, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(nativeBody, Opcodes.ALOAD));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(variableIndexes(
+                constructor, Opcodes.ASTORE).contains(0));
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        for (MethodInsnNode call : directChainCalls(constructor, base.name)) {
+            AbstractInsnNode receiver = call.getPrevious();
+            while (receiver != null
+                    && receiver.getOpcode() != Opcodes.ALOAD) {
+                receiver = receiver.getPrevious();
+            }
+            assertTrue(receiver instanceof VarInsnNode);
+            assertEquals(3, ((VarInsnNode) receiver).var);
+        }
+
+        MethodInsnNode bridge = hiddenBridgeCalls(constructor).get(0);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;I"
+                        + "Ljava/lang/Object;Ljava/lang/Class;)V",
+                bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(owner.name),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(3, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ILOAD, argument.getOpcode());
+        assertEquals(2, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(Opcodes.ALOAD, argument.getOpcode());
+        assertEquals(0, ((VarInsnNode) argument).var);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg3;"));
+    }
+
+    @Test
     public void admitsAndRewritesReceiverAliasThreeIdenticalSuffixCopies()
             throws Exception {
         ClassNode base =
@@ -2482,6 +2616,34 @@ public class IrCompilerTest {
             assertTrue(obfuscator.getHiddenMethodsPool()
                     .getClasses().isEmpty(), shape);
         }
+    }
+
+    @Test
+    public void rejectsIdenticalSuffixCopyWithUnassignedExtraBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedIdenticalCopyExtra",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                identicalSuffixCopiesWithPrefixExtraConstructor(
+                        owner.name, owner.superName, true);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
+        assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -5438,6 +5600,94 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native identical-copy receiver-alias Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void identicalSuffixCopiesWithPrefixExtraCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the identical-copy extra runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the identical-copy extra runtime test");
+
+        String ownerName = "example/IdenticalCopiesPrefixExtraRuntime";
+        String baseName = "example/IdenticalCopiesPrefixExtraRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-identical-copy-extra-run");
+        Path inputJar = directory.resolve("identical-copy-extra.jar");
+        Path outputDirectory = directory.resolve("output");
+        createIdenticalSuffixCopiesWithPrefixExtraJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain identical-copy extra Java run");
+        assertEquals(
+                "7" + System.lineSeparator()
+                        + "-5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        MethodInsnNode bridge =
+                hiddenBridgeCalls(transformedConstructor).get(0);
+        assertEquals("(Ljava/lang/Object;II)V", bridge.desc);
+        assertEquals(Opcodes.ILOAD, bridge.getPrevious().getOpcode());
+        assertEquals(2, ((VarInsnNode) bridge.getPrevious()).var);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("identical-copy extra CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("identical-copy extra CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Identical-copy extra native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native identical-copy extra Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -12494,6 +12744,38 @@ public class IrCompilerTest {
         }
     }
 
+    private void createIdenticalSuffixCopiesWithPrefixExtraJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                identicalSuffixCopiesWithPrefixExtraConstructor(
+                        ownerName, baseName, false));
+        owner.methods.add(
+                identicalSuffixCopiesWithPrefixExtraMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperSeparateReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -13941,6 +14223,51 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode identicalSuffixCopiesWithPrefixExtraConstructor(
+            String owner, String superName,
+            boolean unassignedOnSecondCallPath) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        if (!unassignedOnSecondCallPath) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        if (unassignedOnSecondCallPath) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        appendIdenticalPrefixExtraSuffix(method, owner);
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        appendIdenticalPrefixExtraSuffix(method, owner);
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private void appendIdenticalPrefixExtraSuffix(
+            MethodNode method, String owner) {
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
     private void appendMultipleSuperSuffix(
             MethodNode method, String owner) {
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -14342,6 +14669,24 @@ public class IrCompilerTest {
         }
         method.maxLocals = 4;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode receiverAliasIdenticalSuffixCopiesReadingAliasConstructor(
+            String superName) {
+        MethodNode method =
+                receiverAliasIdenticalSuffixCopiesConstructor(
+                        superName, 2, false);
+        for (AbstractInsnNode instruction :
+                method.instructions.toArray()) {
+            if (instruction.getOpcode() == Opcodes.ICONST_4
+                    && instruction.getNext() != null
+                    && instruction.getNext().getOpcode() == Opcodes.POP) {
+                method.instructions.set(
+                        instruction,
+                        new VarInsnNode(Opcodes.ALOAD, 3));
+            }
+        }
         return method;
     }
 
@@ -16047,6 +16392,20 @@ public class IrCompilerTest {
         }
         return owner.getConstructor(int.class, int.class)
                 .newInstance(selector, operands[0]);
+    }
+
+    private MethodNode identicalSuffixCopiesWithPrefixExtraMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperPrint(
+                method, owner, 7, owner, "result");
+        appendMultipleSuperPrint(
+                method, owner, -5, owner, "result");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
+        return method;
     }
 
     private MethodNode multipleSuperSeparateReturnsMain(

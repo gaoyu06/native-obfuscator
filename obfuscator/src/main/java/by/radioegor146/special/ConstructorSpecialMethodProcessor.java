@@ -1310,12 +1310,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
 
-        int firstExtraLocal = firstExtraLocal(constructor);
-        for (int i = canonical.startIndex; i < canonical.endIndex; i++) {
-            int local = readLocal(constructor.instructions.get(i));
-            if (local >= firstExtraLocal) {
-                return null;
-            }
+        if (!hasProvenDuplicatedSuffixExtras(
+                constructor, callIndexes, canonical)) {
+            return null;
         }
         if (!hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
@@ -1339,6 +1336,64 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new DuplicatedSuffix(
                 discarded, callIndexes.get(callIndexes.size() - 1),
                 canonical.startIndex);
+    }
+
+    /**
+     * Keeps copied-suffix normalization fail-closed for extra locals. A
+     * canonical-suffix read must have a real store before the first chain call,
+     * and that value must have one compatible type at every call that will
+     * reach the normalized join. Stores inside a suffix copy do not qualify:
+     * earlier copies are discarded by normalization.
+     */
+    private static boolean hasProvenDuplicatedSuffixExtras(
+            MethodNode constructor, List<Integer> callIndexes,
+            LinearSuffix canonical) {
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Type> suffixReads = new TreeMap<>();
+        for (int i = canonical.startIndex; i < canonical.endIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            int local = readLocal(instruction);
+            if (local < firstExtraLocal) {
+                continue;
+            }
+            Type type = loadType(instruction);
+            Type previous = suffixReads.put(local, type);
+            if (type == null || previous != null && !previous.equals(type)) {
+                return false;
+            }
+        }
+        if (suffixReads.isEmpty()) {
+            return true;
+        }
+
+        Set<Integer> prefixStores = new HashSet<>();
+        for (int i = 0; i < callIndexes.get(0); i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (storeType(instruction) == null) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            if (local >= firstExtraLocal) {
+                prefixStores.add(local);
+            }
+        }
+
+        for (Map.Entry<Integer, Type> suffixRead : suffixReads.entrySet()) {
+            int local = suffixRead.getKey();
+            if (!prefixStores.contains(local)) {
+                return false;
+            }
+            int[] states = localStates(constructor, local);
+            for (Integer callIndex : callIndexes) {
+                int state = states[callIndex];
+                if ((state & LOCAL_UNASSIGNED) != 0 || state == 0
+                        || !suffixRead.getValue().equals(
+                        singleStateType(state))) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
