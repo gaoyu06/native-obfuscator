@@ -137,6 +137,16 @@ public final class IrMethod {
             return constant.getResult() + ":" + constant.getResult().getType()
                     + " = lconst " + constant.getValue();
         }
+        if (instruction instanceof IrNodes.FloatConst) {
+            IrNodes.FloatConst constant = (IrNodes.FloatConst) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = fconst 0x" + Integer.toHexString(constant.getRawBits());
+        }
+        if (instruction instanceof IrNodes.DoubleConst) {
+            IrNodes.DoubleConst constant = (IrNodes.DoubleConst) instruction;
+            return constant.getResult() + ":" + constant.getResult().getType()
+                    + " = dconst 0x" + Long.toHexString(constant.getRawBits());
+        }
         if (instruction instanceof IrNodes.NullReference) {
             IrNodes.NullReference constant = (IrNodes.NullReference) instruction;
             return constant.getResult() + ":" + constant.getResult().getType()
@@ -153,6 +163,23 @@ public final class IrMethod {
             return binary.getResult() + ":" + binary.getResult().getType() + " = "
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
+        }
+        if (instruction instanceof IrNodes.FloatingBinary) {
+            IrNodes.FloatingBinary binary = (IrNodes.FloatingBinary) instruction;
+            return binary.getResult() + ":" + binary.getResult().getType() + " = "
+                    + binary.getOperation().getMnemonic(binary.getResult().getType()) + " "
+                    + binary.getLeft() + ", " + binary.getRight();
+        }
+        if (instruction instanceof IrNodes.FloatingUnary) {
+            IrNodes.FloatingUnary unary = (IrNodes.FloatingUnary) instruction;
+            return unary.getResult() + ":" + unary.getResult().getType() + " = "
+                    + unary.getMnemonic() + " " + unary.getOperand();
+        }
+        if (instruction instanceof IrNodes.FloatingCompare) {
+            IrNodes.FloatingCompare compare = (IrNodes.FloatingCompare) instruction;
+            return compare.getResult() + ":" + compare.getResult().getType() + " = "
+                    + compare.getMnemonic() + " " + compare.getLeft()
+                    + ", " + compare.getRight();
         }
         if (instruction instanceof IrNodes.IntDivRem) {
             IrNodes.IntDivRem binary = (IrNodes.IntDivRem) instruction;

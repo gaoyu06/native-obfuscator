@@ -103,7 +103,7 @@ public final class AsmToIr {
             for (int local = 0; local < method.maxLocals; local++) {
                 IrType type = shape.localTypes[local];
                 if (type != null && definiteLocals.in.get(rawBlock)[local]
-                        && (type != IrType.I64
+                        && (!isWide(type)
                         || definiteLocals.in.get(rawBlock)[local + 1])) {
                     IrPhi phi = irMethod.addPhi(irBlock, type, IrPhi.SlotKind.LOCAL, local);
                     localPhis[local] = phi;
@@ -162,20 +162,26 @@ public final class AsmToIr {
             irReturn = IrType.I32;
         } else if (returnType.getSort() == Type.LONG) {
             irReturn = IrType.I64;
+        } else if (returnType.getSort() == Type.FLOAT) {
+            irReturn = IrType.F32;
+        } else if (returnType.getSort() == Type.DOUBLE) {
+            irReturn = IrType.F64;
         } else if (isReference(returnType)) {
             irReturn = IrType.REFERENCE;
         } else {
             throw new UnsupportedIrConstructException(
-                    "Only void, JVM int-carrier, long, and reference method returns are supported");
+                    "Only void, scalar, and reference method returns are supported");
         }
 
         boolean staticMethod = (method.access & Opcodes.ACC_STATIC) != 0;
         int requiredLocals = staticMethod ? 0 : 1;
         for (Type argument : Type.getArgumentTypes(method.desc)) {
             if (!isIntLike(argument) && !isReference(argument)
-                    && argument.getSort() != Type.LONG) {
+                    && argument.getSort() != Type.LONG
+                    && argument.getSort() != Type.FLOAT
+                    && argument.getSort() != Type.DOUBLE) {
                 throw new UnsupportedIrConstructException(
-                        "Only JVM int-carrier, long, and reference arguments are supported");
+                        "Only scalar and reference arguments are supported");
             }
             requiredLocals += argument.getSize();
         }
@@ -192,7 +198,7 @@ public final class AsmToIr {
         for (Type argument : Type.getArgumentTypes(method.desc)) {
             IrType type = irType(argument);
             localTypes[local] = type;
-            if (type == IrType.I64) {
+            if (isWide(type)) {
                 wideContinuations[local + 1] = true;
             }
             local += argument.getSize();
@@ -226,19 +232,26 @@ public final class AsmToIr {
                                 || opcode == Opcodes.ACONST_NULL
                                 || opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                                 || opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1
+                                || opcode >= Opcodes.FCONST_0 && opcode <= Opcodes.FCONST_2
+                                || opcode == Opcodes.DCONST_0 || opcode == Opcodes.DCONST_1
                                 || opcode == Opcodes.DUP
                                 || opcode == Opcodes.POP
                                 || isIntBinaryOp(opcode)
                                 || isLongBinaryOp(opcode)
+                                || isFloatingBinaryOp(opcode)
                                 || isIntDivRem(opcode)
                                 || isIntUnaryOp(opcode)
-                                || opcode == Opcodes.I2L || opcode == Opcodes.L2I
+                                || isFloatingUnaryOp(opcode)
+                                || isFloatingCompareOp(opcode)
+                                || isConversionOp(opcode)
                                 || opcode == Opcodes.IALOAD
                                 || opcode == Opcodes.IASTORE
                                 || opcode == Opcodes.ARRAYLENGTH
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
                                 || opcode == Opcodes.LRETURN
+                                || opcode == Opcodes.FRETURN
+                                || opcode == Opcodes.DRETURN
                                 || opcode == Opcodes.ARETURN
                                 || opcode == Opcodes.RETURN;
                         break;
@@ -250,13 +263,17 @@ public final class AsmToIr {
                     case AbstractInsnNode.VAR_INSN:
                         supported = opcode == Opcodes.ILOAD || opcode == Opcodes.ISTORE
                                 || opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE
+                                || opcode == Opcodes.FLOAD || opcode == Opcodes.FSTORE
+                                || opcode == Opcodes.DLOAD || opcode == Opcodes.DSTORE
                                 || opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE;
                         break;
                     case AbstractInsnNode.IINC_INSN:
                         supported = true;
                         break;
                     case AbstractInsnNode.LDC_INSN:
-                        supported = ((LdcInsnNode) node).cst instanceof Integer;
+                        Object constant = ((LdcInsnNode) node).cst;
+                        supported = constant instanceof Integer || constant instanceof Float
+                                || constant instanceof Double;
                         break;
                     case AbstractInsnNode.JUMP_INSN:
                         supported = opcode == Opcodes.GOTO || isUnaryIntJump(opcode)
@@ -310,6 +327,10 @@ public final class AsmToIr {
                         requiredType = IrType.I32;
                     } else if (opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE) {
                         requiredType = IrType.I64;
+                    } else if (opcode == Opcodes.FLOAD || opcode == Opcodes.FSTORE) {
+                        requiredType = IrType.F32;
+                    } else if (opcode == Opcodes.DLOAD || opcode == Opcodes.DSTORE) {
+                        requiredType = IrType.F64;
                     } else if (opcode == Opcodes.ALOAD || opcode == Opcodes.ASTORE) {
                         requiredType = IrType.REFERENCE;
                     }
@@ -321,31 +342,32 @@ public final class AsmToIr {
                 if (requiredType == null) {
                     continue;
                 }
-                local = requiredType == IrType.I64
+                local = isWide(requiredType)
                         ? checkedWideLocal(local, method, instruction)
                         : checkedLocal(local, method, instruction);
                 if (shape.wideContinuations[local]) {
                     throw unsupported("Local " + local
-                            + " is the second slot of an i64 local", instruction);
+                            + " is the second slot of a category-two local", instruction);
                 }
                 IrType knownType = shape.localTypes[local];
                 if (knownType == null) {
-                    if (requiredType == IrType.I64
+                    if (isWide(requiredType)
                             && (shape.localTypes[local + 1] != null
                             || shape.wideContinuations[local + 1])) {
-                        throw unsupported("I64 local overlaps an existing local at "
+                        throw unsupported("Category-two local overlaps an existing local at "
                                 + (local + 1), instruction);
                     }
                     shape.localTypes[local] = requiredType;
-                    if (requiredType == IrType.I64) {
+                    if (isWide(requiredType)) {
                         shape.wideContinuations[local + 1] = true;
                     }
                 } else if (knownType != requiredType) {
                     throw unsupported("Local " + local + " is " + knownType
                             + " but this instruction requires " + requiredType, instruction);
-                } else if (requiredType == IrType.I64
+                } else if (isWide(requiredType)
                         && !shape.wideContinuations[local + 1]) {
-                    throw unsupported("I64 local is missing its second JVM slot", instruction);
+                    throw unsupported("Category-two local is missing its second JVM slot",
+                            instruction);
                 }
             }
         }
@@ -411,11 +433,19 @@ public final class AsmToIr {
             stack.add(IrType.REFERENCE);
         } else if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
                 || opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH
-                || opcode == Opcodes.LDC || opcode == Opcodes.ILOAD) {
+                || opcode == Opcodes.ILOAD) {
             stack.add(IrType.I32);
         } else if (opcode == Opcodes.LCONST_0 || opcode == Opcodes.LCONST_1
                 || opcode == Opcodes.LLOAD) {
             stack.add(IrType.I64);
+        } else if (opcode >= Opcodes.FCONST_0 && opcode <= Opcodes.FCONST_2
+                || opcode == Opcodes.FLOAD) {
+            stack.add(IrType.F32);
+        } else if (opcode == Opcodes.DCONST_0 || opcode == Opcodes.DCONST_1
+                || opcode == Opcodes.DLOAD) {
+            stack.add(IrType.F64);
+        } else if (node instanceof LdcInsnNode) {
+            stack.add(constantType(((LdcInsnNode) node).cst));
         } else if (opcode == Opcodes.ALOAD) {
             int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
             IrType type = shape.localTypes[local];
@@ -427,6 +457,10 @@ public final class AsmToIr {
             popType(stack, IrType.I32, instruction);
         } else if (opcode == Opcodes.LSTORE) {
             popType(stack, IrType.I64, instruction);
+        } else if (opcode == Opcodes.FSTORE) {
+            popType(stack, IrType.F32, instruction);
+        } else if (opcode == Opcodes.DSTORE) {
+            popType(stack, IrType.F64, instruction);
         } else if (opcode == Opcodes.ASTORE) {
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.DUP) {
@@ -454,15 +488,27 @@ public final class AsmToIr {
             popType(stack, IrType.I64, instruction);
             popType(stack, IrType.I64, instruction);
             stack.add(IrType.I64);
+        } else if (isFloatingBinaryOp(opcode)) {
+            IrType type = floatingType(opcode);
+            popType(stack, type, instruction);
+            popType(stack, type, instruction);
+            stack.add(type);
         } else if (isIntUnaryOp(opcode)) {
             popType(stack, IrType.I32, instruction);
             stack.add(IrType.I32);
-        } else if (opcode == Opcodes.I2L) {
-            popType(stack, IrType.I32, instruction);
-            stack.add(IrType.I64);
-        } else if (opcode == Opcodes.L2I) {
-            popType(stack, IrType.I64, instruction);
+        } else if (isFloatingUnaryOp(opcode)) {
+            IrType type = floatingType(opcode);
+            popType(stack, type, instruction);
+            stack.add(type);
+        } else if (isFloatingCompareOp(opcode)) {
+            IrType type = floatingType(opcode);
+            popType(stack, type, instruction);
+            popType(stack, type, instruction);
             stack.add(IrType.I32);
+        } else if (isConversionOp(opcode)) {
+            IrNodes.Conversion.Operation operation = conversionOperation(opcode);
+            popType(stack, operation.getOperandType(), instruction);
+            stack.add(operation.getResultType());
         } else if (opcode == Opcodes.NEW) {
             stack.add(IrType.REFERENCE);
         } else if (opcode == Opcodes.NEWARRAY) {
@@ -534,6 +580,16 @@ public final class AsmToIr {
             popType(stack, IrType.I64, instruction);
             if (!stack.isEmpty()) {
                 throw unsupported("LRETURN requires exactly one operand", instruction);
+            }
+        } else if (opcode == Opcodes.FRETURN) {
+            popType(stack, IrType.F32, instruction);
+            if (!stack.isEmpty()) {
+                throw unsupported("FRETURN requires exactly one operand", instruction);
+            }
+        } else if (opcode == Opcodes.DRETURN) {
+            popType(stack, IrType.F64, instruction);
+            if (!stack.isEmpty()) {
+                throw unsupported("DRETURN requires exactly one operand", instruction);
             }
         } else if (opcode == Opcodes.ARETURN) {
             popType(stack, IrType.REFERENCE, instruction);
@@ -627,8 +683,11 @@ public final class AsmToIr {
                 if (node instanceof VarInsnNode
                         && (node.getOpcode() == Opcodes.ILOAD
                         || node.getOpcode() == Opcodes.ALOAD
-                        || node.getOpcode() == Opcodes.LLOAD)) {
-                    boolean wide = node.getOpcode() == Opcodes.LLOAD;
+                        || node.getOpcode() == Opcodes.LLOAD
+                        || node.getOpcode() == Opcodes.FLOAD
+                        || node.getOpcode() == Opcodes.DLOAD)) {
+                    boolean wide = node.getOpcode() == Opcodes.LLOAD
+                            || node.getOpcode() == Opcodes.DLOAD;
                     int local = wide
                             ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
                             : checkedLocal(((VarInsnNode) node).var, method, instruction);
@@ -639,8 +698,11 @@ public final class AsmToIr {
                 } else if (node instanceof VarInsnNode
                         && (node.getOpcode() == Opcodes.ISTORE
                         || node.getOpcode() == Opcodes.ASTORE
-                        || node.getOpcode() == Opcodes.LSTORE)) {
-                    boolean wide = node.getOpcode() == Opcodes.LSTORE;
+                        || node.getOpcode() == Opcodes.LSTORE
+                        || node.getOpcode() == Opcodes.FSTORE
+                        || node.getOpcode() == Opcodes.DSTORE)) {
+                    boolean wide = node.getOpcode() == Opcodes.LSTORE
+                            || node.getOpcode() == Opcodes.DSTORE;
                     int local = wide
                             ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
                             : checkedLocal(((VarInsnNode) node).var, method, instruction);
@@ -666,11 +728,14 @@ public final class AsmToIr {
             if (instruction.getNode() instanceof VarInsnNode
                     && (instruction.getNode().getOpcode() == Opcodes.ISTORE
                     || instruction.getNode().getOpcode() == Opcodes.ASTORE
-                    || instruction.getNode().getOpcode() == Opcodes.LSTORE)) {
+                    || instruction.getNode().getOpcode() == Opcodes.LSTORE
+                    || instruction.getNode().getOpcode() == Opcodes.FSTORE
+                    || instruction.getNode().getOpcode() == Opcodes.DSTORE)) {
                 int local = ((VarInsnNode) instruction.getNode()).var;
                 if (local >= 0 && local < result.length) {
                     result[local] = true;
-                    if (instruction.getNode().getOpcode() == Opcodes.LSTORE
+                    if ((instruction.getNode().getOpcode() == Opcodes.LSTORE
+                            || instruction.getNode().getOpcode() == Opcodes.DSTORE)
                             && local + 1 < result.length) {
                         result[local + 1] = true;
                     }
@@ -730,26 +795,50 @@ public final class AsmToIr {
                 pushLongConstant(irMethod, block, state,
                         opcode == Opcodes.LCONST_0 ? 0L : 1L,
                         instruction.getOriginalIndex());
+            } else if (opcode >= Opcodes.FCONST_0 && opcode <= Opcodes.FCONST_2) {
+                pushFloatConstant(irMethod, block, state,
+                        (float) (opcode - Opcodes.FCONST_0),
+                        instruction.getOriginalIndex());
+            } else if (opcode == Opcodes.DCONST_0 || opcode == Opcodes.DCONST_1) {
+                pushDoubleConstant(irMethod, block, state,
+                        opcode == Opcodes.DCONST_0 ? 0.0d : 1.0d,
+                        instruction.getOriginalIndex());
             } else if (node instanceof IntInsnNode
                     && (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH)) {
                 pushConstant(irMethod, block, state, ((IntInsnNode) node).operand,
                         instruction.getOriginalIndex());
             } else if (node instanceof LdcInsnNode) {
-                pushConstant(irMethod, block, state, (Integer) ((LdcInsnNode) node).cst,
-                        instruction.getOriginalIndex());
+                Object constant = ((LdcInsnNode) node).cst;
+                if (constant instanceof Integer) {
+                    pushConstant(irMethod, block, state, (Integer) constant,
+                            instruction.getOriginalIndex());
+                } else if (constant instanceof Float) {
+                    pushFloatConstant(irMethod, block, state, (Float) constant,
+                            instruction.getOriginalIndex());
+                } else if (constant instanceof Double) {
+                    pushDoubleConstant(irMethod, block, state, (Double) constant,
+                            instruction.getOriginalIndex());
+                } else {
+                    throw unsupported("Unsupported LDC constant", instruction);
+                }
             } else if (node instanceof VarInsnNode
                     && (opcode == Opcodes.ILOAD || opcode == Opcodes.LLOAD
+                    || opcode == Opcodes.FLOAD || opcode == Opcodes.DLOAD
                     || opcode == Opcodes.ALOAD)) {
-                int local = opcode == Opcodes.LLOAD
+                int local = opcode == Opcodes.LLOAD || opcode == Opcodes.DLOAD
                         ? checkedWideLocal(((VarInsnNode) node).var, method, instruction)
                         : checkedLocal(((VarInsnNode) node).var, method, instruction);
                 IrValue value = state.locals[local];
                 IrType expected = opcode == Opcodes.ILOAD
                         ? IrType.I32 : opcode == Opcodes.LLOAD
-                        ? IrType.I64 : IrType.REFERENCE;
+                        ? IrType.I64 : opcode == Opcodes.FLOAD
+                        ? IrType.F32 : opcode == Opcodes.DLOAD
+                        ? IrType.F64 : IrType.REFERENCE;
                 if (value == null || value.getType() != expected) {
                     String mnemonic = opcode == Opcodes.ILOAD ? "ILOAD"
-                            : opcode == Opcodes.LLOAD ? "LLOAD" : "ALOAD";
+                            : opcode == Opcodes.LLOAD ? "LLOAD"
+                            : opcode == Opcodes.FLOAD ? "FLOAD"
+                            : opcode == Opcodes.DLOAD ? "DLOAD" : "ALOAD";
                     throw unsupported(mnemonic
                             + " requires a defined " + expected + " local", instruction);
                 }
@@ -767,6 +856,20 @@ public final class AsmToIr {
                     throw unsupported("LSTORE requires two i64 local slots", instruction);
                 }
                 state.locals[local] = pop(state, IrType.I64, instruction);
+                state.locals[local + 1] = null;
+            } else if (node instanceof VarInsnNode && opcode == Opcodes.FSTORE) {
+                int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
+                if (shape.localTypes[local] != IrType.F32) {
+                    throw unsupported("FSTORE requires an f32 local", instruction);
+                }
+                state.locals[local] = pop(state, IrType.F32, instruction);
+            } else if (node instanceof VarInsnNode && opcode == Opcodes.DSTORE) {
+                int local = checkedWideLocal(((VarInsnNode) node).var, method, instruction);
+                if (shape.localTypes[local] != IrType.F64
+                        || !shape.wideContinuations[local + 1]) {
+                    throw unsupported("DSTORE requires two f64 local slots", instruction);
+                }
+                state.locals[local] = pop(state, IrType.F64, instruction);
                 state.locals[local + 1] = null;
             } else if (node instanceof VarInsnNode && opcode == Opcodes.ASTORE) {
                 int local = checkedLocal(((VarInsnNode) node).var, method, instruction);
@@ -805,6 +908,15 @@ public final class AsmToIr {
                 IrValue left = pop(state, IrType.I64, instruction);
                 state.stack.add(blockLongBinary(irMethod, block, longBinaryOperation(opcode),
                         left, right, instruction.getOriginalIndex()));
+            } else if (isFloatingBinaryOp(opcode)) {
+                IrType type = floatingType(opcode);
+                IrValue right = pop(state, type, instruction);
+                IrValue left = pop(state, type, instruction);
+                IrValue result = irMethod.newInstructionValue(type);
+                block.addInstruction(new IrNodes.FloatingBinary(result,
+                        floatingBinaryOperation(opcode), left, right,
+                        instruction.getOriginalIndex()));
+                state.stack.add(result);
             } else if (isIntDivRem(opcode)) {
                 IrValue right = pop(state, IrType.I32, instruction);
                 IrValue left = pop(state, IrType.I32, instruction);
@@ -822,14 +934,29 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.Unary(result, unaryOperation(opcode), operand,
                         instruction.getOriginalIndex()));
                 state.stack.add(result);
-            } else if (opcode == Opcodes.I2L || opcode == Opcodes.L2I) {
-                IrNodes.Conversion.Operation operation = opcode == Opcodes.I2L
-                        ? IrNodes.Conversion.Operation.I2L
-                        : IrNodes.Conversion.Operation.L2I;
-                IrValue operand = pop(state, opcode == Opcodes.I2L
-                        ? IrType.I32 : IrType.I64, instruction);
-                IrValue result = irMethod.newInstructionValue(opcode == Opcodes.I2L
-                        ? IrType.I64 : IrType.I32);
+            } else if (isFloatingUnaryOp(opcode)) {
+                IrType type = floatingType(opcode);
+                IrValue operand = pop(state, type, instruction);
+                IrValue result = irMethod.newInstructionValue(type);
+                block.addInstruction(new IrNodes.FloatingUnary(result, operand,
+                        instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (isFloatingCompareOp(opcode)) {
+                IrType type = floatingType(opcode);
+                IrValue right = pop(state, type, instruction);
+                IrValue left = pop(state, type, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                IrNodes.FloatingCompare.NanResult nanResult =
+                        opcode == Opcodes.FCMPL || opcode == Opcodes.DCMPL
+                                ? IrNodes.FloatingCompare.NanResult.LESS
+                                : IrNodes.FloatingCompare.NanResult.GREATER;
+                block.addInstruction(new IrNodes.FloatingCompare(result, left, right,
+                        nanResult, instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (isConversionOp(opcode)) {
+                IrNodes.Conversion.Operation operation = conversionOperation(opcode);
+                IrValue operand = pop(state, operation.getOperandType(), instruction);
+                IrValue result = irMethod.newInstructionValue(operation.getResultType());
                 block.addInstruction(new IrNodes.Conversion(result, operation, operand,
                         instruction.getOriginalIndex()));
                 state.stack.add(result);
@@ -957,6 +1084,18 @@ public final class AsmToIr {
                     throw unsupported("LRETURN does not match the method descriptor", instruction);
                 }
                 block.setTerminator(new IrNodes.Return(pop(state, IrType.I64, instruction),
+                        instruction.getOriginalIndex()));
+            } else if (opcode == Opcodes.FRETURN) {
+                if (shape.returnType != IrType.F32) {
+                    throw unsupported("FRETURN does not match the method descriptor", instruction);
+                }
+                block.setTerminator(new IrNodes.Return(pop(state, IrType.F32, instruction),
+                        instruction.getOriginalIndex()));
+            } else if (opcode == Opcodes.DRETURN) {
+                if (shape.returnType != IrType.F64) {
+                    throw unsupported("DRETURN does not match the method descriptor", instruction);
+                }
+                block.setTerminator(new IrNodes.Return(pop(state, IrType.F64, instruction),
                         instruction.getOriginalIndex()));
             } else if (opcode == Opcodes.ARETURN) {
                 if (shape.returnType != IrType.REFERENCE) {
@@ -1137,6 +1276,28 @@ public final class AsmToIr {
         return result;
     }
 
+    private IrValue pushFloatConstant(IrMethod method, IrBlock block, ValueState state,
+                                      float value, int offset) {
+        IrValue result = method.newInstructionValue(IrType.F32);
+        block.addInstruction(new IrNodes.FloatConst(result,
+                Float.floatToRawIntBits(value), offset));
+        if (state != null) {
+            state.stack.add(result);
+        }
+        return result;
+    }
+
+    private IrValue pushDoubleConstant(IrMethod method, IrBlock block, ValueState state,
+                                       double value, int offset) {
+        IrValue result = method.newInstructionValue(IrType.F64);
+        block.addInstruction(new IrNodes.DoubleConst(result,
+                Double.doubleToRawLongBits(value), offset));
+        if (state != null) {
+            state.stack.add(result);
+        }
+        return result;
+    }
+
     private IrValue blockBinary(IrMethod method, IrBlock block,
                                 IrNodes.Binary.Operation operation,
                                 IrValue left, IrValue right, int offset) {
@@ -1201,10 +1362,29 @@ public final class AsmToIr {
         if (type.getSort() == Type.LONG) {
             return IrType.I64;
         }
+        if (type.getSort() == Type.FLOAT) {
+            return IrType.F32;
+        }
+        if (type.getSort() == Type.DOUBLE) {
+            return IrType.F64;
+        }
         if (isReference(type)) {
             return IrType.REFERENCE;
         }
         throw new IllegalArgumentException("Unsupported JVM carrier type " + type);
+    }
+
+    private static IrType constantType(Object constant) {
+        if (constant instanceof Integer) {
+            return IrType.I32;
+        }
+        if (constant instanceof Float) {
+            return IrType.F32;
+        }
+        if (constant instanceof Double) {
+            return IrType.F64;
+        }
+        throw new IllegalArgumentException("Unsupported LDC constant " + constant);
     }
 
     private static boolean isSupportedFieldDescriptor(String descriptor) {
@@ -1223,6 +1403,12 @@ public final class AsmToIr {
         }
         if (type.getSort() == Type.LONG) {
             return IrType.I64;
+        }
+        if (type.getSort() == Type.FLOAT) {
+            return IrType.F32;
+        }
+        if (type.getSort() == Type.DOUBLE) {
+            return IrType.F64;
         }
         if (isReference(type)) {
             return IrType.REFERENCE;
@@ -1255,6 +1441,8 @@ public final class AsmToIr {
             for (Type argument : Type.getArgumentTypes(invoke.desc)) {
                 if (!isIntLike(argument)
                         && argument.getSort() != Type.LONG
+                        && argument.getSort() != Type.FLOAT
+                        && argument.getSort() != Type.DOUBLE
                         && !isReference(argument)) {
                     return false;
                 }
@@ -1268,6 +1456,7 @@ public final class AsmToIr {
     private static boolean isSupportedInvokeReturn(Type type) {
         int sort = type.getSort();
         return sort == Type.VOID || isIntLike(type) || sort == Type.LONG
+                || sort == Type.FLOAT || sort == Type.DOUBLE
                 || isReference(type);
     }
 
@@ -1283,6 +1472,115 @@ public final class AsmToIr {
                 return IrNodes.Invoke.Kind.SPECIAL;
             default:
                 throw new IllegalArgumentException("Not a supported invoke opcode: " + opcode);
+        }
+    }
+
+    private static boolean isWide(IrType type) {
+        return type == IrType.I64 || type == IrType.F64;
+    }
+
+    private static boolean isFloatingBinaryOp(int opcode) {
+        return opcode == Opcodes.FADD || opcode == Opcodes.DADD
+                || opcode == Opcodes.FSUB || opcode == Opcodes.DSUB
+                || opcode == Opcodes.FMUL || opcode == Opcodes.DMUL
+                || opcode == Opcodes.FDIV || opcode == Opcodes.DDIV
+                || opcode == Opcodes.FREM || opcode == Opcodes.DREM;
+    }
+
+    private static boolean isFloatingUnaryOp(int opcode) {
+        return opcode == Opcodes.FNEG || opcode == Opcodes.DNEG;
+    }
+
+    private static boolean isFloatingCompareOp(int opcode) {
+        return opcode == Opcodes.FCMPL || opcode == Opcodes.FCMPG
+                || opcode == Opcodes.DCMPL || opcode == Opcodes.DCMPG;
+    }
+
+    private static boolean isConversionOp(int opcode) {
+        return opcode == Opcodes.I2L || opcode == Opcodes.L2I
+                || opcode == Opcodes.I2F || opcode == Opcodes.F2I
+                || opcode == Opcodes.L2F || opcode == Opcodes.F2L
+                || opcode == Opcodes.I2D || opcode == Opcodes.D2I
+                || opcode == Opcodes.L2D || opcode == Opcodes.D2L
+                || opcode == Opcodes.F2D || opcode == Opcodes.D2F;
+    }
+
+    private static IrType floatingType(int opcode) {
+        switch (opcode) {
+            case Opcodes.FADD:
+            case Opcodes.FSUB:
+            case Opcodes.FMUL:
+            case Opcodes.FDIV:
+            case Opcodes.FREM:
+            case Opcodes.FNEG:
+            case Opcodes.FCMPL:
+            case Opcodes.FCMPG:
+                return IrType.F32;
+            case Opcodes.DADD:
+            case Opcodes.DSUB:
+            case Opcodes.DMUL:
+            case Opcodes.DDIV:
+            case Opcodes.DREM:
+            case Opcodes.DNEG:
+            case Opcodes.DCMPL:
+            case Opcodes.DCMPG:
+                return IrType.F64;
+            default:
+                throw new IllegalArgumentException("Not a floating opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.FloatingBinary.Operation floatingBinaryOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.FADD:
+            case Opcodes.DADD:
+                return IrNodes.FloatingBinary.Operation.ADD;
+            case Opcodes.FSUB:
+            case Opcodes.DSUB:
+                return IrNodes.FloatingBinary.Operation.SUBTRACT;
+            case Opcodes.FMUL:
+            case Opcodes.DMUL:
+                return IrNodes.FloatingBinary.Operation.MULTIPLY;
+            case Opcodes.FDIV:
+            case Opcodes.DDIV:
+                return IrNodes.FloatingBinary.Operation.DIVIDE;
+            case Opcodes.FREM:
+            case Opcodes.DREM:
+                return IrNodes.FloatingBinary.Operation.REMAINDER;
+            default:
+                throw new IllegalArgumentException(
+                        "Not a floating binary opcode: " + opcode);
+        }
+    }
+
+    private static IrNodes.Conversion.Operation conversionOperation(int opcode) {
+        switch (opcode) {
+            case Opcodes.I2L:
+                return IrNodes.Conversion.Operation.I2L;
+            case Opcodes.L2I:
+                return IrNodes.Conversion.Operation.L2I;
+            case Opcodes.I2F:
+                return IrNodes.Conversion.Operation.I2F;
+            case Opcodes.F2I:
+                return IrNodes.Conversion.Operation.F2I;
+            case Opcodes.L2F:
+                return IrNodes.Conversion.Operation.L2F;
+            case Opcodes.F2L:
+                return IrNodes.Conversion.Operation.F2L;
+            case Opcodes.I2D:
+                return IrNodes.Conversion.Operation.I2D;
+            case Opcodes.D2I:
+                return IrNodes.Conversion.Operation.D2I;
+            case Opcodes.L2D:
+                return IrNodes.Conversion.Operation.L2D;
+            case Opcodes.D2L:
+                return IrNodes.Conversion.Operation.D2L;
+            case Opcodes.F2D:
+                return IrNodes.Conversion.Operation.F2D;
+            case Opcodes.D2F:
+                return IrNodes.Conversion.Operation.D2F;
+            default:
+                throw new IllegalArgumentException("Not a conversion opcode: " + opcode);
         }
     }
 

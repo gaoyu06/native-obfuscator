@@ -6,6 +6,8 @@ package by.radioegor146.ir;
 public enum IrType {
     I32("i32", "jint", 1),
     I64("i64", "jlong", 2),
+    F32("f32", "jfloat", 1),
+    F64("f64", "jdouble", 2),
     REFERENCE("ref", "jobject", 1),
     VOID("void", "void", 0);
 

@@ -102,6 +102,18 @@ public final class IrCppEmitter {
                     new CppAst.Assignment(variable(constant.getResult()),
                             new CppAst.LongLiteral(constant.getValue())));
         }
+        if (instruction instanceof IrNodes.FloatConst) {
+            IrNodes.FloatConst constant = (IrNodes.FloatConst) instruction;
+            return Collections.<CppAst.Statement>singletonList(
+                    new CppAst.Assignment(variable(constant.getResult()),
+                            new CppAst.FloatBitsLiteral(constant.getRawBits())));
+        }
+        if (instruction instanceof IrNodes.DoubleConst) {
+            IrNodes.DoubleConst constant = (IrNodes.DoubleConst) instruction;
+            return Collections.<CppAst.Statement>singletonList(
+                    new CppAst.Assignment(variable(constant.getResult()),
+                            new CppAst.DoubleBitsLiteral(constant.getRawBits())));
+        }
         if (instruction instanceof IrNodes.NullReference) {
             IrNodes.NullReference constant = (IrNodes.NullReference) instruction;
             return Collections.<CppAst.Statement>singletonList(
@@ -113,6 +125,15 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.LongBinary) {
             return emitLongBinary((IrNodes.LongBinary) instruction);
+        }
+        if (instruction instanceof IrNodes.FloatingBinary) {
+            return emitFloatingBinary((IrNodes.FloatingBinary) instruction);
+        }
+        if (instruction instanceof IrNodes.FloatingUnary) {
+            return emitFloatingUnary((IrNodes.FloatingUnary) instruction);
+        }
+        if (instruction instanceof IrNodes.FloatingCompare) {
+            return emitFloatingCompare((IrNodes.FloatingCompare) instruction);
         }
         if (instruction instanceof IrNodes.Unary) {
             return emitUnary((IrNodes.Unary) instruction);
@@ -248,6 +269,60 @@ public final class IrCppEmitter {
                 new CppAst.Assignment(variable(binary.getResult()), value));
     }
 
+    private List<CppAst.Statement> emitFloatingBinary(IrNodes.FloatingBinary binary) {
+        CppAst.Expression left = expression(binary.getLeft());
+        CppAst.Expression right = expression(binary.getRight());
+        CppAst.Expression value;
+        switch (binary.getOperation()) {
+            case ADD:
+                value = new CppAst.Binary(left, "+", right);
+                break;
+            case SUBTRACT:
+                value = new CppAst.Binary(left, "-", right);
+                break;
+            case MULTIPLY:
+                value = new CppAst.Binary(left, "*", right);
+                break;
+            case DIVIDE:
+                // C++ floating division has the JVM's Inf/NaN behavior and
+                // does not share the integer divide-by-zero exceptional path.
+                value = new CppAst.Binary(left, "/", right);
+                break;
+            case REMAINDER:
+                value = new CppAst.Call("std::fmod", Arrays.asList(left, right));
+                break;
+            default:
+                throw new IllegalStateException("Unknown floating binary operation "
+                        + binary.getOperation());
+        }
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(binary.getResult()), value));
+    }
+
+    private List<CppAst.Statement> emitFloatingUnary(IrNodes.FloatingUnary unary) {
+        return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                variable(unary.getResult()),
+                new CppAst.Unary("-", expression(unary.getOperand()))));
+    }
+
+    private List<CppAst.Statement> emitFloatingCompare(IrNodes.FloatingCompare compare) {
+        CppAst.Expression left = expression(compare.getLeft());
+        CppAst.Expression right = expression(compare.getRight());
+        CppAst.Expression nan = new CppAst.Binary(
+                new CppAst.Call("std::isnan", Collections.singletonList(left)),
+                "||",
+                new CppAst.Call("std::isnan", Collections.singletonList(right)));
+        CppAst.Expression ordered = new CppAst.Conditional(
+                new CppAst.Binary(left, ">", right),
+                new CppAst.IntLiteral(1),
+                new CppAst.Conditional(new CppAst.Binary(left, "<", right),
+                        new CppAst.IntLiteral(-1), new CppAst.IntLiteral(0)));
+        CppAst.Expression result = new CppAst.Conditional(nan,
+                new CppAst.IntLiteral(compare.getNanResult().getValue()), ordered);
+        return Collections.<CppAst.Statement>singletonList(
+                new CppAst.Assignment(variable(compare.getResult()), result));
+    }
+
     private CppAst.Expression shiftAmount(CppAst.Expression right) {
         return new CppAst.Binary(new CppAst.Cast("uint32_t", right), "&",
                 new CppAst.IntLiteral(31));
@@ -288,12 +363,65 @@ public final class IrCppEmitter {
                 value = new CppAst.Cast("jint", new CppAst.Cast("uint32_t",
                         expression(conversion.getOperand())));
                 break;
+            case I2F:
+                value = new CppAst.Cast("jfloat", expression(conversion.getOperand()));
+                break;
+            case F2I:
+                value = floatingToIntegral(conversion, IrType.I32);
+                break;
+            case L2F:
+                value = new CppAst.Cast("jfloat", expression(conversion.getOperand()));
+                break;
+            case F2L:
+                value = floatingToIntegral(conversion, IrType.I64);
+                break;
+            case I2D:
+                value = new CppAst.Cast("jdouble", expression(conversion.getOperand()));
+                break;
+            case D2I:
+                value = floatingToIntegral(conversion, IrType.I32);
+                break;
+            case L2D:
+                value = new CppAst.Cast("jdouble", expression(conversion.getOperand()));
+                break;
+            case D2L:
+                value = floatingToIntegral(conversion, IrType.I64);
+                break;
+            case F2D:
+                value = new CppAst.Cast("jdouble", expression(conversion.getOperand()));
+                break;
+            case D2F:
+                value = new CppAst.Cast("jfloat", expression(conversion.getOperand()));
+                break;
             default:
                 throw new IllegalStateException("Unknown conversion "
                         + conversion.getOperation());
         }
         return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
                 variable(conversion.getResult()), value));
+    }
+
+    private CppAst.Expression floatingToIntegral(IrNodes.Conversion conversion,
+                                                 IrType resultType) {
+        CppAst.Expression operand = expression(conversion.getOperand());
+        String sourceType = conversion.getOperand().getType().getCppType();
+        String targetType = resultType.getCppType();
+        CppAst.Expression minimum = resultType == IrType.I32
+                ? new CppAst.IntLiteral(Integer.MIN_VALUE)
+                : new CppAst.LongLiteral(Long.MIN_VALUE);
+        CppAst.Expression maximum = resultType == IrType.I32
+                ? new CppAst.IntLiteral(Integer.MAX_VALUE)
+                : new CppAst.LongLiteral(Long.MAX_VALUE);
+        CppAst.Expression ordinary = new CppAst.Cast(targetType, operand);
+        CppAst.Expression below = new CppAst.Conditional(
+                new CppAst.Binary(operand, "<=", new CppAst.Cast(sourceType, minimum)),
+                minimum, ordinary);
+        CppAst.Expression above = new CppAst.Conditional(
+                new CppAst.Binary(operand, ">=", new CppAst.Cast(sourceType, maximum)),
+                maximum, below);
+        return new CppAst.Conditional(
+                new CppAst.Call("std::isnan", Collections.singletonList(operand)),
+                new CppAst.IntLiteral(0), above);
     }
 
     private List<CppAst.Statement> emitIntDivRem(IrMethod method, IrBlock block,
@@ -623,6 +751,10 @@ public final class IrCppEmitter {
                 return "Int";
             case Type.LONG:
                 return "Long";
+            case Type.FLOAT:
+                return "Float";
+            case Type.DOUBLE:
+                return "Double";
             case Type.OBJECT:
             case Type.ARRAY:
                 return "Object";
@@ -708,6 +840,12 @@ public final class IrCppEmitter {
                 break;
             case Type.LONG:
                 carrier = "Long";
+                break;
+            case Type.FLOAT:
+                carrier = "Float";
+                break;
+            case Type.DOUBLE:
+                carrier = "Double";
                 break;
             case Type.OBJECT:
             case Type.ARRAY:

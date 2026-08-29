@@ -7,7 +7,6 @@ import by.radioegor146.NativeObfuscator;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -20,6 +19,7 @@ import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -147,6 +147,19 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("// IR codegen: example/Math.add(II)I"));
         assertFalse(cpp.contains("cstack"));
         assertFalse(cpp.contains("clocal"));
+    }
+
+    @Test
+    public void emitsFloatAndDoubleJniBoundaryTypes() {
+        String floatCpp = compileToCpp(staticPrimitiveInvokeMethod(
+                "floatBoundary", "identityFloat", "(F)F"), 0);
+        assertTrue(floatCpp.contains("jfloat JNICALL __ngen_native_floatBoundary0("
+                + "JNIEnv *env, jclass clazz, jfloat arg0)"));
+
+        String doubleCpp = compileToCpp(staticPrimitiveInvokeMethod(
+                "doubleBoundary", "identityDouble", "(D)D"), 1);
+        assertTrue(doubleCpp.contains("jdouble JNICALL __ngen_native_doubleBoundary1("
+                + "JNIEnv *env, jclass clazz, jdouble arg0)"));
     }
 
     @Test
@@ -335,6 +348,26 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsFloatAndDoubleConstructorSuffixWithHiddenBridge() {
+        MethodNode constructor = floatingFieldConstructor();
+        ClassNode owner = constructorOwner("example/Math", "java/lang/Object");
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, constructor, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("jobject ignored_hidden, jobject obj, "
+                + "jfloat arg0, jdouble arg1"));
+        assertTrue(cpp.contains("env->SetFloatField(obj"));
+        assertTrue(cpp.contains("env->SetDoubleField(obj"));
+        assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
+        assertTrue(context.proxyMethod != null);
+        assertTrue((context.proxyMethod.getMethodNode().access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(realOpcodes(constructor).contains(Opcodes.INVOKESTATIC));
+    }
+
+    @Test
     public void rejectsUnsupportedConstructorBeforeAnyMutation() {
         MethodNode constructor = unsupportedConstructor();
         ClassNode owner = constructorOwner("example/Unsupported", "java/lang/Object");
@@ -349,7 +382,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertEquals(Opcodes.FALOAD, error.getOpcode());
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
@@ -559,15 +592,29 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsFloatAndDoubleInvokeDescriptorsBeforeMutation() {
-        for (int opcode : new int[]{Opcodes.INVOKESTATIC, Opcodes.INVOKEVIRTUAL,
-                Opcodes.INVOKEINTERFACE, Opcodes.INVOKESPECIAL}) {
-            for (String primitive : new String[]{"F", "D"}) {
-                assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
-                        opcode, "()" + primitive), opcode);
-                assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
-                        opcode, "(" + primitive + ")V"), opcode);
-            }
+    public void lowersFloatAndDoubleInvokeArgumentsAndReturnsWithExactJniFamilies() {
+        String[] descriptors = {"F", "D"};
+        IrType[] types = {IrType.F32, IrType.F64};
+        String[] carriers = {"Float", "Double"};
+        for (int i = 0; i < descriptors.length; i++) {
+            String descriptor = "(" + descriptors[i] + ")" + descriptors[i];
+            assertFloatingInvoke(staticPrimitiveInvokeMethod(
+                            "static" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.STATIC, types[i],
+                    "CallStatic" + carriers[i] + "Method");
+            assertFloatingInvoke(virtualPrimitiveInvokeMethod(
+                            "virtual" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.VIRTUAL, types[i],
+                    "Call" + carriers[i] + "Method");
+            assertFloatingInvoke(interfaceInvokeMethod(
+                            "interface" + carriers[i], "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.INTERFACE, types[i],
+                    "Call" + carriers[i] + "Method");
+            assertFloatingInvoke(specialInvokeMethod(
+                            "special" + carriers[i], "example/Base",
+                            "identity" + carriers[i], descriptor),
+                    IrNodes.Invoke.Kind.SPECIAL, types[i],
+                    "CallNonvirtual" + carriers[i] + "Method");
         }
     }
 
@@ -597,13 +644,13 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertEquals(Opcodes.FALOAD, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
     @Test
-    public void rejectsUnsupportedAfterPhaseThirteenOpsBeforeMutation() {
-        MethodNode method = unsupportedAfterPhaseThirteenOpsMethod();
+    public void rejectsUnsupportedAfterPhaseFourteenOpsBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseFourteenOpsMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
@@ -612,7 +659,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertEquals(Opcodes.FALOAD, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -881,6 +928,27 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void nullReceiverFloatAndDoubleOpsUseExceptionalExit() {
+        String fieldCpp = compileToCpp(instanceFieldRoundTripMethod(
+                "nullableFloatField", "F", Opcodes.FLOAD, Opcodes.FRETURN), 0);
+        int fieldNullCheck = fieldCpp.indexOf("if (arg0 == nullptr)");
+        int fieldThrow = fieldCpp.indexOf("utils::throw_re", fieldNullCheck);
+        int fieldExit = fieldCpp.indexOf("return 0;", fieldThrow);
+        int fieldCall = fieldCpp.indexOf("env->SetFloatField", fieldExit);
+        assertTrue(fieldNullCheck >= 0 && fieldThrow > fieldNullCheck
+                && fieldExit > fieldThrow && fieldCall > fieldExit);
+
+        String invokeCpp = compileToCpp(virtualPrimitiveInvokeMethod(
+                "nullableDoubleInvoke", "identityDouble", "(D)D"), 0);
+        int invokeNullCheck = invokeCpp.indexOf("if (arg0 == nullptr)");
+        int invokeThrow = invokeCpp.indexOf("utils::throw_re", invokeNullCheck);
+        int invokeExit = invokeCpp.indexOf("return 0;", invokeThrow);
+        int invokeCall = invokeCpp.indexOf("env->CallDoubleMethod", invokeExit);
+        assertTrue(invokeNullCheck >= 0 && invokeThrow > invokeNullCheck
+                && invokeExit > invokeThrow && invokeCall > invokeExit);
+    }
+
+    @Test
     public void lowersSmallPrimitiveFieldRoundTripsWithJvmNarrowing() {
         assertSmallPrimitiveFieldRoundTrip("booleanFalse", "Z", "Boolean",
                 "jboolean", 0, false);
@@ -906,25 +974,27 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsFloatAndDoubleFieldSortsBeforeMutation() {
-        for (String descriptor : new String[]{"F", "D"}) {
-            MethodNode method = unsupportedPrimitiveFieldMethod(descriptor);
-            NativeObfuscator obfuscator = new NativeObfuscator();
-            MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+    public void lowersFloatAndDoubleFieldRoundTripsWithExactBitsAndJniFamilies() {
+        float[] floats = {
+                -0.0f, 0.0f, Float.intBitsToFloat(0x7fc01234),
+                Float.POSITIVE_INFINITY, -13.25f
+        };
+        for (int i = 0; i < floats.length; i++) {
+            assertFloatingFieldConstant("float" + i, "F", IrType.F32,
+                    "Float", floats[i], false);
+            assertFloatingFieldConstant("staticFloat" + i, "F", IrType.F32,
+                    "Float", floats[i], true);
+        }
 
-            UnsupportedIrConstructException error = assertThrows(
-                    UnsupportedIrConstructException.class,
-                    () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                            .processMethod(context));
-
-            assertEquals(Opcodes.GETSTATIC, error.getOpcode());
-            assertEquals(0, method.access & Opcodes.ACC_NATIVE);
-            assertEquals("", context.output.toString());
-            assertEquals("", context.nativeMethods.toString());
-            assertEquals(0, obfuscator.getCachedClasses().size());
-            assertEquals(0, obfuscator.getCachedStrings().size());
-            assertEquals(0, obfuscator.getCachedFields().size());
-            assertEquals(0, obfuscator.getCachedMethods().size());
+        double[] doubles = {
+                -0.0d, 0.0d, Double.longBitsToDouble(0x7ff8000000001234L),
+                Double.NEGATIVE_INFINITY, 9876.5d
+        };
+        for (int i = 0; i < doubles.length; i++) {
+            assertFloatingFieldConstant("double" + i, "D", IrType.F64,
+                    "Double", doubles[i], false);
+            assertFloatingFieldConstant("staticDouble" + i, "D", IrType.F64,
+                    "Double", doubles[i], true);
         }
     }
 
@@ -939,7 +1009,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.GETSTATIC, error.getOpcode());
+        assertEquals(Opcodes.FALOAD, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -975,6 +1045,89 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("(jint) (jbyte)"));
         assertTrue(cpp.contains("(jint) (jshort)"));
         assertTrue(cpp.contains("(jint) (jchar)"));
+    }
+
+    @Test
+    public void lowersFloatAndDoubleArithmeticRemainderNegationAndNanCompares() {
+        for (boolean wide : new boolean[]{false, true}) {
+            MethodNode method = floatingScalarOpsMethod(wide);
+            IrMethod ir = frontend.build("example/Math", method);
+            String prefix = wide ? "d" : "f";
+            String pretty = ir.toString();
+            assertTrue(pretty.contains(" = " + prefix + "add "));
+            assertTrue(pretty.contains(" = " + prefix + "sub "));
+            assertTrue(pretty.contains(" = " + prefix + "mul "));
+            assertTrue(pretty.contains(" = " + prefix + "div "));
+            assertTrue(pretty.contains(" = " + prefix + "rem "));
+            assertTrue(pretty.contains(" = " + prefix + "neg "));
+            assertTrue(pretty.contains(" = " + prefix + "cmpl "));
+            assertTrue(pretty.contains(" = " + prefix + "cmpg "));
+
+            String cpp = compileToCpp(method, 0);
+            assertTrue(cpp.contains("std::fmod"));
+            assertTrue(cpp.contains("std::isnan"));
+            assertTrue(cpp.contains("? -1 :"));
+            assertTrue(cpp.contains("? 1 :"));
+            assertTrue(cpp.contains(" / "));
+            assertFalse(cpp.contains("ArithmeticException"));
+        }
+    }
+
+    @Test
+    public void lowersAllFloatAndDoubleConversionsWithJvmSaturation() {
+        int[] opcodes = {
+                Opcodes.I2F, Opcodes.F2I, Opcodes.L2F, Opcodes.F2L,
+                Opcodes.I2D, Opcodes.D2I, Opcodes.L2D, Opcodes.D2L,
+                Opcodes.F2D, Opcodes.D2F
+        };
+        IrNodes.Conversion.Operation[] operations = {
+                IrNodes.Conversion.Operation.I2F, IrNodes.Conversion.Operation.F2I,
+                IrNodes.Conversion.Operation.L2F, IrNodes.Conversion.Operation.F2L,
+                IrNodes.Conversion.Operation.I2D, IrNodes.Conversion.Operation.D2I,
+                IrNodes.Conversion.Operation.L2D, IrNodes.Conversion.Operation.D2L,
+                IrNodes.Conversion.Operation.F2D, IrNodes.Conversion.Operation.D2F
+        };
+        for (int i = 0; i < opcodes.length; i++) {
+            IrMethod ir = frontend.build("example/Math", floatingConversionMethod(opcodes[i]));
+            IrNodes.Conversion conversion = ir.getBlocks().stream()
+                    .flatMap(block -> block.getInstructions().stream())
+                    .filter(IrNodes.Conversion.class::isInstance)
+                    .map(IrNodes.Conversion.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new);
+            assertEquals(operations[i], conversion.getOperation());
+        }
+
+        for (int opcode : new int[]{Opcodes.F2I, Opcodes.D2I}) {
+            String cpp = emitter.emitBody(frontend.build(
+                    "example/Math", floatingConversionMethod(opcode)));
+            assertTrue(cpp.contains("std::isnan"));
+            assertTrue(cpp.contains("2147483647"));
+            assertTrue(cpp.contains("0x80000000U"));
+            assertTrue(cpp.contains("? 0 :"));
+        }
+        for (int opcode : new int[]{Opcodes.F2L, Opcodes.D2L}) {
+            String cpp = emitter.emitBody(frontend.build(
+                    "example/Math", floatingConversionMethod(opcode)));
+            assertTrue(cpp.contains("std::isnan"));
+            assertTrue(cpp.contains("9223372036854775807LL"));
+            assertTrue(cpp.contains("0x8000000000000000ULL"));
+            assertTrue(cpp.contains("? 0 :"));
+        }
+    }
+
+    @Test
+    public void carriesFloatAndCategoryTwoDoubleThroughStackPhis() {
+        IrMethod floatIr = frontend.build("example/Math", floatingStackPhiMethod(false));
+        IrPhi floatPhi = onlyStackPhi(floatIr);
+        assertEquals(IrType.F32, floatPhi.getResult().getType());
+        assertEquals(0, floatPhi.getSlotIndex());
+        assertTrue(emitter.emitBody(floatIr).contains("jfloat"));
+
+        IrMethod doubleIr = frontend.build("example/Math", floatingStackPhiMethod(true));
+        IrPhi doublePhi = onlyStackPhi(doubleIr);
+        assertEquals(IrType.F64, doublePhi.getResult().getType());
+        assertEquals(0, doublePhi.getSlotIndex());
+        assertTrue(emitter.emitBody(doubleIr).contains("jdouble"));
     }
 
     @Test
@@ -1418,11 +1571,11 @@ public class IrCompilerTest {
         Path javaHome = Paths.get(System.getProperty("java.home"));
         Path jniInclude = javaHome.resolve("include");
         Path platformInclude = jniInclude.resolve(jniPlatformDirectory());
-        Assumptions.assumeTrue(gpp != null, "g++ is not available");
-        Assumptions.assumeTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
-                "JNI headers are not available");
-        Assumptions.assumeTrue(Files.isDirectory(platformInclude),
-                "Platform JNI headers are not available");
+        assertTrue(gpp != null, "g++ is required for the IR smoke test");
+        assertTrue(Files.isRegularFile(jniInclude.resolve("jni.h")),
+                "JNI headers are required for the IR smoke test");
+        assertTrue(Files.isDirectory(platformInclude),
+                "Platform JNI headers are required for the IR smoke test");
 
         NativeObfuscator obfuscator = new NativeObfuscator();
         ClassNode owner = owner();
@@ -1530,8 +1683,50 @@ public class IrCompilerTest {
                         "identityChar", "(C)C"),
                 specialInvokeMethod("specialShort", "example/Base",
                         "identityShort", "(S)S"),
+                instanceFieldRoundTripMethod(
+                        "instanceFloatField", "F", Opcodes.FLOAD, Opcodes.FRETURN),
+                instanceFieldRoundTripMethod(
+                        "instanceDoubleField", "D", Opcodes.DLOAD, Opcodes.DRETURN),
+                staticFieldRoundTripMethod(
+                        "staticFloatField", "F", Opcodes.FLOAD, Opcodes.FRETURN),
+                staticFieldRoundTripMethod(
+                        "staticDoubleField", "D", Opcodes.DLOAD, Opcodes.DRETURN),
+                floatingFieldConstantRoundTripMethod(
+                        "floatNegativeZero", "F", -0.0f, false),
+                floatingFieldConstantRoundTripMethod(
+                        "doubleNan", "D",
+                        Double.longBitsToDouble(0x7ff8000000001234L), true),
+                staticPrimitiveInvokeMethod(
+                        "staticFloat", "identityFloat", "(F)F"),
+                staticPrimitiveInvokeMethod(
+                        "staticDouble", "identityDouble", "(D)D"),
+                virtualPrimitiveInvokeMethod(
+                        "virtualFloat", "identityFloat", "(F)F"),
+                virtualPrimitiveInvokeMethod(
+                        "virtualDouble", "identityDouble", "(D)D"),
+                interfaceInvokeMethod(
+                        "interfaceFloat", "identityFloat", "(F)F"),
+                interfaceInvokeMethod(
+                        "interfaceDouble", "identityDouble", "(D)D"),
+                specialInvokeMethod(
+                        "specialFloat", "example/Base", "identityFloat", "(F)F"),
+                specialInvokeMethod(
+                        "specialDouble", "example/Base", "identityDouble", "(D)D"),
+                floatingScalarOpsMethod(false), floatingScalarOpsMethod(true),
+                floatingConversionMethod(Opcodes.I2F),
+                floatingConversionMethod(Opcodes.F2I),
+                floatingConversionMethod(Opcodes.L2F),
+                floatingConversionMethod(Opcodes.F2L),
+                floatingConversionMethod(Opcodes.I2D),
+                floatingConversionMethod(Opcodes.D2I),
+                floatingConversionMethod(Opcodes.L2D),
+                floatingConversionMethod(Opcodes.D2L),
+                floatingConversionMethod(Opcodes.F2D),
+                floatingConversionMethod(Opcodes.D2F),
+                floatingStackPhiMethod(false), floatingStackPhiMethod(true),
                 nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod(),
-                intFieldConstructor(), referenceFieldConstructor()
+                intFieldConstructor(), floatingFieldConstructor(),
+                referenceFieldConstructor()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -1542,6 +1737,8 @@ public class IrCompilerTest {
 
         String source = "#include <jni.h>\n"
                 + "#include <cstdint>\n"
+                + "#include <cmath>\n"
+                + "#include <cstring>\n"
                 + "#include <mutex>\n"
                 + "#include <unordered_set>\n"
                 + "namespace native_jvm {\n"
@@ -1666,6 +1863,26 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->CallNonvirtualByteMethod"));
         assertTrue(source.contains("env->CallNonvirtualCharMethod"));
         assertTrue(source.contains("env->CallNonvirtualShortMethod"));
+        assertTrue(source.contains("env->GetFloatField"));
+        assertTrue(source.contains("env->SetFloatField"));
+        assertTrue(source.contains("env->GetDoubleField"));
+        assertTrue(source.contains("env->SetDoubleField"));
+        assertTrue(source.contains("env->GetStaticFloatField"));
+        assertTrue(source.contains("env->SetStaticFloatField"));
+        assertTrue(source.contains("env->GetStaticDoubleField"));
+        assertTrue(source.contains("env->SetStaticDoubleField"));
+        assertTrue(source.contains("env->CallStaticFloatMethod"));
+        assertTrue(source.contains("env->CallStaticDoubleMethod"));
+        assertTrue(source.contains("env->CallFloatMethod"));
+        assertTrue(source.contains("env->CallDoubleMethod"));
+        assertTrue(source.contains("env->CallNonvirtualFloatMethod"));
+        assertTrue(source.contains("env->CallNonvirtualDoubleMethod"));
+        assertTrue(source.contains("std::fmod"));
+        assertTrue(source.contains("std::isnan"));
+        assertTrue(source.contains("uint32_t bits = 0x80000000U"));
+        assertTrue(source.contains("uint64_t bits = 0x7ff8000000001234ULL"));
+        assertTrue(source.contains("jfloat"));
+        assertTrue(source.contains("jdouble"));
         assertTrue(source.contains("(jboolean)"));
         assertTrue(source.contains("(jbyte)"));
         assertTrue(source.contains("(jchar)"));
@@ -1816,6 +2033,58 @@ public class IrCompilerTest {
         assertFalse(cpp.contains("env->" + intCallMethod + "("));
     }
 
+    private void assertFloatingInvoke(MethodNode method, IrNodes.Invoke.Kind kind,
+                                      IrType type, String callMethod) {
+        IrNodes.Invoke invoke = onlyInvoke(frontend.build("example/Math", method));
+        assertEquals(kind, invoke.getKind());
+        assertEquals(type, invoke.getArguments().get(0).getType());
+        assertEquals(type, invoke.getResult().getType());
+
+        String cpp = compileToCpp(method, 0);
+        assertTrue(cpp.contains("env->" + callMethod + "("));
+        assertFalse(cpp.contains("env->"
+                + callMethod.replace("Float", "Int").replace("Double", "Long") + "("));
+    }
+
+    private void assertFloatingFieldConstant(String name, String descriptor, IrType type,
+                                             String carrier, Number value,
+                                             boolean staticField) {
+        MethodNode method = floatingFieldConstantRoundTripMethod(
+                name, descriptor, value, staticField);
+        IrMethod ir = frontend.build("example/Math", method);
+        IrInstruction constant = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(instruction -> instruction instanceof IrNodes.FloatConst
+                        || instruction instanceof IrNodes.DoubleConst)
+                .findFirst().orElseThrow(AssertionError::new);
+        String expectedBits;
+        if (type == IrType.F32) {
+            int bits = Float.floatToRawIntBits(value.floatValue());
+            assertEquals(bits, ((IrNodes.FloatConst) constant).getRawBits());
+            expectedBits = String.format(Locale.ROOT, "0x%08xU", bits);
+        } else {
+            long bits = Double.doubleToRawLongBits(value.doubleValue());
+            assertEquals(bits, ((IrNodes.DoubleConst) constant).getRawBits());
+            expectedBits = String.format(Locale.ROOT, "0x%016xULL", bits);
+        }
+
+        String cpp = assertFieldRoundTrip(method, type,
+                "Get" + (staticField ? "Static" : "") + carrier + "Field",
+                "Set" + (staticField ? "Static" : "") + carrier + "Field");
+        assertTrue(cpp.contains(expectedBits));
+        assertTrue(cpp.contains(type.getCppType()));
+        assertFalse(cpp.contains("env->Get"
+                + (staticField ? "Static" : "")
+                + ("Float".equals(carrier) ? "Int" : "Long") + "Field"));
+    }
+
+    private IrPhi onlyStackPhi(IrMethod method) {
+        return method.getBlocks().stream()
+                .flatMap(block -> block.getPhis().stream())
+                .filter(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK)
+                .findFirst().orElseThrow(AssertionError::new);
+    }
+
     private String compileToCpp(MethodNode method, int methodId) {
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, methodId, owner(), 0);
@@ -1921,8 +2190,9 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
                 "example/Math", name, descriptor));
         method.instructions.add(new InsnNode(returnOpcode));
-        method.maxLocals = "J".equals(descriptor) ? 3 : 2;
-        method.maxStack = "J".equals(descriptor) ? 3 : 2;
+        boolean wide = "J".equals(descriptor) || "D".equals(descriptor);
+        method.maxLocals = wide ? 3 : 2;
+        method.maxStack = wide ? 3 : 2;
         return method;
     }
 
@@ -1936,8 +2206,9 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
                 "example/Math", name, descriptor));
         method.instructions.add(new InsnNode(returnOpcode));
-        method.maxLocals = "J".equals(descriptor) ? 2 : 1;
-        method.maxStack = "J".equals(descriptor) ? 2 : 1;
+        boolean wide = "J".equals(descriptor) || "D".equals(descriptor);
+        method.maxLocals = wide ? 2 : 1;
+        method.maxStack = wide ? 2 : 1;
         return method;
     }
 
@@ -1961,6 +2232,31 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = staticField ? 0 : 1;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode floatingFieldConstantRoundTripMethod(
+            String name, String descriptor, Number value, boolean staticField) {
+        int returnOpcode = "F".equals(descriptor) ? Opcodes.FRETURN : Opcodes.DRETURN;
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                name, staticField ? "()" + descriptor
+                : "(Lexample/Math;)" + descriptor, null, null);
+        if (!staticField) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        }
+        method.instructions.add(new LdcInsnNode(value));
+        method.instructions.add(new FieldInsnNode(
+                staticField ? Opcodes.PUTSTATIC : Opcodes.PUTFIELD,
+                "example/Math", name, descriptor));
+        if (!staticField) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        }
+        method.instructions.add(new FieldInsnNode(
+                staticField ? Opcodes.GETSTATIC : Opcodes.GETFIELD,
+                "example/Math", name, descriptor));
+        method.instructions.add(new InsnNode(returnOpcode));
+        method.maxLocals = staticField ? 0 : 1;
+        method.maxStack = "D".equals(descriptor) ? 3 : 2;
         return method;
     }
 
@@ -2226,6 +2522,26 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode floatingFieldConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(FD)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "floatValue", "F"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "doubleValue", "D"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode intFieldGetter() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "getValue", "()I", null, null);
@@ -2299,10 +2615,12 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
                 "java/lang/Object", "<init>", "()V", false));
         method.instructions.add(new InsnNode(Opcodes.FCONST_0));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.FADD));
+        method.instructions.add(new InsnNode(Opcodes.FALOAD));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
-        method.maxStack = 1;
+        method.maxStack = 2;
         return method;
     }
 
@@ -2473,6 +2791,8 @@ public class IrCompilerTest {
         method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 4));
         method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
                 "example/Math", "unsupportedFloat", "F"));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.FALOAD));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 5;
         method.maxStack = 3;
@@ -2493,8 +2813,7 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
                 "example/Base", "superInt", "(I)I", false));
         method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
-        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.FALOAD));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 3;
@@ -2502,9 +2821,9 @@ public class IrCompilerTest {
         return method;
     }
 
-    private MethodNode unsupportedAfterPhaseThirteenOpsMethod() {
+    private MethodNode unsupportedAfterPhaseFourteenOpsMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedAfterPhaseThirteenOps",
+                "unsupportedAfterPhaseFourteenOps",
                 "(Lexample/Math;Lexample/PrimitiveTarget;IIII)V", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
@@ -2540,10 +2859,18 @@ public class IrCompilerTest {
                 "example/Base", "identityByte", "(B)B", false));
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.FCONST_0));
-        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.FADD));
+        method.instructions.add(new VarInsnNode(Opcodes.FSTORE, 6));
+        method.instructions.add(new LdcInsnNode(Double.longBitsToDouble(
+                0x7ff8000000001234L)));
+        method.instructions.add(new InsnNode(Opcodes.DCONST_1));
+        method.instructions.add(new InsnNode(Opcodes.DREM));
+        method.instructions.add(new VarInsnNode(Opcodes.DSTORE, 7));
+        method.instructions.add(new InsnNode(Opcodes.FALOAD));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
-        method.maxLocals = 6;
-        method.maxStack = 2;
+        method.maxLocals = 9;
+        method.maxStack = 4;
         return method;
     }
 
@@ -2622,6 +2949,159 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode floatingScalarOpsMethod(boolean wide) {
+        Type type = wide ? Type.DOUBLE_TYPE : Type.FLOAT_TYPE;
+        int load = wide ? Opcodes.DLOAD : Opcodes.FLOAD;
+        int store = wide ? Opcodes.DSTORE : Opcodes.FSTORE;
+        int add = wide ? Opcodes.DADD : Opcodes.FADD;
+        int sub = wide ? Opcodes.DSUB : Opcodes.FSUB;
+        int multiply = wide ? Opcodes.DMUL : Opcodes.FMUL;
+        int divide = wide ? Opcodes.DDIV : Opcodes.FDIV;
+        int remainder = wide ? Opcodes.DREM : Opcodes.FREM;
+        int negate = wide ? Opcodes.DNEG : Opcodes.FNEG;
+        int cmpl = wide ? Opcodes.DCMPL : Opcodes.FCMPL;
+        int cmpg = wide ? Opcodes.DCMPG : Opcodes.FCMPG;
+        int rightLocal = type.getSize();
+        int temporaryLocal = rightLocal + type.getSize();
+        int comparisonLocal = temporaryLocal + type.getSize();
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                wide ? "doubleScalarOps" : "floatScalarOps",
+                Type.getMethodDescriptor(Type.INT_TYPE, type, type), null, null);
+
+        method.instructions.add(new VarInsnNode(load, 0));
+        method.instructions.add(new VarInsnNode(load, rightLocal));
+        method.instructions.add(new InsnNode(add));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new InsnNode(wide ? Opcodes.DCONST_0 : Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(sub));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new InsnNode(wide ? Opcodes.DCONST_1 : Opcodes.FCONST_1));
+        method.instructions.add(new InsnNode(multiply));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        if (wide) {
+            method.instructions.add(new VarInsnNode(load, rightLocal));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.FCONST_2));
+        }
+        method.instructions.add(new InsnNode(divide));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new VarInsnNode(load, rightLocal));
+        method.instructions.add(new InsnNode(remainder));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new InsnNode(negate));
+        method.instructions.add(new VarInsnNode(store, temporaryLocal));
+
+        Number nan;
+        if (wide) {
+            nan = Double.longBitsToDouble(0x7ff8000000001234L);
+        } else {
+            nan = Float.intBitsToFloat(0x7fc01234);
+        }
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new LdcInsnNode(nan));
+        method.instructions.add(new InsnNode(cmpl));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, comparisonLocal));
+        method.instructions.add(new VarInsnNode(load, temporaryLocal));
+        method.instructions.add(new LdcInsnNode(nan));
+        method.instructions.add(new InsnNode(cmpg));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, comparisonLocal));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = comparisonLocal + 1;
+        method.maxStack = type.getSize() * 2;
+        return method;
+    }
+
+    private MethodNode floatingConversionMethod(int opcode) {
+        Type operand;
+        Type result;
+        switch (opcode) {
+            case Opcodes.I2F:
+                operand = Type.INT_TYPE;
+                result = Type.FLOAT_TYPE;
+                break;
+            case Opcodes.F2I:
+                operand = Type.FLOAT_TYPE;
+                result = Type.INT_TYPE;
+                break;
+            case Opcodes.L2F:
+                operand = Type.LONG_TYPE;
+                result = Type.FLOAT_TYPE;
+                break;
+            case Opcodes.F2L:
+                operand = Type.FLOAT_TYPE;
+                result = Type.LONG_TYPE;
+                break;
+            case Opcodes.I2D:
+                operand = Type.INT_TYPE;
+                result = Type.DOUBLE_TYPE;
+                break;
+            case Opcodes.D2I:
+                operand = Type.DOUBLE_TYPE;
+                result = Type.INT_TYPE;
+                break;
+            case Opcodes.L2D:
+                operand = Type.LONG_TYPE;
+                result = Type.DOUBLE_TYPE;
+                break;
+            case Opcodes.D2L:
+                operand = Type.DOUBLE_TYPE;
+                result = Type.LONG_TYPE;
+                break;
+            case Opcodes.F2D:
+                operand = Type.FLOAT_TYPE;
+                result = Type.DOUBLE_TYPE;
+                break;
+            case Opcodes.D2F:
+                operand = Type.DOUBLE_TYPE;
+                result = Type.FLOAT_TYPE;
+                break;
+            default:
+                throw new IllegalArgumentException("Unsupported conversion opcode " + opcode);
+        }
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "conversion" + opcode, Type.getMethodDescriptor(result, operand), null, null);
+        method.instructions.add(new VarInsnNode(operand.getOpcode(Opcodes.ILOAD), 0));
+        method.instructions.add(new InsnNode(opcode));
+        method.instructions.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = operand.getSize();
+        method.maxStack = Math.max(operand.getSize(), result.getSize());
+        return method;
+    }
+
+    private MethodNode floatingStackPhiMethod(boolean wide) {
+        Type type = wide ? Type.DOUBLE_TYPE : Type.FLOAT_TYPE;
+        int load = wide ? Opcodes.DLOAD : Opcodes.FLOAD;
+        int returnOpcode = wide ? Opcodes.DRETURN : Opcodes.FRETURN;
+        int conditionLocal = type.getSize();
+        LabelNode alternate = new LabelNode();
+        LabelNode join = new LabelNode();
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                wide ? "doublePhi" : "floatPhi",
+                Type.getMethodDescriptor(type, type, Type.INT_TYPE), null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, conditionLocal));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, alternate));
+        method.instructions.add(new VarInsnNode(load, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, join));
+        method.instructions.add(alternate);
+        method.instructions.add(new InsnNode(wide ? Opcodes.DCONST_1 : Opcodes.FCONST_1));
+        method.instructions.add(join);
+        method.instructions.add(new InsnNode(returnOpcode));
+        method.maxLocals = conditionLocal + 1;
+        method.maxStack = type.getSize();
         return method;
     }
 

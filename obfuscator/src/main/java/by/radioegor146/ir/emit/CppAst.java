@@ -66,6 +66,42 @@ public final class CppAst {
         }
     }
 
+    /**
+     * Materializes the exact JVM constant bits without relying on the host
+     * compiler's spelling or canonicalization of NaN literals.
+     */
+    public static final class FloatBitsLiteral implements Expression {
+        private final int rawBits;
+
+        public FloatBitsLiteral(int rawBits) {
+            this.rawBits = rawBits;
+        }
+
+        @Override
+        public String render() {
+            return "([]() { uint32_t bits = 0x"
+                    + String.format("%08x", rawBits)
+                    + "U; jfloat value; std::memcpy(&value, &bits, sizeof(value)); "
+                    + "return value; }())";
+        }
+    }
+
+    public static final class DoubleBitsLiteral implements Expression {
+        private final long rawBits;
+
+        public DoubleBitsLiteral(long rawBits) {
+            this.rawBits = rawBits;
+        }
+
+        @Override
+        public String render() {
+            return "([]() { uint64_t bits = 0x"
+                    + String.format("%016x", rawBits)
+                    + "ULL; jdouble value; std::memcpy(&value, &bits, sizeof(value)); "
+                    + "return value; }())";
+        }
+    }
+
     public static final class NullLiteral implements Expression {
         @Override
         public String render() {
@@ -140,6 +176,25 @@ public final class CppAst {
         @Override
         public String render() {
             return "(" + left.render() + " " + operator + " " + right.render() + ")";
+        }
+    }
+
+    public static final class Conditional implements Expression {
+        private final Expression condition;
+        private final Expression trueValue;
+        private final Expression falseValue;
+
+        public Conditional(Expression condition, Expression trueValue,
+                           Expression falseValue) {
+            this.condition = Objects.requireNonNull(condition, "condition");
+            this.trueValue = Objects.requireNonNull(trueValue, "trueValue");
+            this.falseValue = Objects.requireNonNull(falseValue, "falseValue");
+        }
+
+        @Override
+        public String render() {
+            return "(" + condition.render() + " ? " + trueValue.render()
+                    + " : " + falseValue.render() + ")";
         }
     }
 

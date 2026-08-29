@@ -93,6 +93,58 @@ public final class IrNodes {
         }
     }
 
+    public static final class FloatConst implements IrInstruction {
+        private final IrValue result;
+        private final int rawBits;
+        private final int bytecodeOffset;
+
+        public FloatConst(IrValue result, int rawBits, int bytecodeOffset) {
+            this.result = requireType(result, IrType.F32, "result");
+            this.rawBits = rawBits;
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public int getRawBits() {
+            return rawBits;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class DoubleConst implements IrInstruction {
+        private final IrValue result;
+        private final long rawBits;
+        private final int bytecodeOffset;
+
+        public DoubleConst(IrValue result, long rawBits, int bytecodeOffset) {
+            this.result = requireType(result, IrType.F64, "result");
+            this.rawBits = rawBits;
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public long getRawBits() {
+            return rawBits;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class NullReference implements IrInstruction {
         private final IrValue result;
         private final int bytecodeOffset;
@@ -514,7 +566,17 @@ public final class IrNodes {
     public static final class Conversion implements IrInstruction {
         public enum Operation {
             I2L("i2l", IrType.I32, IrType.I64),
-            L2I("l2i", IrType.I64, IrType.I32);
+            L2I("l2i", IrType.I64, IrType.I32),
+            I2F("i2f", IrType.I32, IrType.F32),
+            F2I("f2i", IrType.F32, IrType.I32),
+            L2F("l2f", IrType.I64, IrType.F32),
+            F2L("f2l", IrType.F32, IrType.I64),
+            I2D("i2d", IrType.I32, IrType.F64),
+            D2I("d2i", IrType.F64, IrType.I32),
+            L2D("l2d", IrType.I64, IrType.F64),
+            D2L("d2l", IrType.F64, IrType.I64),
+            F2D("f2d", IrType.F32, IrType.F64),
+            D2F("d2f", IrType.F64, IrType.F32);
 
             private final String mnemonic;
             private final IrType operandType;
@@ -528,6 +590,14 @@ public final class IrNodes {
 
             public String getMnemonic() {
                 return mnemonic;
+            }
+
+            public IrType getOperandType() {
+                return operandType;
+            }
+
+            public IrType getResultType() {
+                return resultType;
             }
         }
 
@@ -977,6 +1047,157 @@ public final class IrNodes {
         }
     }
 
+    public static final class FloatingBinary implements IrInstruction {
+        public enum Operation {
+            ADD("add"),
+            SUBTRACT("sub"),
+            MULTIPLY("mul"),
+            DIVIDE("div"),
+            REMAINDER("rem");
+
+            private final String suffix;
+
+            Operation(String suffix) {
+                this.suffix = suffix;
+            }
+
+            public String getMnemonic(IrType type) {
+                return (type == IrType.F32 ? "f" : "d") + suffix;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue left;
+        private final IrValue right;
+        private final int bytecodeOffset;
+
+        public FloatingBinary(IrValue result, Operation operation, IrValue left,
+                              IrValue right, int bytecodeOffset) {
+            this.operation = Objects.requireNonNull(operation, "operation");
+            IrType type = requireFloatingType(result, "result");
+            this.result = result;
+            this.left = requireType(left, type, "left");
+            this.right = requireType(right, type, "right");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class FloatingUnary implements IrInstruction {
+        private final IrValue result;
+        private final IrValue operand;
+        private final int bytecodeOffset;
+
+        public FloatingUnary(IrValue result, IrValue operand, int bytecodeOffset) {
+            IrType type = requireFloatingType(result, "result");
+            this.result = result;
+            this.operand = requireType(operand, type, "operand");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getOperand() {
+            return operand;
+        }
+
+        public String getMnemonic() {
+            return result.getType() == IrType.F32 ? "fneg" : "dneg";
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    public static final class FloatingCompare implements IrInstruction {
+        public enum NanResult {
+            LESS(-1, "l"),
+            GREATER(1, "g");
+
+            private final int value;
+            private final String suffix;
+
+            NanResult(int value, String suffix) {
+                this.value = value;
+                this.suffix = suffix;
+            }
+
+            public int getValue() {
+                return value;
+            }
+        }
+
+        private final IrValue result;
+        private final IrValue left;
+        private final IrValue right;
+        private final NanResult nanResult;
+        private final int bytecodeOffset;
+
+        public FloatingCompare(IrValue result, IrValue left, IrValue right,
+                               NanResult nanResult, int bytecodeOffset) {
+            this.result = requireI32(result, "result");
+            IrType type = requireFloatingType(left, "left");
+            this.left = left;
+            this.right = requireType(right, type, "right");
+            this.nanResult = Objects.requireNonNull(nanResult, "nanResult");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        public NanResult getNanResult() {
+            return nanResult;
+        }
+
+        public String getMnemonic() {
+            return (left.getType() == IrType.F32 ? "fcmp" : "dcmp")
+                    + nanResult.suffix;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class IntDivRem implements IrInstruction {
         public enum Operation {
             DIVIDE("idiv", "/"),
@@ -1278,9 +1499,10 @@ public final class IrNodes {
             if (value != null) {
                 IrType type = value.getType();
                 if (type != IrType.I32 && type != IrType.I64
+                        && type != IrType.F32 && type != IrType.F64
                         && type != IrType.REFERENCE) {
                     throw new IllegalArgumentException(
-                            "value must be i32, i64, or reference, got " + type);
+                            "value must be a scalar or reference, got " + type);
                 }
             }
             this.value = value;
@@ -1347,6 +1569,15 @@ public final class IrNodes {
         return requireType(value, IrType.REFERENCE, name);
     }
 
+    private static IrType requireFloatingType(IrValue value, String name) {
+        IrValue result = Objects.requireNonNull(value, name);
+        IrType type = result.getType();
+        if (type != IrType.F32 && type != IrType.F64) {
+            throw new IllegalArgumentException(name + " must be f32 or f64, got " + type);
+        }
+        return type;
+    }
+
     private static IrType fieldType(String descriptor) {
         Type type;
         try {
@@ -1361,6 +1592,12 @@ public final class IrNodes {
         if (type.getSort() == Type.LONG) {
             return IrType.I64;
         }
+        if (type.getSort() == Type.FLOAT) {
+            return IrType.F32;
+        }
+        if (type.getSort() == Type.DOUBLE) {
+            return IrType.F64;
+        }
         if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
             return IrType.REFERENCE;
         }
@@ -1373,6 +1610,12 @@ public final class IrNodes {
         }
         if (type.getSort() == Type.LONG) {
             return IrType.I64;
+        }
+        if (type.getSort() == Type.FLOAT) {
+            return IrType.F32;
+        }
+        if (type.getSort() == Type.DOUBLE) {
+            return IrType.F64;
         }
         if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
             return IrType.REFERENCE;
