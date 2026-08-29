@@ -77,9 +77,9 @@ The constructor split now covers these related prefix shapes:
   a float argument, whose leaves are declared float-argument loads,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
-  at most one `DADD`, `DSUB`, or `DMUL` level for a double argument, whose two
-  leaves are declared double-argument loads, `DCONST_0`, `DCONST_1`, or `LDC`
-  of `Double`;
+  at most one `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` level for a double
+  argument, whose two leaves are declared double-argument loads, `DCONST_0`,
+  `DCONST_1`, or `LDC` of `Double`;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -212,12 +212,13 @@ One additional family is reduced to that same shared-join form:
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
 - A double call argument may instead contain exactly one leaf-only `DADD`,
-  `DSUB`, or `DMUL`. Both operands must be matching declared-argument
-  `DLOAD`s, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`. This proof has its
-  own one-level budget: `DDIV`, `DREM`, `DNEG`, nested double binaries, and
+  `DSUB`, `DMUL`, `DDIV`, or `DREM`. Both operands must be matching
+  declared-argument `DLOAD`s, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`.
+  This proof has its own one-level budget: `DNEG`, nested double binaries, and
   extra-local double loads remain rejected. The admitted arithmetic stays in
-  the retained bytecode prefix, preserving JVM double semantics without
-  reproducing double arithmetic in C++.
+  the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
+  signed-zero, and other double semantics without reproducing double
+  arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -841,10 +842,20 @@ Synthetic bytecode unit tests in
   both double shapes through plain Java and the complete CMake/g++ JNI
   transform under `-Xverify:all -Xcheck:jni`, requiring exactly matching
   finite-value stdout.
+- `admitsThreeImmediateReturnsWithDdivAndDremOfProvenChainInputs` checks
+  leaf-only double division and remainder while retaining all three matching
+  operations, all three chain calls, two join `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateDdivDremSuperReturnsPassJvmVerification` selects all
+  three paths for both admitted opcodes and reaches each unresolved hidden
+  bridge only after the rewritten Java 8 classes pass JVM verification.
+- `threeImmediateDdivDremSuperReturnsCompileAndRunWithJavaParity` exercises
+  both double shapes through plain Java and the complete CMake/g++ JNI
+  transform under `-Xverify:all -Xcheck:jni`, requiring exactly matching
+  stdout.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps nested
-  `DADD`, extra-local double operands, and `DDIV` fail-closed without
-  constructor or hidden-method mutation. `DREM`, `DNEG`, and computed
-  reference inputs remain outside this admission increment.
+  double binaries, extra-local double operands, and `DNEG` fail-closed without
+  constructor or hidden-method mutation. Computed reference inputs remain
+  outside this admission increment.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
