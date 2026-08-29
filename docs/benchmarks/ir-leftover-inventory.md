@@ -2,12 +2,12 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `c99b1582c47a69fe631180014a67bea4a97e2192`
-- Measurement commit: `c99b1582c47a69fe631180014a67bea4a97e2192`
+- Measured compiler base (merge-base with `origin/master`): `47e35fc01d8a324a55431dee1bd00759cfa7030e`
+- Measurement commit: `47e35fc01d8a324a55431dee1bd00759cfa7030e`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge**, **not coverage-complete**, and not a behavioral/native E2E claim.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This report re-measures the post-#180 tree after constructor-split increments #170–#180 and supersedes the post-#168 inventory recorded by #169.
+- This report re-measures the post-#190 tree after increments #182–#190 added leaf arithmetic, bitwise, and shift inputs, more mixed constructor catch placements, and two- through eight-way pairwise-distinct constructor suffixes. It supersedes the post-#180 inventory recorded by #181.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
@@ -102,17 +102,19 @@ ClassicTest result from this run: **108/108 IR**, 0 legacy fallback, 0 construct
 
 ## Remaining static reject paths in current docs
 
-Zero measured leftovers in these fixtures is not a complete JVM inventory. The current project-status documentation still lists these conservative reject paths; this is not a full JVM feature matrix:
+Zero measured leftovers in these fixtures is not a complete JVM inventory. The post-#190 [current-goal](../architecture/current-goal.md) documentation still lists these conservative reject paths; this is not a full JVM feature matrix:
 
 | Static reject path | Area |
 | --- | --- |
-| Non-identity prefix `ASTORE 0` | Constructor split |
+| Non-identity prefix `ASTORE 0` / receiver-alias forwarding | Constructor split |
 | Unproven prefix → suffix jumps or switches | Constructor split |
-| Other mixed try/catch placements | Constructor split |
-| Multi-super shapes with unlisted computed inputs | Constructor split |
-| Multi-super shapes with non-identical suffixes | Constructor split |
+| Other mixed prefix/suffix try/catch placements beyond #171/#184/#187/#188 | Constructor split |
+| Nested or `IDIV` computed multi-super inputs | Constructor split |
+| Branched multi-super suffixes | Constructor split |
+| Hybrid identical-plus-distinct multi-super suffix sets | Constructor split |
+| More than eight distinct multi-super paths | Constructor split |
 | Extras unassigned on a bridge-taking path | Constructor split |
-| Unsafe or unproven `ConstantDynamic` shapes | IR frontend |
+| Unsafe or unproven `ConstantDynamic` shapes (non-static, varargs, malformed, or cyclic) | IR frontend |
 | Legacy subroutine bytecode (`jsr` / `ret`) | IR frontend |
 
 ## Next increment candidates from measured counts
