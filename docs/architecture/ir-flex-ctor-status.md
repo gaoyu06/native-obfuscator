@@ -17,7 +17,8 @@ The constructor split now covers these related prefix shapes:
   consumes the caught exception with `POP` or stores it in a safe non-receiver
   reference local with `ASTORE`, then either returns directly or uses a sole
   `GOTO` edge to an isolated prefix `RETURN`, plus exact `ATHROW` and
-  `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception;
+  `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception, for
+  both single-super and bounded path-id distinct-suffix constructors;
 - `ASTORE 0` writes whose stack input is proven to be the original constructor
   receiver, with every selected this/super call proven to consume that same
   receiver;
@@ -169,7 +170,9 @@ normalizing the suffixes to one copied join:
   locally proven argument-input families used by the bounded multi-return
   proof. Exception entries are admitted only when all three labels are before
   the first chain call, or when all three labels are wholly inside one proven
-  nonempty suffix range.
+  nonempty suffix range. A protected range wholly inside one suffix may also
+  target one of the already-proven isolated prefix handlers; the handler and
+  optional isolated return block are relocated with that suffix table.
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
   Any suffix may contain one unary `IFxx` over a direct declared int-family
   `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
@@ -194,7 +197,9 @@ normalizing the suffixes to one copied join:
   retain the existing `IFNE` dispatch. Three or more paths use a `TABLESWITCH`
   over the exact `0..n-1` range and an explicit `ACONST_NULL; ATHROW` default.
   A wholly-in-one-suffix try/catch entry is cloned with that range and owned by
-  this independent body. Prefix-only entries stay on the bytecode wrapper.
+  this independent body. A proven isolated prefix handler and its optional
+  return block are appended to that body before its table is copied.
+  Prefix-only entries stay on the bytecode wrapper.
   The source constructor retains its prefix and every chain call; each path
   loads the receiver, declared arguments, and proven extras in packed
   local-index order, then pushes its path id and invokes the same hidden bridge
@@ -216,11 +221,11 @@ candidates, unproven or suffix-only extra-local accesses, and path-selected
 per-call suffix sets above the bounded eight-call rule also remain rejected.
 Multi-call tables remain rejected when their labels mix prefix and suffix,
 span suffixes, cover a chain call, use a handler after the last suffix, or use
-a suffix range with a relocated prefix handler. All-identical suffix sets that
-do not match the straight-line one-join normalizer, non-identity `ASTORE 0`
-aliasing, and other unlisted catch forms remain rejected. This is intentionally
-a narrow set of proven constructor split forms, not a general multi-exit
-constructor rewriter.
+an unproven prefix handler. The identical-copy one-join normalizer still admits
+prefix-only tables only. All-identical suffix sets that do not match that
+normalizer, non-identity `ASTORE 0` aliasing, and other unlisted catch forms
+remain rejected. This is intentionally a narrow set of proven constructor
+split forms, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -322,17 +327,22 @@ Try/catch entries are classified independently and fail closed:
 - For the bounded two-to-eight-call path-selected form, an all-suffix entry is
   admitted only when start, end, and handler all belong to the same proven
   suffix range. It is remapped into the independent IR body as that range is
-  appended. Entries spanning two suffixes, covering a chain call, or placing a
-  handler after the final suffix fail before constructor mutation.
+  appended. A start/end pair in one such suffix may instead target any of the
+  same exact isolated prefix-handler forms above. That handler and its optional
+  isolated return block are cloned into the independent body, while the table
+  and handler are omitted from the wrapper. Entries spanning two suffixes,
+  covering a chain call, or placing a handler after the final suffix fail
+  before constructor mutation.
 - For both the path-selected form and identical-copy normalization, an entry
   whose three labels all precede the first chain call stays entirely in the
   retained wrapper. Identical-copy normalization admits no suffix entry because
   its earlier copies are removed.
-- The relocatable suffix-range/prefix-handler family remains single-super; it
-  is not admitted for multi-call constructors.
+- Relocatable suffix-range/prefix-handler entries are admitted for single-super
+  and bounded two-to-eight path-id distinct-suffix constructors. They remain
+  rejected for identical-copy normalization.
 - Every other mixed placement is rejected, including a prefix protected range
   with a suffix handler and any suffix protected range with a prefix handler
-  that does not match one of the two isolated return forms.
+  that does not match one of the six proven isolated handler forms.
   The hidden bridge is outside every admitted prefix protected range, so native
   suffix exceptions cannot enter a bytecode handler before the bridge.
 
@@ -549,6 +559,17 @@ Synthetic bytecode unit tests in
 - `suffixOnlyDistinctMultiSuperTryCatchCompilesAndRunsWithJavaParity` exercises
   normal and caught `IDIV` paths in one suffix plus the unchanged sibling
   suffix under `java -Xverify:all`, requiring identical stdout.
+- `admitsRelocatedPrefixReturnHandlersOnTwoDistinctSuffixes` proves both
+  `POP; RETURN` and safe `ASTORE n; RETURN` handlers move from the retained
+  prefix into the path-id IR body with their one-suffix table, while two wrapper
+  call sites continue to target one hidden bridge.
+- `rejectsRelocatedPrefixHandlerSpanningDistinctSuffixesBeforeMutation` keeps
+  the otherwise-relocatable handler fail-closed when its protected range spans
+  two suffixes.
+- `relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity`
+  exercises normal and caught `IDIV` paths plus the sibling path id through the
+  complete CMake/g++ JNI transform under `java -Xverify:all`, requiring
+  identical stdout.
 - `rejectsUnprovenThreeDistinctSuffixShapesBeforeMutation` and
   `rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation` keep
   standalone-`GOTO`, skip-super, method-end-handler exception-table, and
@@ -721,9 +742,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 242 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 245 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 249 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 252 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
