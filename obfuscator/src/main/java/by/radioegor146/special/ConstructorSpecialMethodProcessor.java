@@ -44,7 +44,7 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
-    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 2;
+    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 3;
     private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
@@ -2267,7 +2267,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Proves a long operand with a bounded number of binary levels. Long shifts
      * consume an int-family count leaf after their recursively proven long
      * value; the other admitted binaries recursively prove both long operands.
-     * Every binary descent consumes one level from the separate long budget.
+     * Every binary descent consumes one level from the separate three-level
+     * long budget, so four-or-more nested long binaries remain rejected.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
