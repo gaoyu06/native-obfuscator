@@ -216,6 +216,7 @@ public class NativePrimitivesIntegrationTest {
         try (JarOutputStream output =
                      new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
             writeClass(output, NativePrimitivesVerifier.class);
+            writeClass(output, NativePrimitivesVerifier.ThrowingRunnable.class);
             writeClass(output, NativeStringsBenchmark.class);
             writeClass(output, NativePrimitives.class);
             writeClass(output, NativeStrings.class);

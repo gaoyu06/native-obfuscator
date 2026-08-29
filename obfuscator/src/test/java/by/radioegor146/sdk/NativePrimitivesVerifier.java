@@ -352,7 +352,7 @@ public final class NativePrimitivesVerifier {
         }
     }
 
-    private interface ThrowingRunnable {
+    interface ThrowingRunnable {
         void run() throws Exception;
     }
 }
