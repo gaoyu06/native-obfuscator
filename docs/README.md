@@ -10,7 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#125. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#136. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -22,7 +22,9 @@ with an older brief.
 | [architecture/ir-compiler.md](architecture/ir-compiler.md) | Typed CFG IR (implemented on master as `--codegen=ir`; original “docs only” header is historical) |
 | [architecture/ir-examples.md](architecture/ir-examples.md) | Teaching examples, not a dump of current emitter output |
 | [architecture/ir-migration-plan.md](architecture/ir-migration-plan.md) | Historical migration rationale; IR path now exists |
-| [architecture/ir-phase19-status.md](architecture/ir-phase19-status.md) | Latest IR increment on master (long bitwise + shifts) |
+| [architecture/ir-phase20-status.md](architecture/ir-phase20-status.md) | Latest IR increment on master (`LDIV`/`LREM`/`LNEG`) |
+| [reviews/ir-phase20-sol.md](reviews/ir-phase20-sol.md) / [reviews/ir-phase20-fable.md](reviews/ir-phase20-fable.md) | Independent accepts of phase 20 |
+| [architecture/ir-phase19-status.md](architecture/ir-phase19-status.md) | Long bitwise + shifts |
 | [architecture/ir-p19-jdk21-integration.md](architecture/ir-p19-jdk21-integration.md) | How #128 and #126 were combined |
 | [architecture/ir-phase18-status.md](architecture/ir-phase18-status.md) | Primitive arrays + `MULTIANEWARRAY` |
 | [architecture/ir-jdk17-runtime-fix.md](architecture/ir-jdk17-runtime-fix.md) | Classfile version, indy packaging, `invokeExact` trampolines |
@@ -67,7 +69,8 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 | Document | Notes |
 | --- | --- |
 | [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + legacy + IR) |
-| [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Current-master three-mode bench; only `string-concat-hash` stayed fully IR |
+| [benchmarks/results-ir-vs-legacy-phase19.md](benchmarks/results-ir-vs-legacy-phase19.md) | Latest three-mode bench (all three kernels on IR; one VM). Fable accept-with-nits: [reviews/bench-ir-phase19-fable.md](reviews/bench-ir-phase19-fable.md) |
+| [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Pre-phase-19 three-mode bench; only `string-concat-hash` stayed fully IR |
 | [benchmarks/ir-admission-phase18-corpus.md](benchmarks/ir-admission-phase18-corpus.md) | Latest admission tables (ClassicTest 108/108 IR; JDK 17 36/36 admit; JDK 21 extra 36/38) |
 | [benchmarks/results-local.md](benchmarks/results-local.md) | Early local JVM vs JNI numbers |
 | [benchmarks/results-ir-vs-legacy.md](benchmarks/results-ir-vs-legacy.md) | IR vs legacy vs JVM (local) |

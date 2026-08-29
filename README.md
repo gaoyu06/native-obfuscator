@@ -10,12 +10,12 @@ The tool still ships a **legacy** snippet-based generator as the CLI default. `m
 
 ## Current status
 
-Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings [#120](https://github.com/gaoyu06/native-obfuscator/pull/120)–[#125](https://github.com/gaoyu06/native-obfuscator/pull/125). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#136](https://github.com/gaoyu06/native-obfuscator/pull/136). Details: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
 | Default generator | `legacy` (snippet / `cppsnippets.properties`) |
-| Opt-in IR | `--codegen=ir` — typed CFG, per-method fallback to legacy when a construct is unsupported |
+| Opt-in IR | `--codegen=ir` — typed CFG through phase 20 (`LDIV`/`LREM`/`LNEG`). Per-method fallback to legacy when a construct is unsupported |
 | Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
 | Java baseline | Historical README claim remains: **Java 8 is the only version this project has ever called fully supported.** 9+ and Android stay experimental |
 | JDK 17 IR fixtures | 11 `--release 17` programs matched HotSpot stdout on **one** Linux x86-64 VM under `--codegen=ir`. That is not a product “supports JDK 17” badge |
@@ -23,9 +23,9 @@ Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/p
 | ClassicTest IR admission | 108/108 methods admitted on the phase-18 corpus (admission ≠ behavioral E2E) |
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
 | Interpreter | `--backend=interpreter` default off (`cpp`). Static `int` ISA v2 (add/sub/mul/bitwise/shift/neg/div/rem). Not a protection product |
-| Shared evaluator | `--ir-lower=eval` remains a sibling stack; **not** on current `master` |
+| Shared evaluator | `--ir-lower=eval` is **not** on current `master` ([#137](https://github.com/gaoyu06/native-obfuscator/pull/137) is the open port) |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
-| Performance | Native output can be much slower than HotSpot. No global “faster than Java” claim. Prefer a whitelist |
+| Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). All three kernels stayed on IR on one VM. Not a portable speedup. Prefer a whitelist |
 
 Use a blacklist/whitelist. Transpiling a whole application JAR (for example a game client) is usually the wrong default.
 

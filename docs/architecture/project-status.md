@@ -1,9 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after landing [#120](https://github.com/gaoyu06/native-obfuscator/pull/120)–[#125](https://github.com/gaoyu06/native-obfuscator/pull/125),
-[#127](https://github.com/gaoyu06/native-obfuscator/pull/127), and
-[#129](https://github.com/gaoyu06/native-obfuscator/pull/129)
-(phase 19 + JDK 21 E2E) on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) tree.
+Last updated after landing [#132](https://github.com/gaoyu06/native-obfuscator/pull/132)–[#136](https://github.com/gaoyu06/native-obfuscator/pull/136)
+(post-phase-19 bench + IR phase 20 `LDIV`/`LREM`/`LNEG` and their reviews)
+on the post-[#118](https://github.com/gaoyu06/native-obfuscator/pull/118) tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -16,12 +15,15 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
 - **Legacy generator (default).** Snippet substitution through
   `cppsnippets.properties` remains the CLI and API default (`--codegen=legacy`).
 - **Opt-in IR.** `--codegen=ir` lowers admitted methods through a typed CFG
-  (i32 / i64 / f32 / f64 / reference) to structured C++/JNI. Phase 19
-  ([#128](https://github.com/gaoyu06/native-obfuscator/pull/128) via
-  [#129](https://github.com/gaoyu06/native-obfuscator/pull/129)) adds
-  `LAND`/`LOR`/`LXOR` and `LSHL`/`LSHR`/`LUSHR`. Unsupported methods fall
-  back per-method. Rejected constructors are restored from the original
-  class bytes so indy preprocessor markers are not left in output.
+  (i32 / i64 / f32 / f64 / reference) to structured C++/JNI. Phase 19 adds
+  `LAND`/`LOR`/`LXOR` and `LSHL`/`LSHR`/`LUSHR`. Phase 20
+  ([#134](https://github.com/gaoyu06/native-obfuscator/pull/134); Sol accept
+  [#135](https://github.com/gaoyu06/native-obfuscator/pull/135); Fable
+  accept-with-nits [#136](https://github.com/gaoyu06/native-obfuscator/pull/136))
+  adds `LDIV`/`LREM`/`LNEG` via dedicated `LongDivRem` / `LongUnary` nodes.
+  Unsupported methods fall back per-method. Rejected constructors are restored
+  from the original class bytes so indy preprocessor markers are not left in
+  output.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
   and `PermittedSubclasses` attributes are no longer dropped by stamping 52.
@@ -58,6 +60,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 `docs/benchmarks/ir-jdk17-e2e-phase17.md`,
 `docs/benchmarks/results-ir-eval-lower.md`,
 `docs/benchmarks/results-ir-vs-legacy-master.md`,
+`docs/benchmarks/results-ir-vs-legacy-phase19.md`,
 `docs/benchmarks/ir-jdk17-e2e-corpus.md`.
 
 | Measurement | Result | Must not be read as |
@@ -69,7 +72,9 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Same five fixtures after the runtime repair (#115 / Sol rerun) | 5/5 stdout parity on one Linux x86-64 VM | Product JDK 17 support |
 | Expanded JDK 17 IR E2E (#123) | 11/11 stdout parity, 82/82 IR admit, one Linux x86-64 VM (OpenJDK 21 host, `--release 17`) | “JDK 17 supported” |
 | JDK 21 IR E2E (#126 via #129) | 6/6 stdout parity, 47/47 IR after local-type split, one Linux VM | “JDK 21 supported” |
-| Current-master bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | A portable speedup. After #129 those two leftovers admit as IR; **timings were not re-run** |
+| Pre-phase-19 bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | Post-phase-19 IR timings. Kept as the pre-phase-19 record |
+| Post-phase-19 bench (#132; Fable accept-with-nits #133) | Same harness on `76ebedd`; all three kernels stayed fully IR (four `// IR codegen:` markers; zero fallback log lines). File: `results-ir-vs-legacy-phase19.md` | A portable speedup or “native beats HotSpot” |
+| Phase-20 focused tests (#134) | 97 `IrCompilerTest` + 5 `CodegenModeTest` = 102 | A complete compiler test suite |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -83,7 +88,9 @@ These stacks **conflict with the phase-18 + #124 `NativeObfuscator` line**.
 Their documents and reader/bench notes are in-tree; the compiler flags they
 describe are **not** on current `master`.
 
-- Shared evaluator (`--ir-lower=eval`), PRs #42–#87
+- Shared evaluator (`--ir-lower=eval`): old sibling PRs #42–#87, plus the
+  current-master port [#137](https://github.com/gaoyu06/native-obfuscator/pull/137)
+  (open; not landed here)
 - Older opcode interpreter / compact encoding / link-only output, PRs #17–#28
   (superseded as a *first increment* by #124; those sibling flags are still
   not the current CLI)
@@ -108,9 +115,8 @@ describe are **not** on current `master`.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Port the evaluator onto the current IR+interpreter tip, or keep it archived.
+- Land or reject the current-master `--ir-lower=eval` port (#137) after review.
 - Widen the interpreter beyond the static `int` slice (long ops, objects).
-- Re-measure #122 kernels now that `LUSHR`/`LXOR` admit (do not back-fill).
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
