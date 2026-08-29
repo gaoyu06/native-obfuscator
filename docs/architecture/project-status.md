@@ -15,9 +15,12 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
 - **Legacy generator (default).** Snippet substitution through
   `cppsnippets.properties` remains the CLI and API default (`--codegen=legacy`).
 - **Opt-in IR.** `--codegen=ir` lowers admitted methods through a typed CFG
-  (i32 / i64 / f32 / f64 / reference) to structured C++/JNI. Unsupported
-  methods fall back per-method. Rejected constructors are restored from the
-  original class bytes so indy preprocessor markers are not left in output.
+  (i32 / i64 / f32 / f64 / reference) to structured C++/JNI. Phase 19
+  ([#128](https://github.com/gaoyu06/native-obfuscator/pull/128) via
+  [#129](https://github.com/gaoyu06/native-obfuscator/pull/129)) adds
+  `LAND`/`LOR`/`LXOR` and `LSHL`/`LSHR`/`LUSHR`. Unsupported methods fall
+  back per-method. Rejected constructors are restored from the original
+  class bytes so indy preprocessor markers are not left in output.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
   and `PermittedSubclasses` attributes are no longer dropped by stamping 52.
@@ -64,7 +67,8 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | IR-mode E2E of those five fixtures on phase 17 (#112) | 5/5 CMake, **0/5** native (crashes) | Anything other than “admission ≠ behavior” |
 | Same five fixtures after the runtime repair (#115 / Sol rerun) | 5/5 stdout parity on one Linux x86-64 VM | Product JDK 17 support |
 | Expanded JDK 17 IR E2E (#123) | 11/11 stdout parity, 82/82 IR admit, one Linux x86-64 VM (OpenJDK 21 host, `--release 17`) | “JDK 17 supported” |
-| Current-master bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | A portable speedup or a pure-IR timing for every kernel |
+| JDK 21 IR E2E (#126 via #129) | 6/6 stdout parity, 47/47 IR after local-type split, one Linux VM | “JDK 21 supported” |
+| Current-master bench (#122) | 5 warmup / 10 samples; only `string-concat-hash` stayed fully IR; `integer-loop` LUSHR fallback; `recursion` mixed | A portable speedup. After #129 those two leftovers admit as IR; **timings were not re-run** |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -105,9 +109,7 @@ describe are **not** on current `master`.
 
 - Port the evaluator onto the current IR+interpreter tip, or keep it archived.
 - Widen the interpreter beyond the static `int` slice (long ops, objects).
-- Land [#128](https://github.com/gaoyu06/native-obfuscator/pull/128) (`LUSHR` /
-  `LXOR`) and [#126](https://github.com/gaoyu06/native-obfuscator/pull/126)
-  (JDK 21 E2E + local-type fix); they overlap `AsmToIr.java`.
+- Re-measure #122 kernels now that `LUSHR`/`LXOR` admit (do not back-fill).
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答

@@ -22,7 +22,9 @@ with an older brief.
 | [architecture/ir-compiler.md](architecture/ir-compiler.md) | Typed CFG IR (implemented on master as `--codegen=ir`; original “docs only” header is historical) |
 | [architecture/ir-examples.md](architecture/ir-examples.md) | Teaching examples, not a dump of current emitter output |
 | [architecture/ir-migration-plan.md](architecture/ir-migration-plan.md) | Historical migration rationale; IR path now exists |
-| [architecture/ir-phase18-status.md](architecture/ir-phase18-status.md) | Latest IR increment on master (primitive arrays + `MULTIANEWARRAY`) |
+| [architecture/ir-phase19-status.md](architecture/ir-phase19-status.md) | Latest IR increment on master (long bitwise + shifts) |
+| [architecture/ir-p19-jdk21-integration.md](architecture/ir-p19-jdk21-integration.md) | How #128 and #126 were combined |
+| [architecture/ir-phase18-status.md](architecture/ir-phase18-status.md) | Primitive arrays + `MULTIANEWARRAY` |
 | [architecture/ir-jdk17-runtime-fix.md](architecture/ir-jdk17-runtime-fix.md) | Classfile version, indy packaging, `invokeExact` trampolines |
 | [reviews/ir-phase18-sol.md](reviews/ir-phase18-sol.md) / [reviews/ir-phase18-fable.md](reviews/ir-phase18-fable.md) | Independent accepts of phase 18 (docs-only) |
 | [reviews/ir-jdk17-runtime-fix-sol.md](reviews/ir-jdk17-runtime-fix-sol.md) / [reviews/ir-jdk17-runtime-fix-fable.md](reviews/ir-jdk17-runtime-fix-fable.md) | Sol reject+fix, then Fable accept of the runtime-fix tip |
@@ -46,6 +48,7 @@ that every phase is a separate product.
 
 | Document | Notes |
 | --- | --- |
+| [benchmarks/ir-jdk21-e2e-corpus.md](benchmarks/ir-jdk21-e2e-corpus.md) | 6-fixture IR behavioral E2E on one VM; not a JDK 21 badge |
 | [benchmarks/ir-jdk17-e2e-corpus.md](benchmarks/ir-jdk17-e2e-corpus.md) | 11-fixture IR behavioral E2E on one VM; not a support badge |
 | [audit/jdk17-e2e-status.md](audit/jdk17-e2e-status.md) | Legacy-path JDK 17 harness |
 | [audit/jdk21-25-e2e-status.md](audit/jdk21-25-e2e-status.md) / [audit/jdk25-e2e-status.md](audit/jdk25-e2e-status.md) | Extra fixtures; not “JDK 25 supported” |
