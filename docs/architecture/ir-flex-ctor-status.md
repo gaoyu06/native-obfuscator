@@ -45,8 +45,10 @@ The constructor split now covers these related prefix shapes:
 - between two and eight reachable direct this/super calls whose separate
   nonempty straight-line suffixes end in `RETURN` and are pairwise not
   instruction-identical, when every call consumes the original `ALOAD 0`
-  receiver and only locally proven chain arguments; every retained path calls
-  one hidden bridge with a trailing constant path id; and
+  receiver and only locally proven chain arguments; prefix-assigned extras read
+  by those suffixes must have one compatible type on every bridge-taking path,
+  and every retained path calls one hidden bridge with a trailing constant path
+  id; and
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
@@ -157,22 +159,25 @@ without normalizing the suffixes to one copied join:
   bounded multi-return proof.
 - Each call must fall through to its own nonempty straight-line suffix ending
   in immediate `RETURN`. Labels, branches, switches, throws, nested
-  constructor calls, and suffix accesses to extra locals are rejected. The
-  suffix ranges may not overlap, the final range must end at method end, and
-  every pair of suffixes must be instruction-distinct. Fully identical copies
-  continue to use the existing normalization above; a mixture containing an
-  identical pair remains rejected rather than combining join normalization
-  with path selection.
+  constructor calls, and unproven extra-local accesses are rejected. A suffix
+  may load a prefix-assigned extra only when the extra has one exact compatible
+  primitive/reference carrier on every path that reaches any hidden-bridge
+  invocation. The suffix ranges may not overlap, the final range must end at
+  method end, and every pair of suffixes must be instruction-distinct. Fully
+  identical copies continue to use the existing normalization above; a mixture
+  containing an identical pair remains rejected rather than combining join
+  normalization with path selection.
 - The independent IR method appends one `int` parameter. It first branches on
   that path id, then contains every proven suffix instruction range. Two paths
   retain the existing `IFNE` dispatch. Three or more paths use a `TABLESWITCH`
   over the exact `0..n-1` range and an explicit `ACONST_NULL; ATHROW` default.
   The source constructor retains its prefix and every chain call; each path
-  loads the receiver and declared arguments, pushes its path id, and invokes
-  the same hidden bridge exactly once.
+  loads the receiver, declared arguments, and proven extras in packed
+  local-index order, then pushes its path id and invokes the same hidden bridge
+  exactly once.
 - The trailing selector occupies the first slot after all declared constructor
-  parameters. The proof rejects suffix extra-local access and therefore does
-  not reuse a live extra slot, receiver slot, or category-2 parameter slot.
+  parameters and packed extras. It therefore does not reuse a live extra slot,
+  receiver slot, or category-2 parameter slot.
 
 Three-or-more calls with extra-local or aliased chain inputs, nested binary
 expressions (including nested bitwise and shift forms), `IDIV`, `IREM`, other
@@ -182,9 +187,9 @@ any other unlisted input remain rejected. Distinct joins, other conditional or
 switch forms, condition/switch-key loads that are not direct declared
 int-family arguments, labels or control flow in a copied suffix, nonempty
 exception tables for the post-chain forms, zero-call paths, unreachable
-candidates, extra-local suffix reads, partly identical suffix sets, and
-pairwise-distinct per-call suffixes above the bounded eight-call rule also
-remain rejected.
+candidates, unproven or suffix-only extra-local accesses, partly identical
+suffix sets, and pairwise-distinct per-call suffixes above the bounded
+eight-call rule also remain rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
 multi-exit constructor rewriter.
 
@@ -222,6 +227,10 @@ Prefix stores into non-parameter locals are classified separately:
   cannot reach the suffix load or bridge. A missing bridge-path assignment or
   incompatible store family is rejected by `split()` before bridge or C++
   mutation, with the local index in the diagnostic.
+- For pairwise-distinct suffixes, the same proof checks the incoming local state
+  at every chain call that is followed by a bridge invocation. An assignment on
+  only some bridge-taking paths is rejected; an immediate-return sibling that
+  does not invoke the bridge remains outside this requirement.
 - The independent suffix descriptor and hidden static bridge append the extra
   parameters in increasing local-index order. The wrapper loads them from their
   original local indexes after loading the receiver and declared constructor
@@ -409,6 +418,18 @@ Synthetic bytecode unit tests in
   paths through plain Java and the complete CMake/g++ JNI transform under
   `java -Xverify:all -Xcheck:jni`, requiring the same path-specific field
   values.
+- `admitsTwoDistinctSuffixesWithProvenPrefixExtra` checks that both suffixes
+  read the same definitely assigned extra, the independent descriptor places
+  it before the trailing path-id `int`, and both wrapper sites call one hidden
+  bridge.
+- `rewrittenTwoDistinctSuffixesWithExtraPassJvmVerification` verifies both
+  rewritten wrapper paths up to the unresolved bridge.
+- `twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity` writes
+  extra-dependent values on both suffix paths and compares plain Java with the
+  CMake/g++ JNI run under `java -Xverify:all -Xcheck:jni`.
+- `rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation` checks that
+  assigning the extra on only one of two bridge-taking paths fails before a
+  hidden method is allocated.
 - `admitsThreeSuperCallsWithDistinctStraightLineSuffixes` proves three
   pairwise-distinct field-writing suffixes produce one `TABLESWITCH`-selected
   independent IR body, three exclusive calls to the same hidden bridge, and
@@ -424,8 +445,8 @@ Synthetic bytecode unit tests in
   and four invocations of one hidden bridge.
 - `rejectsUnprovenThreeDistinctSuffixShapesBeforeMutation` and
   `rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation` keep partly
-  identical, branched, skip-super, exception-table, and extra-local variants
-  fail-closed.
+  identical, branched, skip-super, exception-table, and unproven suffix-only
+  extra-local variants fail-closed.
 - `admitsMultipleSuperWithImmediateSeparateReturns` proves that an immediate
   `RETURN` after each of exactly two chain calls creates a `RETURN`-only native
   body and normalizes to one retained wrapper join and one hidden bridge.

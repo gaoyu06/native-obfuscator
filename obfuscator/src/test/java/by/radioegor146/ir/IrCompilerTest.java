@@ -1691,6 +1691,56 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsTwoDistinctSuffixesWithProvenPrefixExtra() {
+        ClassNode owner = constructorOwner(
+                "example/TwoSuffixExtra", "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                twoDistinctSuffixesWithProvenPrefixExtraConstructor(
+                        owner.name, owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(III)V", nativeBody.desc);
+        assertEquals(Arrays.asList(3, 2, 2),
+                variableIndexes(nativeBody, Opcodes.ILOAD));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(2, hiddenBridgeCallCount(constructor));
+        assertEquals(
+                "(Ljava/lang/Object;III)V",
+                context.proxyMethod.getMethodNode().desc);
+        java.util.List<MethodInsnNode> bridges = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .collect(Collectors.toList());
+        assertEquals(2, bridges.size());
+        assertEquals(1L, bridges.stream()
+                .map(invoke -> invoke.owner + "." + invoke.name + invoke.desc)
+                .distinct().count());
+        for (MethodInsnNode bridge : bridges) {
+            assertTrue(bridge.getPrevious().getOpcode() >= Opcodes.ICONST_0
+                    && bridge.getPrevious().getOpcode() <= Opcodes.ICONST_1);
+            assertEquals(Opcodes.ILOAD,
+                    bridge.getPrevious().getPrevious().getOpcode());
+            assertEquals(2, ((VarInsnNode)
+                    bridge.getPrevious().getPrevious()).var);
+        }
+    }
+
+    @Test
     public void admitsThreeSuperCallsWithDistinctStraightLineSuffixes() {
         ClassNode owner = constructorOwner(
                 "example/ThreeDistinctSuffixes",
@@ -2015,7 +2065,7 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation() {
         for (String shape :
-                Arrays.asList("branch", "exception-table", "extra-local")) {
+                Arrays.asList("branch", "exception-table")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedTwoSuffix"
                             + shape.replace("-", ""),
@@ -2046,6 +2096,37 @@ public class IrCompilerTest {
             assertEquals(opcodes, realOpcodes(constructor), shape);
             assertTrue(context.proxyMethod == null, shape);
         }
+    }
+
+    @Test
+    public void rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedUnassignedTwoSuffixExtra",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                twoDistinctSuffixesWithUnassignedBridgeExtraConstructor(
+                        owner.name, owner.superName);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertTrue(error.getMessage().contains(
+                "is not definitely assigned on every path reaching "
+                        + "a distinct-suffix bridge"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -2668,6 +2749,48 @@ public class IrCompilerTest {
         assertEquals(2, hiddenBridgeCallCount(constructor));
         assertEquals(
                 "(Ljava/lang/Object;II)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenTwoDistinctSuffixesWithExtraPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedTwoSuffixExtraBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedTwoSuffixExtra", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                twoDistinctSuffixesWithProvenPrefixExtraConstructor(
+                        owner.name, base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int value : new int[]{7, -7}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(value));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(2, hiddenBridgeCallCount(constructor));
+        assertEquals(
+                "(Ljava/lang/Object;III)V",
                 context.proxyMethod.getMethodNode().desc);
     }
 
@@ -3642,6 +3765,98 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native two-suffix multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the two-suffix extra runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the two-suffix extra runtime test");
+
+        String ownerName = "example/TwoSuffixExtraRuntime";
+        String baseName = "example/TwoSuffixExtraRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-two-suffix-extra-run");
+        Path inputJar = directory.resolve("two-suffix-extra.jar");
+        Path outputDirectory = directory.resolve("output");
+        createTwoDistinctSuffixExtraJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain two-suffix extra Java run");
+        assertEquals(
+                "7" + System.lineSeparator()
+                        + "-4" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(2, hiddenBridgeCallCount(transformedConstructor));
+        java.util.List<MethodInsnNode> bridges = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .collect(Collectors.toList());
+        assertEquals(2, bridges.size());
+        assertEquals(1L, bridges.stream()
+                .map(invoke -> invoke.owner + "." + invoke.name + invoke.desc)
+                .distinct().count());
+        assertEquals("(Ljava/lang/Object;III)V", bridges.get(0).desc);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("two-suffix extra CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("two-suffix extra CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Two-suffix extra native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native two-suffix extra Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -9077,6 +9292,37 @@ public class IrCompilerTest {
         }
     }
 
+    private void createTwoDistinctSuffixExtraJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                twoDistinctSuffixesWithFieldExtraConstructor(
+                        ownerName, baseName));
+        owner.methods.add(twoDifferentSuffixMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeDistinctSuffixJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -10592,6 +10838,100 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode twoDistinctSuffixesWithProvenPrefixExtraConstructor(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDifferentSuffixConstructor(owner, superName);
+        java.util.List<MethodInsnNode> calls = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .collect(Collectors.toList());
+        InsnList assigned = new InsnList();
+        assigned.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        assigned.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.insert(assigned);
+        for (MethodInsnNode call : calls) {
+            InsnList read = new InsnList();
+            read.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            read.add(new InsnNode(Opcodes.POP));
+            method.instructions.insert(call, read);
+        }
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode twoDistinctSuffixesWithUnassignedBridgeExtraConstructor(
+            String owner, String superName) {
+        MethodNode method =
+                multipleSuperDifferentSuffixConstructor(owner, superName);
+        java.util.List<MethodInsnNode> calls = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESPECIAL
+                        && "<init>".equals(invoke.name)
+                        && superName.equals(invoke.owner))
+                .collect(Collectors.toList());
+        InsnList assigned = new InsnList();
+        assigned.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        assigned.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.insertBefore(
+                calls.get(0).getPrevious().getPrevious(), assigned);
+        for (MethodInsnNode call : calls) {
+            InsnList read = new InsnList();
+            read.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            read.add(new InsnNode(Opcodes.POP));
+            method.instructions.insert(call, read);
+        }
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode twoDistinctSuffixesWithFieldExtraConstructor(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
     private MethodNode rejectedTwoDifferentSuffixConstructor(
             String owner, String superName, String shape) {
         MethodNode method =
@@ -10622,18 +10962,6 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.ATHROW));
             method.tryCatchBlocks.add(new TryCatchBlockNode(
                     start, end, handler, "java/lang/Throwable"));
-        } else if ("extra-local".equals(shape)) {
-            InsnList assigned = new InsnList();
-            assigned.add(new VarInsnNode(Opcodes.ILOAD, 1));
-            assigned.add(new VarInsnNode(Opcodes.ISTORE, 2));
-            method.instructions.insert(assigned);
-            for (MethodInsnNode call : calls) {
-                InsnList read = new InsnList();
-                read.add(new VarInsnNode(Opcodes.ILOAD, 2));
-                read.add(new InsnNode(Opcodes.POP));
-                method.instructions.insert(call, read);
-            }
-            method.maxLocals = 3;
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
         }
