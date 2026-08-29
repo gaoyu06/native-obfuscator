@@ -6,6 +6,7 @@ import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
 import by.radioegor146.Util;
 import by.radioegor146.special.ClInitSpecialMethodProcessor;
+import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import by.radioegor146.special.DefaultSpecialMethodProcessor;
 import by.radioegor146.special.SpecialMethodProcessor;
 import org.objectweb.asm.Opcodes;
@@ -277,7 +278,7 @@ public final class MethodShellEmitter {
     private SpecialMethodProcessor getSpecialMethodProcessor(String name) {
         switch (name) {
             case "<init>":
-                return null;
+                return new ConstructorSpecialMethodProcessor();
             case "<clinit>":
                 return new ClInitSpecialMethodProcessor();
             default:

@@ -1,6 +1,8 @@
 package by.radioegor146.ir;
 
+import by.radioegor146.CodegenMode;
 import by.radioegor146.MethodContext;
+import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
@@ -223,6 +225,119 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->CallNonvirtualVoidMethod"));
         assertTrue(cpp.contains("env->CallIntMethod"));
         assertTrue(cpp.contains("env->ExceptionCheck()"));
+    }
+
+    @Test
+    public void admitsSimpleConstructorOnlyForIrAndKeepsGetterOnIr() {
+        MethodNode constructor = intFieldConstructor();
+        ClassNode owner = constructorOwner("example/Math", "java/lang/Object");
+
+        assertFalse(MethodProcessor.shouldProcess(constructor));
+        assertFalse(MethodProcessor.shouldProcess(constructor, CodegenMode.LEGACY));
+        assertTrue(MethodProcessor.shouldProcess(constructor, CodegenMode.IR));
+
+        IrMethod completeIr = frontend.build(owner.name, constructor);
+        assertEquals(IrType.VOID, completeIr.getReturnType());
+        assertEquals(IrType.REFERENCE, completeIr.getParameters().get(0).getType());
+        NativeObfuscator completeObfuscator = new NativeObfuscator();
+        String completeCpp = emitter.emitBody(completeIr,
+                new MethodContext(completeObfuscator, constructor, 0, owner, 0));
+        assertTrue(completeCpp.contains("env->CallNonvirtualVoidMethod"));
+        assertTrue(completeCpp.contains("env->SetIntField"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext constructorContext =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        IrMethodCompiler compiler =
+                new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+        compiler.processMethod(constructorContext);
+
+        String constructorCpp = constructorContext.output.toString();
+        assertTrue(constructorCpp.contains(
+                "void JNICALL __ngen_special_init_0_0(JNIEnv *env, "
+                        + "jobject ignored_hidden, jobject obj, jint arg0)"));
+        assertTrue(constructorCpp.contains(
+                "// IR codegen: example/Math.<init>(I)V"));
+        assertTrue(constructorCpp.contains("env->SetIntField(obj"));
+        assertTrue(constructorCpp.contains("if (env->ExceptionCheck())"));
+        assertTrue(constructorCpp.contains("return;"));
+        assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
+        assertTrue(constructorContext.proxyMethod != null);
+        assertTrue((constructorContext.proxyMethod.getMethodNode().access
+                & Opcodes.ACC_NATIVE) != 0);
+        assertEquals(Arrays.asList(Opcodes.ALOAD, Opcodes.INVOKESPECIAL,
+                        Opcodes.ALOAD, Opcodes.ILOAD, Opcodes.INVOKESTATIC,
+                        Opcodes.RETURN),
+                realOpcodes(constructor));
+
+        MethodNode getter = intFieldGetter();
+        MethodContext getterContext =
+                new MethodContext(obfuscator, getter, 1, owner, 0);
+        compiler.processMethod(getterContext);
+        assertTrue(getterContext.output.toString().contains(
+                "// IR codegen: example/Math.getValue()I"));
+        assertTrue(getterContext.output.toString().contains("env->GetIntField(obj"));
+        assertTrue((getter.access & Opcodes.ACC_NATIVE) != 0);
+    }
+
+    @Test
+    public void lowersSubclassAndReferenceFieldConstructorBodies() {
+        ClassNode subclass = constructorOwner("example/Child", "example/Base");
+        MethodNode subclassConstructor = subclassConstructor();
+        IrMethod subclassIr = frontend.build(subclass.name, subclassConstructor);
+        NativeObfuscator fullObfuscator = new NativeObfuscator();
+        String fullCpp = emitter.emitBody(subclassIr,
+                new MethodContext(fullObfuscator, subclassConstructor, 0, subclass, 0));
+        assertTrue(fullCpp.contains("env->CallNonvirtualVoidMethod(obj"));
+        assertTrue(fullCpp.contains("env->SetLongField(obj"));
+
+        NativeObfuscator subclassObfuscator = new NativeObfuscator();
+        MethodContext subclassContext = new MethodContext(
+                subclassObfuscator, subclassConstructor, 0, subclass, 0);
+        new IrMethodCompiler(new MethodShellEmitter(subclassObfuscator))
+                .processMethod(subclassContext);
+        assertTrue(subclassContext.output.toString().contains("env->SetLongField(obj"));
+        assertFalse(subclassContext.output.toString().contains("cstack"));
+        assertEquals("example/Base",
+                ((MethodInsnNode) subclassConstructor.instructions.get(2)).owner);
+        assertEquals(Opcodes.INVOKESPECIAL,
+                subclassConstructor.instructions.get(2).getOpcode());
+        assertTrue(realOpcodes(subclassConstructor).contains(Opcodes.INVOKESTATIC));
+
+        ClassNode holder = constructorOwner("example/Holder", "java/lang/Object");
+        MethodNode referenceConstructor = referenceFieldConstructor();
+        NativeObfuscator referenceObfuscator = new NativeObfuscator();
+        MethodContext referenceContext = new MethodContext(
+                referenceObfuscator, referenceConstructor, 0, holder, 0);
+        new IrMethodCompiler(new MethodShellEmitter(referenceObfuscator))
+                .processMethod(referenceContext);
+        String referenceCpp = referenceContext.output.toString();
+        assertEquals(2, countOccurrences(referenceCpp, "env->SetObjectField"));
+        assertTrue(referenceCpp.contains("arg0"));
+        assertTrue(referenceCpp.contains("arg1"));
+    }
+
+    @Test
+    public void rejectsUnsupportedConstructorBeforeAnyMutation() {
+        MethodNode constructor = unsupportedConstructor();
+        ClassNode owner = constructorOwner("example/Unsupported", "java/lang/Object");
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -1218,7 +1333,8 @@ public class IrCompilerTest {
                         "Ljava/lang/Object;", Opcodes.ALOAD, Opcodes.ARETURN),
                 staticFieldRoundTripMethod(
                         "staticArrayField", "[I", Opcodes.ALOAD, Opcodes.ARETURN),
-                nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod()
+                nullReceiverGetFieldMethod(), nullReceiverPutFieldMethod(),
+                intFieldConstructor(), referenceFieldConstructor()
         };
         StringBuilder generatedFunctions = new StringBuilder();
         for (int i = 0; i < methods.length; i++) {
@@ -1326,6 +1442,8 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->GetStaticObjectField"));
         assertTrue(source.contains("env->SetStaticObjectField"));
         assertTrue(source.contains("env->IsInstanceOf(arg0"));
+        assertTrue(source.contains("IR codegen: example/Math.<init>(I)V"));
+        assertTrue(source.contains("jobject ignored_hidden, jobject obj"));
         assertTrue(source.contains("uint64_t"));
         assertTrue(source.contains("(jlong)"));
         assertFalse(source.contains("juint"));
@@ -1363,7 +1481,36 @@ public class IrCompilerTest {
         ClassNode owner = new ClassNode(Opcodes.ASM9);
         owner.name = "example/Math";
         owner.access = Opcodes.ACC_PUBLIC;
+        owner.superName = "java/lang/Object";
         return owner;
+    }
+
+    private ClassNode constructorOwner(String name, String superName) {
+        ClassNode owner = new ClassNode(Opcodes.ASM9);
+        owner.name = name;
+        owner.superName = superName;
+        owner.access = Opcodes.ACC_PUBLIC;
+        return owner;
+    }
+
+    private java.util.List<Integer> realOpcodes(MethodNode method) {
+        java.util.List<Integer> opcodes = new java.util.ArrayList<>();
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions) {
+            if (instruction.getOpcode() >= 0) {
+                opcodes.add(instruction.getOpcode());
+            }
+        }
+        return opcodes;
+    }
+
+    private int countOccurrences(String value, String needle) {
+        int count = 0;
+        int position = 0;
+        while ((position = value.indexOf(needle, position)) >= 0) {
+            count++;
+            position += needle.length();
+        }
+        return count;
     }
 
     private String assertFieldRoundTrip(MethodNode method, IrType expectedType,
@@ -1697,6 +1844,85 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 0;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode intFieldConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Math", "value", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode intFieldGetter() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "getValue", "()I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "example/Math", "value", "I"));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode subclassConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(IJ)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "example/Base", "<init>", "(I)V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Child", "value", "J"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 4;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode referenceFieldConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;[I)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Holder", "objectValue", "Ljava/lang/Object;"));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                "example/Holder", "arrayValue", "[I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode unsupportedConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
         return method;
     }
 

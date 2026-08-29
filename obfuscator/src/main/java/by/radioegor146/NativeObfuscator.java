@@ -215,8 +215,9 @@ public class NativeObfuscator {
                     classReader.accept(rawClassNode, 0);
 
                     if (!classMethodFilter.shouldProcess(rawClassNode) ||
-                        rawClassNode.methods.stream().noneMatch(method -> MethodProcessor.shouldProcess(method) &&
-                                                                          classMethodFilter.shouldProcess(rawClassNode, method))) {
+                        rawClassNode.methods.stream().noneMatch(method ->
+                                MethodProcessor.shouldProcess(method, selectedCodegen) &&
+                                classMethodFilter.shouldProcess(rawClassNode, method))) {
                         logger.info("Skipping {}", rawClassNode.name);
                         if (useAnnotations) {
                             ClassMethodFilter.cleanAnnotations(rawClassNode);
@@ -238,7 +239,8 @@ public class NativeObfuscator {
                     logger.info("Preprocessing {}", rawClassNode.name);
 
                     rawClassNode.methods.stream()
-                            .filter(MethodProcessor::shouldProcess)
+                            .filter(method -> MethodProcessor.shouldProcess(
+                                    method, selectedCodegen))
                             .filter(methodNode -> classMethodFilter.shouldProcess(rawClassNode, methodNode))
                             .forEach(methodNode -> PreprocessorRunner.preprocess(rawClassNode, methodNode, platform));
 
@@ -270,7 +272,7 @@ public class NativeObfuscator {
                         for (int i = 0; i < classNode.methods.size(); i++) {
                             MethodNode method = classNode.methods.get(i);
 
-                            if (!MethodProcessor.shouldProcess(method)) {
+                            if (!MethodProcessor.shouldProcess(method, selectedCodegen)) {
                                 continue;
                             }
 
@@ -283,6 +285,13 @@ public class NativeObfuscator {
                                 try {
                                     irMethodCompiler.processMethod(context);
                                 } catch (UnsupportedIrConstructException ex) {
+                                    if ("<init>".equals(method.name)) {
+                                        logger.info("IR codegen unsupported for {}#{}{}: {}; "
+                                                        + "leaving constructor bytecode unchanged",
+                                                classNode.name, method.name, method.desc,
+                                                ex.getMessage());
+                                        continue;
+                                    }
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
                                                     + "falling back to legacy for this method",
                                             classNode.name, method.name, method.desc,
@@ -475,6 +484,10 @@ public class NativeObfuscator {
     }
 
     public HiddenMethodsPool getHiddenMethodsPool() {
+        if (hiddenMethodsPool == null) {
+            hiddenMethodsPool = new HiddenMethodsPool(
+                    (nativeDir == null ? "native0" : nativeDir) + "/hidden");
+        }
         return hiddenMethodsPool;
     }
 }

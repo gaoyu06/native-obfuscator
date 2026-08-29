@@ -81,9 +81,13 @@ public class MethodProcessor {
     }
 
     public static boolean shouldProcess(MethodNode method) {
+        return shouldProcess(method, CodegenMode.LEGACY);
+    }
+
+    public static boolean shouldProcess(MethodNode method, CodegenMode codegenMode) {
         return !Util.getFlag(method.access, Opcodes.ACC_ABSTRACT) &&
                 !Util.getFlag(method.access, Opcodes.ACC_NATIVE) &&
-                !method.name.equals("<init>");
+                (!method.name.equals("<init>") || codegenMode == CodegenMode.IR);
     }
 
     public static String getClassGetter(MethodContext context, String desc) {
