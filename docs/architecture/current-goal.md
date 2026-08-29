@@ -53,10 +53,10 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #177 (remaining post-chain int compares) include at
+   `master` after #178 (post-chain constructor switches) include at
    least: remaining constructor-split rejects (non-identity prefix
-   `ASTORE 0` / receiver-alias forwarding, other prefix→suffix
-   jumps/switches such as tableswitch/lookupswitch, other mixed
+   `ASTORE 0` / receiver-alias forwarding, unproven prefix→suffix
+   jumps/switches, other mixed
    prefix/suffix try/catch placements, remaining multi-super shapes
    such as computed chain inputs, post-call work, or non-identical
    suffixes, extras still unassigned on a bridge-taking path),
