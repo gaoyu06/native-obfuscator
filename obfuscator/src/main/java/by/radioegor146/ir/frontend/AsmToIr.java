@@ -66,7 +66,8 @@ public final class AsmToIr {
         DefiniteLocals definiteLocals = computeDefiniteLocals(method, shape, graph, reachable);
 
         IrMethod irMethod = new IrMethod(owner, method.name, method.desc,
-                shape.staticMethod, shape.returnType);
+                shape.staticMethod, (method.access & Opcodes.ACC_SYNCHRONIZED) != 0,
+                shape.returnType);
         IrValue[] entryLocals = createParameters(irMethod, method, shape);
 
         Map<CfgBuilder.Block, IrBlock> irBlocks = new LinkedHashMap<>();
@@ -154,6 +155,7 @@ public final class AsmToIr {
 
         connectPhis(graph, reachable, inputs, outputs, irBlocks);
         propagateReferenceDescriptors(irMethod);
+        MonitorStructureValidator.validate(irMethod);
         return irMethod;
     }
 
@@ -257,6 +259,8 @@ public final class AsmToIr {
                                 || isArrayLoad(opcode)
                                 || isArrayStore(opcode)
                                 || opcode == Opcodes.ARRAYLENGTH
+                                || opcode == Opcodes.MONITORENTER
+                                || opcode == Opcodes.MONITOREXIT
                                 || opcode == Opcodes.ATHROW
                                 || opcode == Opcodes.IRETURN
                                 || opcode == Opcodes.LRETURN
@@ -677,6 +681,8 @@ public final class AsmToIr {
         } else if (isArrayStore(opcode)) {
             popType(stack, arrayType(opcode).getElementType(), instruction);
             popType(stack, IrType.I32, instruction);
+            popType(stack, IrType.REFERENCE, instruction);
+        } else if (opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT) {
             popType(stack, IrType.REFERENCE, instruction);
         } else if (opcode == Opcodes.ATHROW) {
             popType(stack, IrType.REFERENCE, instruction);
@@ -1224,6 +1230,14 @@ public final class AsmToIr {
                 block.addInstruction(new IrNodes.ArrayLength(result, array,
                         instruction.getOriginalIndex(), instruction.getSourceLine()));
                 state.stack.add(result);
+            } else if (opcode == Opcodes.MONITORENTER) {
+                block.addInstruction(new IrNodes.MonitorEnter(
+                        pop(state, IrType.REFERENCE, instruction),
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
+            } else if (opcode == Opcodes.MONITOREXIT) {
+                block.addInstruction(new IrNodes.MonitorExit(
+                        pop(state, IrType.REFERENCE, instruction),
+                        instruction.getOriginalIndex(), instruction.getSourceLine()));
             } else if (isArrayLoad(opcode)) {
                 IrValue index = pop(state, IrType.I32, instruction);
                 IrValue array = pop(state, IrType.REFERENCE, instruction);

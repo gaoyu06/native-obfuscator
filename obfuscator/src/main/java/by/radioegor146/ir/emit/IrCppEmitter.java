@@ -66,6 +66,9 @@ public final class IrCppEmitter {
                 }
             }
         }
+        if (method.isSynchronizedMethod()) {
+            statements.addAll(emitSynchronizedEnter(method));
+        }
 
         for (IrBlock block : method.getBlocks()) {
             statements.add(new CppAst.Label(label(block)));
@@ -203,6 +206,14 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.InstanceOf) {
             return emitInstanceOf(method, block, (IrNodes.InstanceOf) instruction, context);
+        }
+        if (instruction instanceof IrNodes.MonitorEnter) {
+            return emitMonitorEnter(method, block, (IrNodes.MonitorEnter) instruction,
+                    context);
+        }
+        if (instruction instanceof IrNodes.MonitorExit) {
+            return emitMonitorExit(method, block, (IrNodes.MonitorExit) instruction,
+                    context);
         }
         if (instruction instanceof IrNodes.GetField) {
             return emitGetField(method, block, (IrNodes.GetField) instruction, context);
@@ -934,6 +945,30 @@ public final class IrCppEmitter {
         return statements;
     }
 
+    private List<CppAst.Statement> emitMonitorEnter(IrMethod method, IrBlock block,
+                                                    IrNodes.MonitorEnter monitor,
+                                                    MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, monitor.getMonitor(), "MONITORENTER npe",
+                monitor.getSourceLine(), context, block));
+        statements.add(new CppAst.If(monitorOperationFailed("MonitorEnter",
+                expression(monitor.getMonitor())),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        return statements;
+    }
+
+    private List<CppAst.Statement> emitMonitorExit(IrMethod method, IrBlock block,
+                                                   IrNodes.MonitorExit monitor,
+                                                   MethodContext context) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(nullCheck(method, monitor.getMonitor(), "MONITOREXIT npe",
+                monitor.getSourceLine(), context, block));
+        statements.add(new CppAst.If(monitorOperationFailed("MonitorExit",
+                expression(monitor.getMonitor())),
+                new CppAst.Block(exceptionalExit(method, block)), null));
+        return statements;
+    }
+
     private List<CppAst.Statement> emitGetField(IrMethod method, IrBlock block,
                                                 IrNodes.GetField field,
                                                 MethodContext context) {
@@ -1296,6 +1331,26 @@ public final class IrCppEmitter {
                 new CppAst.If(cacheMissing, new CppAst.Block(initializeClass), null)));
     }
 
+    private List<CppAst.Statement> emitSynchronizedEnter(IrMethod method) {
+        return Collections.<CppAst.Statement>singletonList(new CppAst.If(
+                monitorOperationFailed("MonitorEnter", synchronizedMonitor(method)),
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                        defaultReturn(method))), null));
+    }
+
+    private CppAst.Expression synchronizedMonitor(IrMethod method) {
+        return variable(method.isStaticMethod() ? "clazz" : "obj");
+    }
+
+    private CppAst.Expression monitorOperationFailed(String operation,
+                                                     CppAst.Expression monitor) {
+        CppAst.Expression failedStatus = new CppAst.Binary(
+                memberCall("env", operation, monitor), "!=", new CppAst.IntLiteral(0));
+        CppAst.Expression pendingException = new CppAst.Binary(
+                memberCall("env", "ExceptionCheck"), "!=", new CppAst.IntLiteral(0));
+        return new CppAst.Binary(failedStatus, "||", pendingException);
+    }
+
     private CppAst.Statement nullCheck(IrMethod method, IrValue receiver, String error,
                                        int sourceLine, MethodContext context,
                                        IrBlock block) {
@@ -1338,7 +1393,30 @@ public final class IrCppEmitter {
         return statements;
     }
 
-    private CppAst.Return earlyReturn(IrMethod method) {
+    private CppAst.Statement earlyReturn(IrMethod method) {
+        if (!method.isSynchronizedMethod()) {
+            return defaultReturn(method);
+        }
+        CppAst.Variable savedException = variable("synchronized_exception");
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(new CppAst.Declaration("jthrowable", "synchronized_exception",
+                memberCall("env", "ExceptionOccurred")));
+        statements.add(new CppAst.ExpressionStatement(
+                memberCall("env", "ExceptionClear")));
+        statements.add(new CppAst.If(
+                monitorOperationFailed("MonitorExit", synchronizedMonitor(method)),
+                new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                        defaultReturn(method))), null));
+        statements.add(new CppAst.If(new CppAst.Binary(savedException, "!=",
+                new CppAst.NullLiteral()), new CppAst.Block(
+                Collections.<CppAst.Statement>singletonList(
+                        new CppAst.ExpressionStatement(
+                                memberCall("env", "Throw", savedException)))), null));
+        statements.add(defaultReturn(method));
+        return new CppAst.Block(statements);
+    }
+
+    private CppAst.Return defaultReturn(IrMethod method) {
         CppAst.Expression defaultValue;
         if (method.getReturnType() == IrType.VOID) {
             defaultValue = null;
@@ -1428,6 +1506,12 @@ public final class IrCppEmitter {
                 } else if (value.getType() == IrType.I32) {
                     returned = narrowIntCarrier(returnType, returned);
                 }
+            }
+            if (method.isSynchronizedMethod()) {
+                statements.add(new CppAst.If(
+                        monitorOperationFailed("MonitorExit", synchronizedMonitor(method)),
+                        new CppAst.Block(Collections.<CppAst.Statement>singletonList(
+                                defaultReturn(method))), null));
             }
             statements.add(new CppAst.Return(returned));
             return;

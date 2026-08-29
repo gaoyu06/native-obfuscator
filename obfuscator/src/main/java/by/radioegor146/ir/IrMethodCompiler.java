@@ -11,6 +11,7 @@ import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
 import by.radioegor146.special.ConstructorSpecialMethodProcessor;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.Objects;
@@ -56,11 +57,20 @@ public final class IrMethodCompiler {
                     context.clazz, context.method);
         }
         IrMethod method = frontend.build(context.clazz.name, bytecodeBody);
-        MethodLoweringStrategy strategy = Objects.requireNonNull(
-                loweringMode, "loweringMode") == IrLoweringMode.EVAL
+        IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
+        if (selectedMode == IrLoweringMode.EVAL && method.isSynchronizedMethod()) {
+            throw new UnsupportedIrConstructException(
+                    "Evaluator lowering does not support synchronized methods");
+        }
+        MethodLoweringStrategy strategy = selectedMode == IrLoweringMode.EVAL
                 ? evaluatorStrategy : directStrategy;
         LoweredMethod lowered = strategy.lower(method, new LoweringContext(context));
 
+        if (method.isSynchronizedMethod()) {
+            // The IR body owns the method monitor explicitly. Clear the JVM
+            // access flag only after frontend and lowering validation succeed.
+            context.method.access &= ~Opcodes.ACC_SYNCHRONIZED;
+        }
         MethodShellEmitter.Shell shell = shellEmitter.beginIr(context);
         context.output.append(lowered.getBody());
         shellEmitter.finishIr(context, shell);
