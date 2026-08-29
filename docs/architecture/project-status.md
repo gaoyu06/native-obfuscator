@@ -1,17 +1,18 @@
 # Project status on master / master 现状
 
-Last updated after landing interpreter exception dispatch
-[#150](https://github.com/gaoyu06/native-obfuscator/pull/150)
-(Sol accept
-[#151](https://github.com/gaoyu06/native-obfuscator/pull/151))
-on the post-[#148](https://github.com/gaoyu06/native-obfuscator/pull/148)
-ISA v4 tree.
-This page is the current public status. It does not complete the original
-production goal and must not be read as a support matrix. The long
-maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
-now includes the pre-landing #108–#117 notes; it is still not this page.
+Last updated after the 2026-08-29 goal reset
+([current-goal.md](current-goal.md)):
+migrate every method body onto typed CFG IR, then delete the legacy
+snippet path. Tree snapshot is still the post-[#150](https://github.com/gaoyu06/native-obfuscator/pull/150)
+interpreter-exception landing
+(Sol accept [#151](https://github.com/gaoyu06/native-obfuscator/pull/151)).
+This page is the current public status. It must not be read as a support
+matrix. The long maintainer brief in
+[goal-status-and-options.md](goal-status-and-options.md) is historical.
 
-本页是当前公开现状。原生产目标仍未完成，也不能当成支持矩阵。
+本页是当前公开现状。现行目标见
+[current-goal.md](current-goal.md)：先把方法体全部迁到 IR，再废弃
+legacy。不能当成 JDK 支持矩阵。
 
 ## What landed / 已落地
 
@@ -141,32 +142,46 @@ tree. Close them as superseded, do not merge.
 
 ## Defaults and policies that remain / 仍然有效的默认与政策
 
-1. Do not flip the default off `legacy` or `direct`.
+1. Do not flip `--codegen` off `legacy` (or `--ir-lower` off `direct`)
+   until IR no longer needs per-method snippet fallback for the methods
+   the product intends to support. The approved *destination* is then to
+   flip the default to `ir` and delete the legacy path (D7).
 2. Do not publish “supports JDK 17/21/25” from admission counts or five fixtures.
 3. Do not claim a general native speedup versus HotSpot.
-4. Do not treat reader “mix not recovered” on DCE as success. Requirement 7
-   (resist unaided Sol-class recovery of critical logic) is **unmet**.
+4. The old requirement-7 reader bar is historical and unmet. Do not
+   launch another encoding-tweak reader. It is not the active goal.
 5. Keep #53’s eval median as `N/A`.
-6. Option A in older briefs is a v1 *recommendation* only. The written
-   production goal is unchanged and incomplete.
+6. Option A in older briefs is historical. The active goal is
+   [current-goal.md](current-goal.md), not the eight-requirement write-up.
 
-默认 `legacy` 不要改。不要用接纳率或五个用例宣称 JDK 支持。需求 7 未满足。
-#53 的 eval 中位数保持 `N/A`。完整书面目标仍未完成。
+在 IR 覆盖完成前不要改默认 `legacy`。不要用接纳率或五个用例宣称 JDK
+支持。#53 的 eval 中位数保持 `N/A`。现行目标尚未完成。
 
-## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
+## Suggested next engineering / 后续工程
 
-- Admit `LCMP` (and remaining IR leftovers such as `IF_ACMPEQ`) so fewer
-  methods fall back to legacy.
-- Widen the interpreter to `NEW` / invoke / fields.
+Active-goal work (IR admission, then default flip, then legacy deletion):
+
+- Admit remaining IR leftovers so methods stop falling back:
+  `LCMP`, `IF_ACMPEQ` / `IF_ACMPNE`, `invokedynamic` / condy / MethodHandle
+  `LDC`, monitors / synchronized, leftover constructor-split rejects,
+  `jsr` / `ret`.
+- After coverage: reversible `--codegen` default flip to `ir`, soak,
+  then delete `Snippets` / `cppsnippets.properties` / string-concat
+  handlers.
+
+Not a substitute for the active goal:
+
+- Interpreter and evaluator remain default-off side paths.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #150/#151 (interpreter
-  exception dispatch). / 落地 #150/#151 之后的现状刷新。
+- **(a) Scope / 范围:** Record the IR-complete / retire-legacy goal
+  reset. / 记录“IR 覆盖完整并废弃 legacy”的目标调整。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
-- **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
-  into the README. / 是，确认 README 没有写成产品支持。
-- **(d) Preconditions / 前置条件:** Cite only committed measurement files;
-  keep `legacy` default; do not mark the production goal complete. /
-  只引用已提交的测量文件；保持 `legacy`；不要把生产目标标成完成。
+- **(c) Review / 是否需要审查？** Yes — check that no support badge
+  leaked and that the CLI default was not flipped. /
+  是，确认 README 没有写成产品支持，也没有改掉默认值。
+- **(d) Preconditions / 前置条件:** Cite only committed measurement
+  files; do not mark the new goal complete. /
+  只引用已提交的测量文件；不要把新目标标成完成。

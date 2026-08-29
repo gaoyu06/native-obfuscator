@@ -1,9 +1,12 @@
 # IR Migration Plan
 
 > **Historical plan.** The IR path it describes is on `master` as
-> `--codegen=ir` (default still `legacy`). Later phase notes and
+> `--codegen=ir` (default still `legacy`). Later phase notes,
+> [current-goal.md](current-goal.md), and
 > [project-status.md](project-status.md) supersede the original PR-slicing
-> schedule. This file is kept as the migration rationale, not as current
+> schedule. PR-9 (legacy deletion) is now the **approved destination**,
+> not an optional afterthought; it still must wait for IR coverage.
+> This file is kept as the migration rationale, not as current
 > “not implemented” status.
 
 Companion to [`ir-compiler.md`](./ir-compiler.md) (the design) and

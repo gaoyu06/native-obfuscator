@@ -10,6 +10,7 @@ with an older brief.
 
 | Document | Language | What it is |
 | --- | --- | --- |
+| [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Active goal: IR-complete codegen, then delete legacy. |
 | [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#151. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |

@@ -7,8 +7,10 @@
 > [#119](https://github.com/gaoyu06/native-obfuscator/pull/119) (`e997d71`).
 > That landing folded **both** the phase-18 array tip (#114) and the JDK 17
 > runtime-fix tip (#115); the “do not auto-merge #114 and #115” sentence
-> below is pre-landing advice. Read [project-status.md](project-status.md)
-> for what is on `master` now. Sentences below that say `master` still has
+> below is pre-landing advice. Read [current-goal.md](current-goal.md)
+> for the active engineering goal and
+> [project-status.md](project-status.md) for what is on `master` now.
+> Sentences below that say `master` still has
 > none of PRs #1–#117 are **write-time** claims, not current tree state.
 > Numbers remain named-branch evidence, not current-master CI.
 
