@@ -1125,8 +1125,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a bounded multi-call form whose nonempty linear suffixes are
-     * pairwise different. Every call site keeps locally visible
+     * Proves a bounded multi-call form whose nonempty suffixes are pairwise
+     * different. A suffix may be straight-line, or (for exactly two calls)
+     * contain one proven int-family conditional whose closed, forward CFG
+     * reaches only RETURN. Every call site keeps locally visible
      * receiver/argument inputs, and every complete path reaches RETURN after
      * exactly one call. The independent body receives one trailing int
      * selector after any proven prefix extra-local parameters.
@@ -1140,17 +1142,21 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         List<LinearSuffix> suffixes = new ArrayList<>();
+        boolean hasBranchedSuffix = false;
         for (int i = 0; i < callIndexes.size(); i++) {
             LinearSuffix suffix =
-                    linearSuffix(constructor, callIndexes.get(i));
-            if (suffix == null || suffix.endIndex - suffix.startIndex <= 1
+                    boundedDistinctSuffix(constructor, callIndexes.get(i));
+            if (suffix == null || executableInstructionCount(
+                    constructor, suffix) <= 1
                     || (i + 1 < callIndexes.size()
                     && suffix.endIndex > callIndexes.get(i + 1))) {
                 return null;
             }
             suffixes.add(suffix);
+            hasBranchedSuffix |= containsJump(constructor, suffix);
         }
-        if (suffixes.get(suffixes.size() - 1).endIndex
+        if (hasBranchedSuffix && callIndexes.size() != 2
+                || suffixes.get(suffixes.size() - 1).endIndex
                 != constructor.instructions.size()
                 || !hasDirectDeclaredChainInputs(constructor, callIndexes)
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
@@ -1158,7 +1164,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         for (int i = 0; i < suffixes.size(); i++) {
             for (int j = i + 1; j < suffixes.size(); j++) {
-                if (sameLinearSuffix(
+                if (sameBoundedSuffix(
                         constructor, suffixes.get(i), suffixes.get(j))) {
                     return null;
                 }
@@ -1179,6 +1185,231 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 constructor.instructions.size(), true);
         return new DistinctSuffix(
                 new ArrayList<>(callIndexes), suffixes);
+    }
+
+    /**
+     * Finds the complete CFG reachable immediately after one chain call.
+     * Conditional targets must stay forward in the resulting range, all
+     * executable instructions in that range must be reachable, and every
+     * path must terminate with RETURN.
+     */
+    private static LinearSuffix boundedDistinctSuffix(
+            MethodNode constructor, int callIndex) {
+        int startIndex = callIndex + 1;
+        int instructionCount = constructor.instructions.size();
+        if (startIndex >= instructionCount) {
+            return null;
+        }
+
+        Map<LabelNode, Integer> labelIndexes = labelIndexes(constructor);
+        boolean[] reached = new boolean[instructionCount];
+        ArrayDeque<Integer> pending = new ArrayDeque<>();
+        List<Integer> conditionalBranches = new ArrayList<>();
+        List<Integer> gotos = new ArrayList<>();
+        pending.add(startIndex);
+        int endIndex = startIndex;
+        boolean reachesReturn = false;
+
+        while (!pending.isEmpty()) {
+            int index = pending.removeFirst();
+            if (index < startIndex || index >= instructionCount) {
+                return null;
+            }
+            if (reached[index]) {
+                continue;
+            }
+            reached[index] = true;
+            endIndex = Math.max(endIndex, index + 1);
+
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(index);
+            int opcode = instruction.getOpcode();
+            if (opcode == Opcodes.RETURN) {
+                reachesReturn = true;
+                continue;
+            }
+            if (isReturn(opcode) || opcode == Opcodes.ATHROW
+                    || opcode == Opcodes.JSR || opcode == Opcodes.RET
+                    || instruction instanceof TableSwitchInsnNode
+                    || instruction instanceof LookupSwitchInsnNode) {
+                return null;
+            }
+            if (instruction instanceof JumpInsnNode) {
+                JumpInsnNode jump = (JumpInsnNode) instruction;
+                Integer targetIndex = labelIndexes.get(jump.label);
+                if (targetIndex == null || targetIndex < startIndex
+                        || targetIndex <= index) {
+                    return null;
+                }
+                if (opcode == Opcodes.GOTO) {
+                    gotos.add(index);
+                } else if (isUnaryIntCompare(opcode)
+                        || isBinaryIntCompare(opcode)) {
+                    conditionalBranches.add(index);
+                    if (conditionalBranches.size() > 1
+                            || index + 1 >= instructionCount) {
+                        return null;
+                    }
+                    pending.add(index + 1);
+                } else {
+                    return null;
+                }
+                pending.add(targetIndex);
+                continue;
+            }
+            if (opcode >= 0 && !isComparableLinearInstruction(instruction)) {
+                return null;
+            }
+            if (index + 1 >= instructionCount) {
+                return null;
+            }
+            pending.add(index + 1);
+        }
+
+        if (!reachesReturn) {
+            return null;
+        }
+        for (int i = startIndex; i < endIndex; i++) {
+            if (constructor.instructions.get(i).getOpcode() >= 0
+                    && !reached[i]) {
+                return null;
+            }
+        }
+        if (conditionalBranches.isEmpty()) {
+            if (!gotos.isEmpty()) {
+                return null;
+            }
+        } else {
+            if (!hasProvenDistinctSuffixCondition(
+                    constructor, startIndex, conditionalBranches.get(0))) {
+                return null;
+            }
+            for (Integer gotoIndex : gotos) {
+                JumpInsnNode jump = (JumpInsnNode)
+                        constructor.instructions.get(gotoIndex);
+                int targetIndex = labelIndexes.get(jump.label);
+                int targetExecutable =
+                        firstExecutableIndex(constructor, targetIndex);
+                if (targetExecutable >= endIndex
+                        || constructor.instructions.get(targetExecutable)
+                        .getOpcode() != Opcodes.RETURN) {
+                    return null;
+                }
+            }
+        }
+        return new LinearSuffix(startIndex, endIndex);
+    }
+
+    private static boolean hasProvenDistinctSuffixCondition(
+            MethodNode constructor, int suffixStart, int branchIndex) {
+        AbstractInsnNode branch = constructor.instructions.get(branchIndex);
+        int rightIndex =
+                previousExecutableIndex(constructor, branchIndex - 1);
+        if (rightIndex < suffixStart) {
+            return false;
+        }
+        AbstractInsnNode right = constructor.instructions.get(rightIndex);
+        if (isUnaryIntCompare(branch.getOpcode())) {
+            return isDistinctSuffixIntLoad(constructor, right);
+        }
+        if (!isBinaryIntCompare(branch.getOpcode())
+                || !isDistinctSuffixIntInput(constructor, right)) {
+            return false;
+        }
+        int leftIndex =
+                previousExecutableIndex(constructor, rightIndex - 1);
+        return leftIndex >= suffixStart
+                && isDistinctSuffixIntLoad(
+                constructor, constructor.instructions.get(leftIndex));
+    }
+
+    private static boolean isDistinctSuffixIntInput(
+            MethodNode constructor, AbstractInsnNode instruction) {
+        return isDistinctSuffixIntLoad(constructor, instruction)
+                || isIntFamilyConstant(instruction);
+    }
+
+    private static boolean isDistinctSuffixIntLoad(
+            MethodNode constructor, AbstractInsnNode instruction) {
+        if (instruction.getOpcode() != Opcodes.ILOAD) {
+            return false;
+        }
+        int local = ((VarInsnNode) instruction).var;
+        return isDeclaredIntArgument(constructor, local)
+                || local >= firstExtraLocal(constructor);
+    }
+
+    private static int executableInstructionCount(
+            MethodNode constructor, LinearSuffix suffix) {
+        int count = 0;
+        for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
+            if (constructor.instructions.get(i).getOpcode() >= 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean containsJump(
+            MethodNode constructor, LinearSuffix suffix) {
+        for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
+            if (constructor.instructions.get(i) instanceof JumpInsnNode) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sameBoundedSuffix(
+            MethodNode constructor, LinearSuffix left, LinearSuffix right) {
+        List<Integer> leftInstructions =
+                executableIndexes(constructor, left);
+        List<Integer> rightInstructions =
+                executableIndexes(constructor, right);
+        if (leftInstructions.size() != rightInstructions.size()) {
+            return false;
+        }
+        Map<LabelNode, Integer> labelIndexes = labelIndexes(constructor);
+        for (int i = 0; i < leftInstructions.size(); i++) {
+            AbstractInsnNode leftInstruction =
+                    constructor.instructions.get(leftInstructions.get(i));
+            AbstractInsnNode rightInstruction =
+                    constructor.instructions.get(rightInstructions.get(i));
+            if (leftInstruction instanceof JumpInsnNode
+                    || rightInstruction instanceof JumpInsnNode) {
+                if (!(leftInstruction instanceof JumpInsnNode)
+                        || !(rightInstruction instanceof JumpInsnNode)
+                        || leftInstruction.getOpcode()
+                        != rightInstruction.getOpcode()) {
+                    return false;
+                }
+                int leftTarget = firstExecutableIndex(
+                        constructor, labelIndexes.get(
+                                ((JumpInsnNode) leftInstruction).label));
+                int rightTarget = firstExecutableIndex(
+                        constructor, labelIndexes.get(
+                                ((JumpInsnNode) rightInstruction).label));
+                if (leftInstructions.indexOf(leftTarget)
+                        != rightInstructions.indexOf(rightTarget)) {
+                    return false;
+                }
+            } else if (!sameLinearInstruction(
+                    leftInstruction, rightInstruction)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static List<Integer> executableIndexes(
+            MethodNode constructor, LinearSuffix suffix) {
+        List<Integer> indexes = new ArrayList<>();
+        for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
+            if (constructor.instructions.get(i).getOpcode() >= 0) {
+                indexes.add(i);
+            }
+        }
+        return indexes;
     }
 
     private static LinearSuffix linearSuffix(
