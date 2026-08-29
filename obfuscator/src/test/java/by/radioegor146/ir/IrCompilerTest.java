@@ -86,6 +86,10 @@ public class IrCompilerTest {
             "nested-iand", "nested-ior", "nested-ixor",
             "nested-ishl", "nested-ishr", "nested-iushr"
     };
+    private static final String[] NESTED_DIV_REM_CHAIN_INPUT_SHAPES = {
+            "idiv-inner", "irem-inner", "nested-idiv", "nested-irem",
+            "idiv-over-idiv", "three-level-div-rem-mix"
+    };
 
     private final AsmToIr frontend = new AsmToIr();
     private final IrCppEmitter emitter = new IrCppEmitter();
@@ -3526,6 +3530,47 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsNestedIdivIremWithinThreeLevelChainInputs() {
+        for (String shape : NESTED_DIV_REM_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/NestedDivRem"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    threeImmediateReturnsConstructorWithShape(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(I)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertTrue(realOpcodes(constructor).contains(Opcodes.IDIV)
+                            || realOpcodes(constructor).contains(Opcodes.IREM),
+                    shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+        }
+    }
+
+    @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
                 "extra-local", "iadd-extra-local",
@@ -3533,10 +3578,10 @@ public class IrCompilerTest {
                 "iand-extra-local", "ior-extra-local",
                 "ixor-extra-local", "ishl-extra-local",
                 "ishr-extra-local", "iushr-extra-local",
-                "four-level-iadd",
-                "nested-idiv", "nested-irem",
-                "idiv-inner", "irem-inner",
+                "four-level-iadd", "four-level-idiv-inner",
                 "idiv-extra-local", "irem-extra-local",
+                "idiv-inner-extra-local",
+                "idiv-inner-static-invoke",
                 "astore-zero", "post-call", "skip-super")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedThree"
@@ -4867,6 +4912,49 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(10, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
+    }
+
+    @Test
+    public void rewrittenNestedIdivIremChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : NESTED_DIV_REM_CHAIN_INPUT_SHAPES) {
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedNestedDivRemBase"
+                            + shape.replace("-", ""));
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedNestedDivRem"
+                            + shape.replace("-", ""), base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsConstructorWithShape(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(11),
+                    shape);
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError,
+                    shape);
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+        }
     }
 
     @Test
@@ -7462,6 +7550,104 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native div/rem three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void nestedIdivIremChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the nested div/rem runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the nested div/rem runtime test");
+
+        String mainName = "example/NestedDivRemInputRuntime";
+        String baseName = "example/NestedDivRemInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-nested-div-rem-input-run");
+        Path inputJar = directory.resolve("nested-div-rem-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createNestedIdivIremChainInputsJar(inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain nested div/rem chain-input Java run");
+        assertEquals(
+                "6" + System.lineSeparator()
+                        + "4" + System.lineSeparator()
+                        + "6" + System.lineSeparator()
+                        + "1" + System.lineSeparator()
+                        + "1" + System.lineSeparator()
+                        + "18" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : NESTED_DIV_REM_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        nestedDivRemRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("nested div/rem chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("nested div/rem chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Nested div/rem chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native nested div/rem chain-input Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -13526,6 +13712,67 @@ public class IrCompilerTest {
         }
     }
 
+    private void createNestedIdivIremChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[NESTED_DIV_REM_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < NESTED_DIV_REM_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = NESTED_DIV_REM_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    nestedDivRemRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsConstructorWithShape(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperPrint(
+                    entry, owner.name, 11, baseName, "magnitude");
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 4;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String nestedDivRemRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
     private void createMultipleSuperThreeNestedInputsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -16568,7 +16815,8 @@ public class IrCompilerTest {
                 || "ishr-extra-local".equals(shape)
                 || "iushr-extra-local".equals(shape)
                 || "idiv-extra-local".equals(shape)
-                || "irem-extra-local".equals(shape);
+                || "irem-extra-local".equals(shape)
+                || "idiv-inner-extra-local".equals(shape);
 
         if (extraLocalOperand) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -16615,6 +16863,10 @@ public class IrCompilerTest {
                 && !"nested-irem".equals(shape)
                 && !"idiv-inner".equals(shape)
                 && !"irem-inner".equals(shape)
+                && !"idiv-over-idiv".equals(shape)
+                && !"three-level-div-rem-mix".equals(shape)
+                && !"four-level-idiv-inner".equals(shape)
+                && !"idiv-inner-static-invoke".equals(shape)
                 && !"post-call".equals(shape)) {
             throw new IllegalArgumentException("Unknown shape " + shape);
         }
@@ -16660,6 +16912,11 @@ public class IrCompilerTest {
         } else if ("irem-extra-local".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IREM));
+        } else if ("idiv-inner-extra-local".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
         } else if ("nested-iadd".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
@@ -16722,14 +16979,14 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.ICONST_4));
             method.instructions.add(new InsnNode(Opcodes.IADD));
         } else if ("nested-idiv".equals(shape)) {
-            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
-            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
             method.instructions.add(new InsnNode(Opcodes.IDIV));
         } else if ("nested-irem".equals(shape)) {
-            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
-            method.instructions.add(new InsnNode(Opcodes.IREM));
-            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new InsnNode(Opcodes.IMUL));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
             method.instructions.add(new InsnNode(Opcodes.IREM));
         } else if ("idiv-inner".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_2));
@@ -16737,8 +16994,37 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
         } else if ("irem-inner".equals(shape)) {
-            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
             method.instructions.add(new InsnNode(Opcodes.IREM));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IMUL));
+        } else if ("idiv-over-idiv".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+        } else if ("three-level-div-rem-mix".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IMUL));
+        } else if ("four-level-idiv-inner".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_3));
+            method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("idiv-inner-static-invoke".equals(shape)) {
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, "java/lang/Math",
+                    "abs", "(I)I", false));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            method.instructions.add(new InsnNode(Opcodes.IDIV));
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
         }

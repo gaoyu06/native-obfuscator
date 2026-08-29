@@ -2196,10 +2196,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, int-family constants, one INEG over a direct
      * declared int-family argument load, or an admitted int binary tree of at
-     * most three levels over those int-family leaves. IDIV and IREM are admitted
-     * only as one-level operations whose two operands are leaves. The
-     * identical-copy and distinct-suffix forms may accept a direct alias load
-     * only when their separate receiver-frame proof succeeds.
+     * most three levels over those int-family leaves. The identical-copy and
+     * distinct-suffix forms may accept a direct alias load only when their
+     * separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2252,27 +2251,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!isIntFamily(expected)) {
             return null;
         }
-        int opcode = input.getOpcode();
-        if (opcode == Opcodes.IDIV || opcode == Opcodes.IREM) {
-            Integer beforeRight = previousProvenIntChainLeaf(
-                    constructor,
-                    previousExecutableIndex(constructor, inputIndex - 1),
-                    declaredArguments);
-            if (beforeRight == null) {
-                return null;
-            }
-            return previousProvenIntChainLeaf(
-                    constructor, beforeRight, declaredArguments);
-        }
         return previousProvenIntChainOperand(
                 constructor, inputIndex, declaredArguments,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
     }
 
     /**
-     * Proves an int-family operand with a bounded number of non-trapping binary
-     * levels. Every recursive descent consumes one level, so deeper trees stay
-     * rejected rather than opening the local input proof without a bound.
+     * Proves an int-family operand with a bounded number of binary levels.
+     * Every recursive descent consumes one level, so deeper trees stay rejected
+     * rather than opening the local input proof without a bound. Trapping
+     * IDIV/IREM nodes remain in the retained bytecode prefix.
      */
     private static Integer previousProvenIntChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2339,7 +2327,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || opcode == Opcodes.IXOR
                 || opcode == Opcodes.ISHL
                 || opcode == Opcodes.ISHR
-                || opcode == Opcodes.IUSHR;
+                || opcode == Opcodes.IUSHR
+                || opcode == Opcodes.IDIV
+                || opcode == Opcodes.IREM;
     }
 
     private static boolean isDirectDeclaredArgumentLoad(
