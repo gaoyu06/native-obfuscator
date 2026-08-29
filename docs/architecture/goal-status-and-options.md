@@ -3,11 +3,11 @@
 ## Executive status
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
-requests returned by `gh pr list --state all --limit 100` on 2026-08-29. PRs
-#1–#97 are all open drafts. `master` is unchanged from the preceding brief and
+requests returned by `gh pr list --state all --limit 200` on 2026-08-29. PRs
+#1–#103 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. This refresh carries the brief
-through PR #97; the previous brief [#96](https://github.com/gaoyu06/native-obfuscator/pull/96)
-covered work through #94. Results below are evidence recorded on the named
+through PR #103; the previous brief [#100](https://github.com/gaoyu06/native-obfuscator/pull/100)
+covered work through #97. Results below are evidence recorded on the named
 branch, not invented merge, review, or CI results.
 
 PRs [#1](https://github.com/gaoyu06/native-obfuscator/pull/1) and
@@ -147,7 +147,7 @@ Sol 对 #90 的纯文档审阅，记录 **pass/accept**、64/64 且无编译器�
 测量：两个类、六个方法的 Java 8 语料记录 **5 IR / 1 fallback**，fallback 为
 `AdmissionTarget.unsupported(I)I`，opcode 134（`I2F`），且 `<clinit>` 已排除。
 该 5/6（83.3%）不是生产 IR 覆盖率，也不是加速结论，编译器/运行时代码未改。
-本次刷新再纳入三个新草稿。[#95](https://github.com/gaoyu06/native-obfuscator/pull/95)
+上一份刷新纳入 #95/#96/#97 三个草稿。[#95](https://github.com/gaoyu06/native-obfuscator/pull/95)
 叠加在首选 phase-13 tip #90 上，将仍为 opt-in 的 IR phase 14 扩展至标量
 `F`/`D`：`F` 以 `F32`/`jfloat`、`D` 以 `F64`/`jdouble` 作为真实类型 carrier，
 不再回退为 `I32`，`D` 保持 category-two；覆盖 load/store/return、原始位模式
@@ -156,10 +156,10 @@ special Float/Double invoke family、标量算术与 `fmod` 求余、
 `FCMPL`/`FCMPG`/`DCMPL`/`DCMPG` 以及带 JVM NaN/溢出映射的 I/F/L/D 转换。
 基元数组（含 `[F`/`[D`）、`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic
 仍 fallback，默认仍为 legacy。其状态文档记录 68 + 2 = **70** 个聚焦测试及
-未跳过的 116-`JNICALL` g++ 烟测。**#95 现为首选 direct-IR 实现 tip**，
+未跳过的 116-`JNICALL` g++ 烟测。#95 当时成为首选 direct-IR 实现 tip，
 优先于 #90；#90 仍优先于其纯文档审阅 #93/#94。
-[#96](https://github.com/gaoyu06/native-obfuscator/pull/96) 是上一份 options
-brief（覆盖至 #94），为本文的叠加基础，不是新的编译器工作。
+[#96](https://github.com/gaoyu06/native-obfuscator/pull/96) 是覆盖至 #94 的
+options brief，不是新的编译器工作。
 [#97](https://github.com/gaoyu06/native-obfuscator/pull/97) 是叠加在 #90
 （phase-13 tip `b5a403f`，**不是 #95**）上、仅测量的 IR admission 报告：
 对 Corpus A（检入的 ClassicTest fixtures）记录 inventory **108 / 69 IR /
@@ -167,8 +167,45 @@ brief（覆盖至 #94），为本文的叠加基础，不是新的编译器工�
 fixtures）记录 **36 / 20 / 16 / 0**；另有单独标注为 extra、不属于 JDK 17
 结果的 JDK 21 语料 **38 / 15 / 23 / 0**。占主导的 fallback opcode 为
 **18**（`LDC`）。Krakatau `.j` 因缺少 `krak2` 被跳过；未编译 native 库，
-不作行为/E2E 声明。**#97 取代 #92 成为真实 fixture 语料的 admission 测量**；
-#92 的合成 5/6 仍保留在案，但两者都不是生产覆盖率门槛。
+不作行为/E2E 声明。#97 取代 #92 成为 #90 tip 上真实 fixture 语料的
+admission 测量；#92 的合成 5/6 仍保留在案，但两者都不是生产覆盖率门槛。
+
+本次刷新再纳入六个新草稿。[#98](https://github.com/gaoyu06/native-obfuscator/pull/98)
+是 Sol 对 phase-14 #95 的纯文档独立审阅，记录结论 **accept**、无编译器改动、
+68 + 2 = 70 个聚焦测试重跑（70/70）、未跳过的 116-`JNICALL` g++ 烟测、独立的
+syntax-only 检查，以及转换分支上的 UBSan/float-cast-overflow 校验；它不是
+编译器修复，也不是上线就绪结论。
+[#101](https://github.com/gaoyu06/native-obfuscator/pull/101) 是 Fable 对
+同一 #95 的纯文档审阅，记录结论 **accept-with-nits**、无编译器改动及
+70/70；其 nit 均为表述层面（冗长的 SSA 重引用、每常量 IIFE）加上此前
+已知事项，无正确性阻塞。
+[#99](https://github.com/gaoyu06/native-obfuscator/pull/99) 叠加在 #95
+（`ece69f5`）上，将仍为 opt-in 的 IR phase 15 扩展至常见 `LDC` 常量：
+String 复用既有 `StringPool`/`cstrings` 并经 `NewStringUTF` 装载（覆盖空串、
+ASCII、非 ASCII 及含内嵌 NUL 的 modified UTF-8），对象/数组 Class 复用既有
+`cclasses` 缓存（对象类经 defining loader，`[I` 与 `[Ljava/lang/String;`
+经 `FindClass`），Long 复用既有 `LongConst`/`I64`（含 `0x1_0000_0000L` 与
+`-1L`）。primitive Class 在 mutation 前保守拒绝而非错误输出，
+`MethodType`、`Handle` 与 `ConstantDynamic` LDC 仍 fallback，默认仍为
+legacy。其状态记录 73 + 2 = **75** 个聚焦测试及未跳过的 119-`JNICALL` g++
+烟测。**#99 现为首选 direct-IR 实现 tip**，优先于 #95；#95 仍优先于 #90。
+[#100](https://github.com/gaoyu06/native-obfuscator/pull/100) 是上一份
+options brief（覆盖至 #97），为本文的叠加基础，不是新的编译器工作。
+[#102](https://github.com/gaoyu06/native-obfuscator/pull/102) 是 Sol 对
+phase-15 #99 的纯文档独立审阅，记录结论 **accept**、无编译器改动、75/75、
+未跳过的 119-`JNICALL` g++ 烟测及独立 syntax-only 检查。Fable 在该切片上
+两次被策略拦截，故本切片只有这一份 Sol 独立审阅；不得虚构 Fable 结论。
+[#103](https://github.com/gaoyu06/native-obfuscator/pull/103) 是叠加在 #99
+（`f46c3eae`）上、仅测量的 IR admission 报告，复测与 #97 相同的语料：
+Corpus A ClassicTest 记录 **108 / 97 IR / 11 fallback /
+0 constructor-left-Java**（ΔIR 相对 #97 为 **+28**）；Corpus B JDK 17 记录
+**36 / 23 / 13 / 0**（ΔIR **+3**）；单独标注为 extra 的 JDK 21 语料记录
+**38 / 17 / 21 / 0**（ΔIR **+2**）。opcode 18（`LDC`）不再是主导
+fallback；新的首要原因是 ClassicTest 上的 opcode **50**（`AALOAD`）与
+JDK 17/21 语料上的 opcode **95**（`SWAP`）。Krakatau fixture 仍因缺少
+`krak2` 被跳过；未编译 native 库，不作行为/E2E 声明。**#103 取代 #97 成为
+当前 IR tip 上的诚实测量**；#97 保留为 #90 tip 的基线记录。#97 测量的是
+#90，#103 测量的是 #99，两者都不是覆盖率门槛。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -316,7 +353,7 @@ corpus recorded **5 IR / 1 fallback**, the one fallback being
 excluded. Its 5/6 (83.3%) is not production IR coverage or a speedup claim and
 changes no compiler or runtime code.
 
-This refresh folds in three further drafts.
+The previous refresh folded in three drafts.
 [#95](https://github.com/gaoyu06/native-obfuscator/pull/95), stacked on
 preferred phase-13 tip #90, extends still-opt-in IR phase 14 with scalar
 `F`/`D`: `F` uses the real `F32`/`jfloat` carrier and `D` the real
@@ -328,27 +365,74 @@ invoke families, scalar arithmetic with `fmod` remainder,
 NaN/overflow mapping. Primitive arrays (including `[F`/`[D`),
 `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back, and
 legacy remains the default. Its status records 68 + 2 = **70** focused tests
-and an unskipped 116-`JNICALL` g++ smoke. **#95 is now the preferred
-direct-IR implementation tip**, ahead of #90; #90 remains preferred over its
+and an unskipped 116-`JNICALL` g++ smoke. #95 was then the preferred
+direct-IR implementation tip, ahead of #90; #90 remains preferred over its
 documentation-only reviews #93/#94.
-[#96](https://github.com/gaoyu06/native-obfuscator/pull/96) is the previous
-options brief (through #94) and is this brief's stacking base, not new
-compiler work. [#97](https://github.com/gaoyu06/native-obfuscator/pull/97) is
+[#96](https://github.com/gaoyu06/native-obfuscator/pull/96) is the options
+brief through #94, not new compiler work.
+[#97](https://github.com/gaoyu06/native-obfuscator/pull/97) is
 a measurement-only IR admission report stacked on #90 (the phase-13 tip
 `b5a403f`, **not** #95): Corpus A, the checked-in ClassicTest fixtures,
 recorded inventory **108 / 69 IR / 37 fallback / 2 constructor-left-Java**;
 Corpus B, the fetched JDK 17 E2E fixtures, recorded **36 / 20 / 16 / 0**; a
 separately labeled extra JDK 21 corpus, which is not part of the JDK 17
-result, recorded **38 / 15 / 23 / 0**. The dominant fallback opcode is **18**
-(`LDC`). The Krakatau `.j` fixture was skipped because `krak2` was missing;
-no native library was compiled and no behavioral/E2E claim is made. **#97
-replaces #92 as the real-fixture corpus admission measurement**; #92's
-synthetic 5/6 stays on record, and neither number is a production coverage
-gate.
+result, recorded **38 / 15 / 23 / 0**. The dominant fallback opcode on that
+tip is **18** (`LDC`). The Krakatau `.j` fixture was skipped because `krak2`
+was missing; no native library was compiled and no behavioral/E2E claim is
+made. #97 replaced #92 as the real-fixture corpus admission measurement on
+the #90 tip; #92's synthetic 5/6 stays on record, and neither number is a
+production coverage gate.
+
+This refresh folds in six further drafts.
+[#98](https://github.com/gaoyu06/native-obfuscator/pull/98) is Sol's
+documentation-only independent review of phase-14 #95; it records an
+**accept** verdict, no compiler change, a 68 + 2 = 70 focused-test rerun
+(70/70), the unskipped 116-`JNICALL` g++ smoke, an independent syntax-only
+check, and a UBSan/float-cast-overflow harness on the conversion branches. It
+is not a compiler fix and not a ship-readiness finding.
+[#101](https://github.com/gaoyu06/native-obfuscator/pull/101) is Fable's
+documentation-only review of the same #95; it records an **accept-with-nits**
+verdict, no compiler change, and 70/70. Its nits are cosmetic (verbose SSA
+re-referencing and per-constant IIFEs) plus carried-forward earlier items,
+with no correctness blocker.
+[#99](https://github.com/gaoyu06/native-obfuscator/pull/99), stacked on #95
+(`ece69f5`), extends still-opt-in IR phase 15 with the common `LDC` constant
+forms: String through the existing `StringPool`/`cstrings` tables and
+`NewStringUTF` (empty, ASCII, non-ASCII, and embedded-NUL modified UTF-8),
+object/array Class through the existing `cclasses` cache (object classes via
+the defining loader, `[I` and `[Ljava/lang/String;` via `FindClass`), and
+Long through the existing `LongConst`/`I64` path (including `0x1_0000_0000L`
+and `-1L`). Primitive Class `LDC` is conservatively rejected before mutation
+rather than emitted wrong, `MethodType`/`Handle`/`ConstantDynamic` `LDC`
+still fall back, and legacy remains the default. Its status records
+73 + 2 = **75** focused tests and an unskipped 119-`JNICALL` g++ smoke.
+**#99 is now the preferred direct-IR implementation tip**, ahead of #95; #95
+remains preferred over #90.
+[#100](https://github.com/gaoyu06/native-obfuscator/pull/100) is the previous
+options brief (through #97) and is this brief's stacking base, not new
+compiler work. [#102](https://github.com/gaoyu06/native-obfuscator/pull/102)
+is Sol's documentation-only independent review of phase-15 #99; it records an
+**accept** verdict, no compiler change, 75/75, the unskipped 119-`JNICALL`
+g++ smoke, and an independent syntax-only check. Fable was policy-blocked
+twice on this slice, so this Sol review is the only independent compiler
+check for it; no Fable verdict exists and none is invented here.
+[#103](https://github.com/gaoyu06/native-obfuscator/pull/103) is a
+measurement-only IR admission report stacked on #99 (`f46c3eae`) that reruns
+the same corpora as #97: Corpus A ClassicTest recorded **108 / 97 IR /
+11 fallback / 0 constructor-left-Java** (ΔIR versus #97 **+28**); Corpus B
+JDK 17 recorded **36 / 23 / 13 / 0** (ΔIR **+3**); the separately labeled
+extra JDK 21 corpus recorded **38 / 17 / 21 / 0** (ΔIR **+2**). Opcode 18
+(`LDC`) is no longer the dominant fallback; the new top reasons are opcode
+**50** (`AALOAD`) on ClassicTest and opcode **95** (`SWAP`) on the JDK 17/21
+corpora. The Krakatau fixture was again skipped because `krak2` was missing;
+no native library was compiled and no behavioral/E2E claim is made. **#103
+replaces #97 as the honest measurement on the current IR tip**; #97 stays on
+record as the #90-tip baseline. #97 measured #90 and #103 measured #99, and
+neither is a coverage gate.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#97 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#103 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -374,12 +458,21 @@ pass 与 #94 的 accept 均为 #90 的纯文档审阅，不改编译器，也不
 #92 是叠加在 #89 上、仅测量的六方法 5/6 接纳率，不代表生产 IR 覆盖率，
 也不是上线批准。#95 将仍为 opt-in 的 phase 14 扩展至标量 `F`/`D`，但基元
 数组（含 `[F`/`[D`）、`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍
-fallback，默认仍为 legacy；它是首选 direct-IR 实现 tip，但仍部分、不是上线
-批准。#96 只是上一份 options brief。#97 是叠加在 #90（而非 #95）上、仅测量
-的 admission 报告：108/69、36/20 与 extra 的 38/15 都只是这些 JAR 上的接纳
-计数，未编译 native、无行为 E2E，不代表生产覆盖率，也不是上线批准。
+fallback，默认仍为 legacy；它仍部分、不是上线批准。#96 与 #100 只是此前的
+options brief。#97 是叠加在 #90（而非 #95）上、仅测量的 admission 报告：
+108/69、36/20 与 extra 的 38/15 都只是这些 JAR 上的接纳计数，未编译
+native、无行为 E2E，不代表生产覆盖率，也不是上线批准。#98 的 Sol accept
+与 #101 的 Fable accept-with-nits 均为 #95 的纯文档审阅，不改编译器，也不是
+上线批准。#99 将仍为 opt-in 的 phase 15 扩展至 String、对象/数组 Class 与
+Long 的 `LDC`，但 primitive Class LDC、`Handle`/`MethodType`/condy、数组、
+`POP2` 与 invokedynamic 仍 fallback，默认仍为 legacy；它是首选 direct-IR
+实现 tip，但仍部分、不是上线批准。#102 的 Sol accept 是 #99 的纯文档审阅
+（Fable 在该切片上两次被策略拦截），不是上线批准。#103 是叠加在 #99（而非
+#90）上、仅测量的 admission 报告：108/97、36/23 与 extra 的 38/17 都只是
+这些 JAR 上的接纳计数，未编译 native、无行为 E2E，不代表生产覆盖率，也
+不是上线批准。
 
-**No.** PRs #1–#97 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#103 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -413,28 +506,44 @@ approval. #92 is a measurement-only six-method 5/6 admission report stacked on
 #89; it is not production IR coverage and not ship approval. #95 extends
 still-opt-in phase 14 to scalar `F`/`D`, but primitive arrays (including
 `[F`/`[D`), `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall
-back and legacy remains the default; it is the preferred direct-IR
-implementation tip yet remains partial and is not ship approval. #96 is only
-the previous options brief. #97 is a measurement-only admission report on #90
+back and legacy remains the default; it remains partial and is not ship
+approval. #96 and #100 are only the earlier options briefs. #97 is a
+measurement-only admission report on #90
 (not #95): its 108/69, 36/20, and extra 38/15 rows are admission counts on
 those JARs only, with no native compile and no behavioral E2E; it is not
-production coverage and not ship approval.
+production coverage and not ship approval. #98's Sol accept and #101's Fable
+accept-with-nits are documentation-only reviews of #95 that change no
+compiler code and are not ship approval. #99 extends still-opt-in phase 15 to
+String, object/array Class, and Long `LDC`, but primitive Class `LDC`,
+`Handle`/`MethodType`/condy, arrays, `POP2`, and `invokedynamic` still fall
+back and legacy remains the default; it is the preferred direct-IR
+implementation tip yet remains partial and is not ship approval. #102's Sol
+accept is a documentation-only review of #99 (Fable was policy-blocked twice
+on this slice) and is not ship approval. #103 is a measurement-only admission
+report on #99 (not #90): its 108/97, 36/23, and extra 38/17 rows are
+admission counts on those JARs only, with no native compile and no behavioral
+E2E; it is not production coverage and not ship approval.
 
 ### (c) 上线前是否需要 review / Is review required?
 
 **Yes / 是。** 每个实现 PR 均需独立代码审查、rebase 后复测及适用的产品/发布
-审批。本文中的 benchmark、reader 与 #92/#97 的 admission 测量结论也必须按其
-记录的 kernel、artifact、语料和方法边界审查，不能外推；#92 的合成 5/6 与
-#97 的真实 fixture 比例都不得当作生产覆盖率门槛，且 #97 测量的是 #90 tip，
-不得当作 #95 的结果。
+审批。本文中的 benchmark、reader 与 #92/#97/#103 的 admission 测量结论也必须
+按其记录的 kernel、artifact、语料和方法边界审查，不能外推；#92 的合成 5/6、
+#97 与 #103 的真实 fixture 比例都不得当作生产覆盖率门槛。#97 测量的是 #90
+tip，#103 测量的是 #99 tip；不得把任一份的数字归到另一 tip 名下。#98/#101
+（对 #95）与 #102（对 #99）只是纯文档审阅，不替代维护者处置；Fable 在
+phase-15 切片上两次被策略拦截，该切片只有 Sol 一份独立审阅。
 
 **Yes.** Each implementation PR still needs independent code review, post-rebase
 verification, and applicable product/release approval. Benchmark, reader, and
-#92's/#97's admission-measurement claims must also be reviewed within their
-recorded kernel, artifact, corpus, and method boundaries rather than
-generalized; neither #92's synthetic 5/6 nor #97's real-fixture fractions is a
-production coverage gate, and #97 measured the #90 tip, so its numbers must not
-be attributed to #95.
+#92's/#97's/#103's admission-measurement claims must also be reviewed within
+their recorded kernel, artifact, corpus, and method boundaries rather than
+generalized; neither #92's synthetic 5/6 nor #97's or #103's real-fixture
+fractions is a production coverage gate. #97 measured the #90 tip and #103
+measured the #99 tip; neither report's numbers may be attributed to the other
+tip. #98/#101 (of #95) and #102 (of #99) are documentation-only reviews, not
+maintainer disposition; Fable was policy-blocked twice on the phase-15 slice,
+so that slice has only the single independent Sol review.
 
 ### (d) review 的前置条件 / Review preconditions
 
@@ -480,13 +589,20 @@ be attributed to #95.
    `docs/architecture/ir-phase13-review.md`、#94 的
    `docs/architecture/ir-phase13-fable-review.md`、#92 的
    `docs/benchmarks/ir-admission-phase12.md`、#95 的
-   `docs/architecture/ir-phase14-status.md`，以及 #97 的
+   `docs/architecture/ir-phase14-status.md`、#97 的
    `docs/benchmarks/ir-admission-phase13-corpus.md`（附方法级
    `docs/benchmarks/ir-admission-phase13-corpus-methods.tsv` 与
-   `docs/measurement/ir-admission-phase13/measure.py`）。
+   `docs/measurement/ir-admission-phase13/measure.py`）、#98 的
+   `docs/architecture/ir-phase14-review.md`、#101 的
+   `docs/architecture/ir-phase14-fable-review.md`、#99 的
+   `docs/architecture/ir-phase15-status.md`、#102 的
+   `docs/architecture/ir-phase15-review.md`，以及 #103 的
+   `docs/benchmarks/ir-admission-phase15-corpus.md`（附方法级
+   `docs/benchmarks/ir-admission-phase15-corpus-methods.tsv` 与
+   `docs/measurement/ir-admission-phase15/measure.py`）。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#97 claims; #96 is the previous
-   options brief, not a new evidence source.
+   named branch documents for the new #44–#103 claims; #96 and #100 are the
+   earlier options briefs, not new evidence sources.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -669,13 +785,15 @@ be attributed to #95.
    转换；常量以原始位模式 `memcpy` 保留，`D` 保持 category-two。基元数组
    （含 `[F`/`[D`）、`MULTIANEWARRAY`、`POP2`/`DUP2*` 与 invokedynamic 仍
    fallback，默认仍为 legacy，记录 68 + 2 = 70 个测试及未跳过的
-   116-`JNICALL` g++ 烟测。#95 是首选 direct-IR 实现 tip，但不是上线批准。
+   116-`JNICALL` g++ 烟测。#95 曾为首选 direct-IR 实现 tip（现由 #99 接替），
+   不是上线批准。
    #97 叠加在 #90（而非 #95）上、仅测量：Corpus A ClassicTest 记录
    108/69/37/2，Corpus B JDK 17 记录 36/20/16/0，单独标注的 extra JDK 21
-   语料记录 38/15/23/0；主导 fallback opcode 为 18（`LDC`），Krakatau 因
-   `krak2` 缺失被跳过，未编译 native、无行为 E2E。#97 取代 #92 成为真实
-   fixture 的 admission 测量，但两者的比例都不是覆盖率门槛，且 #97 的数字
-   不得归到 #95 名下。 #95, stacked on preferred phase-13 tip #90, extends
+   语料记录 38/15/23/0；该 tip 上主导 fallback opcode 为 18（`LDC`），
+   Krakatau 因 `krak2` 缺失被跳过，未编译 native、无行为 E2E。#97 取代 #92
+   成为 #90 tip 上真实 fixture 的 admission 测量，但两者的比例都不是覆盖率
+   门槛，且 #97 的数字不得归到 #95 或 #99 名下。 #95, stacked on preferred
+   phase-13 tip #90, extends
    still-opt-in phase 14 with real `F32`/`F64` scalar `F`/`D` carriers:
    fields, invoke families, arithmetic with `fmod` remainder and negation,
    `FCMPL`/`FCMPG`/`DCMPL`/`DCMPG`, and the I/F/L/D conversions with JVM
@@ -683,47 +801,111 @@ be attributed to #95.
    `D` stays category-two. Primitive arrays (including `[F`/`[D`),
    `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back,
    legacy remains the default, and it records 68 + 2 = 70 tests plus an
-   unskipped 116-`JNICALL` g++ smoke. #95 is the preferred direct-IR
-   implementation tip but not ship approval. #97 is measurement-only and
+   unskipped 116-`JNICALL` g++ smoke. #95 was then the preferred direct-IR
+   implementation tip (since superseded by #99) and is not ship approval. #97
+   is measurement-only and
    stacked on #90, not #95: Corpus A ClassicTest records 108/69/37/2, Corpus B
    JDK 17 records 36/20/16/0, and the separately labeled extra JDK 21 corpus
-   records 38/15/23/0; the dominant fallback opcode is 18 (`LDC`), the
-   Krakatau fixture was skipped because `krak2` was missing, and no native
-   compile or behavioral E2E was run. #97 replaces #92 as the real-fixture
-   admission measurement, neither fraction is a coverage gate, and #97's
-   numbers must not be attributed to #95.
-13. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+   records 38/15/23/0; the dominant fallback opcode on that tip is 18 (`LDC`),
+   the Krakatau fixture was skipped because `krak2` was missing, and no native
+   compile or behavioral E2E was run. #97 replaced #92 as the real-fixture
+   admission measurement on the #90 tip, neither fraction is a coverage gate,
+   and #97's numbers must not be attributed to #95 or #99.
+13. #98 是 Sol 对 #95 的纯文档独立审阅，记录 **accept**、无编译器改动、
+   70/70、未跳过的 116-`JNICALL` g++ 烟测、独立 syntax-only 检查及转换分支
+   的 UBSan/float-cast-overflow 校验。#101 是 Fable 对同一 #95 的纯文档审阅，
+   记录 **accept-with-nits**、无编译器改动及 70/70；其 nit 为表述层面
+   （冗长 SSA 重引用、每常量 IIFE）加此前已知事项，无正确性阻塞。两者都不是
+   编译器修复或上线批准。#99 叠加在 #95（`ece69f5`）上，将仍为 opt-in 的
+   phase 15 扩展至 `LDC`：String 复用 `StringPool`/`cstrings` 并经
+   `NewStringUTF`（含空串、非 ASCII 与内嵌 NUL 的 modified UTF-8），对象/
+   数组 Class 复用 `cclasses` 缓存（对象类经 defining loader，数组类经
+   `FindClass`），Long 复用 `LongConst`/`I64`。primitive Class LDC 在
+   mutation 前保守拒绝，`MethodType`/`Handle`/`ConstantDynamic` 仍
+   fallback，默认仍为 legacy，记录 73 + 2 = 75 个测试及未跳过的
+   119-`JNICALL` g++ 烟测。**#99 是首选 direct-IR 实现 tip**，但不是上线
+   批准。#102 是 Sol 对 #99 的纯文档独立审阅，记录 **accept**、无编译器
+   改动、75/75、未跳过的 119-`JNICALL` g++ 烟测及独立 syntax-only 检查；
+   Fable 在该切片上两次被策略拦截，故只有这一份独立审阅，不得虚构 Fable
+   结论。#103 叠加在 #99（`f46c3eae`）上、仅测量，复测 #97 的语料：
+   Corpus A ClassicTest 记录 108/97/11/0（ΔIR +28），Corpus B JDK 17 记录
+   36/23/13/0（ΔIR +3），单独标注的 extra JDK 21 语料记录 38/17/21/0
+   （ΔIR +2）；opcode 18（`LDC`）不再是主导 fallback，新的首要原因是
+   ClassicTest 上的 opcode 50（`AALOAD`）与 JDK 17/21 语料上的 opcode 95
+   （`SWAP`）；Krakatau 仍被跳过，未编译 native、无行为 E2E。#103 取代 #97
+   成为当前 IR tip 上的诚实测量，#97 保留为 #90 tip 基线；#97 测的是 #90，
+   #103 测的是 #99，两者的比例都不是覆盖率门槛。 #98 is Sol's
+   documentation-only independent review of #95 recording **accept**, no
+   compiler change, 70/70, the unskipped 116-`JNICALL` g++ smoke, an
+   independent syntax-only check, and a UBSan/float-cast-overflow harness on
+   the conversion branches. #101 is Fable's documentation-only review of the
+   same #95 recording **accept-with-nits**, no compiler change, and 70/70;
+   its nits are cosmetic (verbose SSA re-referencing, per-constant IIFEs)
+   plus carried-forward earlier items, with no correctness blocker. Neither
+   is a compiler fix or ship approval. #99, stacked on #95 (`ece69f5`),
+   extends still-opt-in phase 15 with `LDC`: String through the existing
+   `StringPool`/`cstrings` tables and `NewStringUTF` (including empty,
+   non-ASCII, and embedded-NUL modified UTF-8), object/array Class through
+   the existing `cclasses` cache (object classes via the defining loader,
+   array classes via `FindClass`), and Long through the existing
+   `LongConst`/`I64` path. Primitive Class `LDC` is conservatively rejected
+   before mutation, `MethodType`/`Handle`/`ConstantDynamic` still fall back,
+   legacy remains the default, and it records 73 + 2 = 75 tests plus an
+   unskipped 119-`JNICALL` g++ smoke. **#99 is the preferred direct-IR
+   implementation tip** but not ship approval. #102 is Sol's
+   documentation-only independent review of #99 recording **accept**, no
+   compiler change, 75/75, the unskipped 119-`JNICALL` g++ smoke, and an
+   independent syntax-only check; Fable was policy-blocked twice on this
+   slice, so this is the only independent review and no Fable verdict may be
+   invented. #103 is measurement-only, stacked on #99 (`f46c3eae`), and
+   reruns #97's corpora: Corpus A ClassicTest records 108/97/11/0 (ΔIR +28),
+   Corpus B JDK 17 records 36/23/13/0 (ΔIR +3), and the separately labeled
+   extra JDK 21 corpus records 38/17/21/0 (ΔIR +2). Opcode 18 (`LDC`) is no
+   longer the dominant fallback; the new top reasons are opcode 50 (`AALOAD`)
+   on ClassicTest and opcode 95 (`SWAP`) on the JDK 17/21 corpora. The
+   Krakatau fixture was again skipped, and no native compile or behavioral
+   E2E was run. #103 replaces #97 as the honest measurement on the current IR
+   tip, with #97 retained as the #90-tip baseline; #97 measured #90 and #103
+   measured #99, and neither fraction is a coverage gate.
+14. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
    #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 →
-   #78 → #82/#83 → #84 → #89/#88 → #90 → #93/#94 → #95 的
+   #78 → #82/#83 → #84 → #89/#88 → #90 → #93/#94 → #95 →
+   #98/#101 → #99 → #102 的
    direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上，#90 叠加在首选
-   #89 上，#93/#94 是 #90 的纯文档审阅，#95 叠加在 #90 上并为首选实现 tip）、
+   #89 上，#93/#94 是 #90 的纯文档审阅，#98/#101 是 #95 的纯文档审阅，
+   #102 是 #99 的纯文档审阅，#99 叠加在 #95 上并为首选实现 tip）、
    #34 → #53 的 benchmark 与叠加
    在 #57 上的独立 #59 后续测量、叠加在 #89 上、仅测量的 #92 合成 admission
-   报告与叠加在 #90 上、仅测量的 #97 真实 fixture admission 报告、
+   报告、叠加在 #90 上、仅测量的 #97 真实 fixture admission 报告与叠加在
+   #99 上、仅测量的 #103 真实 fixture admission 报告（首选 #103，其次
+   #97，再次 #92）、
    #42 → #44 → #48 → #50 的独立 evaluator
    实验、#57/#61、#68/#69 与 #85/#87 ISA/review sibling、SDK #12 → #15 → #46 →
    #72 → #75 → #80 → #81（首选 AES tip）、compatibility #6 → #9 → #14 →
-   #41，以及 options brief … → #74 → #79 → #86 → #91 → #96 → 本 PR
-   分别继续。
+   #41，以及 options brief … → #74 → #79 → #86 → #91 → #96 → #100 →
+   本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
    blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
    #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88 → #90 →
-   #93/#94 → #95 direct-IR coverage/review lane,
+   #93/#94 → #95 → #98/#101 → #99 → #102 direct-IR coverage/review lane,
    with #73 stacked only on preferred, fixed #70, #90 stacked on preferred #89,
-   #93/#94 as documentation-only reviews of #90, and #95 stacked on #90 as the
-   preferred implementation tip,
+   #93/#94 as documentation-only reviews of #90, #98/#101 as
+   documentation-only reviews of #95, #102 as the documentation-only review of
+   #99, and #99 stacked on #95 as the preferred implementation tip,
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
-   the measurement-only #92 synthetic admission report stacked on #89 and the
-   measurement-only #97 real-fixture admission report stacked on #90,
+   the measurement-only #92 synthetic admission report stacked on #89, the
+   measurement-only #97 real-fixture admission report stacked on #90, and the
+   measurement-only #103 real-fixture admission report stacked on #99
+   (prefer #103, then #97, then #92),
    the #42 → #44 → #48 → #50 evaluator experiment with #57/#61, #68/#69,
    and #85/#87 as ISA/review siblings,
    SDK #12 → #15 → #46 → #72 → #75 → #80 → #81 (the preferred AES tip),
    compatibility #6 → #9 → #14 → #41, and options briefs … → #74 → #79 →
-   #86 → #91 → #96 → this PR continue as separate lanes.
+   #86 → #91 → #96 → #100 → this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
@@ -763,22 +945,47 @@ measurement-only six-method admission report stacked on #89: it records 5 IR /
 (`I2F`) with `<clinit>` excluded. Its 5/6 is not production IR coverage and
 changes no compiler code.
 
-This refresh extends direct IR through #95 and the admission evidence through
-#97. #95, stacked on preferred phase-13 tip #90, adds still-opt-in phase-14
-scalar `F`/`D` with real `F32`/`F64` carriers: fields, invoke families,
-arithmetic with `fmod` remainder, compares, and conversions with JVM
+The prior wave extended direct IR through #95 and the admission evidence
+through #97. #95, stacked on preferred phase-13 tip #90, adds still-opt-in
+phase-14 scalar `F`/`D` with real `F32`/`F64` carriers: fields, invoke
+families, arithmetic with `fmod` remainder, compares, and conversions with JVM
 NaN/overflow mapping. Primitive arrays (including `[F`/`[D`),
 `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back and
 legacy remains the default. It records 68 + 2 = 70 focused tests and an
-unskipped 116-`JNICALL` g++ smoke; it is the preferred direct-IR
-implementation tip. #96 is the previous options brief through #94 and is this
-brief's base. #97 is a measurement-only admission report stacked on #90, not
+unskipped 116-`JNICALL` g++ smoke. #96 is the options brief through #94. #97
+is a measurement-only admission report stacked on #90, not
 #95: Corpus A ClassicTest records 108 inventory / 69 IR / 37 fallback /
 2 constructor-left-Java, Corpus B JDK 17 records 36 / 20 / 16 / 0, and the
 separately labeled extra JDK 21 corpus records 38 / 15 / 23 / 0. The dominant
 fallback opcode is 18 (`LDC`), the top remaining admission gap on the #90 tip.
-It replaces #92 as the real-fixture corpus measurement; neither fraction is a
-coverage gate, and no native compile or behavioral E2E was run.
+It replaced #92 as the real-fixture corpus measurement on that tip; neither
+fraction is a coverage gate, and no native compile or behavioral E2E was run.
+
+This refresh extends direct IR through #98/#101 → #99 → #102 and the
+admission evidence through #103. #98 and #101 are Sol's **accept** and
+Fable's **accept-with-nits** documentation-only reviews of #95; both record
+70/70 and no compiler change, and #101's nits are cosmetic with no
+correctness blocker. #99, stacked on #95 (`ece69f5`), adds still-opt-in
+phase-15 `LDC` for String (existing `StringPool`/`cstrings` plus
+`NewStringUTF`, including modified UTF-8 with embedded NUL), object/array
+Class (existing `cclasses` cache, defining loader for object classes,
+`FindClass` for array descriptors), and Long (existing `LongConst`/`I64`).
+Primitive Class `LDC` is rejected before mutation, and
+`MethodType`/`Handle`/`ConstantDynamic` `LDC` still fall back with legacy the
+default. It records 73 + 2 = 75 focused tests and an unskipped 119-`JNICALL`
+g++ smoke; it is the preferred direct-IR implementation tip. #100 is the
+previous options brief through #97 and is this brief's base. #102 is Sol's
+documentation-only **accept** review of #99 with 75/75 and no compiler
+change; Fable was policy-blocked twice on this slice, so #102 is its only
+independent review. #103 is a measurement-only admission report stacked on
+#99, not #90: on #97's corpora it records 108 / 97 IR / 11 fallback / 0
+constructor-left-Java on ClassicTest (ΔIR +28), 36 / 23 / 13 / 0 on JDK 17
+(ΔIR +3), and 38 / 17 / 21 / 0 on the extra JDK 21 corpus (ΔIR +2). Opcode 18
+(`LDC`) is no longer dominant; the new top fallback reasons are opcode 50
+(`AALOAD`) on ClassicTest and opcode 95 (`SWAP`) on the JDK 17/21 corpora.
+#103 replaces #97 as the honest measurement on the current IR tip while #97
+stays as the #90-tip baseline; neither fraction is a coverage gate, and no
+native compile or behavioral E2E was run.
 
 ### Reader-eval evidence
 
@@ -869,17 +1076,20 @@ source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
 design. Wider opt-in direct-IR coverage/review in #45 → #47 → #51 → #54 →
 #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 → #78 → #82/#83 →
-#84 → #89/#88 → #90 → #93/#94 → #95
+#84 → #89/#88 → #90 → #93/#94 → #95 → #98/#101 → #99 → #102
 (with #73 based only on preferred, fixed #70, #90 based on preferred #89,
-#93/#94 as documentation-only reviews of #90, and #95 based on #90 as the
-preferred implementation tip), the #34 → #53 benchmark lane plus
+#93/#94 as documentation-only reviews of #90, #98/#101 as documentation-only
+reviews of #95, #102 as the documentation-only review of #99, and #99 based
+on #95 as the preferred implementation tip), the #34 → #53 benchmark lane plus
 #59 stacked on #57, the measurement-only #92 synthetic admission report stacked
-on #89 and the measurement-only #97 real-fixture admission report stacked on
-#90, the separate #42 → #44 → #48 → #50 evaluator experiment with
+on #89, the measurement-only #97 real-fixture admission report stacked on
+#90, and the measurement-only #103 real-fixture admission report stacked on
+#99 (prefer #103, then #97, then #92; #97 measured #90 and #103 measured
+#99), the separate #42 → #44 → #48 → #50 evaluator experiment with
 #57/#61, #68/#69, and #85/#87 as ISA/review siblings, the SDK #12 → #15 →
 #46 → #72 → #75 → #80 → #81, with #81 preferred over unfixed #80, and
 compatibility #6 → #9 → #14 → #41 stacks, and options briefs
-… → #74 → #79 → #86 → #91 → #96 → this PR continue as separate
+… → #74 → #79 → #86 → #91 → #96 → #100 → this PR continue as separate
 engineering lanes.
 
 #### Other product decisions
@@ -952,7 +1162,11 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#90](https://github.com/gaoyu06/native-obfuscator/pull/90) →
    [#93](https://github.com/gaoyu06/native-obfuscator/pull/93) /
    [#94](https://github.com/gaoyu06/native-obfuscator/pull/94) →
-   [#95](https://github.com/gaoyu06/native-obfuscator/pull/95). Rebase after
+   [#95](https://github.com/gaoyu06/native-obfuscator/pull/95) →
+   [#98](https://github.com/gaoyu06/native-obfuscator/pull/98) /
+   [#101](https://github.com/gaoyu06/native-obfuscator/pull/101) →
+   [#99](https://github.com/gaoyu06/native-obfuscator/pull/99) →
+   [#102](https://github.com/gaoyu06/native-obfuscator/pull/102). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
    away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
@@ -1011,8 +1225,24 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    category-two. Primitive arrays (including `[F`/`[D`), `MULTIANEWARRAY`,
    `POP2`/`DUP2*`, and `invokedynamic` still fall back, legacy remains default,
    and it records 68 + 2 = 70 tests plus an unskipped 116-`JNICALL` g++ smoke.
-   #95 is the preferred direct-IR implementation tip. None
-   is a ship-readiness finding.
+   #98 and #101 are parallel documentation-only reviews of #95, not compiler
+   successors: #98 records Sol's **accept** with 70/70, the unskipped
+   116-`JNICALL` g++ smoke, an independent syntax-only check, and a
+   UBSan/float-cast-overflow harness on the conversion branches; #101 records
+   Fable's **accept-with-nits** with 70/70, its nits cosmetic with no
+   correctness blocker. Neither contains a compiler fix.
+   #99 is based on #95 and adds still-opt-in phase-15 `LDC` for String
+   (existing `StringPool`/`cstrings` plus `NewStringUTF`, including
+   embedded-NUL modified UTF-8), object/array Class (existing `cclasses`
+   cache, defining loader for object classes, `FindClass` for array
+   descriptors), and Long (existing `LongConst`/`I64`); primitive Class `LDC`
+   is rejected before mutation, `MethodType`/`Handle`/`ConstantDynamic` still
+   fall back, legacy remains default, and it records 73 + 2 = 75 tests plus
+   an unskipped 119-`JNICALL` g++ smoke. #99 is the preferred direct-IR
+   implementation tip. #102 is Sol's documentation-only **accept** review of
+   #99 with 75/75 and no compiler change; Fable was policy-blocked twice on
+   this slice, so #102 is its only independent review and no Fable verdict
+   exists for it. None is a ship-readiness finding.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -1062,10 +1292,24 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    2 constructor-left-Java, Corpus B JDK 17 records 36 / 20 / 16 / 0, and the
    separately labeled extra JDK 21 corpus records 38 / 15 / 23 / 0, with
    dominant fallback opcode 18 (`LDC`), the Krakatau fixture skipped for a
-   missing `krak2`, and no native compile or behavioral E2E. It replaces #92
-   as the honest corpus measurement while #92's synthetic 5/6 stays on record;
-   neither is a coverage gate or an implementation merge prerequisite, and
-   #97's numbers must not be attributed to #95.
+   missing `krak2`, and no native compile or behavioral E2E. It replaced #92
+   as the honest corpus measurement on the #90 tip while #92's synthetic 5/6
+   stays on record; neither is a coverage gate or an implementation merge
+   prerequisite, and #97's numbers must not be attributed to #95 or #99.
+   [#103](https://github.com/gaoyu06/native-obfuscator/pull/103) is the
+   measurement-only real-fixture admission report stacked on #99
+   (`f46c3eae`), rerunning #97's corpora on the phase-15 tip: Corpus A
+   ClassicTest records 108 / 97 IR / 11 fallback / 0 constructor-left-Java
+   (ΔIR +28 versus #97), Corpus B JDK 17 records 36 / 23 / 13 / 0 (ΔIR +3),
+   and the separately labeled extra JDK 21 corpus records 38 / 17 / 21 / 0
+   (ΔIR +2). Opcode 18 (`LDC`) is no longer the dominant fallback; the new
+   top reasons are opcode 50 (`AALOAD`) on ClassicTest and opcode 95 (`SWAP`)
+   on the JDK 17/21 corpora, the Krakatau fixture was again skipped, and no
+   native compile or behavioral E2E was run. #103 replaces #97 as the honest
+   measurement on the current IR tip while #97 stays as the #90-tip baseline;
+   #97 measured #90 and #103 measured #99, neither is a coverage gate or an
+   implementation merge prerequisite, and neither report's numbers may be
+   attributed to the other tip.
    Separately,
    [#35](https://github.com/gaoyu06/native-obfuscator/pull/35) is an eval-only
    live-artifact sibling on #33; keep the #35 →
@@ -1188,27 +1432,56 @@ parallel, but their order within each arrowed stack must be preserved.
   64/64 with no compiler change; #94's only nit is that boolean invoke arguments
   are masked `& 1` while the JVM does not mask at the call site, unobservable for
   javac output. Neither review is a compiler fix or a ship-readiness finding.
-- #95 remains an opt-in, partial phase 14 on preferred #90 and is the preferred
-  direct-IR implementation tip. It carries scalar `F`/`D` as real `F32`/`F64`
+- #95 remains an opt-in, partial phase 14 on preferred #90. It carries scalar
+  `F`/`D` as real `F32`/`F64`
   values through fields, invokes, arithmetic, compares, and conversions with
   JVM NaN/overflow mapping, but primitive arrays (including `[F`/`[D`),
   `MULTIANEWARRAY`, `POP2`/`DUP2*`, and `invokedynamic` still fall back and
   legacy remains the default. Its 68 + 2 = 70 tests and unskipped
-  116-`JNICALL` g++ smoke do not make it ship-ready.
+  116-`JNICALL` g++ smoke do not make it ship-ready. #98 (Sol, **accept**,
+  70/70, independent syntax-only check, UBSan/float-cast-overflow harness on
+  the conversion branches) and #101 (Fable, **accept-with-nits**, 70/70,
+  cosmetic nits only) are documentation-only reviews of #95 with no compiler
+  change; neither is a compiler fix or a ship-readiness finding.
+- #99 remains an opt-in, partial phase 15 on #95 and is the preferred
+  direct-IR implementation tip. It admits `LDC` of String (existing
+  `StringPool`/`cstrings` plus `NewStringUTF`, including embedded-NUL
+  modified UTF-8), object/array Class (existing `cclasses` cache, defining
+  loader for object classes, `FindClass` for array descriptors), and Long
+  (existing `LongConst`/`I64`), while primitive Class `LDC` is rejected
+  before mutation and `MethodType`/`Handle`/`ConstantDynamic` `LDC`, arrays,
+  `POP2`, and `invokedynamic` still fall back with legacy the default. Its
+  73 + 2 = 75 tests and unskipped 119-`JNICALL` g++ smoke do not make it
+  ship-ready. #102 is Sol's documentation-only **accept** review with 75/75
+  and no compiler change; Fable was policy-blocked twice on this slice, so
+  #102 is the only independent review of it and no Fable verdict exists.
 - #92 is a measurement-only admission report on the #89 tip, not a coverage
   gate. Its two-class, six-method Java 8 corpus recorded 5 IR / 1 fallback (the
   `AdmissionTarget.unsupported(I)I` method at opcode 134, `I2F`, with `<clinit>`
   excluded). This 5/6 (83.3%) is synthetic and must not be generalized to
   production IR coverage; it changes no compiler code.
-- #97 is a measurement-only admission report on the #90 tip, not on #95 and not
-  a coverage gate. It records 108 / 69 IR / 37 fallback /
+- #97 is a measurement-only admission report on the #90 tip, not on #95 or #99
+  and not a coverage gate. It records 108 / 69 IR / 37 fallback /
   2 constructor-left-Java on the checked-in ClassicTest fixtures,
   36 / 20 / 16 / 0 on the fetched JDK 17 E2E fixtures, and 38 / 15 / 23 / 0 on
   the separately labeled extra JDK 21 corpus. The dominant fallback opcode is
   18 (`LDC`), the top remaining admission gap on that tip. The Krakatau fixture
   was skipped because `krak2` was missing; no native library was compiled and
-  no behavioral/E2E claim is made. It replaces #92 as the real-fixture corpus
-  measurement, but neither fraction generalizes to production coverage.
+  no behavioral/E2E claim is made. It replaced #92 as the real-fixture corpus
+  measurement on the #90 tip, but neither fraction generalizes to production
+  coverage.
+- #103 is a measurement-only admission report on the #99 tip (`f46c3eae`) and
+  not a coverage gate. Rerunning #97's corpora, it records 108 / 97 IR /
+  11 fallback / 0 constructor-left-Java on ClassicTest (ΔIR +28 versus #97),
+  36 / 23 / 13 / 0 on JDK 17 (ΔIR +3), and 38 / 17 / 21 / 0 on the separately
+  labeled extra JDK 21 corpus (ΔIR +2). Opcode 18 (`LDC`) is no longer the
+  dominant fallback; the new top reasons are opcode 50 (`AALOAD`) on
+  ClassicTest and opcode 95 (`SWAP`) on the JDK 17/21 corpora. The Krakatau
+  fixture was again skipped; no native library was compiled and no
+  behavioral/E2E claim is made. #103 replaces #97 as the honest measurement
+  on the current IR tip while #97 stays as the #90-tip baseline; #97 measured
+  #90 and #103 measured #99, and neither fraction generalizes to production
+  coverage.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -1240,7 +1513,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#97 are still open drafts. `master` contains none of their work.
+- PRs #1–#103 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -1263,11 +1536,17 @@ not the union of claims from draft branches:
    decision. Do not flip the default: #90 adds only the still-opt-in phase-13
    `Z`/`B`/`C`/`S` field and invoke families, #95 adds only the still-opt-in
    phase-14 scalar `F`/`D` slice with primitive arrays, `MULTIANEWARRAY`,
-   `POP2`/`DUP2*`, and `invokedynamic` still on fallback, and #93/#94 are
-   documentation-only reviews of #90, not compiler fixes. Treat #92's synthetic
-   5/6 and #97's real-fixture admission counts as scoped evidence, not coverage
-   gates; #97 measured the #90 tip, not #95. Prefer #95 as the implementation
-   tip, with #90 preferred over either review.
+   `POP2`/`DUP2*`, and `invokedynamic` still on fallback, and #99 adds only
+   the still-opt-in phase-15 String / object-array Class / Long `LDC` slice
+   with primitive Class `LDC`, `MethodType`/`Handle`/`ConstantDynamic`,
+   arrays, `POP2`, and `invokedynamic` still on fallback. #93/#94 are
+   documentation-only reviews of #90, #98/#101 of #95, and #102 of #99, not
+   compiler fixes. Treat #92's synthetic
+   5/6 and #97's and #103's real-fixture admission counts as scoped evidence,
+   not coverage gates; #97 measured the #90 tip and #103 measured the #99
+   tip, and neither report's numbers may be attributed to the other. Prefer
+   #99 as the implementation tip, then #95, with #90 preferred over its
+   reviews.
 4. Replace the one-machine diagnostic benchmark with controlled repeated raw
    results, forked/JMH and native-only isolation where applicable, end-to-end
    cost data, and human-approved workload budgets. Either meet those budgets or
