@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing leaf-only `IDIV`/`IREM` chain inputs
-[#198](https://github.com/gaoyu06/native-obfuscator/pull/198)
-(parent re-ran 242/242: 235 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#197](https://github.com/gaoyu06/native-obfuscator/pull/197)
-nested-input tree. Active process:
+Last updated after landing the post-#198 leftover inventory
+[#199](https://github.com/gaoyu06/native-obfuscator/pull/199)
+(measurement only on `4214d74`: ClassicTest 108/108, JDK 17/21/25
+82/82, 47/47, 21/21 IR, 0 leftovers)
+on the post-[#198](https://github.com/gaoyu06/native-obfuscator/pull/198)
+leaf-only `IDIV`/`IREM` tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -295,6 +295,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Hybrid identical-plus-distinct suffixes (#196) | 236 tests (`IrCompilerTest` 229 + `CodegenModeTest` 7). Parent re-ran 236/236 including `partlyIdenticalSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Two-level nested chain inputs (#197) | 239 tests (`IrCompilerTest` 232 + `CodegenModeTest` 7). Parent re-ran 239/239 including `threeImmediateNestedInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `IDIV`/`IREM` chain inputs (#198) | 242 tests (`IrCompilerTest` 235 + `CodegenModeTest` 7). Parent re-ran 242/242 including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-#198 leftover inventory (#199) | Measurement only on `4214d74`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -346,9 +347,9 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   binaries, extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#191](https://github.com/gaoyu06/native-obfuscator/pull/191),
-  measured on post-#190 `47e35fc`) observed 0 leftovers; that is not
-  coverage-complete. #181 remains the earlier post-#180 snapshot.
+  ([#199](https://github.com/gaoyu06/native-obfuscator/pull/199),
+  measured on post-#198 `4214d74`) observed 0 leftovers; that is not
+  coverage-complete. #191 remains the earlier post-#190 snapshot.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
@@ -360,9 +361,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #198 (leaf-only
-  `IDIV`/`IREM` chain inputs). /
-  落地 #198 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #199 (post-#198
+  leftover inventory on `4214d74`). /
+  落地 #199 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
