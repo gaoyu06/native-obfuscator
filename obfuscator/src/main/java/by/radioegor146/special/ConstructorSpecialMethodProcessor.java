@@ -501,6 +501,19 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
+        if (callIndexes.size() == 2) {
+            int prefixExitSuccessor = firstExecutableIndex(
+                    constructor, callIndexes.get(0) + 1);
+            if (isImmediatePrefixReturn(
+                    constructor, callIndexes, 0, prefixExitSuccessor)) {
+                Set<Integer> prefixExitCallIndexes = new HashSet<>();
+                prefixExitCallIndexes.add(callIndexes.get(0));
+                return new SharedSuffix(
+                        lastCallIndex + 1, new HashSet<>(),
+                        prefixExitCallIndexes);
+            }
+        }
+
         int joinIndex = -1;
         LabelNode join = null;
         for (int i = lastCallIndex + 1; i < nextExecutable; i++) {
@@ -516,7 +529,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         Set<Integer> branchIndexes = new HashSet<>();
-        Set<Integer> prefixExitCallIndexes = new HashSet<>();
         for (int i = 0; i < callIndexes.size() - 1; i++) {
             int callIndex = callIndexes.get(i);
             int successorIndex =
@@ -533,12 +545,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 continue;
             }
 
-            if (isImmediatePrefixReturn(
-                    constructor, callIndexes, i, successorIndex)) {
-                prefixExitCallIndexes.add(callIndex);
-                continue;
-            }
-
             Integer conditionalBranch = conditionalJoinOrReturnBranch(
                     constructor, callIndexes, i, join);
             if (conditionalBranch == null) {
@@ -547,7 +553,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             branchIndexes.add(conditionalBranch);
         }
         return new SharedSuffix(
-                joinIndex, branchIndexes, prefixExitCallIndexes);
+                joinIndex, branchIndexes, new HashSet<>());
     }
 
     /**
