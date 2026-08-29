@@ -2,12 +2,12 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `47e35fc01d8a324a55431dee1bd00759cfa7030e`
-- Measurement commit: `47e35fc01d8a324a55431dee1bd00759cfa7030e`
+- Measured compiler base (merge-base with `origin/master`): `4214d7498c4b902d1dbf54f0bc14a3be16649b89`
+- Measurement commit: `4214d7498c4b902d1dbf54f0bc14a3be16649b89`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge**, **not coverage-complete**, and not a behavioral/native E2E claim.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This report re-measures the post-#190 tree after increments #182–#190 added leaf arithmetic, bitwise, and shift inputs, more mixed constructor catch placements, and two- through eight-way pairwise-distinct constructor suffixes. It supersedes the post-#180 inventory recorded by #181.
+- This report re-measures the post-#198 tree after #192–#198 added distinct-suffix extras, branches, switches, and hybrid suffix sets; two-level nested non-trapping inputs; and leaf-only `IDIV`/`IREM`. It supersedes the post-#190 inventory recorded by #191. #181 remains the earlier post-#180 snapshot.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
@@ -76,6 +76,8 @@ No historical fixture branch was fetched. All source trees came from `obfuscator
 
 ClassicTest result from this run: **108/108 IR**, 0 legacy fallback, 0 constructor left in Java, and 0 missing.
 
+The helper reported zero measured leftovers in every corpus. This is not a complete JVM inventory.
+
 ## ClassicTest measured leftovers only
 
 | Fixture | Class | Method | Descriptor | Category | Exact first reject/log reason |
@@ -102,16 +104,14 @@ ClassicTest result from this run: **108/108 IR**, 0 legacy fallback, 0 construct
 
 ## Remaining static reject paths in current docs
 
-Zero measured leftovers in these fixtures is not a complete JVM inventory. The post-#190 [current-goal](../architecture/current-goal.md) documentation still lists these conservative reject paths; this is not a full JVM feature matrix:
+Zero measured leftovers in these fixtures is not a complete JVM inventory. The post-#198 [current-goal](../architecture/current-goal.md) documentation still lists these conservative reject paths; this is not a full JVM feature matrix:
 
 | Static reject path | Area |
 | --- | --- |
 | Non-identity prefix `ASTORE 0` / receiver-alias forwarding | Constructor split |
 | Unproven prefix → suffix jumps or switches | Constructor split |
 | Other mixed prefix/suffix try/catch placements beyond #171/#184/#187/#188 | Constructor split |
-| Nested or `IDIV` computed multi-super inputs | Constructor split |
-| Branched multi-super suffixes | Constructor split |
-| Hybrid identical-plus-distinct multi-super suffix sets | Constructor split |
+| Remaining multi-super shapes: nested/`IDIV`-as-inner trees or three-or-more nested binaries | Constructor split |
 | More than eight distinct multi-super paths | Constructor split |
 | Extras unassigned on a bridge-taking path | Constructor split |
 | Unsafe or unproven `ConstantDynamic` shapes (non-static, varargs, malformed, or cyclic) | IR frontend |
