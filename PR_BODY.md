@@ -1,102 +1,87 @@
-# docs: JDK 25 IR E2E corpus
+# docs: Fable review of #141 JDK 25 IR E2E
 
 ## English
 
 ### (a) Scope
 
-Run a real opt-in IR-mode behavioral E2E over all four checked-in JDK 25
-fixtures (`CompactSourceModuleImportE2E`, `FlexibleConstructorBodiesE2E`,
-`ScopedValuesE2E`, `StreamGatherersE2E`) and record only measured results in
-the new `docs/benchmarks/ir-jdk25-e2e-corpus.md`. Base is `origin/master` at
-`a7e5453`. The host JDK is 21; a real JDK 25 (Eclipse Temurin 25.0.4.1+1) was
-downloaded from Adoptium, SHA-256 verified, and used for `javac --release 25
--g`, the HotSpot oracle runs, the JNI headers, and the transformed native
-runs. No compiler, IR, evaluator, interpreter, `Main.java`, or
-`project-status.md` file is changed; this branch is docs-only.
+Independent Fable review of draft PR #141 (branch
+`cursor/eval-ir-jdk25-e2e-6d81`, tip `a3ffcb2`), which records an opt-in
+IR-mode behavioral E2E over the four checked-in JDK 25 fixtures. This
+review branch adds only `docs/reviews/ir-jdk25-e2e-fable.md` and this
+`PR_BODY.md`; no compiler, IR, evaluator, or interpreter source is touched,
+and the E2E was not re-run.
 
 ### (b) Ship-ready?
 
-**No.** This is one behavioral measurement of four small fixtures on one
-Linux x86-64 host. It must not be read as "JDK 25 supported": the default
-code generator remains `legacy`, one constructor stayed as plain Java
-bytecode, and the generated loader trips the JEP 472 restricted-native-access
-warning that a future JDK will turn into an error. No benchmark numbers were
-measured; the issue #53 entry stays `N/A`.
+**No.** The reviewed PR is a single-host behavioral measurement of four
+small fixtures, and this review does not upgrade it. "JDK 25 supported"
+remains an unmade claim, the `--codegen` default remains `legacy`, the
+`#53` eval median remains `N/A`, and the JEP 472 restricted-native-access
+warning plus the hybrid flexible-constructor result are open items.
 
-### (c) Measured result
+### (c) Review verdict
 
-All four fixtures compiled with a real `javac` 25 (exit 0, no preview flags),
-transpiled with `--codegen=ir` (exit 0), configured and built under CMake
-with `CC=gcc CXX=g++` against `/opt/jdk25/include` JNI (exit 0), and the
-transformed JARs all exited 0 with byte-exact stdout matches against the
-JDK 25 HotSpot oracle (SHA-256 pairs recorded per fixture).
+**Accept with nits.** All five checks pass: (1) the diff versus
+`origin/master` is docs-only (two added files, no support-badge or default
+flips); (2) the write-up never claims "JDK 25 supported" and labels the
+`Main$Validated.<init>(I)V` result a hybrid, not full IR; (3) commands,
+host-21 versus Temurin-25.0.4.1+1 toolchains, checksums, and the 20/21
+admission arithmetic are internally consistent and match the tree — the
+diagnostic text, opcode 154 (`IFNE`), ASM 9.8, fixture list, and the
+Adoptium tarball SHA-256 were each verified against source or the
+publisher; (4) the JEP 472 warning is quoted verbatim and framed as a
+warning that a future JDK turns into an error, not ignored; (5) `#53` is
+not back-filled and no bench timings are invented. Beyond the checklist,
+all four recorded stdout SHA-256 values were independently reproduced by
+deriving each fixture's deterministic output from its committed source and
+hashing it — every hash matches, corroborating that the byte-exact match
+claims hash real content. Two non-blocking presentation nits are recorded
+in the review doc (mixed exit-code/count notation in the summary total
+row; a single hash column labeled as covering both files).
 
-IR admission by exact class/method/descriptor join: 20 of 21 code-bearing
-input methods reached IR with zero legacy fallbacks and zero missing methods.
-The single exception is `Main$Validated.<init>(I)V`
-(`FlexibleConstructorBodiesE2E`), whose flexible constructor body branches
-before `super(...)`; the transpiler logged `Control flow before the
-this/super call cannot be split safely at bytecode instruction 8 (opcode
-154)` and left that constructor unchanged, so that fixture's pass is a hybrid
-result.
+### (d) Preconditions / status
 
-### (d) Integration evidence
-
-The shadow JAR built with `BUILD SUCCESSFUL`. Each CMake configure identified
-GNU 13.3.0 and `Found JNI: /opt/jdk25/include`; each build ended with `[100%]
-Built target native_library`. Every excluded raw `// IR codegen:` marker (6
-total) was a transpiler-inserted `<clinit>`, consistent with the JDK 17/21
-corpus docs. Native stderr was not empty on JDK 25: every transformed run
-printed the four-line JEP 472 `System::load` restricted-method warning, which
-is documented verbatim, with oracle stderr empty. Exact commands, both
-`java -version` outputs (host 21.0.10 and Temurin 25.0.4.1+1), the
-non-interactive JDK 25 install steps, per-method admission lists, and the
-per-fixture stdout SHA-256 table are all in the doc.
+The production goal remains incomplete. Any future JDK 25 support claim
+needs a wider corpus, more vendors and architectures, an
+`--enable-native-access` story for the generated `native0.Loader`, and
+handling for flexible constructor bodies that branch before `super(...)`.
+Nothing in this review adds measurements or numbers.
 
 ## 中文
 
 ### (a) 范围
 
-对仓库内全部四个 JDK 25 fixture（`CompactSourceModuleImportE2E`、
-`FlexibleConstructorBodiesE2E`、`ScopedValuesE2E`、`StreamGatherersE2E`）
-执行真实的 opt-in IR 模式行为 E2E，并只在新文档
-`docs/benchmarks/ir-jdk25-e2e-corpus.md` 中记录实测结果。基线为
-`origin/master`（`a7e5453`）。宿主机 JDK 为 21；从 Adoptium 下载了真实的
-JDK 25（Eclipse Temurin 25.0.4.1+1），经 SHA-256 校验后用于
-`javac --release 25 -g` 编译、HotSpot oracle 运行、JNI 头文件和转换后
-native 运行。不修改编译器、IR、evaluator、interpreter、`Main.java` 或
-`project-status.md`；本分支仅含文档。
+对草稿 PR #141（分支 `cursor/eval-ir-jdk25-e2e-6d81`，tip `a3ffcb2`）的
+独立 Fable 评审；该 PR 记录了对仓库内四个 JDK 25 fixture 的 opt-in IR 模式
+行为 E2E。本评审分支仅新增 `docs/reviews/ir-jdk25-e2e-fable.md` 和本
+`PR_BODY.md`；未触碰编译器、IR、evaluator 或 interpreter 源码，也未重新
+运行 E2E。
 
 ### (b) Ship-ready？
 
-**No / 否。** 这只是在一台 Linux x86-64 主机上对四个小 fixture 的一次行为
-测量，不得解读为"支持 JDK 25"：默认代码生成器仍为 `legacy`，有一个构造器
-保留为普通 Java 字节码，且生成的 loader 触发 JEP 472 受限 native 访问警告
-（未来 JDK 将把它变成错误）。未测量任何 benchmark 数字；issue #53 条目
-保持 `N/A`。
+**No / 否。** 被评审的 PR 是单主机上对四个小 fixture 的一次行为测量，
+本评审不改变其性质。"支持 JDK 25"仍是未做出的声明，`--codegen` 默认值仍为
+`legacy`，#53 的 eval 中位数保持 `N/A`，JEP 472 受限 native 访问警告和
+混合 flexible-constructor 结果仍是未决事项。
 
-### (c) 实测结果
+### (c) 评审结论
 
-四个 fixture 均用真实 `javac` 25 编译成功（exit 0，无 preview 标志）、
-`--codegen=ir` 转译成功（exit 0）、CMake 以 `CC=gcc CXX=g++` 和
-`/opt/jdk25/include` JNI 配置并构建成功（exit 0）；四个转换后 JAR 均以
-exit 0 结束，stdout 与 JDK 25 HotSpot oracle 逐字节一致（每个 fixture 的
-SHA-256 均已记录）。
+**接受，附非阻塞性 nit。** 五项检查全部通过：（1）相对 `origin/master`
+的 diff 仅含两个新增文档文件，无支持徽章或默认值改动；（2）文档从未声称
+"支持 JDK 25"，并将 `Main$Validated.<init>(I)V` 标记为混合结果而非纯 IR；
+（3）命令、宿主 JDK 21 与 Temurin 25.0.4.1+1 工具链、校验和以及 20/21
+admission 算术内部一致且与代码树相符 —— 诊断文本、opcode 154（`IFNE`）、
+ASM 9.8、fixture 列表和 Adoptium tarball 的 SHA-256 均已对照源码或发布方
+核实；（4）JEP 472 警告被逐字记录并定性为"未来 JDK 将变为错误"的警告，
+而非被忽略；（5）#53 未被回填，未虚构任何 benchmark 数字。此外，四个
+fixture 的 stdout 均可由其提交的源码确定性推导，独立复算的四个 SHA-256
+全部与记录一致，证实逐字节匹配声明对应真实内容。评审文档中记录了两条
+非阻塞性写作 nit（汇总行的 exit code 与计数记法混用；单列哈希表头覆盖
+两个文件）。
 
-按 class/method/descriptor 精确 join 的 IR admission：21 个含代码输入方法中
-20 个进入 IR，0 个 legacy fallback，0 个缺失。唯一例外是
-`FlexibleConstructorBodiesE2E` 的 `Main$Validated.<init>(I)V`：其 flexible
-constructor body 在 `super(...)` 之前有分支，转译器记录了 `Control flow
-before the this/super call cannot be split safely at bytecode instruction 8
-(opcode 154)` 并保留该构造器不变，因此该 fixture 的通过属于混合结果。
+### (d) 前置条件 / 状态
 
-### (d) 集成证据
-
-shadow JAR 构建 `BUILD SUCCESSFUL`。每次 CMake configure 识别出 GNU 13.3.0
-并报告 `Found JNI: /opt/jdk25/include`；每次构建以 `[100%] Built target
-native_library` 结束。被排除的 6 个原始 `// IR codegen:` marker 全部是
-转译器插入的 `<clinit>`，与 JDK 17/21 语料文档一致。JDK 25 上 native stderr
-非空：每个转换后运行都打印了四行 JEP 472 `System::load` 受限方法警告，
-文档已逐字记录；oracle stderr 为空。精确命令、两套 `java -version` 输出
-（宿主 21.0.10 与 Temurin 25.0.4.1+1）、非交互式 JDK 25 安装步骤、逐方法
-admission 列表和逐 fixture stdout SHA-256 表均在文档中。
+生产目标仍未完成。未来任何 JDK 25 支持声明都需要更大的语料、更多厂商与
+架构、为生成的 `native0.Loader` 提供 `--enable-native-access` 方案，并
+处理在 `super(...)` 之前存在分支的 flexible constructor body。本评审不
+新增任何测量或数字。
