@@ -317,6 +317,7 @@ public final class IrNodes {
         public enum Kind {
             STATIC("invokestatic"),
             VIRTUAL("invokevirtual"),
+            INTERFACE("invokeinterface"),
             SPECIAL("invokespecial");
 
             private final String mnemonic;
@@ -347,18 +348,30 @@ public final class IrNodes {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.name = Objects.requireNonNull(name, "name");
             this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
-            if (result != null && result.getType() != IrType.I32
-                    && result.getType() != IrType.I64
-                    && result.getType() != IrType.REFERENCE) {
-                throw new IllegalArgumentException(
-                        "Invoke result must be i32, i64, or a reference value");
+            Type returnType;
+            Type[] argumentTypes;
+            try {
+                returnType = Type.getReturnType(this.descriptor);
+                argumentTypes = Type.getArgumentTypes(this.descriptor);
+            } catch (IllegalArgumentException malformedDescriptor) {
+                throw new IllegalArgumentException("Invalid invoke descriptor "
+                        + this.descriptor, malformedDescriptor);
             }
-            if (kind == Kind.SPECIAL
-                    && (!"<init>".equals(name) || result != null)) {
-                throw new IllegalArgumentException(
-                        "Special invokes must be void constructor calls");
+
+            if (returnType.getSort() == Type.VOID) {
+                if (result != null) {
+                    throw new IllegalArgumentException(
+                            "Void invoke cannot have a result value");
+                }
+                this.result = null;
+            } else {
+                this.result = requireType(result, invokeType(returnType), "result");
             }
-            this.result = result;
+            if ("<init>".equals(name)
+                    && (kind != Kind.SPECIAL || returnType.getSort() != Type.VOID)) {
+                throw new IllegalArgumentException(
+                        "Constructor invokes must be void special calls");
+            }
             if (kind == Kind.STATIC) {
                 if (receiver != null) {
                     throw new IllegalArgumentException("Static invoke cannot have a receiver");
@@ -368,15 +381,16 @@ public final class IrNodes {
                 this.receiver = requireReference(receiver, "receiver");
             }
             List<IrValue> checkedArguments = new ArrayList<>();
-            for (IrValue argument : Objects.requireNonNull(arguments, "arguments")) {
-                IrValue checked = Objects.requireNonNull(argument, "argument");
-                if (checked.getType() != IrType.I32
-                        && checked.getType() != IrType.I64
-                        && checked.getType() != IrType.REFERENCE) {
-                    throw new IllegalArgumentException(
-                            "Invoke arguments must be i32, i64, or reference values");
-                }
-                checkedArguments.add(checked);
+            List<IrValue> suppliedArguments =
+                    Objects.requireNonNull(arguments, "arguments");
+            if (suppliedArguments.size() != argumentTypes.length) {
+                throw new IllegalArgumentException("Invoke descriptor requires "
+                        + argumentTypes.length + " arguments, got "
+                        + suppliedArguments.size());
+            }
+            for (int i = 0; i < argumentTypes.length; i++) {
+                checkedArguments.add(requireType(suppliedArguments.get(i),
+                        invokeType(argumentTypes[i]), "argument " + i));
             }
             this.arguments = Collections.unmodifiableList(checkedArguments);
             this.bytecodeOffset = bytecodeOffset;
@@ -1351,6 +1365,19 @@ public final class IrNodes {
             return IrType.REFERENCE;
         }
         throw new IllegalArgumentException("Unsupported field descriptor " + descriptor);
+    }
+
+    private static IrType invokeType(Type type) {
+        if (type.getSort() == Type.INT) {
+            return IrType.I32;
+        }
+        if (type.getSort() == Type.LONG) {
+            return IrType.I64;
+        }
+        if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
+            return IrType.REFERENCE;
+        }
+        throw new IllegalArgumentException("Unsupported invoke carrier " + type);
     }
 
     private static String requireClassName(String className) {

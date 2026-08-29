@@ -7,11 +7,14 @@ import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
@@ -248,6 +251,155 @@ public class IrCompilerTest {
                 staticVoidLongInvokeMethod(), 3, owner(), 0);
         compiler.processMethod(staticVoidContext);
         assertTrue(staticVoidContext.output.toString().contains("env->CallStaticVoidMethod"));
+    }
+
+    @Test
+    public void lowersInterfaceInvokeFamiliesWithExactDescriptorArguments() {
+        MethodNode intMethod = interfaceInvokeMethod(
+                "interfaceInt", "adjust", "(I)I");
+        IrNodes.Invoke intInvoke = onlyInvoke(frontend.build("example/Math", intMethod));
+        assertEquals(IrNodes.Invoke.Kind.INTERFACE, intInvoke.getKind());
+        assertEquals(1, intInvoke.getArguments().size());
+        assertEquals(IrType.I32, intInvoke.getArguments().get(0).getType());
+        assertEquals(IrType.I32, intInvoke.getResult().getType());
+        String intCpp = compileToCpp(intMethod, 0);
+        assertTrue(intCpp.contains("env->GetMethodID(cclasses[0]"));
+        assertTrue(intCpp.contains(
+                "env->CallIntMethod(arg0, cmethods[0], arg1)"));
+
+        MethodNode longMethod = interfaceInvokeMethod(
+                "interfaceLong", "adjustLong", "(J)J");
+        IrNodes.Invoke longInvoke = onlyInvoke(frontend.build("example/Math", longMethod));
+        assertEquals(1, longInvoke.getArguments().size());
+        assertEquals(IrType.I64, longInvoke.getArguments().get(0).getType());
+        assertEquals(IrType.I64, longInvoke.getResult().getType());
+        assertTrue(compileToCpp(longMethod, 0).contains(
+                "env->CallLongMethod(arg0, cmethods[0], arg1)"));
+
+        MethodNode objectMethod = interfaceInvokeMethod(
+                "interfaceObject", "create", "(I)Ljava/lang/Object;");
+        IrNodes.Invoke objectInvoke =
+                onlyInvoke(frontend.build("example/Math", objectMethod));
+        assertEquals(1, objectInvoke.getArguments().size());
+        assertEquals(IrType.REFERENCE, objectInvoke.getResult().getType());
+        assertTrue(compileToCpp(objectMethod, 0).contains(
+                "env->CallObjectMethod(arg0, cmethods[0], arg1)"));
+
+        MethodNode voidMethod = interfaceInvokeMethod(
+                "interfaceVoid", "accept", "(JLjava/lang/Object;)V");
+        IrNodes.Invoke voidInvoke = onlyInvoke(frontend.build("example/Math", voidMethod));
+        assertEquals(2, voidInvoke.getArguments().size());
+        assertEquals(IrType.I64, voidInvoke.getArguments().get(0).getType());
+        assertEquals(IrType.REFERENCE, voidInvoke.getArguments().get(1).getType());
+        assertEquals(null, voidInvoke.getResult());
+        assertTrue(compileToCpp(voidMethod, 0).contains(
+                "env->CallVoidMethod(arg0, cmethods[0], arg1, arg2)"));
+    }
+
+    @Test
+    public void lowersNonConstructorSpecialInvokeFamilies() {
+        MethodNode intMethod = specialInvokeMethod(
+                "specialInt", "example/Base", "superInt", "(I)I");
+        IrNodes.Invoke intInvoke = onlyInvoke(frontend.build("example/Math", intMethod));
+        assertEquals(IrNodes.Invoke.Kind.SPECIAL, intInvoke.getKind());
+        assertEquals("superInt", intInvoke.getName());
+        assertEquals(1, intInvoke.getArguments().size());
+        assertEquals(IrType.I32, intInvoke.getResult().getType());
+        String intCpp = compileToCpp(intMethod, 0);
+        assertTrue(intCpp.contains("env->GetMethodID(cclasses[0]"));
+        assertTrue(intCpp.contains(
+                "env->CallNonvirtualIntMethod(obj, cclasses[0], cmethods[0], arg0)"));
+
+        MethodNode longMethod = specialInvokeMethod(
+                "specialLong", "example/Math", "privateLong", "(J)J");
+        IrNodes.Invoke longInvoke = onlyInvoke(frontend.build("example/Math", longMethod));
+        assertEquals(IrType.I64, longInvoke.getResult().getType());
+        assertTrue(compileToCpp(longMethod, 0).contains(
+                "env->CallNonvirtualLongMethod(obj, cclasses[0], cmethods[0], arg0)"));
+
+        MethodNode objectMethod = specialInvokeMethod(
+                "specialObject", "example/Base", "superText",
+                "()Ljava/lang/String;");
+        IrNodes.Invoke objectInvoke =
+                onlyInvoke(frontend.build("example/Math", objectMethod));
+        assertEquals(0, objectInvoke.getArguments().size());
+        assertEquals(IrType.REFERENCE, objectInvoke.getResult().getType());
+        assertTrue(compileToCpp(objectMethod, 0).contains(
+                "env->CallNonvirtualObjectMethod(obj, cclasses[0], cmethods[0])"));
+
+        MethodNode voidMethod = specialInvokeMethod(
+                "specialVoid", "example/Base", "superAccept",
+                "(JLjava/lang/Object;)V");
+        IrNodes.Invoke voidInvoke = onlyInvoke(frontend.build("example/Math", voidMethod));
+        assertEquals(2, voidInvoke.getArguments().size());
+        assertEquals(null, voidInvoke.getResult());
+        assertTrue(compileToCpp(voidMethod, 0).contains(
+                "env->CallNonvirtualVoidMethod(obj, cclasses[0], cmethods[0], "
+                        + "arg0, arg1)"));
+    }
+
+    @Test
+    public void nullInterfaceReceiverUsesSharedExceptionalExit() {
+        MethodNode method = nullableInterfaceInvokeMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrNodes.Invoke invoke = onlyInvoke(ir);
+        IrBlock invokeBlock = ir.getBlocks().stream()
+                .filter(block -> block.getInstructions().contains(invoke))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/NullPointerException",
+                invokeBlock.getExceptionEdges().get(0).getCatchType());
+
+        String cpp = compileToCpp(method, 0);
+        int nullCheck = cpp.indexOf("if (arg0 == nullptr)");
+        int throwCall = cpp.indexOf("utils::throw_re", nullCheck);
+        int dispatch = cpp.indexOf("goto IR_CATCH_0;", throwCall);
+        int invokeCall = cpp.indexOf("env->CallIntMethod", dispatch);
+        assertTrue(nullCheck >= 0 && throwCall > nullCheck
+                && dispatch > throwCall && invokeCall > dispatch);
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
+    }
+
+    @Test
+    public void rejectsInvokeDescriptorsOutsideExactCarrierSet() {
+        for (int opcode : new int[]{Opcodes.INVOKEINTERFACE, Opcodes.INVOKESPECIAL}) {
+            for (String primitive : new String[]{"Z", "B", "C", "S", "F", "D"}) {
+                assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
+                        opcode, "()" + primitive), opcode);
+                assertInvokeRejectedBeforeMutation(unsupportedInvokeDescriptorMethod(
+                        opcode, "(" + primitive + ")V"), opcode);
+            }
+        }
+    }
+
+    @Test
+    public void rejectsInvokedynamicBeforeMutation() {
+        MethodNode method = invokedynamicMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.INVOKEDYNAMIC, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
+    public void rejectsUnsupportedAfterPhaseElevenInvokesBeforeMutation() {
+        MethodNode method = unsupportedAfterPhaseElevenInvokesMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.FCONST_0, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
     @Test
@@ -1031,7 +1183,22 @@ public class IrCompilerTest {
                 checkCastCatchMethod(), longArithmeticMethod(), longConversionMethod(),
                 wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
                 virtualStringInvokeMethod(), staticStringInvokeMethod(),
-                staticVoidLongInvokeMethod(), returnAllocatedObjectMethod(),
+                staticVoidLongInvokeMethod(),
+                interfaceInvokeMethod("interfaceInt", "adjust", "(I)I"),
+                interfaceInvokeMethod("interfaceLong", "adjustLong", "(J)J"),
+                interfaceInvokeMethod(
+                        "interfaceObject", "create", "(I)Ljava/lang/Object;"),
+                interfaceInvokeMethod(
+                        "interfaceVoid", "accept", "(JLjava/lang/Object;)V"),
+                specialInvokeMethod(
+                        "specialInt", "example/Base", "superInt", "(I)I"),
+                specialInvokeMethod(
+                        "specialLong", "example/Math", "privateLong", "(J)J"),
+                specialInvokeMethod("specialObject", "example/Base", "superText",
+                        "()Ljava/lang/String;"),
+                specialInvokeMethod("specialVoid", "example/Base", "superAccept",
+                        "(JLjava/lang/Object;)V"),
+                nullableInterfaceInvokeMethod(), returnAllocatedObjectMethod(),
                 returnNullMethod(), referenceNullBranchMethod("ifNull", Opcodes.IFNULL),
                 referenceNullBranchMethod("ifNonNull", Opcodes.IFNONNULL),
                 popUnusedCategoryOneInvokeResultMethod(), returnAllocatedObjectArrayMethod(),
@@ -1130,6 +1297,16 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->CallStaticObjectMethod"));
         assertTrue(source.contains("env->CallStaticVoidMethod"));
         assertTrue(source.contains(
+                "IR codegen: example/Math.interfaceInt"
+                        + "(Lexample/Phase11Interface;I)I"));
+        assertTrue(source.contains("env->CallLongMethod"));
+        assertTrue(source.contains("env->CallVoidMethod"));
+        assertTrue(source.contains("env->CallNonvirtualIntMethod"));
+        assertTrue(source.contains("env->CallNonvirtualLongMethod"));
+        assertTrue(source.contains("env->CallNonvirtualObjectMethod"));
+        assertTrue(source.contains("IR codegen: example/Math.specialVoid"));
+        assertTrue(source.contains("IR codegen: example/Math.nullableInterface"));
+        assertTrue(source.contains(
                 "IR codegen: example/Math.returnAllocatedObject()Ljava/lang/Object;"));
         assertTrue(source.contains("IR codegen: example/Math.returnNull()Ljava/lang/Object;"));
         assertTrue(source.contains("IR codegen: example/Math.ifNull"));
@@ -1223,6 +1400,36 @@ public class IrCompilerTest {
         MethodContext context = new MethodContext(obfuscator, method, methodId, owner(), 0);
         new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
         return context.output.toString();
+    }
+
+    private IrNodes.Invoke onlyInvoke(IrMethod method) {
+        return method.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.Invoke.class::isInstance)
+                .map(IrNodes.Invoke.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+    }
+
+    private void assertInvokeRejectedBeforeMutation(MethodNode method, int opcode) {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+        assertEquals(opcode, error.getOpcode());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    private void assertUnchangedAfterRejectedIr(MethodNode method, MethodContext context,
+                                                NativeObfuscator obfuscator) {
+        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
+        assertEquals("", context.output.toString());
+        assertEquals("", context.nativeMethods.toString());
+        assertEquals(0, obfuscator.getCachedClasses().size());
+        assertEquals(0, obfuscator.getCachedStrings().size());
+        assertEquals(0, obfuscator.getCachedFields().size());
+        assertEquals(0, obfuscator.getCachedMethods().size());
     }
 
     private MethodNode incrementFieldMethod() {
@@ -1346,6 +1553,134 @@ public class IrCompilerTest {
                 "java/lang/Object", "hashCode", "()I", false));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode interfaceInvokeMethod(String wrapperName, String targetName,
+                                             String targetDescriptor) {
+        String targetOwner = "example/Phase11Interface";
+        Type returnType = Type.getReturnType(targetDescriptor);
+        Type[] targetArguments = Type.getArgumentTypes(targetDescriptor);
+        Type[] wrapperArguments = new Type[targetArguments.length + 1];
+        wrapperArguments[0] = Type.getObjectType(targetOwner);
+        System.arraycopy(targetArguments, 0, wrapperArguments, 1, targetArguments.length);
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                wrapperName, Type.getMethodDescriptor(returnType, wrapperArguments),
+                null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        int local = 1;
+        int argumentSlots = 0;
+        for (Type argument : targetArguments) {
+            method.instructions.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD),
+                    local));
+            local += argument.getSize();
+            argumentSlots += argument.getSize();
+        }
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE,
+                targetOwner, targetName, targetDescriptor, true));
+        method.instructions.add(new InsnNode(returnType.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = local;
+        method.maxStack = 1 + argumentSlots;
+        return method;
+    }
+
+    private MethodNode specialInvokeMethod(String wrapperName, String targetOwner,
+                                           String targetName, String targetDescriptor) {
+        Type returnType = Type.getReturnType(targetDescriptor);
+        Type[] targetArguments = Type.getArgumentTypes(targetDescriptor);
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                wrapperName, targetDescriptor, null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        int local = 1;
+        int argumentSlots = 0;
+        for (Type argument : targetArguments) {
+            method.instructions.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD),
+                    local));
+            local += argument.getSize();
+            argumentSlots += argument.getSize();
+        }
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                targetOwner, targetName, targetDescriptor, false));
+        method.instructions.add(new InsnNode(returnType.getOpcode(Opcodes.IRETURN)));
+        method.maxLocals = local;
+        method.maxStack = 1 + argumentSlots;
+        return method;
+    }
+
+    private MethodNode nullableInterfaceInvokeMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "nullableInterface", "(Lexample/Phase11Interface;)I", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE,
+                "example/Phase11Interface", "size", "()I", true));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_M1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/NullPointerException"));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode unsupportedInvokeDescriptorMethod(int opcode,
+                                                         String targetDescriptor) {
+        Type[] targetArguments = Type.getArgumentTypes(targetDescriptor);
+        Type[] wrapperArguments = new Type[targetArguments.length + 1];
+        wrapperArguments[0] = Type.getObjectType("example/Phase11Interface");
+        for (int i = 0; i < targetArguments.length; i++) {
+            wrapperArguments[i + 1] = targetArguments[i].getSize() == 2
+                    ? Type.LONG_TYPE : Type.INT_TYPE;
+        }
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "unsupportedInvoke",
+                Type.getMethodDescriptor(Type.VOID_TYPE, wrapperArguments), null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        int local = 1;
+        int argumentSlots = 0;
+        for (int i = 0; i < targetArguments.length; i++) {
+            Type wrapperArgument = wrapperArguments[i + 1];
+            method.instructions.add(new VarInsnNode(
+                    wrapperArgument.getOpcode(Opcodes.ILOAD), local));
+            local += wrapperArgument.getSize();
+            argumentSlots += wrapperArgument.getSize();
+        }
+        method.instructions.add(new MethodInsnNode(opcode,
+                opcode == Opcodes.INVOKEINTERFACE
+                        ? "example/Phase11Interface" : "example/Base",
+                "unsupported", targetDescriptor,
+                opcode == Opcodes.INVOKEINTERFACE));
+        Type returnType = Type.getReturnType(targetDescriptor);
+        if (returnType.getSort() != Type.VOID) {
+            method.instructions.add(new InsnNode(
+                    returnType.getSize() == 2 ? Opcodes.POP2 : Opcodes.POP));
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = local;
+        method.maxStack = 1 + argumentSlots;
+        return method;
+    }
+
+    private MethodNode invokedynamicMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "dynamic", "()I", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, "example/Bootstrap",
+                "bootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+                false);
+        method.instructions.add(new InvokeDynamicInsnNode(
+                "dynamic", "()I", bootstrap));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
         method.maxStack = 1;
         return method;
     }
@@ -1505,6 +1840,29 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 5;
         method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode unsupportedAfterPhaseElevenInvokesMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "unsupportedAfterPhaseElevenInvokes",
+                "(Lexample/Phase11Interface;I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE,
+                "example/Phase11Interface", "adjust", "(I)I", true));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "example/Base", "superInt", "(I)I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
         return method;
     }
 

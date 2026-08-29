@@ -1233,6 +1233,7 @@ public final class AsmToIr {
     private static boolean isSupportedInvoke(MethodInsnNode invoke) {
         int opcode = invoke.getOpcode();
         if (opcode != Opcodes.INVOKESTATIC && opcode != Opcodes.INVOKEVIRTUAL
+                && opcode != Opcodes.INVOKEINTERFACE
                 && opcode != Opcodes.INVOKESPECIAL) {
             return false;
         }
@@ -1243,8 +1244,8 @@ public final class AsmToIr {
         }
         try {
             Type returnType = Type.getReturnType(invoke.desc);
-            if (opcode == Opcodes.INVOKESPECIAL) {
-                if (!"<init>".equals(invoke.name)
+            if ("<init>".equals(invoke.name)) {
+                if (opcode != Opcodes.INVOKESPECIAL
                         || returnType.getSort() != Type.VOID) {
                     return false;
                 }
@@ -1276,6 +1277,8 @@ public final class AsmToIr {
                 return IrNodes.Invoke.Kind.STATIC;
             case Opcodes.INVOKEVIRTUAL:
                 return IrNodes.Invoke.Kind.VIRTUAL;
+            case Opcodes.INVOKEINTERFACE:
+                return IrNodes.Invoke.Kind.INTERFACE;
             case Opcodes.INVOKESPECIAL:
                 return IrNodes.Invoke.Kind.SPECIAL;
             default:

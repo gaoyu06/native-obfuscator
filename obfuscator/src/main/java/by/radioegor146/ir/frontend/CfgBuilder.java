@@ -264,7 +264,8 @@ public final class CfgBuilder {
                 || opcode == Opcodes.IASTORE || opcode == Opcodes.GETFIELD
                 || opcode == Opcodes.PUTFIELD || opcode == Opcodes.GETSTATIC
                 || opcode == Opcodes.PUTSTATIC || opcode == Opcodes.INVOKESTATIC
-                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKESPECIAL
+                || opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE
+                || opcode == Opcodes.INVOKESPECIAL
                 || opcode == Opcodes.ATHROW;
     }
 
