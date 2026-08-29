@@ -9,6 +9,7 @@ import by.radioegor146.Platform;
 import by.radioegor146.bytecode.IndyPreprocessor;
 import by.radioegor146.bytecode.MethodHandleUtils;
 import by.radioegor146.bytecode.PreprocessorUtils;
+import by.radioegor146.helpers.ProcessHelper;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
@@ -20,6 +21,7 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
@@ -38,6 +40,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -48,11 +51,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -691,18 +700,118 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsPrefixWritesToForwardedReferenceLocalsBeforeMutation()
+    public void admitsPrefixWritesToForwardedReferenceParameters()
             throws Exception {
-        Class<?> parameterClass = rejectConstructorPrefixReferenceWrite(
-                "example/ParameterPrefix",
-                referenceParameterReassignedBeforeSuperConstructor());
-        parameterClass.getConstructor(String.class, Object.class)
-                .newInstance("value", new Object());
+        MethodNode constructor = referenceParameterReassignedBeforeSuperConstructor();
+        ClassNode owner = constructorOwner(
+                "example/ParameterPrefix", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(constructor);
 
-        Class<?> receiverClass = rejectConstructorPrefixReferenceWrite(
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(owner, constructor);
+        assertEquals("(Ljava/lang/Object;Ljava/lang/Object;)V", nativeBody.desc);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        assertEquals("(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertTrue(retainsBridgeInvocation(
+                constructor, context.proxyMethod.getMethodNode().name));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> parameterClass = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> parameterClass.getConstructor(String.class, Object.class)
+                        .newInstance("value", new Object()));
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+    }
+
+    @Test
+    public void rejectsPrefixWritesToConstructorReceiverBeforeMutation()
+            throws Exception {
+        Class<?> receiverClass = rejectConstructorReceiverWrite(
                 "example/ReceiverPrefix",
                 receiverReassignedBeforeSuperConstructor());
         receiverClass.getConstructor(Object.class).newInstance(new Object());
+    }
+
+    @Test
+    public void prefixReferenceParameterAstoreCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the flex-constructor runtime test");
+
+        Path directory = Files.createTempDirectory("ir-flex-ctor-run");
+        Path inputJar = directory.resolve("flex-ctor.jar");
+        Path outputDirectory = directory.resolve("output");
+        createReferenceParameterAstoreJar(inputJar);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain flex-constructor Java run");
+        assertEquals("forwarded-result" + System.lineSeparator(), javaResult.stdout);
+
+        String ownerName = "example/FlexCtorAstore";
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        MethodInsnNode bridge = Arrays.stream(transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",
+                bridge.desc);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("flex-constructor CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("flex-constructor CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Flex-constructor native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native flex-constructor Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     @Test
@@ -3752,7 +3861,7 @@ public class IrCompilerTest {
                 .findFirst().orElseThrow(AssertionError::new);
     }
 
-    private Class<?> rejectConstructorPrefixReferenceWrite(
+    private Class<?> rejectConstructorReceiverWrite(
             String ownerName, MethodNode constructor) {
         ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
         owner.version = Opcodes.V1_8;
@@ -3775,6 +3884,34 @@ public class IrCompilerTest {
         assertTrue(context.proxyMethod == null);
         assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
         return new ByteArrayClassLoader().define(writeClass(owner));
+    }
+
+    private void createReferenceParameterAstoreJar(Path jarPath) throws IOException {
+        ClassNode owner = constructorOwner(
+                "example/FlexCtorAstore", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        owner.methods.add(referenceParameterAstoreResultConstructor(owner.name));
+        owner.methods.add(referenceParameterAstoreMain(owner.name));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
+    private Path javaExecutable() {
+        return Paths.get(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")
+                        ? "java.exe" : "java");
     }
 
     private void assertInvokeRejectedBeforeMutation(MethodNode method, int opcode) {
@@ -4677,6 +4814,56 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode referenceParameterAstoreResultConstructor(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/String;Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/Object", "toString", "()Ljava/lang/String;", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode referenceParameterAstoreMain(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "java/lang/System", "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("discarded"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW,
+                "java/lang/StringBuilder"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("forwarded-result"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/StringBuilder", "<init>",
+                "(Ljava/lang/String;)V", false));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                owner, "<init>",
+                "(Ljava/lang/String;Ljava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/io/PrintStream", "println",
+                "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 6;
         return method;
     }
 

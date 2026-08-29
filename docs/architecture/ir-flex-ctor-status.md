@@ -1,4 +1,4 @@
-# Intra-prefix constructor control flow status
+# Flexible constructor split status
 
 ## Scope
 
@@ -38,13 +38,32 @@ The `if` compiles to an `IFNE` (opcode 154) whose target label sits before the
   (`Constructor prefix branches across the this/super call`); it would skip the
   mandatory chain call.
 
-All other guards are unchanged:
+It also classifies writes to reference/array constructor-argument locals:
+
+- A prefix `ASTORE` into a reference/array parameter slot is **admitted**. The
+  retained prefix computes the replacement value and the wrapper loads that
+  slot after the this/super call. Only the affected argument is widened to
+  `java/lang/Object` in the hidden bridge and independent suffix descriptor, so
+  a verifier-valid prefix may replace (for example) a declared `String`
+  parameter with an `Object`.
+- Unmodified argument descriptors remain exact; array descriptor information is
+  not erased globally.
+- A prefix `ASTORE 0` is still **rejected**. Local 0 can stop naming the
+  initialized receiver while another prefix-only alias carries
+  `uninitializedThis` through the chain call. The bridge has no general way to
+  forward that alias or reconstruct receiver identity for the suffix.
+
+Other guards remain unchanged:
 
 - Suffix jumps/switches into the prefix are rejected.
 - try/catch regions crossing the split are rejected.
-- Prefix `ASTORE` of a forwarded reference local (`this` or object/array
-  arguments passed to the bridge) is rejected.
 - Multiple this/super candidates are rejected.
+
+A prefix branch into the suffix can bypass the mandatory chain call. Multiple
+this/super candidates require path-sensitive split exits rather than the current
+single `callIndex`. A cross-split exception region cannot preserve a bytecode
+handler edge from exceptions raised by the native suffix. Those cases therefore
+remain unsafe for this split shape.
 
 `createNativeBody` still emits the suffix only. `postProcess` still keeps the
 prefix plus the this/super call in the source constructor and appends the bridge
@@ -61,10 +80,17 @@ Synthetic bytecode unit tests in
   `super`): `createNativeBody` succeeds and `IrMethodCompiler.processMethod`
   produces the native bridge while keeping the prefix branch and this/super call
   in the constructor.
+- A prefix `Object`-to-`String` parameter-slot `ASTORE` is admitted with an
+  `Object` bridge/suffix entry descriptor. Serializing and loading the rewritten
+  class reaches the unresolved native bridge, proving JVM verification.
+- A compile-and-run test executes the same synthetic class first as plain Java,
+  then through the complete IR transform, generated CMake C++ library, hidden
+  native bridge registration, and `java -Xverify:all -Xcheck:jni`; both runs
+  print `forwarded-result`.
 - Negatives: prefix branch targeting a suffix label, suffix jump into the
-  prefix, try/catch crossing the split, and multiple this/super candidates.
-- Existing negatives (prefix `ASTORE` of forwarded reference locals,
-  invokedynamic) still restore the original constructor.
+  prefix, try/catch crossing the split, multiple this/super candidates, and
+  prefix `ASTORE 0`.
+- Existing unsupported-opcode fallback still restores the original constructor.
 
 This document records the split admission rule only. It does not assert any JDK
 end-to-end support level.
