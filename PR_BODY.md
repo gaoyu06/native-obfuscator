@@ -20,7 +20,8 @@ change, and the production goal is not complete.
 There is no stacked review. The gate is the executed focused
 `IrCompilerTest` + `CodegenModeTest` suite, including the new three-path JVM
 verification and CMake/g++ compile-and-run Java-parity harness under
-`java -Xverify:all -Xcheck:jni`.
+`java -Xverify:all -Xcheck:jni`. JUnit XML reports 180 + 7 = 187 tests,
+0 failures, 0 errors, and 0 skipped.
 
 ## (d) Preconditions
 
@@ -45,7 +46,8 @@ stay reject-before-mutation. `--codegen` remains `legacy`.
 
 没有堆叠评审。门禁为已执行的 `IrCompilerTest` + `CodegenModeTest` 聚焦测试套件，
 其中包含新的三路径 JVM 验证，以及在 `java -Xverify:all -Xcheck:jni` 下运行的
-CMake/g++ 编译运行 Java 一致性测试。
+CMake/g++ 编译运行 Java 一致性测试。JUnit XML 记录为 180 + 7 = 187 个测试，
+0 个失败、0 个错误、0 个跳过。
 
 ## (d) 前置条件
 
