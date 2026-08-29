@@ -85,8 +85,44 @@ Source and regression inspection also confirms:
 
 ## Re-run evidence
 
-The independent review run and XML-derived counts will be recorded after the
-pre-test review commit is pushed.
+Command run with the required GNU toolchain:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest \
+  --rerun-tasks
+```
+
+Result: `BUILD SUCCESSFUL`.
+
+Counts read directly from the review run's JUnit XML:
+
+```text
+IrCompilerTest: tests=82, skipped=0, failures=0, errors=0 (time=0.962 s)
+CodegenModeTest: tests=3, skipped=0, failures=0, errors=0 (time=0.152 s)
+Total: 85 tests, 0 skipped, 0 failures, 0 errors
+```
+
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` ran in `0.431 s`;
+its XML testcase has no `skipped` child. The retained translation unit
+`/tmp/ir-compile-smoke6420299718568634260/ir-smoke.cpp` contains exactly 140
+`JNICALL` functions and all 12 phase-17 smoke methods: both `DUP2` forms,
+both `DUP_X2` forms, both `DUP2_X1` forms, all four `DUP2_X2` forms, and both
+`POP2` forms.
+
+It was checked independently, outside the test process:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke6420299718568634260/ir-smoke.cpp
+```
+
+The independent command exited zero with empty diagnostics. The review
+environment used `gcc`/`g++ 13.3.0`, OpenJDK 21.0.10, and the matching JNI
+headers.
 
 ## Ship-readiness / 交付准备度
 
