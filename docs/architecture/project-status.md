@@ -1,11 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after landing leaf-only `ISHL`/`ISHR`/`IUSHR` chain inputs
-[#186](https://github.com/gaoyu06/native-obfuscator/pull/186)
-(parent re-ran 200/200: 193 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateShiftSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#185](https://github.com/gaoyu06/native-obfuscator/pull/185)
-bitwise tree. Active process:
+Last updated after landing isolated prefix `ASTORE n; RETURN` /
+`ASTORE n; GOTO ret` mixed catch
+[#187](https://github.com/gaoyu06/native-obfuscator/pull/187)
+(parent re-ran 205/205: 198 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `relocatedPrefixAstoreReturnHandlerCompilesAndRunsWithJavaParity`)
+on the post-[#186](https://github.com/gaoyu06/native-obfuscator/pull/186)
+shift-input tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -125,7 +126,11 @@ legacy。不能当成 JDK 支持矩阵。
   proof.
   [#186](https://github.com/gaoyu06/native-obfuscator/pull/186) admits
   one leaf-only `ISHL`, `ISHR`, or `IUSHR` under the same one-level
-  proof. Non-identity `ASTORE 0`, unproven prefix→suffix
+  proof.
+  [#187](https://github.com/gaoyu06/native-obfuscator/pull/187) admits
+  a suffix-protected range whose isolated prefix handler is
+  `ASTORE n; RETURN` or `ASTORE n; GOTO ret` (`n` is a non-receiver
+  reference slot). Non-identity `ASTORE 0`, unproven prefix→suffix
   jumps/switches, other mixed try/catch placements, remaining
   multi-super shapes (nested arithmetic, `IDIV`/`IREM`,
   non-identical suffixes), and extras still unassigned on a
@@ -246,6 +251,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated `POP; GOTO; RETURN` mixed catch (#184) | 194 tests (`IrCompilerTest` 187 + `CodegenModeTest` 7). Parent re-ran 194/194 including `relocatedPrefixGotoReturnHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `IAND`/`IOR`/`IXOR` chain inputs (#185) | 197 tests (`IrCompilerTest` 190 + `CodegenModeTest` 7). Parent re-ran 197/197 including `threeImmediateBitwiseSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `ISHL`/`ISHR`/`IUSHR` chain inputs (#186) | 200 tests (`IrCompilerTest` 193 + `CodegenModeTest` 7). Parent re-ran 200/200 including `threeImmediateShiftSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Isolated `ASTORE n; RETURN` mixed catch (#187) | 205 tests (`IrCompilerTest` 198 + `CodegenModeTest` 7). Parent re-ran 205/205 including `relocatedPrefixAstoreReturnHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -292,8 +298,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
-  placements, remaining multi-super shapes such as nested
-  arithmetic, `IDIV`/`IREM`, or non-identical suffixes,
+  placements beyond #171/#184/#187, remaining multi-super shapes
+  such as nested arithmetic, `IDIV`/`IREM`, or non-identical suffixes,
   extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
@@ -311,8 +317,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #186 (leaf-only
-  `ISHL`/`ISHR`/`IUSHR` chain inputs). / 落地 #186 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #187 (isolated
+  prefix `ASTORE n; RETURN` / `ASTORE n; GOTO ret` mixed catch). /
+  落地 #187 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
