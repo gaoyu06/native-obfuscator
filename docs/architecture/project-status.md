@@ -1,12 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after landing proven multi-super catch tables
-[#200](https://github.com/gaoyu06/native-obfuscator/pull/200)
-(parent re-ran 249/249: 242 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `prefixOnlyMultiSuperTryCatchCompilesAndRunsWithJavaParity`
-and `suffixOnlyDistinctMultiSuperTryCatchCompilesAndRunsWithJavaParity`)
-on the post-[#199](https://github.com/gaoyu06/native-obfuscator/pull/199)
-leftover-inventory tree. Active process:
+Last updated after landing relocated prefix handlers on distinct
+suffixes
+[#201](https://github.com/gaoyu06/native-obfuscator/pull/201)
+(parent re-ran 252/252: 245 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity`)
+on the post-[#200](https://github.com/gaoyu06/native-obfuscator/pull/200)
+multi-super catch tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -167,13 +167,16 @@ legacy。不能当成 JDK 支持矩阵。
   [#200](https://github.com/gaoyu06/native-obfuscator/pull/200) admits
   prefix-only exception tables on identical-copy and path-id
   multi-super constructors, and wholly-in-one-suffix tables on
-  path-id suffixes. Non-identity `ASTORE 0`, unproven
-  prefix→suffix jumps/switches, other mixed try/catch placements
-  (relocated prefix handlers on multi-super; tables that span
-  suffixes, cover a chain call, or use a method-end handler),
-  remaining multi-super shapes (nested/`IDIV`-as-inner trees,
-  three-or-more nested binaries), and extras still unassigned on a
-  bridge-taking path are still rejected.
+  path-id suffixes.
+  [#201](https://github.com/gaoyu06/native-obfuscator/pull/201) admits
+  a suffix-protected try on one path-id suffix that targets an
+  already-proven isolated prefix handler. Non-identity `ASTORE 0`,
+  unproven prefix→suffix jumps/switches, other mixed try/catch
+  placements (tables that span suffixes, cover a chain call, or
+  use a method-end handler), remaining multi-super shapes
+  (nested/`IDIV`-as-inner trees, three-or-more nested binaries),
+  and extras still unassigned on a bridge-taking path are still
+  rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -304,6 +307,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Leaf-only `IDIV`/`IREM` chain inputs (#198) | 242 tests (`IrCompilerTest` 235 + `CodegenModeTest` 7). Parent re-ran 242/242 including `threeImmediateIdivIremSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#198 leftover inventory (#199) | Measurement only on `4214d74`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Proven multi-super catch tables (#200) | 249 tests (`IrCompilerTest` 242 + `CodegenModeTest` 7). Parent re-ran 249/249 including `prefixOnlyMultiSuperTryCatchCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
+| Relocated prefix handlers on distinct suffixes (#201) | 252 tests (`IrCompilerTest` 245 + `CodegenModeTest` 7). Parent re-ran 252/252 including `relocatedPrefixHandlerDistinctMultiSuperCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -350,12 +354,11 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
-  placements beyond #171/#184/#187/#188/#200 such as relocated
-  prefix handlers on multi-super or tables that span suffixes,
-  cover a chain call, or use a method-end handler, remaining
-  multi-super shapes such as nested/`IDIV`-as-inner trees or
-  three-or-more nested binaries, extras still unassigned on a
-  bridge-taking path) and
+  placements beyond #171/#184/#187/#188/#200/#201 such as tables
+  that span suffixes, cover a chain call, or use a method-end
+  handler, remaining multi-super shapes such as
+  nested/`IDIV`-as-inner trees or three-or-more nested binaries,
+  extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#199](https://github.com/gaoyu06/native-obfuscator/pull/199),
@@ -372,9 +375,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #200 (proven
-  multi-super prefix-only and wholly-in-one-suffix catch tables). /
-  落地 #200 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #201 (relocated
+  isolated prefix handlers on path-id distinct suffixes). /
+  落地 #201 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
