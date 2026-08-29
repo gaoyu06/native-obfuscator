@@ -96,5 +96,7 @@ intervals. Treat a single run as local diagnostic evidence, not a release
 threshold or a general performance claim. Compare repeated runs on controlled
 hardware before drawing conclusions.
 
-The current-master three-mode run is in
+The latest three-mode run, recorded after IR phase 19 admission landed, is in
+[`results-ir-vs-legacy-phase19.md`](results-ir-vs-legacy-phase19.md). The
+pre-phase-19 record remains in
 [`results-ir-vs-legacy-master.md`](results-ir-vs-legacy-master.md).
