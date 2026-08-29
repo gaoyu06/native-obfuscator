@@ -209,9 +209,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int wrapperEndIndex = suffixStartIndex;
         Set<Integer> admittedPrefixSuffixBranches = new HashSet<>();
         DuplicatedSuffix duplicatedSuffix = null;
+        SharedSuffix sharedSuffix = null;
         if (callIndexes.size() > 1) {
-            SharedSuffix sharedSuffix =
-                    sharedSuffix(constructor, callIndexes);
+            sharedSuffix = sharedSuffix(constructor, callIndexes);
             if (sharedSuffix != null) {
                 suffixStartIndex = sharedSuffix.joinIndex;
                 wrapperEndIndex =
@@ -356,6 +356,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         List<ExtraLocal> extraLocals =
                 extraLocals(
                         constructor, suffixStartIndex, diagnosticCallIndex);
+        if (sharedSuffix != null
+                && !sharedSuffix.prefixExitCallIndexes.isEmpty()
+                && !hasConditionalExtraForPrefixExit(
+                constructor, suffixStartIndex,
+                sharedSuffix.prefixExitCallIndexes, extraLocals)) {
+            int callIndex = sharedSuffix.prefixExitCallIndexes.iterator().next();
+            throw unsupported(
+                    "Constructor immediate prefix return requires an extra local "
+                            + "that is unassigned at the exiting this/super call "
+                            + "and assigned on every hidden-bridge path",
+                    callIndex, constructor.instructions.get(callIndex));
+        }
         return new ConstructorSplit(
                 suffixStartIndex, wrapperEndIndex,
                 widenedReferenceLocals, extraLocals,
@@ -489,6 +501,21 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
+        if (callIndexes.size() == 2
+                && constructor.instructions.get(nextExecutable).getOpcode()
+                != Opcodes.RETURN) {
+            int prefixExitSuccessor = firstExecutableIndex(
+                    constructor, callIndexes.get(0) + 1);
+            if (isImmediatePrefixReturn(
+                    constructor, callIndexes, 0, prefixExitSuccessor)) {
+                Set<Integer> prefixExitCallIndexes = new HashSet<>();
+                prefixExitCallIndexes.add(callIndexes.get(0));
+                return new SharedSuffix(
+                        lastCallIndex + 1, new HashSet<>(),
+                        prefixExitCallIndexes);
+            }
+        }
+
         int joinIndex = -1;
         LabelNode join = null;
         for (int i = lastCallIndex + 1; i < nextExecutable; i++) {
@@ -527,7 +554,27 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
             branchIndexes.add(conditionalBranch);
         }
-        return new SharedSuffix(joinIndex, branchIndexes);
+        return new SharedSuffix(
+                joinIndex, branchIndexes, new HashSet<>());
+    }
+
+    /**
+     * Proves the prefix exit used by conditionally assigned extra-local
+     * forwarding. Exactly two chain calls are present: the first returns
+     * immediately, while the final call falls through to the shared suffix.
+     * The later extra-local proof additionally requires a local that is
+     * unassigned at this call but has one type on every path to the bridge.
+     */
+    private static boolean isImmediatePrefixReturn(
+            MethodNode constructor, List<Integer> callIndexes,
+            int callOrdinal, int successorIndex) {
+        return callIndexes.size() == 2
+                && callOrdinal == 0
+                && constructor.tryCatchBlocks.isEmpty()
+                && successorIndex < callIndexes.get(1)
+                && constructor.instructions.get(successorIndex).getOpcode()
+                == Opcodes.RETURN
+                && hasEmptyChainEntryStacks(constructor, callIndexes);
     }
 
     /**
@@ -1125,6 +1172,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static int localStateAtSplit(
             MethodNode constructor, int splitIndex, int local) {
+        return localStatesToSplit(constructor, splitIndex, local)[splitIndex];
+    }
+
+    private static int[] localStatesToSplit(
+            MethodNode constructor, int splitIndex, int local) {
         int[] states = new int[splitIndex + 1];
         ArrayDeque<Integer> pending = new ArrayDeque<>();
         states[0] = LOCAL_UNASSIGNED;
@@ -1154,7 +1206,23 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 }
             }
         }
-        return states[splitIndex];
+        return states;
+    }
+
+    private static boolean hasConditionalExtraForPrefixExit(
+            MethodNode constructor, int splitIndex,
+            Set<Integer> prefixExitCallIndexes,
+            List<ExtraLocal> extraLocals) {
+        for (ExtraLocal extra : extraLocals) {
+            int[] states =
+                    localStatesToSplit(constructor, splitIndex, extra.index);
+            for (Integer callIndex : prefixExitCallIndexes) {
+                if ((states[callIndex] & LOCAL_UNASSIGNED) != 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -2133,10 +2201,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static final class SharedSuffix {
         private final int joinIndex;
         private final Set<Integer> branchIndexes;
+        private final Set<Integer> prefixExitCallIndexes;
 
-        private SharedSuffix(int joinIndex, Set<Integer> branchIndexes) {
+        private SharedSuffix(
+                int joinIndex, Set<Integer> branchIndexes,
+                Set<Integer> prefixExitCallIndexes) {
             this.joinIndex = joinIndex;
             this.branchIndexes = branchIndexes;
+            this.prefixExitCallIndexes = prefixExitCallIndexes;
         }
     }
 

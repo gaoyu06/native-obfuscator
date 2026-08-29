@@ -850,6 +850,51 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsConditionallyAssignedExtraOnBridgePathOnly() {
+        ClassNode owner = constructorOwner(
+                "example/ConditionalBridgeExtra", "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        MethodNode constructor = conditionalPrefixExitExtraConstructor(
+                owner.name, owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(ILjava/lang/Object;)V", nativeBody.desc);
+        assertEquals(Arrays.asList(
+                        Opcodes.ALOAD, Opcodes.ALOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+        MethodInsnNode bridge = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(bridge.getPrevious() instanceof VarInsnNode);
+        assertEquals(Opcodes.ALOAD, bridge.getPrevious().getOpcode());
+        assertEquals(2, ((VarInsnNode) bridge.getPrevious()).var);
+    }
+
+    @Test
     public void admitsMultipleSuperWithIdenticalLinearSuffixCopies() {
         ClassNode owner = constructorOwner(
                 "example/MultiSuperCopies", "example/MultiSuperBase");
@@ -1447,6 +1492,43 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenConditionalBridgeExtraPassesJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedConditionalExtraBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedConditionalExtra", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        MethodNode constructor = conditionalPrefixExitExtraConstructor(
+                owner.name, base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+
+        verified.getConstructor(int.class).newInstance(0);
+        InvocationTargetException bridge = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(1));
+        assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        assertEquals(2, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void rewrittenIdenticalMultiSuperSuffixCopiesPassJvmVerification()
             throws Exception {
         ClassNode base =
@@ -1601,6 +1683,94 @@ public class IrCompilerTest {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
                 "ir-gapped-prefix-extra-run",
                 "example/FlexCtorGappedExtraLocal", true);
+    }
+
+    @Test
+    public void conditionalBridgeExtraCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the conditional-extra runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the conditional-extra runtime test");
+
+        String ownerName = "example/ConditionalBridgeExtraRuntime";
+        String baseName = "example/ConditionalBridgeExtraRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-conditional-extra-run");
+        Path inputJar = directory.resolve("conditional-extra.jar");
+        Path outputDirectory = directory.resolve("output");
+        createConditionalBridgeExtraJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain conditional-extra Java run");
+        assertEquals(
+                "BRIDGE-ASSIGNED" + System.lineSeparator()
+                        + "PREFIX-EXIT" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(2, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        MethodInsnNode bridge = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(
+                "(Ljava/lang/Object;ILjava/lang/Object;)V",
+                bridge.desc);
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("conditional-extra CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("conditional-extra CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Conditional-extra native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native conditional-extra Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     @Test
@@ -6211,6 +6381,36 @@ public class IrCompilerTest {
         }
     }
 
+    private void createConditionalBridgeExtraJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/String;", null, null));
+        owner.methods.add(conditionalPrefixExitExtraConstructor(
+                ownerName, baseName));
+        owner.methods.add(conditionalBridgeExtraMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperIdenticalSuffixCopiesJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -7221,6 +7421,40 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode conditionalPrefixExitExtraConstructor(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode assigned = new LabelNode();
+        LabelNode join = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, assigned));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(assigned);
+        method.instructions.add(new LdcInsnNode("BRIDGE-ASSIGNED"));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(join);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode multipleSuperIdenticalSuffixCopiesConstructor(
             String owner, String superName) {
         MethodNode method = new MethodNode(
@@ -7468,6 +7702,42 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 5;
+        return method;
+    }
+
+    private MethodNode conditionalBridgeExtraMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>", "(I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "Ljava/lang/String;"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new LdcInsnNode("PREFIX-EXIT"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
         return method;
     }
 
