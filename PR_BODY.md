@@ -20,6 +20,13 @@ Ship-ready: **No**. This is a narrow opt-in admission only.
 Review is not stacked. The gate is the focused test command covering
 `IrCompilerTest` and `CodegenModeTest`.
 
+### Verification
+
+`CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
+passed. JUnit XML records 155 + 7 = 162 tests, with zero failures, errors, or
+skips.
+
 ### Preconditions and exclusions
 
 - Remaining constructor leftovers stay rejected, including immediate separate
@@ -48,6 +55,12 @@ Review is not stacked. The gate is the focused test command covering
 
 本次评审不是堆叠评审；门禁是同时覆盖 `IrCompilerTest` 与
 `CodegenModeTest` 的聚焦测试命令。
+
+### 验证
+
+`CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
+已通过。JUnit XML 记录为 155 + 7 = 162 个测试，失败、错误及跳过均为 0。
 
 ### 前置条件与排除项
 
