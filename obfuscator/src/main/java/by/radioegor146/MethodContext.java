@@ -31,6 +31,7 @@ public class MethodContext {
 
     public HiddenMethodsPool.HiddenMethod proxyMethod;
     public MethodNode nativeMethod;
+    public int constructorClassloaderArgumentIndex = -1;
 
     public int stackPointer;
 

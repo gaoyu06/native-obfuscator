@@ -19,9 +19,10 @@ The constructor split now covers these related prefix shapes:
   `GOTO` edge to an isolated prefix `RETURN`, plus exact `ATHROW` and
   `ASTORE n; ALOAD n; ATHROW` handlers that rethrow the caught exception, for
   both single-super and bounded path-id distinct-suffix constructors;
-- `ASTORE 0` writes whose stack input is proven to be the original constructor
-  receiver, with every selected this/super call proven to consume that same
-  receiver;
+- identity-preserving `ASTORE 0` writes, plus single-call receiver-alias
+  forwarding where the original receiver is saved in another local before
+  local 0 receives a different reference and the selected this/super call is
+  proven to consume the saved receiver;
 - `ASTORE` updates to reference/array constructor-parameter slots, with only
   those bridge parameters widened to `java/lang/Object`;
 - extra reference or primitive locals written in the prefix and read in the
@@ -223,9 +224,10 @@ Multi-call tables remain rejected when their labels mix prefix and suffix,
 span suffixes, cover a chain call, use a handler after the last suffix, or use
 an unproven prefix handler. The identical-copy one-join normalizer still admits
 prefix-only tables only. All-identical suffix sets that do not match that
-normalizer, non-identity `ASTORE 0` aliasing, and other unlisted catch forms
-remain rejected. This is intentionally a narrow set of proven constructor
-split forms, not a general multi-exit constructor rewriter.
+normalizer, non-identity `ASTORE 0` in multi-call identical-copy or path-id
+forms, and other unlisted catch forms remain rejected. This is intentionally a
+narrow set of proven constructor split forms, not a general multi-exit
+constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -237,18 +239,29 @@ It also classifies writes to reference/array constructor-argument locals:
   parameter with an `Object`.
 - Unmodified argument descriptors remain exact; array descriptor information is
   not erased globally.
-- A prefix `ASTORE 0` is **admitted only when a must-style stack/local CFG
-  analysis proves its input is the original constructor receiver**. Copies
-  through `ALOAD`/`ASTORE` locals and JVM stack shuffles preserve this identity;
-  merges retain it only when every incoming path agrees. The analysis also
-  requires each selected chain call to consume that receiver.
-- The wrapper can then continue to load local 0 after the chain call for the
-  hidden bridge. If any `ASTORE 0` input or chain-call receiver is unreachable,
-  ambiguous, or not the original receiver, `split()` rejects before bridge or
-  C++ mutation.
-- General alias forwarding remains unsupported. In particular, replacing local
-  0 with another object while a prefix-only alias carries `uninitializedThis`
-  through the chain call is rejected.
+- An identity-preserving prefix `ASTORE 0` remains admitted when the existing
+  must-style stack/local CFG analysis proves its input is the original
+  constructor receiver. Copies through `ALOAD`/`ASTORE` locals and JVM stack
+  shuffles preserve this identity; merges retain it only when every incoming
+  path agrees.
+- A single-call constructor may instead save the original receiver in a
+  prefix alias, write another verifier-valid reference to local 0, and load the
+  alias as the this/super call receiver. The same receiver analysis must prove
+  that the selected call consumes the original receiver. An unreachable store,
+  a failed frame analysis, or a call on overwritten local 0 is rejected before
+  bridge or C++ mutation.
+- The wrapper deliberately continues to load local 0 as the first hidden-
+  bridge argument. It does not substitute the alias: suffix `ALOAD 0` observes
+  the overwritten Java local. If the suffix reads the alias, the existing
+  extra-local proof forwards it separately; after the chain call that value is
+  the initialized constructed receiver.
+- Because overwritten local 0 may be `null` or an object from a bootstrap
+  class, the alias-forwarding wrapper also passes the constructor owner's
+  `Class` as shell-only metadata. Native class resolution uses that exact class
+  loader without changing the IR meaning of local 0 or using the receiver alias
+  for instance operations.
+- Non-identity `ASTORE 0` remains rejected for multi-call shared joins,
+  identical-copy normalization, and path-id suffix selection.
 
 Prefix stores into non-parameter locals are classified separately:
 
@@ -285,8 +298,9 @@ Other guards remain unchanged:
 
 - Suffix jumps/switches into the prefix are rejected.
 - All other try/catch label placements crossing the split are rejected.
-- Prefix `ASTORE 0` that is not proven identity-preserving is rejected for both
-  single- and multi-call shapes.
+- Prefix `ASTORE 0` is rejected when the selected chain call is not proven to
+  consume the original receiver. Multi-call shapes still require every store
+  to be identity-preserving.
 - `jsr`/`ret` remains unsupported.
 
 A prefix branch into the suffix can bypass the mandatory chain call. A
@@ -373,6 +387,17 @@ Synthetic bytecode unit tests in
   A serialized rewritten class verifies and reaches the unresolved bridge, and
   the full CMake/g++ transform has stdout parity under
   `java -Xverify:all -Xcheck:jni`.
+- `admitsAndRewritesReceiverAliasForwardingBeforeSuper` loads and instantiates
+  the original verifier-legal alias fixture, proves its rewritten wrapper keeps
+  `ASTORE 0` and invokes super through `ALOAD 2`, and verifies that one hidden
+  bridge still receives local 0 as its first body argument.
+- `rejectsOverwrittenConstructorReceiverAtChainCallBeforeMutation` keeps the
+  unsafe no-alias form fail-closed when the chain call consumes overwritten
+  local 0, without allocating a hidden method.
+- `receiverAliasForwardingCompilesAndRunsWithJavaParity` forwards the initialized
+  receiver alias as an extra local while suffix `ALOAD 0` remains the declared
+  argument. Non-null and null runs have matching stdout before and after the
+  CMake/g++ transform under `java -Xverify:all -Xcheck:jni`.
 - `forwardsPrefixExtraReferenceAndIntLocalsIntoSuffixDescriptors` checks linear
   reference and `int` extras in the independent suffix and hidden bridge
   descriptors, including identity local mappings for contiguous extras.
@@ -742,9 +767,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 245 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 247 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 252 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 254 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

@@ -108,15 +108,24 @@ public final class MethodShellEmitter {
         }
         output.append(") {").append("\n");
 
-        if (context.proxyMethod != null) {
+        boolean hasConstructorClassloaderArgument =
+                context.constructorClassloaderArgumentIndex >= 0;
+        if (context.proxyMethod != null
+                && !hasConstructorClassloaderArgument) {
             output.append("    env->DeleteLocalRef(ignored_hidden);\n");
         }
         if (!isStatic) {
-            output.append("    jclass clazz = utils::get_class_from_object(env, obj);\n");
-            output.append("    if (env->ExceptionCheck()) { ")
-                    .append(String.format("return (%s) 0;",
-                            MethodProcessor.CPP_TYPES[context.ret.getSort()]))
-                    .append(" }\n");
+            if (hasConstructorClassloaderArgument) {
+                output.append("    jclass clazz = (jclass) arg")
+                        .append(context.constructorClassloaderArgumentIndex)
+                        .append(";\n");
+            } else {
+                output.append("    jclass clazz = utils::get_class_from_object(env, obj);\n");
+                output.append("    if (env->ExceptionCheck()) { ")
+                        .append(String.format("return (%s) 0;",
+                                MethodProcessor.CPP_TYPES[context.ret.getSort()]))
+                        .append(" }\n");
+            }
         }
         output.append("    jobject classloader = utils::get_classloader_from_class(env, clazz);\n");
         output.append("    if (env->ExceptionCheck()) { ")
@@ -129,7 +138,9 @@ public final class MethodShellEmitter {
                         MethodProcessor.CPP_TYPES[context.ret.getSort()]));
         output.append("\n");
         if (!isStatic) {
-            output.append("    env->DeleteLocalRef(clazz);\n");
+            if (!hasConstructorClassloaderArgument) {
+                output.append("    env->DeleteLocalRef(clazz);\n");
+            }
             output.append("    clazz = utils::find_class_wo_static(env, classloader, ")
                     .append(context.getCachedStrings()
                             .getPointer(context.clazz.name.replace('/', '.')))

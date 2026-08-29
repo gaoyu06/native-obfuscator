@@ -6445,6 +6445,107 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void receiverAliasForwardingCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the receiver-alias runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the receiver-alias runtime test");
+
+        String ownerName = "example/ReceiverAliasRuntime";
+        Path directory = Files.createTempDirectory("ir-receiver-alias-run");
+        Path inputJar = directory.resolve("receiver-alias.jar");
+        Path outputDirectory = directory.resolve("output");
+        createReceiverAliasForwardingJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain receiver-alias Java run");
+        assertEquals(
+                "ALIAS-NON-NULL" + System.lineSeparator()
+                        + "null" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(variableIndexes(
+                transformedConstructor, Opcodes.ASTORE).contains(0));
+        MethodInsnNode retainedSuper =
+                retainedThisOrSuperCall(transformedConstructor, transformed);
+        assertEquals(Opcodes.ALOAD, retainedSuper.getPrevious().getOpcode());
+        assertEquals(2, ((VarInsnNode) retainedSuper.getPrevious()).var);
+        MethodInsnNode bridge = Arrays.stream(
+                        transformedConstructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;"
+                        + "Ljava/lang/Class;)V",
+                bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(ownerName),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(2, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(0, ((VarInsnNode) argument).var);
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("receiver-alias CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("receiver-alias CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Receiver-alias native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native receiver-alias Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
     public void prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity()
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
@@ -6897,12 +6998,109 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsPrefixWritesToConstructorReceiverBeforeMutation()
+    public void admitsAndRewritesReceiverAliasForwardingBeforeSuper()
             throws Exception {
-        Class<?> receiverClass = rejectConstructorReceiverWrite(
-                "example/ReceiverPrefix",
-                receiverReassignedBeforeSuperConstructor());
-        receiverClass.getConstructor(Object.class).newInstance(new Object());
+        ClassNode legalOwner = constructorOwner(
+                "example/LegalReceiverAlias", "java/lang/Object");
+        legalOwner.version = Opcodes.V1_8;
+        legalOwner.methods.add(receiverReassignedBeforeSuperConstructor());
+        Class<?> legalClass =
+                new ByteArrayClassLoader().define(writeClass(legalOwner));
+        legalClass.getConstructor(Object.class).newInstance(new Object());
+        legalClass.getConstructor(Object.class).newInstance(
+                new Object[]{null});
+
+        ClassNode owner = constructorOwner(
+                "example/RewrittenReceiverAlias", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                receiverReassignedBeforeSuperConstructor();
+        owner.methods.add(constructor);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(Ljava/lang/Object;Ljava/lang/Class;)V",
+                nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(variableIndexes(
+                constructor, Opcodes.ASTORE).contains(0));
+        MethodInsnNode retainedSuper = retainedThisOrSuperCall(
+                constructor, owner);
+        assertEquals(Opcodes.ALOAD, retainedSuper.getPrevious().getOpcode());
+        assertEquals(2, ((VarInsnNode) retainedSuper.getPrevious()).var);
+        MethodInsnNode bridge = Arrays.stream(
+                        constructor.instructions.toArray())
+                .filter(MethodInsnNode.class::isInstance)
+                .map(MethodInsnNode.class::cast)
+                .filter(invoke -> invoke.getOpcode() == Opcodes.INVOKESTATIC
+                        && invoke.owner.contains("/hidden/"))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(
+                "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Class;)V",
+                bridge.desc);
+        AbstractInsnNode argument = bridge.getPrevious();
+        assertEquals(Opcodes.LDC, argument.getOpcode());
+        assertEquals(Type.getObjectType(owner.name),
+                ((LdcInsnNode) argument).cst);
+        argument = argument.getPrevious();
+        assertEquals(1, ((VarInsnNode) argument).var);
+        argument = argument.getPrevious();
+        assertEquals(0, ((VarInsnNode) argument).var);
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        assertTrue(context.output.toString().contains(
+                "jclass clazz = (jclass) arg1;"));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> rewritten = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> rewritten.getConstructor(Object.class)
+                        .newInstance(new Object()));
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+    }
+
+    @Test
+    public void rejectsOverwrittenConstructorReceiverAtChainCallBeforeMutation() {
+        MethodNode constructor =
+                overwrittenReceiverChainCallConstructor();
+        ClassNode owner = constructorOwner(
+                "example/UnsafeReceiverPrefix", "java/lang/Object");
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.INVOKESPECIAL, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "invoke this/super on the constructor receiver"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -10713,34 +10911,6 @@ public class IrCompilerTest {
                 .findFirst().orElseThrow(AssertionError::new);
     }
 
-    private Class<?> rejectConstructorReceiverWrite(
-            String ownerName, MethodNode constructor) {
-        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
-        owner.version = Opcodes.V1_8;
-        owner.methods.add(constructor);
-        NativeObfuscator obfuscator = new NativeObfuscator();
-        MethodContext context =
-                new MethodContext(obfuscator, constructor, 0, owner, 0);
-        int instructionCount = constructor.instructions.size();
-        java.util.List<Integer> opcodes = realOpcodes(constructor);
-
-        UnsupportedIrConstructException error = assertThrows(
-                UnsupportedIrConstructException.class,
-                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                        .processMethod(context));
-
-        assertEquals(Opcodes.ASTORE, error.getOpcode());
-        assertTrue(error.getMessage().contains(
-                "Constructor prefix ASTORE 0 does not provably preserve "
-                        + "the constructor receiver"));
-        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
-        assertEquals(instructionCount, constructor.instructions.size());
-        assertEquals(opcodes, realOpcodes(constructor));
-        assertTrue(context.proxyMethod == null);
-        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
-        return new ByteArrayClassLoader().define(writeClass(owner));
-    }
-
     private void createPrefixExtraLocalJar(
             Path jarPath, String ownerName, boolean gapped) throws IOException {
         ClassNode owner = constructorOwner(
@@ -10782,6 +10952,29 @@ public class IrCompilerTest {
                 Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
         try (JarOutputStream output =
                      new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
+    private void createReceiverAliasForwardingJar(
+            Path jarPath, String ownerName) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "result",
+                "Ljava/lang/Object;", null, null));
+        owner.methods.add(receiverAliasFieldConstructor(owner.name));
+        owner.methods.add(receiverAliasMain(owner.name));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
             output.putNextEntry(new JarEntry(owner.name + ".class"));
             output.write(writeClass(owner));
             output.closeEntry();
@@ -15618,6 +15811,74 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 3;
         method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode overwrittenReceiverChainCallConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode receiverAliasFieldConstructor(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;)V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                owner, "result", "Ljava/lang/Object;"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode receiverAliasMain(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "java/lang/System", "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("ALIAS-NON-NULL"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                owner, "<init>", "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                owner, "result", "Ljava/lang/Object;"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/io/PrintStream", "println",
+                "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "java/lang/System", "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                owner, "<init>", "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                owner, "result", "Ljava/lang/Object;"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/io/PrintStream", "println",
+                "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
         return method;
     }
 
