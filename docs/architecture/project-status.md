@@ -3,9 +3,9 @@
 Last updated after landing proven `ConstantDynamic` plus raw
 MethodHandle / MethodType `LDC`
 [#161](https://github.com/gaoyu06/native-obfuscator/pull/161)
-(focused suite recorded 128/128: 121 `IrCompilerTest` + 7
-`CodegenModeTest`, including nested string condy and raw `MethodType`
-harnesses) on the post-[#160](https://github.com/gaoyu06/native-obfuscator/pull/160)
+(parent re-ran 128/128: 121 `IrCompilerTest` + 7 `CodegenModeTest`,
+including nested string condy and raw `MethodType` harnesses) on the
+post-[#160](https://github.com/gaoyu06/native-obfuscator/pull/160)
 constructor-prefix tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
@@ -146,7 +146,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | IR monitors / synchronized (#158) | 118 tests (`IrCompilerTest` 111 + `CodegenModeTest` 7). Parent re-ran 118/118 including `executesMonitorAndSynchronizedSemanticsWhenToolchainAvailable` | Complete IR coverage or a default flip |
 | IR `invokedynamic` (#159) | 121 tests (`IrCompilerTest` 114 + `CodegenModeTest` 7). Parent re-ran 121/121 including `executesStringConcatIndyThroughIrWhenToolchainAvailable` | Complete indy/condy coverage or a default flip |
 | Constructor prefix parameter `ASTORE` (#160) | 123 tests (`IrCompilerTest` 116 + `CodegenModeTest` 7). Parent re-ran 123/123 including `prefixReferenceParameterAstoreCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
-| IR proven `ConstantDynamic` + raw MH/MT `LDC` (#161) | 128 tests (`IrCompilerTest` 121 + `CodegenModeTest` 7). Branch recorded nested string condy and raw `MethodType` compile-and-run harnesses | Complete condy coverage or a default flip |
+| IR proven `ConstantDynamic` + raw MH/MT `LDC` (#161) | 128 tests (`IrCompilerTest` 121 + `CodegenModeTest` 7). Parent re-ran 128/128 including `executesStringConstantDynamicThroughIrWhenToolchainAvailable` and `executesRawMethodTypeLdcThroughIrWhenToolchainAvailable` | Complete condy coverage or a default flip |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
