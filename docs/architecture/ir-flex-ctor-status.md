@@ -33,7 +33,10 @@ The constructor split now covers these related prefix shapes:
   that reaches the hidden bridge; and
 - exactly two direct this/super calls whose separate straight-line suffix
   copies, including immediate `RETURN` copies, are proven
-  instruction-for-instruction identical.
+  instruction-for-instruction identical; and
+- three or more direct this/super calls where every call consumes the original
+  receiver plus direct loads of declared constructor arguments and is
+  immediately followed by `RETURN`.
 
 ## Current rule
 
@@ -85,28 +88,35 @@ fail-closed rule:
   join label, and one hidden-bridge invocation. `createNativeBody` starts at
   the shared join and emits that suffix once.
 
-One additional shape is reduced to that same shared-join form:
+One additional family is reduced to that same shared-join form:
 
-- There must be exactly two candidates, each immediately followed by a
-  straight-line suffix copy ending in `RETURN`. The copy may be empty, in
+- With exactly two candidates, each must be immediately followed by a
+  straight-line suffix copy ending in `RETURN`. The copies may be empty, in
   which case each call is immediately followed by `RETURN`.
 - The copies may not contain labels, branches, switches, throws, nested
   constructor calls, unsafe constants, or exception-table coverage. Every
   executable instruction and operand in the two copies must match.
+- With three or more candidates, every suffix copy must consist only of the
+  immediate `RETURN`. Each call's complete input sequence must be a direct
+  `ALOAD 0` followed by direct loads of declared constructor arguments in
+  invocation order and with matching JVM carriers. Computed values, constants,
+  extra locals, and rewritten receiver inputs are not admitted.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
   `ASTORE 0` and extra-local suffix inputs are not admitted for this shape.
-- After all checks pass, the first suffix copy is replaced with `GOTO` and the
-  second copy receives the shared join label. The existing strict-diamond
-  split then retains both calls and emits the canonical suffix once behind one
-  hidden bridge. For the empty-copy case, that suffix contains only `RETURN`.
+- After all checks pass, every noncanonical suffix copy is replaced with
+  `GOTO` and the final copy receives the shared join label. The existing
+  strict-diamond split then retains every call and emits the canonical suffix
+  once behind one hidden bridge. For the 3+ form, that suffix contains only
+  `RETURN`.
 
-Three-or-more immediate separate returns, distinct joins, other conditional or
-switch forms, condition loads that are not declared int-family arguments, work
-between a chain call and an existing join, unreachable candidates, and
-non-identical per-call suffixes remain rejected. This is intentionally a narrow
-set of proven one-join forms, not a general multi-exit constructor rewriter.
+Three-or-more returns with computed or non-argument chain inputs, distinct
+joins, other conditional or switch forms, condition loads that are not
+declared int-family arguments, work between a chain call and an existing join,
+unreachable candidates, and non-identical per-call suffixes remain rejected.
+This is intentionally a narrow set of proven one-join forms, not a general
+multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -288,6 +298,15 @@ Synthetic bytecode unit tests in
 - `immediateMultiSuperReturnsCompileAndRunWithJavaParity` executes both paths
   through plain Java and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeSuperCallsWithImmediateSeparateReturns` proves that three calls
+  using only the original receiver and direct declared-argument loads normalize
+  to two retained `GOTO`s, one canonical `RETURN`, and one hidden bridge.
+- `rewrittenThreeImmediateSuperReturnsPassJvmVerification` selects each of the
+  three retained call paths and reaches the unresolved bridge only after JVM
+  verification succeeds.
+- `threeImmediateSuperReturnsCompileAndRunWithJavaParity` selects all three
+  paths through plain Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsPrefixOnlyTryCatchAndRetainsItInRewrittenConstructor` proves that the
   independent suffix has no prefix handler while the rewritten constructor
   retains the complete prefix exception-table entry and forwards its assigned
@@ -310,11 +329,12 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
-- Multi-call negatives cover three immediate separate returns, a non-identity
-  prefix `ASTORE 0`, a zero-call edge into the suffix, try/catch spanning a
-  chain call and suffix code, a path that executes two chain calls, and
-  distinct non-empty per-call suffixes. Existing prefix-to-suffix,
-  suffix-to-prefix, and conditionally assigned extra-local negatives remain.
+- Multi-call negatives cover three immediate separate returns with computed or
+  constant chain inputs, a non-identity prefix `ASTORE 0`, a zero-call edge
+  into the suffix, try/catch spanning a chain call and suffix code, a path that
+  executes two chain calls, and distinct non-empty per-call suffixes. Existing
+  prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
+  negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
@@ -327,9 +347,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 164 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 167 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 171 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 174 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

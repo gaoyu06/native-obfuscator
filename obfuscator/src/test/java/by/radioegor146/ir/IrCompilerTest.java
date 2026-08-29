@@ -963,6 +963,39 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeSuperCallsWithImmediateSeparateReturns() {
+        ClassNode owner = constructorOwner(
+                "example/ThreeMultiReturn", "example/MultiSuperBase");
+        MethodNode constructor =
+                multipleSuperThreeDeclaredArgumentReturnsConstructor(
+                        owner.superName);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(IIII)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IIII)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void rejectsPrefixBranchTargetingSuffixLabel() {
         ClassNode owner = constructorOwner("example/Skip", "java/lang/Object");
         UnsupportedIrConstructException error = assertThrows(
@@ -1094,9 +1127,10 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsThreeSeparateReturnsAfterMultipleSuperCalls() {
+    public void rejectsThreeImmediateReturnsWithComputedChainInputs() {
         ClassNode owner = constructorOwner(
-                "example/ThreeMultiReturn", "example/MultiSuperBase");
+                "example/ThreeComputedMultiReturn",
+                "example/MultiSuperBase");
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
                 () -> ConstructorSpecialMethodProcessor.createNativeBody(
@@ -1604,6 +1638,50 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenThreeImmediateSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedThreeMultiReturnBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedThreeMultiReturn", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                multipleSuperThreeDeclaredArgumentReturnsConstructor(
+                        base.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int[] arguments : new int[][]{
+                {1, 11, 22, 33},
+                {-1, 11, 22, 33},
+                {0, 11, 22, 33}}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(
+                                    int.class, int.class,
+                                    int.class, int.class)
+                            .newInstance(
+                                    arguments[0], arguments[1],
+                                    arguments[2], arguments[3]));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void rewrittenPrefixOnlyTryCatchConstructorPassesJvmVerification()
             throws Exception {
         ClassNode base = multipleSuperBase("example/VerifiedPrefixCatchBase");
@@ -2084,6 +2162,90 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native immediate-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the three-return runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the three-return runtime test");
+
+        String ownerName = "example/ThreeMultiReturnRuntime";
+        String baseName = "example/ThreeMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-multi-return-run");
+        Path inputJar = directory.resolve("three-multi-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeSeparateReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain three-return multi-super Java run");
+        assertEquals(
+                "11" + System.lineSeparator()
+                        + "22" + System.lineSeparator()
+                        + "33" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("three-return multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("three-return multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Three-return native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native three-return multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -6471,6 +6633,37 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeSeparateReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(
+                multipleSuperThreeDeclaredArgumentReturnsConstructor(
+                        baseName));
+        owner.methods.add(
+                multipleSuperThreeSeparateReturnsMain(
+                        ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createReferenceParameterAstoreJar(Path jarPath) throws IOException {
         ClassNode owner = constructorOwner(
                 "example/FlexCtorAstore", "java/lang/Object");
@@ -7628,6 +7821,42 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode multipleSuperThreeDeclaredArgumentReturnsConstructor(
+            String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(IIII)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(zero);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 5;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode multipleSuperThreeSeparateReturnsConstructor(
             String superName) {
         MethodNode method = new MethodNode(
@@ -7774,6 +8003,49 @@ public class IrCompilerTest {
         method.maxLocals = 1;
         method.maxStack = 4;
         return method;
+    }
+
+    private MethodNode multipleSuperThreeSeparateReturnsMain(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendThreeReturnSuperPrint(
+                method, owner, 1, 11, 22, 33,
+                superName, "magnitude");
+        appendThreeReturnSuperPrint(
+                method, owner, -1, 11, 22, 33,
+                superName, "magnitude");
+        appendThreeReturnSuperPrint(
+                method, owner, 0, 11, 22, 33,
+                superName, "magnitude");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 7;
+        return method;
+    }
+
+    private void appendThreeReturnSuperPrint(
+            MethodNode method, String owner,
+            int selector, int positive, int negative, int zero,
+            String fieldOwner, String fieldName) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, positive));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, negative));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, zero));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner,
+                "<init>", "(IIII)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, fieldOwner, fieldName, "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
     }
 
     private void appendMultipleSuperPrint(

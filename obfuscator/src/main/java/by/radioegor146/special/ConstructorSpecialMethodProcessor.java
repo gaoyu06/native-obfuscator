@@ -653,25 +653,54 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Proves one additional two-call shape: both calls fall through to
      * straight-line, structurally identical suffix copies ending in RETURN.
      * The copy may be empty, making RETURN the immediate successor of each
-     * call. The canonical final copy can then be shared by replacing the first
-     * copy with a GOTO; this does not generalize to multiple native exits.
+     * call.
+     *
+     * <p>For three or more calls, only the empty-copy form is admitted. Every
+     * call must receive the original local-0 receiver and direct loads of
+     * declared constructor arguments, and must be immediately followed by
+     * RETURN. The canonical final return can then be shared by replacing every
+     * earlier return with a GOTO; this does not create multiple native exits.
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
-        if (callIndexes.size() != 2
+        if (callIndexes.size() < 2
                 || !constructor.tryCatchBlocks.isEmpty()) {
             return null;
         }
 
-        LinearSuffix first =
-                linearSuffix(constructor, callIndexes.get(0));
-        LinearSuffix second =
-                linearSuffix(constructor, callIndexes.get(1));
-        if (first == null || second == null
-                || first.endIndex > callIndexes.get(1)
-                || second.endIndex != constructor.instructions.size()
-                || !sameLinearSuffix(constructor, first, second)) {
+        List<LinearSuffix> suffixes = new ArrayList<>();
+        for (int i = 0; i < callIndexes.size(); i++) {
+            LinearSuffix suffix =
+                    linearSuffix(constructor, callIndexes.get(i));
+            if (suffix == null
+                    || (i + 1 < callIndexes.size()
+                    && suffix.endIndex > callIndexes.get(i + 1))) {
+                return null;
+            }
+            suffixes.add(suffix);
+        }
+        LinearSuffix canonical = suffixes.get(suffixes.size() - 1);
+        if (canonical.endIndex != constructor.instructions.size()) {
             return null;
+        }
+
+        if (callIndexes.size() == 2) {
+            if (!sameLinearSuffix(
+                    constructor, suffixes.get(0), canonical)) {
+                return null;
+            }
+        } else {
+            for (LinearSuffix suffix : suffixes) {
+                if (suffix.endIndex != suffix.startIndex + 1
+                        || constructor.instructions.get(suffix.startIndex)
+                        .getOpcode() != Opcodes.RETURN) {
+                    return null;
+                }
+            }
+            if (!hasDirectDeclaredChainInputs(
+                    constructor, callIndexes)) {
+                return null;
+            }
         }
 
         for (AbstractInsnNode instruction : constructor.instructions) {
@@ -682,7 +711,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         int firstExtraLocal = firstExtraLocal(constructor);
-        for (int i = second.startIndex; i < second.endIndex; i++) {
+        for (int i = canonical.startIndex; i < canonical.endIndex; i++) {
             int local = readLocal(constructor.instructions.get(i));
             if (local >= firstExtraLocal) {
                 return null;
@@ -692,9 +721,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
+        List<DuplicatedRange> discarded = new ArrayList<>();
+        for (int i = 0; i < suffixes.size() - 1; i++) {
+            LinearSuffix suffix = suffixes.get(i);
+            discarded.add(new DuplicatedRange(
+                    callIndexes.get(i), suffix.startIndex, suffix.endIndex));
+        }
         return new DuplicatedSuffix(
-                callIndexes.get(0), callIndexes.get(1),
-                first.startIndex, first.endIndex, second.startIndex);
+                discarded, callIndexes.get(callIndexes.size() - 1),
+                canonical.startIndex);
     }
 
     private static LinearSuffix linearSuffix(
@@ -844,24 +879,98 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return true;
     }
 
+    /**
+     * Restricts the 3+-return normalization to calls whose complete operand
+     * sequence is visible locally: ALOAD 0 followed only by direct loads of
+     * declared constructor arguments in invocation order.
+     */
+    private static boolean hasDirectDeclaredChainInputs(
+            MethodNode constructor, List<Integer> callIndexes) {
+        Map<Integer, Type> declaredArguments = new HashMap<>();
+        int declaredLocal = 1;
+        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
+            declaredArguments.put(declaredLocal, argument);
+            declaredLocal += argument.getSize();
+        }
+
+        for (Integer callIndex : callIndexes) {
+            MethodInsnNode call =
+                    (MethodInsnNode) constructor.instructions.get(callIndex);
+            Type[] callArguments = Type.getArgumentTypes(call.desc);
+            int inputIndex =
+                    previousExecutableIndex(constructor, callIndex - 1);
+            for (int i = callArguments.length - 1; i >= 0; i--) {
+                if (inputIndex < 0) {
+                    return false;
+                }
+                AbstractInsnNode input =
+                        constructor.instructions.get(inputIndex);
+                if (!(input instanceof VarInsnNode)) {
+                    return false;
+                }
+                VarInsnNode load = (VarInsnNode) input;
+                Type declared = declaredArguments.get(load.var);
+                if (declared == null
+                        || load.getOpcode()
+                        != declared.getOpcode(Opcodes.ILOAD)
+                        || !sameInvocationCarrier(
+                        declared, callArguments[i])) {
+                    return false;
+                }
+                inputIndex =
+                        previousExecutableIndex(constructor, inputIndex - 1);
+            }
+            if (inputIndex < 0
+                    || constructor.instructions.get(inputIndex).getOpcode()
+                    != Opcodes.ALOAD
+                    || ((VarInsnNode) constructor.instructions.get(inputIndex)).var
+                    != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameInvocationCarrier(
+            Type declared, Type expected) {
+        if (declared.equals(expected)) {
+            return true;
+        }
+        return isIntFamily(declared) && isIntFamily(expected);
+    }
+
+    private static boolean isIntFamily(Type type) {
+        int sort = type.getSort();
+        return sort == Type.BOOLEAN || sort == Type.BYTE
+                || sort == Type.CHAR || sort == Type.SHORT
+                || sort == Type.INT;
+    }
+
     private static void normalizeDuplicatedSuffix(
             MethodNode constructor, DuplicatedSuffix suffix) {
-        AbstractInsnNode firstCall =
-                constructor.instructions.get(suffix.firstCallIndex);
+        List<AbstractInsnNode> calls = new ArrayList<>();
+        List<List<AbstractInsnNode>> discardedCopies = new ArrayList<>();
+        for (DuplicatedRange range : suffix.discarded) {
+            calls.add(constructor.instructions.get(range.callIndex));
+            List<AbstractInsnNode> copy = new ArrayList<>();
+            for (int i = range.startIndex; i < range.endIndex; i++) {
+                copy.add(constructor.instructions.get(i));
+            }
+            discardedCopies.add(copy);
+        }
         AbstractInsnNode canonicalCall =
                 constructor.instructions.get(suffix.canonicalCallIndex);
-        List<AbstractInsnNode> discarded = new ArrayList<>();
-        for (int i = suffix.firstStartIndex;
-             i < suffix.firstEndIndex; i++) {
-            discarded.add(constructor.instructions.get(i));
-        }
-        for (AbstractInsnNode instruction : discarded) {
-            constructor.instructions.remove(instruction);
+        for (List<AbstractInsnNode> copy : discardedCopies) {
+            for (AbstractInsnNode instruction : copy) {
+                constructor.instructions.remove(instruction);
+            }
         }
 
         LabelNode join = new LabelNode();
-        constructor.instructions.insert(
-                firstCall, new JumpInsnNode(Opcodes.GOTO, join));
+        for (AbstractInsnNode call : calls) {
+            constructor.instructions.insert(
+                    call, new JumpInsnNode(Opcodes.GOTO, join));
+        }
         constructor.instructions.insert(canonicalCall, join);
     }
 
@@ -2223,21 +2332,29 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     private static final class DuplicatedSuffix {
-        private final int firstCallIndex;
+        private final List<DuplicatedRange> discarded;
         private final int canonicalCallIndex;
-        private final int firstStartIndex;
-        private final int firstEndIndex;
         private final int canonicalStartIndex;
 
         private DuplicatedSuffix(
-                int firstCallIndex, int canonicalCallIndex,
-                int firstStartIndex, int firstEndIndex,
+                List<DuplicatedRange> discarded, int canonicalCallIndex,
                 int canonicalStartIndex) {
-            this.firstCallIndex = firstCallIndex;
+            this.discarded = discarded;
             this.canonicalCallIndex = canonicalCallIndex;
-            this.firstStartIndex = firstStartIndex;
-            this.firstEndIndex = firstEndIndex;
             this.canonicalStartIndex = canonicalStartIndex;
+        }
+    }
+
+    private static final class DuplicatedRange {
+        private final int callIndex;
+        private final int startIndex;
+        private final int endIndex;
+
+        private DuplicatedRange(
+                int callIndex, int startIndex, int endIndex) {
+            this.callIndex = callIndex;
+            this.startIndex = startIndex;
+            this.endIndex = endIndex;
         }
     }
 
