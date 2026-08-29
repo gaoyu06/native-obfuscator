@@ -47,7 +47,8 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
     private static final int OP_LRETURN = 0x28;
     private static final int OP_I2L = 0x29;
     private static final int OP_L2I = 0x2a;
-    // 0x2b and 0x2c are reserved for future LDIV/LREM lowering.
+    private static final int OP_LDIV = 0x2b;
+    private static final int OP_LREM = 0x2c;
     private static final int OP_LAND = 0x2d;
     private static final int OP_LOR = 0x2e;
     private static final int OP_LXOR = 0x2f;
@@ -137,6 +138,14 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                         throw unsupported("Unsupported evaluator long binary operation "
                                 + binary.getOperation(), offset);
                     }
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getResult(), IrType.I64, offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getLeft(), IrType.I64, offset));
+                    maximumRegister = Math.max(maximumRegister,
+                            checkedValue(binary.getRight(), IrType.I64, offset));
+                } else if (instruction instanceof IrNodes.LongDivRem) {
+                    IrNodes.LongDivRem binary = (IrNodes.LongDivRem) instruction;
                     maximumRegister = Math.max(maximumRegister,
                             checkedValue(binary.getResult(), IrType.I64, offset));
                     maximumRegister = Math.max(maximumRegister,
@@ -410,6 +419,10 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 emitLongBinary((IrNodes.LongBinary) instruction);
                 return;
             }
+            if (instruction instanceof IrNodes.LongDivRem) {
+                emitLongDivRem((IrNodes.LongDivRem) instruction);
+                return;
+            }
             if (instruction instanceof IrNodes.LongShift) {
                 emitLongShift((IrNodes.LongShift) instruction);
                 return;
@@ -481,6 +494,14 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 default:
                     throw new IllegalStateException("Validated long operation changed");
             }
+            writer.u16(binary.getResult().getId());
+            writer.u16(binary.getLeft().getId());
+            writer.u16(binary.getRight().getId());
+        }
+
+        private void emitLongDivRem(IrNodes.LongDivRem binary) {
+            writer.u8(binary.getOperation() == IrNodes.LongDivRem.Operation.DIVIDE
+                    ? OP_LDIV : OP_LREM);
             writer.u16(binary.getResult().getId());
             writer.u16(binary.getLeft().getId());
             writer.u16(binary.getRight().getId());

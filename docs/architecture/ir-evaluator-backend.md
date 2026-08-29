@@ -69,8 +69,8 @@ Instructions follow immediately:
 | `0x28` | `src:u16` | `LRETURN`: return an i64 register as `jlong` |
 | `0x29` | `dst:u16, src:u16` | `I2L`: sign-extend an i32 register to i64 |
 | `0x2a` | `dst:u16, src:u16` | `L2I`: keep the low 32 bits of an i64 register |
-| `0x2b` | — | Reserved for future `LDIV`; not implemented |
-| `0x2c` | — | Reserved for future `LREM`; not implemented |
+| `0x2b` | `dst:u16, lhs:u16, rhs:u16` | Signed toward-zero `LDIV`; zero raises `ArithmeticException`; `MIN_VALUE / -1` is `MIN_VALUE` |
+| `0x2c` | `dst:u16, lhs:u16, rhs:u16` | Signed toward-zero `LREM`; zero raises `ArithmeticException`; `MIN_VALUE % -1` is `0` |
 | `0x2d` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LAND` |
 | `0x2e` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LOR` |
 | `0x2f` | `dst:u16, lhs:u16, rhs:u16` | Bitwise `LXOR` |
@@ -78,9 +78,8 @@ Instructions follow immediately:
 | `0x31` | `dst:u16, value:u16, count:u16` | `LSHR`; shift distance is masked with `& 63` |
 | `0x32` | `dst:u16, value:u16, count:u16` | `LUSHR`; shift distance is masked with `& 63` |
 
-`0x2b` and `0x2c` remain reserved so this port does not claim the direct IR
-agent's future `LDIV`/`LREM` work. `0x20`–`0x22` retain their existing
-control-flow and i32-return assignments.
+`0x2b` and `0x2c` consume the phase-20 `IrNodes.LongDivRem` nodes.
+`0x20`–`0x22` retain their existing control-flow and i32-return assignments.
 
 Bitwise operations and left shifts run on the 32-bit unsigned carrier and copy
 the result bits back to `jint`, preserving JVM wraparound without signed C++
@@ -94,6 +93,14 @@ preserving JVM two's-complement wraparound. `I2L` sign-extends `jint`; `L2I`
 truncates to the low 32 bits. JVM local `LLOAD`/`LSTORE` instructions disappear
 into SSA in the frontend; the evaluator `LLOAD` materializes i64 parameters and
 `LSTORE` stages the i64 return without changing those values.
+
+`LDIV` and `LREM` reinterpret the 64-bit carriers as `int64_t` values and use
+C++17 signed `/` and `%`, whose toward-zero behavior matches the JVM. The
+evaluator checks the divisor first. On zero it uses the trampoline's `JNIEnv*`
+to leave `java/lang/ArithmeticException` pending and exits immediately. It also
+handles `Long.MIN_VALUE / -1` and `Long.MIN_VALUE % -1` before evaluating the
+otherwise-overflowing C++ expressions, producing `Long.MIN_VALUE` and `0`
+respectively.
 
 `LAND`, `LOR`, and `LXOR` operate directly on the 64-bit carrier. Long shifts
 mask the i32 count with `& 63`. `LSHL` and `LUSHR` use unsigned shifts; `LSHR`
@@ -118,9 +125,9 @@ The evaluator lowering currently accepts:
   return;
 - i32 constants;
 - `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
-- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LAND`, `LOR`, `LXOR`, `LSHL`,
-  `LSHR`, `LUSHR`, `I2L`, `L2I`, and `LRETURN` through the shared typed SSA
-  representation;
+- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`,
+  `LXOR`, `LSHL`, `LSHR`, `LUSHR`, `I2L`, `L2I`, and `LRETURN` through the
+  shared typed SSA representation;
 - `GOTO`, all unary and binary integer comparisons represented by the IR, and
   `IRETURN`;
 - local-variable and operand-stack merges already represented as IR phi values.
@@ -135,10 +142,10 @@ signatures, exception edges, JNI-dependent nodes (fields, invokes, arrays, and
 throws), integer operations outside the operations above, unary integer
 operations, and any other IR node not listed here. Long constants remain
 fallbacks. Float/double and object values are outside this evaluator slice.
-The current frontend does not admit `LDIV`, `LREM`, or `LNEG`; this port does
-not add frontend nodes or evaluator opcodes for them. If those operations become
-available as IR nodes, evaluator lowering must continue to reject them until a
-separate capability extension is reviewed.
+In particular, a static `(JJ)J` divide or remainder without a catch region stays
+on evaluator lowering, while a `try`/`catch` around `LDIV` or `LREM` creates an
+exception edge and therefore falls back. The evaluator does not yet implement
+catch dispatch. `LNEG` remains outside this evaluator slice.
 
 ## Port verification
 
@@ -199,12 +206,14 @@ The focused command was:
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test \
-  --tests by.radioegor146.CodegenModeTest \
-  --tests by.radioegor146.MainBackendOptionTest \
-  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest
+  --tests by.radioegor146.ir.backend.InterpreterStreamStrategyTest \
+  --tests by.radioegor146.CodegenModeTest
 ```
 
-Result: 16/16 passed, 0 skipped, 0 failures, 0 errors. The unchanged direct-IR
+Result after the `LDIV`/`LREM` wire-up: 17/17 passed, 0 skipped, 0 failures,
+0 errors. This includes C++17 runtime execution for signed divide/remainder,
+both zero-divisor exceptions, and both `Long.MIN_VALUE / -1` results, plus the
+serializer and pre-shell fallback checks. The unchanged direct-IR
 and interpreter-dispatch suites passed 96/96:
 
 ```bash
@@ -221,3 +230,21 @@ cmake -S build/proof-ir-eval/cpp -B build/proof-ir-eval/cpp/build \
 cmake --build build/proof-ir-eval/cpp/build --parallel 2
 # exit 0
 ```
+
+The wire-up also used a fresh one-class fixture containing
+`static long divide(long, long)`. Complete omitted-versus-explicit direct
+outputs matched:
+
+```bash
+java -jar obfuscator/build/libs/obfuscator.jar --codegen=ir \
+  build/ir-eval-ldiv-proof.jar build/ldiv-proof-implicit
+java -jar obfuscator/build/libs/obfuscator.jar \
+  --codegen=ir --ir-lower=direct \
+  build/ir-eval-ldiv-proof.jar build/ldiv-proof-direct
+diff -r build/ldiv-proof-implicit build/ldiv-proof-direct
+# exit 0, no output
+```
+
+With `--codegen=ir --ir-lower=eval`, the generated method-data array contains
+decimal `43` (`0x2b`) at the first operation position, calls `evaluate_i64`,
+and has no `// IR codegen: EvalProof.divide(JJ)J` structured-body marker.

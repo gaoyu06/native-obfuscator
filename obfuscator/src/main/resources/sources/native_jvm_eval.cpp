@@ -1,6 +1,7 @@
 #include "native_jvm_eval.hpp"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace native_jvm::ir_eval {
@@ -27,7 +28,8 @@ namespace {
     constexpr std::uint8_t OP_LRETURN = 0x28;
     constexpr std::uint8_t OP_I2L = 0x29;
     constexpr std::uint8_t OP_L2I = 0x2a;
-    // 0x2b and 0x2c are reserved for future LDIV/LREM lowering.
+    constexpr std::uint8_t OP_LDIV = 0x2b;
+    constexpr std::uint8_t OP_LREM = 0x2c;
     constexpr std::uint8_t OP_LAND = 0x2d;
     constexpr std::uint8_t OP_LOR = 0x2e;
     constexpr std::uint8_t OP_LXOR = 0x2f;
@@ -108,6 +110,20 @@ namespace {
         return result;
     }
 
+    std::int64_t bits_to_int64(std::uint64_t value) {
+        static_assert(sizeof(std::int64_t) == sizeof(std::uint64_t),
+                      "The evaluator requires a 64-bit int64_t");
+        std::int64_t result;
+        std::memcpy(&result, &value, sizeof(result));
+        return result;
+    }
+
+    std::uint64_t int64_bits(std::int64_t value) {
+        std::uint64_t result;
+        std::memcpy(&result, &value, sizeof(result));
+        return result;
+    }
+
     std::uint32_t arithmetic_shift_right(std::uint32_t value,
                                          std::uint32_t shift) {
         if (shift == 0) {
@@ -153,6 +169,18 @@ namespace {
             default:
                 return false;
         }
+    }
+
+    void throw_arithmetic_exception(JNIEnv *env, const char *message) {
+        if (env == nullptr) {
+            return;
+        }
+        jclass exception_class = env->FindClass("java/lang/ArithmeticException");
+        if (exception_class == nullptr) {
+            return;
+        }
+        env->ThrowNew(exception_class, message);
+        env->DeleteLocalRef(exception_class);
     }
 
 }
@@ -289,6 +317,8 @@ std::uint64_t evaluate_bits(JNIEnv *env, const std::uint8_t *data, std::size_t s
             case OP_LADD:
             case OP_LSUB:
             case OP_LMUL:
+            case OP_LDIV:
+            case OP_LREM:
             case OP_LAND:
             case OP_LOR:
             case OP_LXOR:
@@ -314,6 +344,26 @@ std::uint64_t evaluate_bits(JNIEnv *env, const std::uint8_t *data, std::size_t s
                     case OP_LMUL:
                         registers[destination] = registers[left] * registers[right];
                         break;
+                    case OP_LDIV:
+                    case OP_LREM: {
+                        const std::int64_t left_value = bits_to_int64(registers[left]);
+                        const std::int64_t right_value = bits_to_int64(registers[right]);
+                        if (right_value == 0) {
+                            throw_arithmetic_exception(env,
+                                    opcode == OP_LDIV ? "LDIV / by 0" : "LREM % by 0");
+                            return 0;
+                        }
+                        if (left_value == std::numeric_limits<std::int64_t>::min()
+                                && right_value == -1) {
+                            registers[destination] = opcode == OP_LDIV
+                                    ? int64_bits(left_value) : 0;
+                        } else {
+                            registers[destination] = int64_bits(opcode == OP_LDIV
+                                    ? left_value / right_value
+                                    : left_value % right_value);
+                        }
+                        break;
+                    }
                     case OP_LAND:
                         registers[destination] = registers[left] & registers[right];
                         break;
