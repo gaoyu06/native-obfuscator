@@ -188,7 +188,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
         Map<LabelNode, LabelNode> labels = labels(constructor);
         if (split.distinctSuffix != null) {
-            int pathIdLocal = firstExtraLocal(constructor);
+            int pathIdLocal = split.packedExtraEnd;
             body.instructions.add(new VarInsnNode(
                     Opcodes.ILOAD, pathIdLocal));
             int suffixCount = split.distinctSuffix.suffixes.size();
@@ -332,10 +332,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                                 constructor.instructions.get(
                                         diagnosticCallIndex));
                     }
+                    List<ExtraLocal> extraLocals =
+                            distinctExtraLocals(
+                                    constructor, distinctSuffix,
+                                    diagnosticCallIndex);
                     return new ConstructorSplit(
                             distinctSuffix.suffixes.get(0).startIndex,
                             distinctSuffix.suffixes.get(0).startIndex,
-                            new HashSet<>(), new ArrayList<>(),
+                            new HashSet<>(), extraLocals,
                             firstExtraLocal(constructor),
                             new ArrayList<>(), new ArrayList<>(),
                             new ArrayList<>(), null, distinctSuffix);
@@ -1125,8 +1129,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * pairwise different. Every call site keeps locally visible
      * receiver/argument inputs, and every complete path reaches RETURN after
      * exactly one call. The independent body receives one trailing int
-     * selector; suffix locals are therefore restricted to declared
-     * constructor slots.
+     * selector after any proven prefix extra-local parameters.
      */
     private static DistinctSuffix distinctSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1162,27 +1165,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
 
-        int firstExtraLocal = firstExtraLocal(constructor);
         for (AbstractInsnNode instruction : constructor.instructions) {
             if (instruction.getOpcode() == Opcodes.JSR
                     || instruction.getOpcode() == Opcodes.RET
                     || instruction.getOpcode() == Opcodes.ASTORE
                     && ((VarInsnNode) instruction).var == 0) {
                 return null;
-            }
-        }
-        for (LinearSuffix suffix : suffixes) {
-            for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
-                AbstractInsnNode instruction =
-                        constructor.instructions.get(i);
-                int local = readLocal(instruction);
-                Type stored = storeType(instruction);
-                if (local >= firstExtraLocal
-                        || stored != null
-                        && ((VarInsnNode) instruction).var
-                        >= firstExtraLocal) {
-                    return null;
-                }
             }
         }
 
@@ -1725,6 +1713,132 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             local += argument.getSize();
         }
         return locals;
+    }
+
+    private static List<ExtraLocal> distinctExtraLocals(
+            MethodNode constructor, DistinctSuffix distinctSuffix,
+            int diagnosticCallIndex) {
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Type> suffixReads = new TreeMap<>();
+        Set<Integer> suffixAccesses = new HashSet<>();
+        for (LinearSuffix suffix : distinctSuffix.suffixes) {
+            for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                int read = readLocal(instruction);
+                Type readType = loadType(instruction);
+                if (read >= firstExtraLocal && readType != null) {
+                    Type previous = suffixReads.put(read, readType);
+                    if (previous != null && !previous.equals(readType)) {
+                        throw unsupported(
+                                "Constructor distinct suffixes read extra local "
+                                        + read + " with incompatible types",
+                                i, instruction);
+                    }
+                    suffixAccesses.add(read);
+                }
+                Type stored = storeType(instruction);
+                if (stored != null) {
+                    int local = ((VarInsnNode) instruction).var;
+                    if (local >= firstExtraLocal) {
+                        suffixAccesses.add(local);
+                    }
+                }
+            }
+        }
+
+        List<ExtraLocal> extras = new ArrayList<>();
+        int packedLocal = firstExtraLocal;
+        for (Map.Entry<Integer, Type> suffixRead : suffixReads.entrySet()) {
+            int local = suffixRead.getKey();
+            int[] states = localStates(constructor, local);
+            Type provenType = null;
+            for (Integer callIndex : distinctSuffix.callIndexes) {
+                int state = states[callIndex];
+                if ((state & LOCAL_UNASSIGNED) != 0 || state == 0) {
+                    throw unsupported(
+                            "Constructor prefix extra local " + local
+                                    + " is not definitely assigned on every "
+                                    + "path reaching a distinct-suffix bridge",
+                            callIndex,
+                            constructor.instructions.get(callIndex));
+                }
+                Type callType = singleStateType(state);
+                if (callType == null
+                        || provenType != null && !provenType.equals(callType)) {
+                    throw unsupported(
+                            "Constructor prefix extra local " + local
+                                    + " does not have one provable type at "
+                                    + "every distinct-suffix bridge",
+                            callIndex,
+                            constructor.instructions.get(callIndex));
+                }
+                provenType = callType;
+            }
+            if (!suffixRead.getValue().equals(provenType)) {
+                throw unsupported(
+                        "Constructor prefix extra local " + local
+                                + " is stored as "
+                                + provenType.getDescriptor()
+                                + " but read by a distinct suffix as "
+                                + suffixRead.getValue().getDescriptor(),
+                        diagnosticCallIndex,
+                        constructor.instructions.get(diagnosticCallIndex));
+            }
+            for (Map.Entry<Integer, Type> otherRead :
+                    suffixReads.entrySet()) {
+                if (otherRead.getKey() != local
+                        && localRangesOverlap(
+                        local, provenType,
+                        otherRead.getKey(), otherRead.getValue())) {
+                    throw unsupported(
+                            "Constructor distinct suffixes read overlapping "
+                                    + "category-2 extra local slots at " + local,
+                            diagnosticCallIndex,
+                            constructor.instructions.get(diagnosticCallIndex));
+                }
+            }
+            extras.add(new ExtraLocal(local, packedLocal, provenType));
+            packedLocal += provenType.getSize();
+        }
+
+        Set<Integer> forwarded = new HashSet<>();
+        for (ExtraLocal extra : extras) {
+            forwarded.add(extra.index);
+        }
+        suffixAccesses.removeAll(forwarded);
+        if (!suffixAccesses.isEmpty()) {
+            int local = suffixAccesses.iterator().next();
+            throw unsupported(
+                    "Constructor distinct suffix uses extra local " + local
+                            + " without a proven prefix value",
+                    diagnosticCallIndex,
+                    constructor.instructions.get(diagnosticCallIndex));
+        }
+        return extras;
+    }
+
+    private static int[] localStates(
+            MethodNode constructor, int local) {
+        int[] states = new int[constructor.instructions.size()];
+        states[0] = LOCAL_UNASSIGNED;
+        ArrayDeque<Integer> pending = new ArrayDeque<>();
+        pending.add(0);
+        Map<LabelNode, Integer> labelIndexes = labelIndexes(constructor);
+        while (!pending.isEmpty()) {
+            int index = pending.removeFirst();
+            int output = transferLocalState(
+                    states[index], constructor.instructions.get(index), local);
+            for (Integer successor :
+                    normalSuccessors(constructor, index, labelIndexes)) {
+                int merged = states[successor] | output;
+                if (merged != states[successor]) {
+                    states[successor] = merged;
+                    pending.add(successor);
+                }
+            }
+        }
+        return states;
     }
 
     private static List<ExtraLocal> extraLocals(
