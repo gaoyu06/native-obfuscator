@@ -68,12 +68,16 @@ public class NativePrimitivesIntegrationTest {
         assertTrue(Files.isRegularFile(cppDirectory.resolve("sdk/native_strings.cpp")));
         assertTrue(Files.isRegularFile(
                 cppDirectory.resolve("sdk/third_party/sha-2/LICENSE.md")));
+        assertTrue(Files.isRegularFile(
+                cppDirectory.resolve("sdk/third_party/tiny-aes-c/UNLICENSE.txt")));
         String cmakeFile = new String(
                 Files.readAllBytes(cppDirectory.resolve("CMakeLists.txt")),
                 java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(cmakeFile.contains("sdk/native_primitives.cpp"));
         assertTrue(cmakeFile.contains("sdk/native_strings.cpp"));
         assertTrue(cmakeFile.contains("sdk/third_party/sha-2/sha-256.cpp"));
+        assertTrue(cmakeFile.contains("sdk/aes_gcm.cpp"));
+        assertTrue(cmakeFile.contains("sdk/third_party/tiny-aes-c/aes.cpp"));
 
         ProcessHelper.run(
                         cppDirectory,

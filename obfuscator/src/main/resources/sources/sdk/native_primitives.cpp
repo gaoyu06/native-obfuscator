@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0-only
  */
 #include "native_primitives.hpp"
+#include "aes_gcm.hpp"
 #include "c_api.h"
 #include "third_party/sha-2/sha-256.h"
 
@@ -19,6 +20,8 @@ constexpr uint64_t SHA256_SIZE = 32;
 constexpr uint64_t SHA256_BLOCK_SIZE = 64;
 constexpr uint64_t MAX_SHA256_INPUT_SIZE =
         std::numeric_limits<uint64_t>::max() / 8;
+constexpr uint64_t AES_GCM_TAG_SIZE =
+        native_obfuscator::sdk::aes_gcm::TAG_SIZE;
 const uint8_t EMPTY_INPUT = 0;
 
 bool valid_bytes(no_sdk_bytes_v1 bytes) {
@@ -41,10 +44,20 @@ void throw_new(JNIEnv *env, const char *class_name, const char *message) {
 struct byte_array_copy {
     std::unique_ptr<uint8_t[]> data;
     std::size_t size = 0;
+    bool sensitive = false;
+
+    ~byte_array_copy() {
+        if (sensitive && data) {
+            volatile uint8_t *byte = data.get();
+            for (std::size_t remaining = size; remaining != 0; --remaining) {
+                *byte++ = 0;
+            }
+        }
+    }
 };
 
 bool copy_byte_array(JNIEnv *env, jbyteArray input, const char *argument_name,
-                     byte_array_copy &output) {
+                     byte_array_copy &output, bool sensitive = false) {
     if (input == nullptr) {
         throw_new(env, "java/lang/NullPointerException", argument_name);
         return false;
@@ -56,6 +69,7 @@ bool copy_byte_array(JNIEnv *env, jbyteArray input, const char *argument_name,
     }
 
     output.size = static_cast<std::size_t>(length);
+    output.sensitive = sensitive;
     if (length == 0) {
         return true;
     }
@@ -82,7 +96,48 @@ no_sdk_bytes_v1 as_bytes(const byte_array_copy &input) {
     };
 }
 
+bool allocate_bytes(
+        JNIEnv *env,
+        std::size_t size,
+        byte_array_copy &output) {
+    output.size = size;
+    if (size == 0) {
+        return true;
+    }
+    output.data.reset(new (std::nothrow) uint8_t[size]);
+    if (!output.data) {
+        throw_new(env, "java/lang/OutOfMemoryError",
+                  "Unable to allocate native primitive output");
+        return false;
+    }
+    return true;
+}
+
+jbyteArray to_byte_array(JNIEnv *env, const byte_array_copy &input) {
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(input.size));
+    if (result == nullptr || env->ExceptionCheck()) {
+        return nullptr;
+    }
+    if (input.size != 0) {
+        env->SetByteArrayRegion(
+                result,
+                0,
+                static_cast<jsize>(input.size),
+                reinterpret_cast<const jbyte *>(input.data.get()));
+        if (env->ExceptionCheck()) {
+            env->DeleteLocalRef(result);
+            return nullptr;
+        }
+    }
+    return result;
+}
+
 void throw_status(JNIEnv *env, no_sdk_status_v1 status) {
+    if (status == NO_SDK_AUTHENTICATION_FAILED_V1) {
+        throw_new(env, "javax/crypto/AEADBadTagException",
+                  "AES-256-GCM authentication failed");
+        return;
+    }
     if (status == NO_SDK_NULL_V1 || status == NO_SDK_INVALID_ARGUMENT_V1) {
         throw_new(env, "java/lang/IllegalArgumentException",
                   "Invalid native primitive arguments");
@@ -135,7 +190,7 @@ jbyteArray JNICALL jni_hmac_sha256(
         JNIEnv *env, jclass, jbyteArray key, jbyteArray message) {
     byte_array_copy copied_key;
     byte_array_copy copied_message;
-    if (!copy_byte_array(env, key, "key", copied_key) ||
+    if (!copy_byte_array(env, key, "key", copied_key, true) ||
         !copy_byte_array(env, message, "message", copied_message)) {
         return nullptr;
     }
@@ -163,6 +218,97 @@ jbyteArray JNICALL jni_hmac_sha256(
         return nullptr;
     }
     return result;
+}
+
+jbyteArray JNICALL jni_aes_256_gcm_encrypt(
+        JNIEnv *env,
+        jclass,
+        jbyteArray key,
+        jbyteArray nonce,
+        jbyteArray plaintext,
+        jbyteArray aad) {
+    byte_array_copy copied_key;
+    byte_array_copy copied_nonce;
+    byte_array_copy copied_plaintext;
+    byte_array_copy copied_aad;
+    if (!copy_byte_array(env, key, "key", copied_key, true) ||
+        !copy_byte_array(env, nonce, "nonce", copied_nonce) ||
+        !copy_byte_array(env, plaintext, "plaintext", copied_plaintext) ||
+        !copy_byte_array(env, aad, "aad", copied_aad)) {
+        return nullptr;
+    }
+    if (copied_plaintext.size >
+        static_cast<std::size_t>(std::numeric_limits<jsize>::max()) -
+                AES_GCM_TAG_SIZE) {
+        throw_new(env, "java/lang/IllegalArgumentException",
+                  "AES-256-GCM plaintext is too large");
+        return nullptr;
+    }
+
+    byte_array_copy output;
+    if (!allocate_bytes(
+            env,
+            copied_plaintext.size + AES_GCM_TAG_SIZE,
+            output)) {
+        return nullptr;
+    }
+    const no_sdk_status_v1 status = no_sdk_aes_256_gcm_encrypt_v1(
+            as_bytes(copied_key),
+            as_bytes(copied_nonce),
+            as_bytes(copied_plaintext),
+            as_bytes(copied_aad),
+            {output.data.get(), static_cast<uint64_t>(output.size)});
+    if (status != NO_SDK_OK_V1) {
+        throw_status(env, status);
+        return nullptr;
+    }
+    return to_byte_array(env, output);
+}
+
+jbyteArray JNICALL jni_aes_256_gcm_decrypt(
+        JNIEnv *env,
+        jclass,
+        jbyteArray key,
+        jbyteArray nonce,
+        jbyteArray ciphertext_and_tag,
+        jbyteArray aad) {
+    byte_array_copy copied_key;
+    byte_array_copy copied_nonce;
+    byte_array_copy copied_ciphertext;
+    byte_array_copy copied_aad;
+    if (!copy_byte_array(env, key, "key", copied_key, true) ||
+        !copy_byte_array(env, nonce, "nonce", copied_nonce) ||
+        !copy_byte_array(
+                env,
+                ciphertext_and_tag,
+                "ciphertextAndTag",
+                copied_ciphertext) ||
+        !copy_byte_array(env, aad, "aad", copied_aad)) {
+        return nullptr;
+    }
+
+    const std::size_t plaintext_size =
+            copied_ciphertext.size < AES_GCM_TAG_SIZE
+            ? 0
+            : copied_ciphertext.size - AES_GCM_TAG_SIZE;
+    byte_array_copy output;
+    if (!allocate_bytes(env, plaintext_size, output)) {
+        return nullptr;
+    }
+    const no_sdk_status_v1 status = no_sdk_aes_256_gcm_decrypt_v1(
+            as_bytes(copied_key),
+            as_bytes(copied_nonce),
+            as_bytes(copied_ciphertext),
+            as_bytes(copied_aad),
+            {
+                    output.size == 0 ? nullptr : output.data.get(),
+                    static_cast<uint64_t>(output.size)
+            });
+    if (status != NO_SDK_OK_V1) {
+        throw_status(env, status);
+        return nullptr;
+    }
+    return to_byte_array(env, output);
 }
 
 jboolean JNICALL jni_constant_time_equals(
@@ -287,6 +433,89 @@ extern "C" no_sdk_status_v1 no_sdk_hmac_sha256_v1(
     return NO_SDK_OK_V1;
 }
 
+extern "C" no_sdk_status_v1 no_sdk_aes_256_gcm_encrypt_v1(
+        no_sdk_bytes_v1 key_32,
+        no_sdk_bytes_v1 nonce_12,
+        no_sdk_bytes_v1 plaintext,
+        no_sdk_bytes_v1 aad,
+        no_sdk_mut_bytes_v1 ciphertext_and_tag) {
+    if (!valid_bytes(key_32) || !valid_bytes(nonce_12) ||
+        !valid_bytes(plaintext) || !valid_bytes(aad)) {
+        return NO_SDK_NULL_V1;
+    }
+    if (key_32.size != native_obfuscator::sdk::aes_gcm::KEY_SIZE ||
+        nonce_12.size != native_obfuscator::sdk::aes_gcm::NONCE_SIZE) {
+        return NO_SDK_INVALID_ARGUMENT_V1;
+    }
+    if (!representable_size(plaintext.size) ||
+        !representable_size(aad.size) ||
+        plaintext.size > native_obfuscator::sdk::aes_gcm::MAX_TEXT_SIZE ||
+        aad.size > native_obfuscator::sdk::aes_gcm::MAX_AAD_SIZE) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
+    const uint64_t required_size = plaintext.size + AES_GCM_TAG_SIZE;
+    if (ciphertext_and_tag.capacity < required_size) {
+        return NO_SDK_BUFFER_TOO_SMALL_V1;
+    }
+    if (ciphertext_and_tag.data == nullptr) {
+        return NO_SDK_NULL_V1;
+    }
+
+    native_obfuscator::sdk::aes_gcm::encrypt(
+            key_32.data,
+            nonce_12.data,
+            plaintext.size == 0 ? nullptr : plaintext.data,
+            static_cast<std::size_t>(plaintext.size),
+            aad.size == 0 ? nullptr : aad.data,
+            static_cast<std::size_t>(aad.size),
+            ciphertext_and_tag.data);
+    return NO_SDK_OK_V1;
+}
+
+extern "C" no_sdk_status_v1 no_sdk_aes_256_gcm_decrypt_v1(
+        no_sdk_bytes_v1 key_32,
+        no_sdk_bytes_v1 nonce_12,
+        no_sdk_bytes_v1 ciphertext_and_tag,
+        no_sdk_bytes_v1 aad,
+        no_sdk_mut_bytes_v1 plaintext) {
+    if (!valid_bytes(key_32) || !valid_bytes(nonce_12) ||
+        !valid_bytes(ciphertext_and_tag) || !valid_bytes(aad)) {
+        return NO_SDK_NULL_V1;
+    }
+    if (key_32.size != native_obfuscator::sdk::aes_gcm::KEY_SIZE ||
+        nonce_12.size != native_obfuscator::sdk::aes_gcm::NONCE_SIZE ||
+        ciphertext_and_tag.size < AES_GCM_TAG_SIZE) {
+        return NO_SDK_INVALID_ARGUMENT_V1;
+    }
+
+    const uint64_t plaintext_size =
+            ciphertext_and_tag.size - AES_GCM_TAG_SIZE;
+    if (!representable_size(ciphertext_and_tag.size) ||
+        !representable_size(aad.size) ||
+        plaintext_size > native_obfuscator::sdk::aes_gcm::MAX_TEXT_SIZE ||
+        aad.size > native_obfuscator::sdk::aes_gcm::MAX_AAD_SIZE) {
+        return NO_SDK_SIZE_OVERFLOW_V1;
+    }
+    if (plaintext.capacity < plaintext_size) {
+        return NO_SDK_BUFFER_TOO_SMALL_V1;
+    }
+    if (plaintext_size != 0 && plaintext.data == nullptr) {
+        return NO_SDK_NULL_V1;
+    }
+
+    const bool authenticated = native_obfuscator::sdk::aes_gcm::decrypt(
+            key_32.data,
+            nonce_12.data,
+            ciphertext_and_tag.data,
+            static_cast<std::size_t>(plaintext_size),
+            aad.size == 0 ? nullptr : aad.data,
+            static_cast<std::size_t>(aad.size),
+            plaintext_size == 0 ? nullptr : plaintext.data);
+    return authenticated
+           ? NO_SDK_OK_V1
+           : NO_SDK_AUTHENTICATION_FAILED_V1;
+}
+
 extern "C" no_sdk_status_v1 no_sdk_equal_constant_time_v1(
         no_sdk_bytes_v1 left,
         no_sdk_bytes_v1 right,
@@ -335,6 +564,16 @@ bool register_natives(JNIEnv *env) {
                     const_cast<char *>("nativeHmacSha256"),
                     const_cast<char *>("([B[B)[B"),
                     reinterpret_cast<void *>(&jni_hmac_sha256)
+            },
+            {
+                    const_cast<char *>("nativeAes256GcmEncrypt"),
+                    const_cast<char *>("([B[B[B[B)[B"),
+                    reinterpret_cast<void *>(&jni_aes_256_gcm_encrypt)
+            },
+            {
+                    const_cast<char *>("nativeAes256GcmDecrypt"),
+                    const_cast<char *>("([B[B[B[B)[B"),
+                    reinterpret_cast<void *>(&jni_aes_256_gcm_decrypt)
             },
             {
                     const_cast<char *>("nativeConstantTimeEquals"),

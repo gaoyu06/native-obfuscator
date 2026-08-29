@@ -128,8 +128,12 @@ public class NativeObfuscator {
         Path sdkDir = cppDir.resolve("sdk");
         Path sdkThirdPartyDir = sdkDir.resolve("third_party");
         Path sha256Dir = sdkThirdPartyDir.resolve("sha-2");
+        Path tinyAesDir = sdkThirdPartyDir.resolve("tiny-aes-c");
         Files.createDirectories(sha256Dir);
+        Files.createDirectories(tinyAesDir);
         Util.copyResource("sources/sdk/c_api.h", sdkDir);
+        Util.copyResource("sources/sdk/aes_gcm.hpp", sdkDir);
+        Util.copyResource("sources/sdk/aes_gcm.cpp", sdkDir);
         Util.copyResource("sources/sdk/native_primitives.hpp", sdkDir);
         Util.copyResource("sources/sdk/native_primitives.cpp", sdkDir);
         Util.copyResource("sources/sdk/native_strings.hpp", sdkDir);
@@ -138,6 +142,11 @@ public class NativeObfuscator {
         Util.copyResource("sources/sdk/third_party/sha-2/sha-256.h", sha256Dir);
         Util.copyResource("sources/sdk/third_party/sha-2/sha-256.cpp", sha256Dir);
         Util.copyResource("sources/sdk/third_party/sha-2/LICENSE.md", sha256Dir);
+        Util.copyResource("sources/sdk/third_party/tiny-aes-c/aes.h", tinyAesDir);
+        Util.copyResource("sources/sdk/third_party/tiny-aes-c/aes.cpp", tinyAesDir);
+        Util.copyResource(
+                "sources/sdk/third_party/tiny-aes-c/UNLICENSE.txt",
+                tinyAesDir);
 
         String projectName = "native_library";
 
@@ -149,12 +158,16 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("string_pool.hpp");
         cMakeBuilder.addMainFile("string_pool.cpp");
         cMakeBuilder.addMainFile("sdk/c_api.h");
+        cMakeBuilder.addMainFile("sdk/aes_gcm.hpp");
+        cMakeBuilder.addMainFile("sdk/aes_gcm.cpp");
         cMakeBuilder.addMainFile("sdk/native_primitives.hpp");
         cMakeBuilder.addMainFile("sdk/native_primitives.cpp");
         cMakeBuilder.addMainFile("sdk/native_strings.hpp");
         cMakeBuilder.addMainFile("sdk/native_strings.cpp");
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.h");
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
+        cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.h");
+        cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.cpp");
 
         if (platform == Platform.HOTSPOT) {
             cMakeBuilder.addFlag("USE_HOTSPOT");
