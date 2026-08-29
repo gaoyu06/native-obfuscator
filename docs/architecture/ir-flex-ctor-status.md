@@ -78,9 +78,10 @@ The constructor split now covers these related prefix shapes:
   `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
   direct declared float-argument load;
   a tree of at most four `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` levels for
-  a double argument, whose leaves are declared double-argument loads, `DCONST_0`,
-  `DCONST_1`, `LDC` of `Double`, or one `DNEG` over a direct declared
-  double-argument load;
+  a double argument, whose leaves are declared double-argument loads, a prefix
+  extra-local `DLOAD` with one dominating `DSTORE` copy of a declared
+  double-argument load, `DCONST_0`, `DCONST_1`, `LDC` of `Double`, or one
+  `DNEG` over a direct declared double-argument load;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -214,15 +215,18 @@ One additional family is reduced to that same shared-join form:
   without reproducing float arithmetic in C++.
 - A double call argument may instead contain a tree of at most four `DADD`,
   `DSUB`, `DMUL`, `DDIV`, or `DREM` levels. A double leaf must be a matching
-  declared-argument `DLOAD`, `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or
-  one `DNEG` whose sole operand is a matching declared-argument `DLOAD`.
+  declared-argument `DLOAD`, a prefix extra-local `DLOAD` with exactly one
+  dominating `DSTORE` directly fed by a matching declared-argument `DLOAD`,
+  `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or one `DNEG` whose sole
+  operand is a matching declared-argument `DLOAD`.
   This proof has its own four-level binary budget, which `DNEG` does not
-  consume: five-or-more nested double binaries, extra-local double loads,
-  `DNEG` of a constant, double `DNEG`, and `DNEG` of an extra-local or
-  computed value remain rejected, as do computed reference inputs. The
-  admitted arithmetic stays in the retained bytecode prefix, preserving JVM
-  divide-by-zero, NaN, signed-zero, negate, and other double semantics without
-  reproducing double arithmetic in C++.
+  consume: five-or-more nested double binaries, unproven or computed
+  extra-local stores, `DNEG` of a constant, double `DNEG`, and `DNEG` of an
+  extra-local or computed value remain rejected, as do extra-local int, long,
+  and float operands and computed reference inputs. The admitted arithmetic
+  stays in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
+  signed-zero, negate, and other double semantics without reproducing double
+  arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -862,10 +866,21 @@ Synthetic bytecode unit tests in
   `DNEG` over a declared double `DLOAD` remains in the retained prefix,
   rewrites to one hidden bridge, passes JVM verification, and matches plain
   Java through the complete CMake/g++ JNI transform.
+- `admitsThreeImmediateReturnsWithExtraLocalDoubleChainInputs`,
+  `rewrittenThreeImmediateExtraLocalDoubleSuperReturnsPassJvmVerification`,
+  and
+  `threeImmediateExtraLocalDoubleSuperReturnsCompileAndRunWithJavaParity`
+  admit the former `double-extra-local` leftover: a prefix `DSTORE` copy of a
+  declared `DLOAD` may be used as a double chain-input leaf. The copy and all
+  three `DADD`s remain in the retained bytecode prefix, the rewrite uses one
+  hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
+  transform matches plain Java.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
-  binaries at five-or-more levels, extra-local double operands, and unsafe
+  binaries at five-or-more levels, computed extra-local stores, and unsafe
   `DNEG` forms fail-closed without constructor or hidden-method mutation.
-  Computed reference inputs remain outside this admission increment.
+  Extra-local int, long, and float operands and computed reference inputs
+  remain outside this admission increment. This does not authorize changing
+  the default compiler path.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.

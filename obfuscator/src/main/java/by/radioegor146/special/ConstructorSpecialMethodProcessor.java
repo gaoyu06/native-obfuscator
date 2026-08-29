@@ -2213,6 +2213,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArguments.put(declaredLocal, argument);
             declaredLocal += argument.getSize();
         }
+        Set<Integer> prefixDoubleCopies =
+                provenPrefixDoubleCopyLocals(
+                        constructor, callIndexes, declaredArguments);
 
         for (Integer callIndex : callIndexes) {
             MethodInsnNode call =
@@ -2223,7 +2226,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             for (int i = callArguments.length - 1; i >= 0; i--) {
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
-                        declaredArguments);
+                        declaredArguments, prefixDoubleCopies);
                 if (previousInput == null) {
                     return false;
                 }
@@ -2243,7 +2246,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static Integer previousProvenChainInput(
             MethodNode constructor, int inputIndex, Type expected,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixDoubleCopies) {
         if (inputIndex < 0) {
             return null;
         }
@@ -2265,6 +2269,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.DOUBLE) {
             return previousProvenDoubleChainOperand(
                     constructor, inputIndex, declaredArguments,
+                    prefixDoubleCopies,
                     MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS);
         }
         if (!isIntFamily(expected)) {
@@ -2463,6 +2468,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenDoubleChainOperand(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixDoubleCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
             return null;
@@ -2475,7 +2481,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && opcode != Opcodes.DDIV
                 && opcode != Opcodes.DREM) {
             return previousProvenDoubleChainLeaf(
-                    constructor, inputIndex, declaredArguments);
+                    constructor, inputIndex, declaredArguments,
+                    prefixDoubleCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2483,22 +2490,26 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Integer beforeRight = previousProvenDoubleChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, remainingBinaryLevels - 1);
+                declaredArguments, prefixDoubleCopies,
+                remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenDoubleChainOperand(
                 constructor, beforeRight, declaredArguments,
+                prefixDoubleCopies,
                 remainingBinaryLevels - 1);
     }
 
     /**
-     * Proves one double leaf: a declared DLOAD, DCONST_0/1, or an LDC whose
-     * constant is a Double, or one DNEG over a direct declared DLOAD.
+     * Proves one double leaf: a declared DLOAD, one proven prefix copy of a
+     * declared DLOAD, DCONST_0/1, an LDC whose constant is a Double, or one
+     * DNEG over a direct declared DLOAD.
      */
     private static Integer previousProvenDoubleChainLeaf(
             MethodNode constructor, int inputIndex,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixDoubleCopies) {
         if (inputIndex < 0) {
             return null;
         }
@@ -2506,6 +2517,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (isDirectDeclaredArgumentLoad(
                 input, Type.DOUBLE_TYPE, declaredArguments)
                 || isDoubleConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (input.getOpcode() == Opcodes.DLOAD
+                && !isDirectDeclaredArgumentLoad(
+                input, Type.DOUBLE_TYPE, declaredArguments)
+                && prefixDoubleCopies.contains(
+                ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         if (input.getOpcode() != Opcodes.DNEG) {
@@ -2520,6 +2538,82 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    /**
+     * Finds extra double locals whose only write before the final chain call is
+     * one pre-first-call DSTORE directly fed by a declared DLOAD. Requiring the
+     * resulting double state at every chain call proves that the store
+     * dominates all selected paths. The scan deliberately stops at the final
+     * chain call; suffix extra-local forwarding is a separate proof.
+     */
+    private static Set<Integer> provenPrefixDoubleCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Set<Integer> proven = new HashSet<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.DSTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal
+                    || sourceIndex < 0
+                    || !isDirectDeclaredArgumentLoad(
+                    constructor.instructions.get(sourceIndex),
+                    Type.DOUBLE_TYPE, declaredArguments)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.DOUBLE_TYPE)
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.DOUBLE_TYPE)) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_DOUBLE) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.add(local);
+            }
+        }
+        return proven;
     }
 
     private static boolean isDoubleConstant(AbstractInsnNode input) {
