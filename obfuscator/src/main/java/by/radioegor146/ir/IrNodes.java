@@ -619,6 +619,57 @@ public final class IrNodes {
         }
     }
 
+    /**
+     * JVM {@code LNEG}. Kept separate from the i32 {@link Unary} so the i64
+     * type contract is enforced by construction instead of by opcode checks.
+     */
+    public static final class LongUnary implements IrInstruction {
+        public enum Operation {
+            NEGATE("lneg");
+
+            private final String mnemonic;
+
+            Operation(String mnemonic) {
+                this.mnemonic = mnemonic;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue operand;
+        private final int bytecodeOffset;
+
+        public LongUnary(IrValue result, Operation operation, IrValue operand,
+                         int bytecodeOffset) {
+            this.result = requireI64(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.operand = requireI64(operand, "operand");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getOperand() {
+            return operand;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class Conversion implements IrInstruction {
         public enum Operation {
             I2L("i2l", IrType.I32, IrType.I64),
@@ -1515,6 +1566,78 @@ public final class IrNodes {
             this.operation = Objects.requireNonNull(operation, "operation");
             this.left = requireI32(left, "left");
             this.right = requireI32(right, "right");
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public Operation getOperation() {
+            return operation;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    /**
+     * JVM {@code LDIV}/{@code LREM}. Modeled on {@link IntDivRem}: it keeps the
+     * zero-divisor exceptional edge and the {@code Long.MIN_VALUE / -1} wrap,
+     * which is why it is a dedicated node rather than an operation on the
+     * exception-free wrapping {@link LongBinary}.
+     */
+    public static final class LongDivRem implements IrInstruction {
+        public enum Operation {
+            DIVIDE("ldiv", "/"),
+            REMAINDER("lrem", "%");
+
+            private final String mnemonic;
+            private final String cppOperator;
+
+            Operation(String mnemonic, String cppOperator) {
+                this.mnemonic = mnemonic;
+                this.cppOperator = cppOperator;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+
+            public String getCppOperator() {
+                return cppOperator;
+            }
+        }
+
+        private final IrValue result;
+        private final Operation operation;
+        private final IrValue left;
+        private final IrValue right;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public LongDivRem(IrValue result, Operation operation, IrValue left, IrValue right,
+                          int bytecodeOffset, int sourceLine) {
+            this.result = requireI64(result, "result");
+            this.operation = Objects.requireNonNull(operation, "operation");
+            this.left = requireI64(left, "left");
+            this.right = requireI64(right, "right");
             this.bytecodeOffset = bytecodeOffset;
             this.sourceLine = sourceLine;
         }

@@ -213,8 +213,19 @@ public final class IrMethod {
                     + binary.getOperation().getMnemonic() + " " + binary.getLeft()
                     + ", " + binary.getRight();
         }
+        if (instruction instanceof IrNodes.LongDivRem) {
+            IrNodes.LongDivRem binary = (IrNodes.LongDivRem) instruction;
+            return binary.getResult() + ":" + binary.getResult().getType() + " = "
+                    + binary.getOperation().getMnemonic() + " " + binary.getLeft()
+                    + ", " + binary.getRight();
+        }
         if (instruction instanceof IrNodes.Unary) {
             IrNodes.Unary unary = (IrNodes.Unary) instruction;
+            return unary.getResult() + ":" + unary.getResult().getType() + " = "
+                    + unary.getOperation().getMnemonic() + " " + unary.getOperand();
+        }
+        if (instruction instanceof IrNodes.LongUnary) {
+            IrNodes.LongUnary unary = (IrNodes.LongUnary) instruction;
             return unary.getResult() + ":" + unary.getResult().getType() + " = "
                     + unary.getOperation().getMnemonic() + " " + unary.getOperand();
         }

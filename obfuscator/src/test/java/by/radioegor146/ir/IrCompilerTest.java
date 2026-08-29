@@ -159,6 +159,85 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void lowersLongDivideAndRemainderWithoutCppUndefinedBehavior() {
+        MethodNode method = longDivRemMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        String pretty = ir.toString();
+        assertTrue(pretty.contains(" = ldiv "));
+        assertTrue(pretty.contains(" = lrem "));
+
+        List<IrNodes.LongDivRem> divRems = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.LongDivRem.class::isInstance)
+                .map(IrNodes.LongDivRem.class::cast)
+                .collect(Collectors.toList());
+        assertEquals(2, divRems.size());
+        for (IrNodes.LongDivRem divRem : divRems) {
+            assertEquals(IrType.I64, divRem.getResult().getType());
+            assertEquals(IrType.I64, divRem.getLeft().getType());
+            assertEquals(IrType.I64, divRem.getRight().getType());
+        }
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("utils::throw_re"));
+        assertTrue(cpp.contains("== 0"));
+        assertTrue(cpp.contains("== ((jlong) 0x8000000000000000ULL)"));
+        assertTrue(cpp.contains("== -1LL"));
+        assertTrue(cpp.contains("(int64_t) arg0 / (int64_t) arg1"));
+        assertTrue(cpp.contains(" % (int64_t)"));
+        assertTrue(cpp.contains("= ((jlong) 0x8000000000000000ULL)"));
+        assertTrue(cpp.contains("= 0LL"));
+        assertFalse(cpp.contains("julong"));
+    }
+
+    @Test
+    public void lowersLongNegateThroughUnsignedCarrierWrappingMinValue() {
+        MethodNode method = longNegateMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.toString().contains(" = lneg "));
+
+        IrNodes.LongUnary negate = ir.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.LongUnary.class::isInstance)
+                .map(IrNodes.LongUnary.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(IrType.I64, negate.getResult().getType());
+        assertEquals(IrType.I64, negate.getOperand().getType());
+
+        String cpp = emitter.emitBody(ir);
+        assertTrue(cpp.contains("(jlong) (-(uint64_t) arg0)"));
+        assertFalse(cpp.contains("julong"));
+    }
+
+    @Test
+    public void longDivideByZeroInsideTryUsesSharedCatchDispatch() {
+        MethodNode method = longDivideCatchMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock divideBlock = ir.getBlocks().stream()
+                .filter(block -> block.getInstructions().stream()
+                        .anyMatch(instruction -> instruction instanceof IrNodes.LongDivRem))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals("java/lang/ArithmeticException",
+                divideBlock.getExceptionEdges().get(0).getCatchType());
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        int zeroGuard = cpp.indexOf("== 0");
+        int dispatch = cpp.indexOf("goto IR_CATCH_0;", zeroGuard);
+        int ordinaryDivide = cpp.indexOf("(int64_t) arg0 / (int64_t) arg1", zeroGuard);
+        assertTrue(zeroGuard >= 0 && dispatch > zeroGuard && ordinaryDivide > dispatch);
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("env->IsInstanceOf((jobject) caught_exception"));
+    }
+
+    @Test
     public void integratedEmitterUsesExistingJniSignatureStyleWithoutLegacySlots() {
         MethodNode method = addMethod();
         ClassNode owner = new ClassNode(Opcodes.ASM9);
@@ -2227,7 +2306,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.LDIV, error.getOpcode());
+        assertEquals(Opcodes.LCMP, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -2315,6 +2394,7 @@ public class IrCompilerTest {
                 checkCastInstanceOfMethod("typeTest", "java/lang/String"),
                 checkCastInstanceOfMethod("arrayTypeTest", "[Ljava/lang/String;"),
                 checkCastCatchMethod(), longArithmeticMethod(), longBitwiseShiftMethod(),
+                longDivRemMethod(), longNegateMethod(), longDivideCatchMethod(),
                 wrappingLongShiftMethod(), longConversionMethod(),
                 wideStackPhiMethod(), constructObjectMethod(), staticLongInvokeMethod(),
                 virtualStringInvokeMethod(), staticStringInvokeMethod(),
@@ -2598,6 +2678,12 @@ public class IrCompilerTest {
         assertTrue(source.contains("IR codegen: example/Math.longArithmetic(JJ)J"));
         assertTrue(source.contains(
                 "IR codegen: example/Math.longBitwiseShift(JJI)J"));
+        assertTrue(source.contains("IR codegen: example/Math.longDivRem(JJ)J"));
+        assertTrue(source.contains("IR codegen: example/Math.longNegate(J)J"));
+        assertTrue(source.contains("IR codegen: example/Math.catchLongDivide(JJ)J"));
+        assertTrue(source.contains("(int64_t) arg0 / (int64_t) arg1"));
+        assertTrue(source.contains(" % (int64_t)"));
+        assertTrue(source.contains("(jlong) (-(uint64_t)"));
         assertTrue(source.contains(
                 "IR codegen: example/Math.wrappingLongShift()J"));
         assertTrue(source.contains("IR codegen: example/Math.longConversion(I)I"));
@@ -4919,6 +5005,58 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode longDivRemMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longDivRem", "(JJ)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LREM));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 4));
+        method.instructions.add(new InsnNode(Opcodes.LADD));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 6;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private MethodNode longNegateMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "longNegate", "(J)J", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.LNEG));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode longDivideCatchMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "catchLongDivide", "(JJ)J", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LDIV));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 4));
+        method.instructions.add(new LdcInsnNode(-11L));
+        method.instructions.add(new InsnNode(Opcodes.LRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(start, end, handler,
+                "java/lang/ArithmeticException"));
+        method.maxLocals = 5;
+        method.maxStack = 4;
+        return method;
+    }
+
     private MethodNode wrappingLongShiftMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "wrappingLongShift", "()J", null, null);
@@ -4968,14 +5106,12 @@ public class IrCompilerTest {
 
     private MethodNode unsupportedWideOperationMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
-                "unsupportedWide", "(J)J", null, null);
+                "unsupportedWide", "(JJ)I", null, null);
         method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 0));
-        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
-        method.instructions.add(new InsnNode(Opcodes.LMUL));
-        method.instructions.add(new InsnNode(Opcodes.LCONST_1));
-        method.instructions.add(new InsnNode(Opcodes.LDIV));
-        method.instructions.add(new InsnNode(Opcodes.LRETURN));
-        method.maxLocals = 2;
+        method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.LCMP));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 4;
         method.maxStack = 4;
         return method;
     }

@@ -257,6 +257,7 @@ public final class CfgBuilder {
     private static boolean mayThrow(AbstractInsnNode node) {
         int opcode = node.getOpcode();
         return opcode == Opcodes.IDIV || opcode == Opcodes.IREM
+                || opcode == Opcodes.LDIV || opcode == Opcodes.LREM
                 || opcode == Opcodes.NEW || opcode == Opcodes.NEWARRAY
                 || opcode == Opcodes.ANEWARRAY || opcode == Opcodes.MULTIANEWARRAY
                 || opcode == Opcodes.CHECKCAST || opcode == Opcodes.INSTANCEOF
