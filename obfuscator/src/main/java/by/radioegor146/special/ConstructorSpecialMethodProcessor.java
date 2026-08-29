@@ -403,10 +403,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves the prefix-handler shapes that can be moved without changing their
      * exception behavior. The protected range is wholly in the suffix, and the
-     * isolated handler either consumes the caught exception and returns or
-     * jumps to an equally isolated prefix return. With no extra incoming edge
-     * or other range role, the handler and optional return block can be removed
-     * from the wrapper and cloned into the suffix with the original table entry.
+     * isolated handler either pops or stores the caught exception and returns,
+     * or jumps to an equally isolated prefix return. With no extra incoming
+     * edge or other range role, the handler and optional return block can be
+     * removed from the wrapper and cloned into the suffix with the original
+     * table entry.
      */
     private static RelocatedPrefixHandler relocatablePrefixReturnHandler(
             MethodNode constructor,
@@ -423,23 +424,24 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (handlerIndex == null) {
             return null;
         }
-        int popIndex =
+        int consumeIndex =
                 firstExecutableIndex(constructor, handlerIndex + 1);
         int successorIndex =
-                firstExecutableIndex(constructor, popIndex + 1);
+                firstExecutableIndex(constructor, consumeIndex + 1);
         int previousIndex =
                 previousExecutableIndex(constructor, handlerIndex - 1);
-        if (popIndex >= constructor.instructions.size()
+        if (consumeIndex >= constructor.instructions.size()
                 || successorIndex >= constructor.instructions.size()
                 || previousIndex < 0
-                || constructor.instructions.get(popIndex)
-                .getOpcode() != Opcodes.POP
+                || !consumesRelocatableCaughtException(
+                        constructor,
+                        constructor.instructions.get(consumeIndex))
                 || constructor.instructions.get(previousIndex)
                 .getOpcode() != Opcodes.GOTO
                 || !containsOnlyFrames(
-                        constructor, handlerIndex + 1, popIndex)
+                        constructor, handlerIndex + 1, consumeIndex)
                 || !containsOnlyFrames(
-                        constructor, popIndex + 1, successorIndex)
+                        constructor, consumeIndex + 1, successorIndex)
                 || hasNormalTarget(constructor, tryCatch.handler)
                 || isTryRangeBoundary(constructor, tryCatch.handler)
                 || !isOnlyUsedBySuffixRanges(
@@ -449,6 +451,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         AbstractInsnNode successor =
                 constructor.instructions.get(successorIndex);
         if (successor.getOpcode() == Opcodes.RETURN) {
+            if (consumeIndex >= suffixStartIndex
+                    || successorIndex >= suffixStartIndex) {
+                return null;
+            }
             return new RelocatedPrefixHandler(
                     handlerIndex, successorIndex + 1);
         }
@@ -463,7 +469,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!prefixLabels.contains(returnLabel)
                 || returnLabelIndex == null
                 || returnLabelIndex <= successorIndex
-                || popIndex >= suffixStartIndex
+                || consumeIndex >= suffixStartIndex
                 || successorIndex >= suffixStartIndex
                 || returnLabelIndex >= suffixStartIndex
                 || !containsOnlyFrames(
@@ -492,6 +498,40 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new RelocatedPrefixHandler(
                 handlerIndex, successorIndex + 1,
                 returnLabelIndex, returnIndex + 1);
+    }
+
+    private static boolean consumesRelocatableCaughtException(
+            MethodNode method, AbstractInsnNode instruction) {
+        if (instruction.getOpcode() == Opcodes.POP) {
+            return true;
+        }
+        if (instruction.getOpcode() != Opcodes.ASTORE) {
+            return false;
+        }
+        int local = ((VarInsnNode) instruction).var;
+        return local != 0 && !isCategoryTwoHole(method, local);
+    }
+
+    private static boolean isCategoryTwoHole(MethodNode method, int local) {
+        int argumentLocal = 1;
+        for (Type argument : Type.getArgumentTypes(method.desc)) {
+            if (argument.getSize() == 2 && local == argumentLocal + 1) {
+                return true;
+            }
+            argumentLocal += argument.getSize();
+        }
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (!(instruction instanceof VarInsnNode)) {
+                continue;
+            }
+            int opcode = instruction.getOpcode();
+            if ((opcode == Opcodes.LLOAD || opcode == Opcodes.LSTORE
+                    || opcode == Opcodes.DLOAD || opcode == Opcodes.DSTORE)
+                    && local == ((VarInsnNode) instruction).var + 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean containsOnlyFrames(

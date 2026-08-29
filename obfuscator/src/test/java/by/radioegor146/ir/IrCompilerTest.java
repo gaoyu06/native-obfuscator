@@ -806,6 +806,100 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsSuffixTryCatchWithIsolatedPrefixAstoreReturnHandler() {
+        ClassNode owner = constructorOwner(
+                "example/RelocatedAstoreCatch", "java/lang/Object");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                suffixTryCatchWithPrefixAstoreReturnHandler(owner.name);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(1, nativeBody.tryCatchBlocks.size());
+        assertEquals(Arrays.asList(
+                        Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
+                        Opcodes.ISTORE, Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.ASTORE, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        VarInsnNode relocatedStore = Arrays.stream(
+                        nativeBody.instructions.toArray())
+                .filter(VarInsnNode.class::isInstance)
+                .map(VarInsnNode.class::cast)
+                .filter(instruction ->
+                        instruction.getOpcode() == Opcodes.ASTORE)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, relocatedStore.var);
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.ASTORE));
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertTrue(context.output.toString().contains("goto IR_CATCH_"));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void admitsSuffixTryCatchWithIsolatedPrefixAstoreGotoReturnHandler() {
+        ClassNode owner = constructorOwner(
+                "example/RelocatedAstoreGotoCatch", "java/lang/Object");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                suffixTryCatchWithPrefixAstoreGotoReturnHandler(owner.name);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(1, nativeBody.tryCatchBlocks.size());
+        assertEquals(Arrays.asList(
+                        Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
+                        Opcodes.ISTORE, Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.ASTORE, Opcodes.GOTO, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        JumpInsnNode relocatedGoto = Arrays.stream(
+                        nativeBody.instructions.toArray())
+                .filter(JumpInsnNode.class::isInstance)
+                .map(JumpInsnNode.class::cast)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(nativeBody.instructions.indexOf(relocatedGoto.label) >= 0);
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.ASTORE));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertTrue(context.output.toString().contains("goto IR_CATCH_"));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void admitsSuffixOnlyTryCatchInNativeBody() {
         ClassNode owner = constructorOwner(
                 "example/SuffixCatch", "java/lang/Object");
@@ -1299,6 +1393,47 @@ public class IrCompilerTest {
                     "java/lang/Object");
             MethodNode constructor =
                     invalidPrefixGotoReturnHandler(owner.name, shape);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            int instructionCount = constructor.instructions.size();
+
+            UnsupportedIrConstructException error = assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertTrue(error.getMessage().contains(
+                    "Constructor exception regions may not cross "
+                            + "the this/super split"), shape);
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertEquals(1, constructor.tryCatchBlocks.size(), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void rejectsUnsafePrefixAstoreReturnHandlersBeforeMutation() {
+        String[] shapes = {
+                "astore-0", "extra-work", "stored-exception-use",
+                "non-return-target", "extra-return-incoming",
+                "category-2-hole"
+        };
+        for (String shape : shapes) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedAstoreCatch" + shape.replace("-", ""),
+                    "java/lang/Object");
+            MethodNode constructor =
+                    invalidPrefixAstoreReturnHandler(owner.name, shape);
             NativeObfuscator obfuscator = new NativeObfuscator();
             MethodContext context =
                     new MethodContext(obfuscator, constructor, 0, owner, 0);
@@ -2538,6 +2673,39 @@ public class IrCompilerTest {
         assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
         assertTrue(constructor.tryCatchBlocks.isEmpty());
         assertFalse(realOpcodes(constructor).contains(Opcodes.POP));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
+    public void rewrittenRelocatedPrefixAstoreReturnHandlerPassesJvmVerification()
+            throws Exception {
+        ClassNode owner = constructorOwner(
+                "example/VerifiedRelocatedAstoreCatch", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                suffixTryCatchWithPrefixAstoreReturnHandler(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+
+        InvocationTargetException bridge = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(0));
+        assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.ASTORE));
         assertEquals(1, hiddenBridgeCallCount(constructor));
     }
 
@@ -3878,6 +4046,84 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native relocated-goto-catch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void relocatedPrefixAstoreReturnHandlerCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the relocated ASTORE runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the relocated ASTORE runtime test");
+
+        String ownerName = "example/RelocatedAstoreCatchRuntime";
+        Path directory =
+                Files.createTempDirectory("ir-relocated-astore-catch-run");
+        Path inputJar = directory.resolve("relocated-astore-catch.jar");
+        Path outputDirectory = directory.resolve("output");
+        createRelocatedPrefixAstoreReturnHandlerJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain relocated ASTORE catch Java run");
+        assertEquals(
+                "4" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(transformedConstructor.tryCatchBlocks.isEmpty());
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertFalse(realOpcodes(transformedConstructor)
+                .contains(Opcodes.ASTORE));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("relocated ASTORE catch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("relocated ASTORE catch CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Relocated ASTORE catch native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native relocated ASTORE catch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -7921,6 +8167,29 @@ public class IrCompilerTest {
         }
     }
 
+    private void createRelocatedPrefixAstoreReturnHandlerJar(
+            Path jarPath, String ownerName) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                suffixTryCatchWithPrefixAstoreReturnHandler(ownerName));
+        owner.methods.add(relocatedPrefixReturnHandlerMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperDiamondJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -10520,6 +10789,95 @@ public class IrCompilerTest {
         method.tryCatchBlocks.add(new TryCatchBlockNode(
                 start, end, handler, "java/lang/ArithmeticException"));
         method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode suffixTryCatchWithPrefixAstoreReturnHandler(
+            String owner) {
+        return suffixTryCatchWithPrefixAstoreReturnHandler(
+                owner, false, null);
+    }
+
+    private MethodNode suffixTryCatchWithPrefixAstoreGotoReturnHandler(
+            String owner) {
+        return suffixTryCatchWithPrefixAstoreReturnHandler(
+                owner, true, null);
+    }
+
+    private MethodNode invalidPrefixAstoreReturnHandler(
+            String owner, String shape) {
+        boolean gotoReturn = "non-return-target".equals(shape)
+                || "extra-return-incoming".equals(shape);
+        return suffixTryCatchWithPrefixAstoreReturnHandler(
+                owner, gotoReturn, shape);
+    }
+
+    private MethodNode suffixTryCatchWithPrefixAstoreReturnHandler(
+            String owner, boolean gotoReturn, String invalidShape) {
+        if (invalidShape != null
+                && !"astore-0".equals(invalidShape)
+                && !"extra-work".equals(invalidShape)
+                && !"stored-exception-use".equals(invalidShape)
+                && !"non-return-target".equals(invalidShape)
+                && !"extra-return-incoming".equals(invalidShape)
+                && !"category-2-hole".equals(invalidShape)) {
+            throw new IllegalArgumentException(invalidShape);
+        }
+        String descriptor = "category-2-hole".equals(invalidShape)
+                ? "(IJ)V" : "(I)V";
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", descriptor, null, null);
+        LabelNode handler = new LabelNode();
+        LabelNode handlerReturn = new LabelNode();
+        LabelNode chain = new LabelNode();
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, chain));
+        if ("extra-return-incoming".equals(invalidShape)) {
+            method.instructions.add(
+                    new JumpInsnNode(Opcodes.GOTO, handlerReturn));
+            method.instructions.add(new JumpInsnNode(Opcodes.GOTO, chain));
+        }
+        method.instructions.add(handler);
+        int handlerLocal = "astore-0".equals(invalidShape) ? 0 : 3;
+        method.instructions.add(
+                new VarInsnNode(Opcodes.ASTORE, handlerLocal));
+        if ("extra-work".equals(invalidShape)) {
+            method.instructions.add(new InsnNode(Opcodes.NOP));
+        } else if ("stored-exception-use".equals(invalidShape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+            method.instructions.add(new InsnNode(Opcodes.POP));
+        }
+        if (gotoReturn) {
+            method.instructions.add(
+                    new JumpInsnNode(Opcodes.GOTO, handlerReturn));
+            method.instructions.add(handlerReturn);
+            if ("non-return-target".equals(invalidShape)) {
+                method.instructions.add(new InsnNode(Opcodes.NOP));
+            }
+        }
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(chain);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        method.instructions.add(start);
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/ArithmeticException"));
+        method.maxLocals = 4;
         method.maxStack = 2;
         return method;
     }
