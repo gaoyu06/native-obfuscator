@@ -53,10 +53,9 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after phase 20 / #146 / #153 include at least:
-   `IF_ACMPEQ` / `IF_ACMPNE`,
+   `master` after #157 (`IF_ACMPEQ` / `IF_ACMPNE`) include at least:
+   `monitorenter` / `monitorexit` / synchronized methods (in flight),
    `invokedynamic` and `LDC` of MethodHandle / MethodType / ConstantDynamic,
-   `monitorenter` / `monitorexit` / synchronized methods,
    remaining constructor-split rejects (prefix branch into suffix,
    multiple this/super, try/catch across the split, prefix `ASTORE` of
    forwarded refs), and `jsr` / `ret`.
@@ -73,6 +72,29 @@ The goal is complete only when all of the following are true:
 默认关闭的旁路。它们**不能**代替把方法体迁到 IR。不要为了扩解释器 ISA
 而停下 IR 接纳缺口。
 
+## How we work / 工作方式（2026-08-29）
+
+- **Large increments with fast models.** Prefer Claude Opus 5 Fast
+  (`claude-opus-5-thinking-high-fast`) for ordinary IR admission work.
+  If that model is blocked on this repository, use another fast model
+  (Sol-class fast is acceptable). Do not slice every leftover into a
+  review-gated micro-PR.
+- **Accept with real tests, not stacked code-only reviews.** The gate
+  is `IrCompilerTest` + `CodegenModeTest` plus compile-and-run harnesses
+  (g++ / JNI) that exercise the new bytecode. Do not open Fable/Sol
+  review PRs whose only job is to re-read the diff.
+- **Fable 5 is reserved.** Use it only for important product decisions
+  and genuinely hard code: `invokedynamic` / ConstantDynamic / MethodHandle
+  `LDC`, leftover constructor-split rejects, or a default-flip / legacy
+  deletion decision. Do not use Fable 5 for routine opcode admission.
+
+- **大增量、快模型。** 普通 IR 接纳优先 Opus 5 Fast；该模型不可用时换
+  其他快模型。不要每个缺口都再叠一层纯代码审查。
+- **用真实测试验收。** 门禁是聚焦测试加上会编译并跑起来的 harness，
+  不是再开一个只读 diff 的审查 PR。
+- **Fable 5 只用在难事上。** 重要决策和困难代码（indy / condy /
+  构造器切分剩余拒绝、默认值翻转 / 删除 legacy）。例行接纳不要派 Fable。
+
 ## Policies that remain / 仍然有效的政策
 
 - Do not invent benchmark numbers. Keep #53’s eval median as `N/A`.
@@ -85,12 +107,13 @@ The goal is complete only when all of the following are true:
 
 ## (a)(b)(c)(d)
 
-- **(a) Scope / 范围:** Replace the active engineering goal with
-  IR-complete codegen and legacy retirement. / 把现行目标改成 IR 覆盖完整并废弃 legacy。
+- **(a) Scope / 范围:** IR-complete codegen, then retire legacy; process
+  is fast-model increments gated by executed tests. /
+  IR 覆盖完整后废弃 legacy；用快模型做大增量，用跑起来的测试验收。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
-- **(c) Review / 是否需要审查？** Yes — confirm this page does not
-  flip the CLI default or claim legacy is already gone. /
-  是，确认没有把默认值改掉，也没有写成 legacy 已经删除。
+- **(c) Review / 是否需要审查？** No stacked code-only review.
+  Confirm this page does not flip the CLI default. /
+  不再叠纯代码审查。确认没有改掉默认值。
 - **(d) Preconditions / 前置条件:** Cite only known leftover constructs;
   do not invent a full JVM coverage matrix. /
   只列出已知缺口，不要编造完整 JVM 覆盖表。

@@ -10,13 +10,13 @@ The tool still ships a **legacy** snippet-based generator as the CLI default. `m
 
 ## Current status
 
-Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#156](https://github.com/gaoyu06/native-obfuscator/pull/156). Active goal: [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md). Status detail: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
+Recorded on `master` after [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) and the follow-up landings through [#157](https://github.com/gaoyu06/native-obfuscator/pull/157). Active goal: [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md). Status detail: [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
 | Topic | What is true |
 | --- | --- |
 | Active goal | Move all method-body codegen onto IR, then delete the legacy snippet path. Not done. Default stays `legacy` until coverage |
 | Default generator | `legacy` (snippet / `cppsnippets.properties`) |
-| Opt-in IR | `--codegen=ir` — typed CFG through phase 20 (`LDIV`/`LREM`/`LNEG`) plus `LCMP`. Per-method fallback to legacy when a construct is unsupported |
+| Opt-in IR | `--codegen=ir` — typed CFG through phase 20 (`LDIV`/`LREM`/`LNEG`) plus `LCMP` and `IF_ACMPEQ` / `IF_ACMPNE`. Per-method fallback to legacy when a construct is unsupported |
 | Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
 | Java baseline | Historical README claim remains: **Java 8 is the only version this project has ever called fully supported.** 9+ and Android stay experimental |
 | JDK 17 IR fixtures | 11 `--release 17` programs matched HotSpot stdout on **one** Linux x86-64 VM under `--codegen=ir`. That is not a product “supports JDK 17” badge |
