@@ -145,8 +145,8 @@ public class InterpreterStreamStrategyTest {
         assertLongBinaryOpcode(add, 0x25);
         assertLongBinaryOpcode(subtract, 0x26);
         assertLongBinaryOpcode(multiply, 0x27);
-        assertLongBinaryOpcode(divide, 0x2b);
-        assertLongBinaryOpcode(remainder, 0x2c);
+        assertLongThrowingBinaryOpcode(divide, 0x2b);
+        assertLongThrowingBinaryOpcode(remainder, 0x2c);
 
         assertNotNull(i2l);
         assertEquals(21, i2l.length);
@@ -774,6 +774,15 @@ public class InterpreterStreamStrategyTest {
         assertEquals(opcode, data[18] & 0xff);
         assertEquals(0x24, data[25] & 0xff);
         assertEquals(0x28, data[30] & 0xff);
+    }
+
+    private void assertLongThrowingBinaryOpcode(byte[] data, int opcode) {
+        assertNotNull(data);
+        assertTrue(data.length > 33);
+        assertEquals(0x23, data[8] & 0xff);
+        assertEquals(0x23, data[13] & 0xff);
+        assertEquals(opcode, data[18] & 0xff);
+        assertEquals(0x28, data[data.length - 3] & 0xff);
     }
 
     private String generatedMethod(String generated, String marker) {

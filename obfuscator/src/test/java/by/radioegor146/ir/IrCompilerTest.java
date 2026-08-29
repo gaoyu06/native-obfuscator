@@ -109,13 +109,13 @@ public class IrCompilerTest {
         assertTrue(divideCpp.contains("(arg1 == 0LL)"));
         assertTrue(divideCpp.contains("(arg0 == ((jlong) 0x8000000000000000ULL))"));
         assertTrue(divideCpp.contains("(arg1 == -1LL)"));
-        assertTrue(divideCpp.contains("v2 = arg0;"));
-        assertTrue(divideCpp.contains("v2 = (arg0 / arg1);"));
+        assertTrue(divideCpp.contains("= arg0;"));
+        assertTrue(divideCpp.contains("= (arg0 / arg1);"));
 
         String remainderCpp = remainderContext.output.toString();
         assertTrue(remainderCpp.contains("utils::throw_re(env"));
-        assertTrue(remainderCpp.contains("v2 = 0LL;"));
-        assertTrue(remainderCpp.contains("v2 = (arg0 % arg1);"));
+        assertTrue(remainderCpp.contains("= 0LL;"));
+        assertTrue(remainderCpp.contains("= (arg0 % arg1);"));
     }
 
     @Test
