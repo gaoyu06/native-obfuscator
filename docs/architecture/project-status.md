@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing interface-hosted proven `ConstantDynamic`
-[#168](https://github.com/gaoyu06/native-obfuscator/pull/168)
-(parent re-ran 152/152: 145 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `interfaceConstantDynamicCompilesAndRunsWithHotSpotParity`)
-on the post-[#167](https://github.com/gaoyu06/native-obfuscator/pull/167)
-primitive `Class` `LDC` tree. Active process:
+Last updated after landing identity-preserving constructor prefix
+`ASTORE 0` [#170](https://github.com/gaoyu06/native-obfuscator/pull/170)
+(parent re-ran 155/155: 148 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `identityAstoreZeroCompilesAndRunsWithJavaParity`)
+on the post-[#168](https://github.com/gaoyu06/native-obfuscator/pull/168)
+interface-condy tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -70,9 +70,13 @@ legacy。不能当成 JDK 支持矩阵。
   successful path, one join, one hidden bridge).
   [#166](https://github.com/gaoyu06/native-obfuscator/pull/166) admits
   try/catch wholly in the prefix (kept in bytecode) while suffix-only
-  regions stay in the IR body. `ASTORE 0`, a prefix→suffix branch that
-  is not an admitted join, mixed prefix/suffix try/catch, non-diamond
-  multi-super, and conditionally assigned extras are still rejected.
+  regions stay in the IR body.
+  [#170](https://github.com/gaoyu06/native-obfuscator/pull/170) admits
+  prefix `ASTORE 0` when every such store and each selected this/super
+  call still names the original receiver. Non-identity `ASTORE 0`, a
+  prefix→suffix branch that is not an admitted join, mixed
+  prefix/suffix try/catch, non-diamond multi-super, and conditionally
+  assigned extras are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -172,6 +176,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Prefix-only constructor try/catch (#166) | 148 tests (`IrCompilerTest` 141 + `CodegenModeTest` 7). Parent re-ran 148/148 including `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Primitive `Class` `LDC` (#167) | 149 tests (`IrCompilerTest` 142 + `CodegenModeTest` 7). Parent re-ran 149/149 including `primitiveClassLdcCompilesAndRunsWithHotSpotParity` | Complete LDC coverage or a default flip |
 | Interface-hosted proven `ConstantDynamic` (#168) | 152 tests (`IrCompilerTest` 145 + `CodegenModeTest` 7). Parent re-ran 152/152 including `interfaceConstantDynamicCompilesAndRunsWithHotSpotParity` | Complete condy coverage or a default flip |
+| Identity-preserving constructor `ASTORE 0` (#170) | 155 tests (`IrCompilerTest` 148 + `CodegenModeTest` 7). Parent re-ran 155/155 including `identityAstoreZeroCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -216,9 +221,10 @@ tree. Close them as superseded, do not merge.
 Active-goal work (IR admission, then default flip, then legacy deletion):
 
 - Admit remaining IR leftovers so methods stop falling back:
-  leftover constructor-split rejects (`ASTORE 0`, prefix→suffix branch
-  that is not an admitted join, mixed prefix/suffix try/catch,
-  non-diamond multi-super, conditionally assigned extras) and
+  leftover constructor-split rejects (non-identity `ASTORE 0`,
+  prefix→suffix branch that is not an admitted join, mixed
+  prefix/suffix try/catch, non-diamond multi-super, conditionally
+  assigned extras) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#169](https://github.com/gaoyu06/native-obfuscator/pull/169),
@@ -235,8 +241,8 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #168 (interface
-  ConstantDynamic). / 落地 #168 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #170 (identity
+  ASTORE 0). / 落地 #170 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
