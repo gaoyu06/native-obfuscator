@@ -4,7 +4,7 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-29. PRs
-#1–#83 are all open drafts. `master` is unchanged from the preceding brief and
+#1–#89 are all open drafts. `master` is unchanged from the preceding brief and
 contains none of their code or documentation. Results below are evidence
 recorded on the named branch, not invented merge, review, or CI results.
 
@@ -117,6 +117,19 @@ AES benchmark。[#81](https://github.com/gaoyu06/native-obfuscator/pull/81)
 目标上 `plaintext.size + 16` 溢出并返回 `NO_SDK_SIZE_OVERFLOW_V1`，记录
 13/13、先认证后解密及固定长度 tag 的 constant-work 比较，同时明确 tiny-AES-c
 并非 side-channel hardened。它优先于未修复的 #80，但仍不是已交付 SDK。
+Direct-IR 路线继续到 [#84](https://github.com/gaoyu06/native-obfuscator/pull/84)：
+它叠加在 #78 上，通过 hidden native bridge 支持构造器方法体；`<init>` 绝不设置
+`ACC_NATIVE`，唯一的直接 `this(...)`/`super(...)` 调用及其参数前缀留在 Java
+字节码中，默认仍为 legacy。其记录为 57 + 2 = 59 个测试及 61-method g++ 烟测。
+[#89](https://github.com/gaoyu06/native-obfuscator/pull/89) 是首选 phase-12 tip：
+Sol 审阅发现并修复前缀 `ASTORE` 覆盖 local 0 或被转发引用参数的 verifier-safety
+问题，改为在 mutation 前保守拒绝；修复后结论为 **pass after one correctness
+fix**，记录 58 + 2 = 60 个测试及 61-method g++ 烟测。[#88](https://github.com/gaoyu06/native-obfuscator/pull/88)
+是对未修复 #84 的纯文档 Fable **accept** 审阅，记录 59 个测试，不包含 #89
+修复。独立 evaluator 路线中，[#85](https://github.com/gaoyu06/native-obfuscator/pull/85)
+在 #68 上加入 `LDIV=0x2b` 与 `LREM=0x2c`，使 `(JJ)J` divide/remainder 保持
+在 eval 路径；记录 32/32，且不新增 benchmark 数字。[#87](https://github.com/gaoyu06/native-obfuscator/pull/87)
+是对 #85 的纯文档 Sol **accept** 审阅，同样记录 32/32。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -225,10 +238,28 @@ is the preferred AES tip: Sol records **PASS with one correctness fix**, fixing
 authenticate-before-decrypt ordering, and constant-work comparison of the
 fixed-length tag. It also records that tiny-AES-c is not side-channel hardened.
 #81 is preferred over unfixed #80, but it is not a shipped SDK.
+[PR #84](https://github.com/gaoyu06/native-obfuscator/pull/84), stacked on #78,
+then supports constructor bodies through a hidden native bridge. `<init>` is
+never `ACC_NATIVE`; the one direct `this(...)`/`super(...)` call and its
+argument-producing prefix stay in Java bytecode; legacy remains the default.
+It records 57 + 2 = 59 tests and a 61-method g++ smoke.
+[#89](https://github.com/gaoyu06/native-obfuscator/pull/89) is the preferred
+phase-12 tip: Sol found and fixed verifier-unsafe prefix `ASTORE` writes to
+local 0 or forwarded reference-parameter locals by conservatively rejecting
+them before mutation. Its post-fix verdict is **pass after one correctness
+fix**, with 58 + 2 = 60 tests and a 61-method g++ smoke.
+[#88](https://github.com/gaoyu06/native-obfuscator/pull/88) is Fable's
+documentation-only **accept** review of unfixed #84, records 59 tests, and
+does not include #89's fix. In the evaluator lane,
+[#85](https://github.com/gaoyu06/native-obfuscator/pull/85), stacked on #68,
+adds `LDIV=0x2b` and `LREM=0x2c`; generated `(JJ)J` divide/remainder methods
+stay on eval. It records 32/32 and adds no benchmark numbers.
+[#87](https://github.com/gaoyu06/native-obfuscator/pull/87) is Sol's
+documentation-only **accept** review of #85 and also records 32/32.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#83 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#89 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -245,9 +276,12 @@ legacy 的 phase 10；#76 的 accept-with-nits 与 #77 的 PASS 均只是纯文�
 批准。#78 仍是部分、opt-in、默认 legacy 的 phase 11，#82/#83 的纯文档 accept
 均不是上线批准。#72/#75 仍是 review-stage HMAC SDK surface/审阅；#80 的
 AES-256-GCM 实现并非已交付 SDK，首选 #81 虽修复输出长度溢出并记录 PASS，仍明确
-不是上线批准，且 tiny-AES-c 并非 side-channel hardened。
+不是上线批准，且 tiny-AES-c 并非 side-channel hardened。#84 的构造器支持仍是
+部分、opt-in 且默认 legacy；首选 #89 修复 forwarded-reference-local 正确性问题，
+但不是上线批准，#88 又仅审阅未修复 #84。#85 仍是窄范围 opt-in evaluator 扩展，
+#87 的纯文档 accept 同样不是上线批准。
 
-**No.** PRs #1–#83 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#89 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -269,7 +303,11 @@ phase 11, and #82/#83's documentation-only accept reviews are not ship
 approval. #72/#75 remain a review-stage HMAC SDK surface/review. #80's
 AES-256-GCM implementation is not a shipped SDK; preferred #81 fixes the
 output-length overflow and records PASS, but explicitly is not ship approval,
-and tiny-AES-c is not side-channel hardened.
+and tiny-AES-c is not side-channel hardened. #84's constructor support remains
+partial, opt-in, and legacy-default; preferred #89 fixes the forwarded-reference
+local correctness issue but is not ship approval, while #88 reviews only
+unfixed #84. #85 remains a narrow opt-in evaluator extension, and #87's
+documentation-only accept is likewise not ship approval.
 
 ### (c) 上线前是否需要 review / Is review required?
 
@@ -316,9 +354,14 @@ boundaries rather than generalized.
    `docs/architecture/ir-phase11-review.md`、#83 的
    `docs/architecture/ir-phase11-fable-review.md`、#80 的双语
    `PR_BODY.md` 与 `docs/sdk/v1-status.md`，以及 #81 的
-   `docs/sdk/aes-256-gcm-review.md`。
+   `docs/sdk/aes-256-gcm-review.md`；#84 的
+   `docs/architecture/ir-phase12-status.md`、#89 的
+   `docs/architecture/ir-phase12-review.md`、#88 的
+   `docs/architecture/ir-phase12-fable-review.md`、#85 的
+   `docs/architecture/ir-evaluator-backend.md` 与双语 `PR_BODY.md`，以及
+   #87 的 `docs/architecture/ir-evaluator-ldiv-review.md`。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#83 claims.
+   named branch documents for the new #44–#89 claims.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -448,29 +491,52 @@ boundaries rather than generalized.
    authenticate-before-decrypt, and constant-work fixed-length tag comparison,
    and notes that tiny-AES-c is not side-channel hardened. #81 is preferred
    over unfixed #80; neither is a shipped SDK.
-10. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+10. #84 叠加在 #78 上，以 hidden static native bridge 支持构造器方法体；
+   `<init>` 从不设置 `ACC_NATIVE`，唯一的直接 `this(...)`/`super(...)` 调用及其
+   参数前缀留在 Java 字节码中，默认仍为 legacy，记录 57 + 2 = 59 个测试及
+   61-method g++ 烟测。#89 是包含编译器修复的首选 phase-12 tip：它拒绝前缀
+   `ASTORE` 覆盖 local 0 或被转发引用参数 local，修复后记录 **pass after one
+   correctness fix**、58 + 2 = 60 个测试及 61-method g++ 烟测。#88 是对未修复
+   #84 的纯文档 Fable **accept** 审阅，记录 59 个测试且不包含 #89 修复。#85
+   叠加在 #68 上，为 evaluator 加入 `LDIV=0x2b` 与 `LREM=0x2c`，使 `(JJ)J`
+   保持在 eval，记录 32/32 且不新增 benchmark；#87 是纯文档 Sol **accept**
+   审阅，同样记录 32/32。以上均不是上线就绪结论。 #84 is stacked on #78 and
+   supports constructor bodies through a hidden static native bridge; `<init>`
+   never receives `ACC_NATIVE`, the one direct `this(...)`/`super(...)` call
+   and its argument prefix remain in Java bytecode, legacy remains the default,
+   and 57 + 2 = 59 tests plus a 61-method g++ smoke are recorded. #89 is the
+   preferred phase-12 tip containing the compiler fix: it rejects prefix
+   `ASTORE` writes to local 0 or forwarded reference-parameter locals and
+   records **pass after one correctness fix**, 58 + 2 = 60 tests, and a
+   61-method g++ smoke. #88 is Fable's documentation-only **accept** review of
+   unfixed #84, records 59 tests, and lacks #89's fix. Stacked on #68, #85
+   adds evaluator `LDIV=0x2b` and `LREM=0x2c`, keeps `(JJ)J` on eval, records
+   32/32, and adds no benchmark; #87 is Sol's documentation-only **accept**
+   review with 32/32. None is a ship-readiness finding.
+11. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
    #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 →
-   #78 → #82/#83 的
+   #78 → #82/#83 → #84 → #89/#88 的
    direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上）、
    #34 → #53 的 benchmark 与叠加
    在 #57 上的独立 #59 后续测量、#42 → #44 → #48 → #50 的独立 evaluator
-   实验、#57/#61 与 #68/#69 ISA/review sibling、SDK #12 → #15 → #46 →
+   实验、#57/#61、#68/#69 与 #85/#87 ISA/review sibling、SDK #12 → #15 → #46 →
    #72 → #75 → #80 → #81（首选 AES tip）、compatibility #6 → #9 → #14 →
-   #41，以及 options brief … → #74 → #79 → 本 PR 分别继续。
+   #41，以及 options brief … → #74 → #79 → #86 → 本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
    blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-   #70/#71 → #73 → #76/#77 → #78 → #82/#83 direct-IR coverage/review lane,
+   #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88 direct-IR
+   coverage/review lane,
    with #73 stacked only on preferred, fixed #70,
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
-   the #42 → #44 → #48 → #50 evaluator experiment with #57/#61 and #68/#69
-   as ISA/review siblings,
+   the #42 → #44 → #48 → #50 evaluator experiment with #57/#61, #68/#69,
+   and #85/#87 as ISA/review siblings,
    SDK #12 → #15 → #46 → #72 → #75 → #80 → #81 (the preferred AES tip),
    compatibility #6 → #9 → #14 → #41, and options briefs … → #74 → #79 →
-   this PR continue as separate lanes.
+   #86 → this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
@@ -481,13 +547,20 @@ boundaries rather than generalized.
 | Interpreter | [#7](https://github.com/gaoyu06/native-obfuscator/pull/7) documents the optional, default-off backend, ISA, and evaluation protocol. [#17](https://github.com/gaoyu06/native-obfuscator/pull/17) implements the initial integer slice; [#20](https://github.com/gaoyu06/native-obfuscator/pull/20) fixes dispatcher target validation; [#22](https://github.com/gaoyu06/native-obfuscator/pull/22) lowers the evaluation kernel's `mix` method; [#24](https://github.com/gaoyu06/native-obfuscator/pull/24) changes the generated method representation to compact hexadecimal byte blobs; and [#28](https://github.com/gaoyu06/native-obfuscator/pull/28) adds opt-in link-only publication of the transformed JAR and shared library without the generated C++ tree. | The implementation remains an open draft stack, default off, and integer-only. The three source-tree reader runs in [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) recovered both compared trees fully; the shared-library-only run in [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) then recovered `add`, `sumTo`, and `mix` fully from the published `.so` without the C++ tree. | Stable shared-IR integration, broad opcode/runtime semantics, resource limits, wider differential tests, target/toolchain gates, and a human default/selection policy. |
 | Automated-reader evaluation | [#21](https://github.com/gaoyu06/native-obfuscator/pull/21), [#23](https://github.com/gaoyu06/native-obfuscator/pull/23), and [#25](https://github.com/gaoyu06/native-obfuscator/pull/25) record three GPT-5.6 Sol reader runs on successive generated source-tree forms; both compared trees scored full in every run, and H0 was not rejected. [#30](https://github.com/gaoyu06/native-obfuscator/pull/30) records a fourth run using the published interpreter `.so` alone. [#37](https://github.com/gaoyu06/native-obfuscator/pull/37), stacked on the live direct-IR artifact [#35](https://github.com/gaoyu06/native-obfuscator/pull/35), records a recovery-first blinded read in which `add`, `sumTo`, `subMul`, and `mix` all scored full. [#50](https://github.com/gaoyu06/native-obfuscator/pull/50), stacked on evaluator artifact [#48](https://github.com/gaoyu06/native-obfuscator/pull/48), records the same four full scores after recovery was committed before source/oracle scoring. | Every usable run is an `N=1` tool-assisted case study with the limitations below. [#31](https://github.com/gaoyu06/native-obfuscator/pull/31) remains invalid reader-bar evidence because optimization reduced `mix` to constant-zero behavior. #37 and #50 use valid live direct-IR and shared-evaluator subjects; both full recoveries mean requirement 7 is not met. | A materially different lowering is needed: not another encoding tweak, not straight-line readable native output of the source algorithm, and not a decodable evaluator blob shipped with its evaluator. Independent readers, a frozen corpus, preregistered hypotheses, calibration, and uncontaminated repetitions remain necessary for a broader empirical claim. |
 
-Current additions after the table's inherited wave-12 entries: the direct-IR
+Current additions after the table's inherited wave-13 entries: the direct-IR
 lane continues #73 → #76/#77 → #78 → #82/#83. #78 records phase 11's two
 new invoke families, 55 focused tests, and a 59-method g++ smoke; both reviews
 accept it without establishing ship-readiness. The SDK lane continues #72 →
 #75 → #80 → #81; #81 is the preferred AES tip because it contains the
 `NO_SDK_SIZE_OVERFLOW_V1` correctness fix absent from #80. Neither AES draft is
 a shipped SDK, and tiny-AES-c is not side-channel hardened.
+This wave continues direct IR through #84 → #89/#88. #84 records constructor
+bodies via a hidden bridge, a non-native `<init>`, retained bytecode
+`this`/`super` prefix, 59 tests, and a 61-method smoke. Preferred #89 contains
+the forwarded-reference-local safety fix and records 60 tests; #88 accepts
+only unfixed #84 with 59 tests. The evaluator lane continues #68/#69 →
+#85/#87: `LDIV=0x2b` and `LREM=0x2c`, `(JJ)J` retained on eval, 32/32 on both
+implementation and docs-only review, and no new benchmark numbers.
 
 ### Reader-eval evidence
 
@@ -577,13 +650,14 @@ wait for a live-kernel reader. The next reader-bar design must not leave the
 source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
 design. Wider opt-in direct-IR coverage/review in #45 → #47 → #51 → #54 →
-#56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 → #78 → #82/#83
+#56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 → #78 → #82/#83 →
+#84 → #89/#88
 (with #73 based only on preferred, fixed #70), the #34 → #53 benchmark lane plus #59
 stacked on #57, the separate #42 → #44 → #48 → #50 evaluator experiment with
-#57/#61 and #68/#69 as ISA/review siblings, the SDK #12 → #15 → #46 → #72 →
-#75 → #80 → #81, with #81 preferred over unfixed #80, and
+#57/#61, #68/#69, and #85/#87 as ISA/review siblings, the SDK #12 → #15 →
+#46 → #72 → #75 → #80 → #81, with #81 preferred over unfixed #80, and
 compatibility #6 → #9 → #14 → #41 stacks, and options briefs
-… → #74 → #79 → this PR continue as separate engineering lanes.
+… → #74 → #79 → #86 → this PR continue as separate engineering lanes.
 
 #### Other product decisions
 
@@ -648,7 +722,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#77](https://github.com/gaoyu06/native-obfuscator/pull/77) →
    [#78](https://github.com/gaoyu06/native-obfuscator/pull/78) →
    [#82](https://github.com/gaoyu06/native-obfuscator/pull/82) /
-   [#83](https://github.com/gaoyu06/native-obfuscator/pull/83). Rebase after
+   [#83](https://github.com/gaoyu06/native-obfuscator/pull/83) →
+   [#84](https://github.com/gaoyu06/native-obfuscator/pull/84) →
+   [#89](https://github.com/gaoyu06/native-obfuscator/pull/89) /
+   [#88](https://github.com/gaoyu06/native-obfuscator/pull/88). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
    away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
@@ -683,6 +760,14 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    excluded, legacy remains default, and it records 55 tests plus a 59-method
    smoke. #82 and #83 are parallel documentation-only **accept** reviews with
    55/55. Neither is a ship-readiness finding.
+   #84 is based on #78 and adds the verifier-safe constructor split through a
+   hidden native bridge; `<init>` remains non-native, the direct `this`/`super`
+   prefix stays in bytecode, legacy remains default, and it records 59 tests
+   plus a 61-method smoke. Prefer #89 because its compiler fix rejects unsafe
+   prefix `ASTORE` writes to local 0 and forwarded reference-parameter locals;
+   its post-fix record is 60 tests and a 61-method smoke. #88 is a parallel
+   docs-only **accept** review of unfixed #84 with 59 tests and does not contain
+   #89's fix. None is a ship-readiness finding.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -705,6 +790,11 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    documentation-only **accept** review with 31/31; it records that shared
    frontend admission requires the sibling direct-IR file support and does not
    establish ship-readiness.
+   [#85](https://github.com/gaoyu06/native-obfuscator/pull/85), stacked on #68,
+   then adds `LDIV=0x2b` and `LREM=0x2c`, keeps generated `(JJ)J`
+   divide/remainder methods on eval, records 32/32, and adds no benchmark.
+   [#87](https://github.com/gaoyu06/native-obfuscator/pull/87) is its
+   documentation-only Sol **accept** review with 32/32 and no compiler change.
    [#59](https://github.com/gaoyu06/native-obfuscator/pull/59) is a benchmark
    follow-up stacked on #57. It records evaluator-path timing only for its own
    no-fallback run and must not be used to back-fill #53.
@@ -819,6 +909,15 @@ parallel, but their order within each arrowed stack must be preserved.
   and `V`; constructor bodies remain excluded and legacy remains default. Its
   55 tests and 59-method smoke, and #82/#83's documentation-only **accept**
   reviews with 55/55, do not make it ship-ready.
+- #84 remains an opt-in, partial phase 12 on #78. Its hidden bridge keeps
+  `<init>` non-native and retains the verifier-required `this`/`super` prefix
+  in bytecode; its 59 tests and 61-method smoke do not make it ship-ready.
+  Prefer #89 because it fixes unsafe forwarded-reference-local prefix writes
+  and records 60 tests after the fix. #88 reviews unfixed #84, records 59, and
+  does not contain #89's fix.
+- #85 adds evaluator `LDIV=0x2b` and `LREM=0x2c` on #68, keeps `(JJ)J` on eval,
+  records 32/32, and adds no benchmark. #87 is its docs-only **accept** review
+  with 32/32; neither is ship-ready.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -850,7 +949,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#83 are still open drafts. `master` contains none of their work.
+- PRs #1–#89 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -868,7 +967,9 @@ not the union of claims from draft branches:
 3. For any production IR claim, complete the declared semantic surface, prove
    reference-Java versus generated-native behavior across the supported matrix,
    compile generated C++ with warnings-as-errors/sanitizers, run `-Xcheck:jni`,
-   and make a reviewed default/fallback/legacy-retirement decision.
+   retain #89's forwarded-reference-local constructor fix rather than using
+   unfixed #84/#88, and make a reviewed default/fallback/legacy-retirement
+   decision.
 4. Replace the one-machine diagnostic benchmark with controlled repeated raw
    results, forked/JMH and native-only isolation where applicable, end-to-end
    cost data, and human-approved workload budgets. Either meet those budgets or

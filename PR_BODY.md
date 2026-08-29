@@ -1,17 +1,17 @@
 <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## Summary / 摘要
 
-Stacks the documentation-only maintainer brief on draft PR #79 and adds
-#78/#80/#81/#82/#83 using only claims in their named branch documents. It
-preserves #79's phase-9/10, HMAC, evaluator-I64, benchmark, reader, and complete
-written-goal conclusions. #81, which contains the reviewed output-length
-compiler fix, is preferred over unfixed #80; #70 remains preferred over
-unfixed #66.
+Stacks the documentation-only maintainer brief on draft PR #86 and adds
+#84/#85/#87/#88/#89 using only claims in their named branch documents. It
+preserves #86's phase-11, AES, benchmark, reader, and complete written-goal
+conclusions. #89, which contains the reviewed forwarded-reference-local
+compiler fix, is preferred over unfixed #84; #81 remains preferred over
+unfixed #80, and #70 remains preferred over unfixed #66.
 
-在草稿 PR #79 的基础上，将仅文档的维护者简报加入 #78/#80/#81/#82/#83，
-且仅采用其指定分支文档记录的声明。同时保留 #79 的 phase-9/10、HMAC、
-evaluator-I64、benchmark、reader 与完整书面工程目标结论。包含已审阅输出长度
-编译器修复的 #81 优先于未修复 #80；#70 仍优先于未修复 #66。
+在草稿 PR #86 的基础上，将仅文档的维护者简报加入 #84/#85/#87/#88/#89，
+且仅采用其指定分支文档记录的声明。同时保留 #86 的 phase-11、AES、benchmark、
+reader 与完整书面工程目标结论。包含已审阅 forwarded-reference-local 编译器修复
+的 #89 优先于未修复 #84；#81 仍优先于未修复 #80，#70 仍优先于未修复 #66。
 
 ## (a) Change scope / 本次改动范围
 
@@ -71,24 +71,38 @@ evaluator-I64、benchmark、reader 与完整书面工程目标结论。包含已
   and constant-work comparison of the fixed-length tag. tiny-AES-c is not
   side-channel hardened. #81 is preferred over unfixed #80 and is not a
   shipped SDK.
+- Add #84 on #78: supported constructor bodies use a hidden native bridge.
+  `<init>` is never `ACC_NATIVE`; the direct `this(...)`/`super(...)` call and
+  its argument-producing prefix remain in Java bytecode. Legacy remains the
+  default. Its source records 57 + 2 = 59 tests and a 61-method g++ smoke.
+- Add #89 as the preferred phase-12 tip. Sol found and fixed unsafe prefix
+  `ASTORE` writes to local 0 or forwarded reference-parameter locals by
+  conservatively rejecting them before mutation. The review records **pass
+  after one correctness fix**, 58 + 2 = 60 tests, and a 61-method g++ smoke.
+- Add #88, Fable's documentation-only **accept** review of unfixed #84. It
+  records 59 tests, changes no compiler code, and does not include #89's fix.
+- Add #85 on #68: evaluator `LDIV=0x2b` and `LREM=0x2c`. Generated `(JJ)J`
+  divide/remainder methods stay on eval. It records 32/32 and no new benchmark.
+- Add #87, Sol's documentation-only **accept** review of #85. It records 32/32
+  and changes no compiler code.
 - Keep #53 unchanged in meaning: eval fell back on `USHR`, so its evaluator
   median remains `N/A`. Do not back-fill it from #59, #68, or any later work.
 - Keep #37 and #50 as full recoveries of all four methods from their valid
   live subjects; requirement 7 remains unmet.
 - Preserve the lanes:
   - direct IR: #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-    #70/#71 → #73 → #76/#77 → #78 → #82/#83, with #73 based only on
-    preferred, fixed #70;
-  - evaluator: #42 → #44 → #48 → #50, #57/#61, #68/#69;
+    #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88, with #73
+    based only on preferred, fixed #70 and #89 preferred over unfixed #84;
+  - evaluator: #42 → #44 → #48 → #50, #57/#61, #68/#69 → #85/#87;
   - benchmark: #34 → #53, with #59 stacked on #57;
   - SDK: #12 → #15 → #46 → #72 → #75 → #80 → #81, with #81 the preferred
     AES tip;
   - compatibility: #6 → #9 → #14 → #41;
-  - options: … → #74 → #79 → this branch.
+  - options: … → #74 → #79 → #86 → this branch.
 - Preserve the complete written engineering goal. Option A remains only the
   v1 product recommendation.
 - Update only `docs/architecture/goal-status-and-options.md` and this bilingual
-  PR body. PRs #1–#83 remain open drafts; `master` remains `e7ca4c8`.
+  PR body. PRs #1–#89 remain open drafts; `master` remains `e7ca4c8`.
 
 - 新增 #66 的仍为 opt-in 的 direct-IR phase 9：`ARETURN`、`ACONST_NULL`、
   `IFNULL`/`IFNONNULL` 与 category-one `POP`。`POP2` 仍逐方法 fallback，
@@ -138,23 +152,35 @@ evaluator-I64、benchmark、reader 与完整书面工程目标结论。包含已
   13/13、authenticate-before-decrypt 与固定长度 tag 的 constant-work 比较；
   tiny-AES-c 并非 side-channel hardened。#81 优先于未修复 #80，且不是已交付
   SDK。
+- 新增叠加在 #78 上的 #84：通过 hidden native bridge 支持构造器方法体；
+  `<init>` 绝不设置 `ACC_NATIVE`，直接 `this(...)`/`super(...)` 调用及其参数
+  前缀留在 Java 字节码中，默认仍为 legacy。来源记录 57 + 2 = 59 个测试及
+  61-method g++ 烟测。
+- 新增首选 phase-12 tip #89。Sol 发现并修复前缀 `ASTORE` 覆盖 local 0 或被
+  转发引用参数 local 的安全问题，改为在 mutation 前保守拒绝。审阅记录
+  **pass after one correctness fix**、58 + 2 = 60 个测试及 61-method g++ 烟测。
+- 新增 #88，即 Fable 对未修复 #84 的纯文档 **accept** 审阅。它记录 59 个测试、
+  不改编译器，且不包含 #89 修复。
+- 新增叠加在 #68 上的 #85：evaluator `LDIV=0x2b`、`LREM=0x2c`，生成的
+  `(JJ)J` divide/remainder 方法保持在 eval。它记录 32/32，且不新增 benchmark。
+- 新增 #87，即 Sol 对 #85 的纯文档 **accept** 审阅。它记录 32/32 且不改编译器。
 - 保持 #53 原意不变：eval 因 `USHR` fallback，故其 evaluator 中位数仍为
   `N/A`。不得用 #59、#68 或任何后续工作回填。
 - 保留 #37 与 #50：两者均从各自有效 live 样本完整恢复四个方法，因此
   requirement 7 仍未满足。
 - 保持各路线：
   - direct IR：#45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-    #70/#71 → #73 → #76/#77 → #78 → #82/#83，其中 #73 仅基于首选且含
-    修复的 #70；
-  - evaluator：#42 → #44 → #48 → #50、#57/#61、#68/#69；
+    #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88，其中
+    #73 仅基于首选且含修复的 #70，#89 优先于未修复 #84；
+  - evaluator：#42 → #44 → #48 → #50、#57/#61、#68/#69 → #85/#87；
   - benchmark：#34 → #53，另有叠加在 #57 上的 #59；
   - SDK：#12 → #15 → #46 → #72 → #75 → #80 → #81，其中 #81 为首选
     AES tip；
   - compatibility：#6 → #9 → #14 → #41；
-  - options：… → #74 → #79 → 本分支。
+  - options：… → #74 → #79 → #86 → 本分支。
 - 保留完整书面工程目标；A 仅为 v1 产品建议。
 - 仅更新 `docs/architecture/goal-status-and-options.md` 与本双语 PR body。
-  PR #1–#83 仍均为 open draft；`master` 仍为 `e7ca4c8`。
+  PR #1–#89 仍均为 open draft；`master` 仍为 `e7ca4c8`。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线
 
@@ -170,9 +196,13 @@ release approval. #72/#75 remain a review-stage HMAC SDK surface/review, not a
 shipped SDK. #78 remains partial, opt-in, and legacy-default; #82/#83 are
 documentation reviews, not ship approval. #80/#81 remain a review-stage AES
 surface/review, not a shipped SDK; even preferred, fixed #81 records that
-tiny-AES-c is not side-channel hardened. #53 still has no evaluator timing, and #68 adds no benchmark
-numbers. #37 and #50 fully recovered all four methods from valid live subjects,
-so requirement 7 remains unmet.
+tiny-AES-c is not side-channel hardened. #84 remains partial, opt-in, and
+legacy-default; #89 fixes the forwarded-reference-local defect but is not ship
+approval, while #88 reviewed unfixed #84. #85 remains a narrow opt-in
+evaluator slice and #87 is a scoped review, not release approval. #53 still
+has no evaluator timing, and #85 adds no benchmark numbers. #37 and #50 fully
+recovered all four methods from valid live subjects, so requirement 7 remains
+unmet.
 
 所有相关工作仍在草稿 PR 中，`master` 未包含这些内容，默认值仍为
 legacy/direct。#66 仍部分；#70 修复一项正确性问题并接受其审阅范围，但不是生产
@@ -182,8 +212,11 @@ slice，#69 只是限定范围审阅而非发布批准。#72/#75 仍是 review-s
 接口/审阅，而不是已交付 SDK。#78 仍部分、opt-in 且默认 legacy；#82/#83 是文档
 审阅而非上线批准。#80/#81 仍是 review-stage AES 接口/审阅，而不是已交付 SDK；
 即使是首选且含修复的 #81，也记录 tiny-AES-c 并非 side-channel hardened。
-#53 仍没有 evaluator timing，#68 不新增 benchmark
-数字。#37 与 #50 均从有效 live 样本完整恢复四个方法，因此 requirement 7 仍未满足。
+#84 仍部分、opt-in 且默认 legacy；#89 修复 forwarded-reference-local 缺陷但不是
+上线批准，#88 审阅的则是未修复 #84。#85 仍是窄范围 opt-in evaluator slice，
+#87 是限定范围审阅而非发布批准。#53 仍没有 evaluator timing，#85 不新增
+benchmark 数字。#37 与 #50 均从有效 live 样本完整恢复四个方法，因此
+requirement 7 仍未满足。
 
 ## (c) Is review required? / 上线前是否需要 review
 
@@ -196,14 +229,18 @@ and must not treat #71 as evidence that the unfixed tip contains that fix.
 Phase-10 review must start from #73 on #70. Phase 11 must retain constructor
 body exclusion and the legacy default. HMAC still needs product and security
 approval beyond #75's technical PASS; AES review must start from fixed #81,
-not unfixed #80.
+not unfixed #80. Phase-12 review must start from fixed #89, not unfixed
+#84/#88. Evaluator LDIV/LREM review must retain the Java/C++ opcode agreement,
+JVM division edge cases, pending-exception exit, and fallback-before-mutation.
 
 每条实现栈仍需独立代码审查、rebase 后复测、受支持平台/JDK CI、native runtime
 parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的数组返回修复，且不得
 把 #71 当作未修复 tip 已包含该修复的证据。Phase-10 审阅必须从叠加在 #70 上的
 #73 开始。Phase 11 必须保留构造器方法体排除与 legacy 默认值。HMAC 在 #75 的
 技术 PASS 之外仍需产品与安全审批；AES 审阅必须从含修复 #81 开始，而非未修复
-#80。
+#80。Phase 12 审阅必须从含修复 #89 开始，而非未修复 #84/#88。Evaluator
+LDIV/LREM 审阅必须保留 Java/C++ opcode 一致性、JVM 除法边界、pending-exception
+退出与 mutation 前 fallback。
 
 ## (d) Review preconditions / review 的前置条件
 
@@ -256,9 +293,24 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    `NO_SDK_SIZE_OVERFLOW_V1`, 13/13, authenticate-before-decrypt,
    constant-work fixed-length tag comparison, and the tiny-AES-c
    side-channel boundary. Prefer #81 over unfixed #80; it is not a shipped SDK.
-14. Keep #53's evaluator median `N/A`; do not back-fill it. Keep #37/#50 as
+14. Use #84's `docs/architecture/ir-phase12-status.md` for constructor bodies
+   through the hidden native bridge, non-native `<init>`, retained bytecode
+   `this`/`super` prefix, legacy default, 57 + 2 = 59 tests, and 61-method g++
+   smoke.
+15. Use #89's `docs/architecture/ir-phase12-review.md` for the prefix `ASTORE`
+   forwarded-reference-local safety fix, **pass after one correctness fix**,
+   58 + 2 = 60 tests, and 61-method smoke. Prefer #89 over unfixed #84.
+16. Use #88's `docs/architecture/ir-phase12-fable-review.md` only for its
+   documentation-only **accept** review of unfixed #84 and 59-test result.
+   It does not include #89's fix.
+17. Use #85's bilingual `PR_BODY.md` and
+   `docs/architecture/ir-evaluator-backend.md` for `LDIV=0x2b`,
+   `LREM=0x2c`, `(JJ)J` staying on eval, 32/32, and no new benchmark.
+18. Use #87's `docs/architecture/ir-evaluator-ldiv-review.md` for its
+   documentation-only **accept**, no compiler change, and 32/32 result.
+19. Keep #53's evaluator median `N/A`; do not back-fill it. Keep #37/#50 as
    evidence that requirement 7 is unmet.
-15. Keep the complete written goal and all listed lanes. Option A remains only
+20. Keep the complete written goal and all listed lanes. Option A remains only
    the v1 product recommendation.
 
 中文核对项：
@@ -311,8 +363,21 @@ parity 检查，以及适用的产品/发布审批。审阅必须保留 #70 的�
    `NO_SDK_SIZE_OVERFLOW_V1` 的修复、13/13、authenticate-before-decrypt、
    固定长度 tag 的 constant-work 比较，以及 tiny-AES-c 的 side-channel 边界。
    #81 优先于未修复 #80，且不是已交付 SDK。
-14. 保持 #53 的 evaluator 中位数为 `N/A`，不得回填；保留 #37/#50 作为
+14. 以 #84 的 `docs/architecture/ir-phase12-status.md` 为准：保留通过 hidden
+   native bridge 支持构造器方法体、`<init>` 非 native、字节码中的 `this`/`super`
+   前缀、legacy 默认值、57 + 2 = 59 个测试与 61-method g++ 烟测。
+15. 以 #89 的 `docs/architecture/ir-phase12-review.md` 为准：保留前缀
+   `ASTORE` forwarded-reference-local 安全修复、**pass after one correctness
+   fix**、58 + 2 = 60 个测试与 61-method 烟测；#89 优先于未修复 #84。
+16. #88 仅以 `docs/architecture/ir-phase12-fable-review.md` 为准：保留对未修复
+   #84 的纯文档 **accept** 与 59 个测试；它不包含 #89 修复。
+17. 以 #85 的双语 `PR_BODY.md` 与
+   `docs/architecture/ir-evaluator-backend.md` 为准：保留 `LDIV=0x2b`、
+   `LREM=0x2c`、`(JJ)J` 保持在 eval、32/32 与不新增 benchmark。
+18. 以 #87 的 `docs/architecture/ir-evaluator-ldiv-review.md` 为准：保留纯文档
+   **accept**、无编译器改动与 32/32。
+19. 保持 #53 的 evaluator 中位数为 `N/A`，不得回填；保留 #37/#50 作为
    requirement 7 未满足的证据。
-15. 保留完整书面目标与所有已列路线；A 仅为 v1 产品建议。
+20. 保留完整书面目标与所有已列路线；A 仅为 v1 产品建议。
 
 <!-- CURSOR_AGENT_PR_BODY_END -->
