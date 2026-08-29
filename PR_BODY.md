@@ -54,8 +54,8 @@ English:
 
 - Review the prefix-only `ASTORE 0` syntax gate, the mandatory per-call
   receiver proof, and the N-call strict-diamond hook after normalization.
-- Focused gate: `IrCompilerTest` plus `CodegenModeTest` with GCC/G++ and
-  rerun-tasks. Exact XML totals are recorded after the focused run.
+- Focused GCC/G++ rerun-task gate: `IrCompilerTest` 256/256 and
+  `CodegenModeTest` 7/7; 0 failures, 0 errors, 0 skipped.
 - New coverage checks two-copy and three-copy normalization, rejection before
   mutation when one call uses overwritten local 0, JVM verification, owner
   class-loader metadata, one hidden bridge, and full Java/native stdout parity.
@@ -64,8 +64,8 @@ English:
 
 - 重点审查仅限前缀的 `ASTORE 0` 语法门禁、每个链式调用都必须通过的接收者
   证明，以及归一化后 N 路严格 diamond 的入口。
-- 聚焦门禁使用 GCC/G++、`--rerun-tasks` 运行 `IrCompilerTest` 与
-  `CodegenModeTest`；精确 XML 统计在聚焦运行后记录。
+- GCC/G++ 聚焦重跑门禁结果：`IrCompilerTest` 256/256，
+  `CodegenModeTest` 7/7；失败 0、错误 0、跳过 0。
 - 新覆盖验证两副本和三副本归一化、某一路使用已覆盖 local 0 时在修改前
   拒绝、JVM 校验、owner 类加载元数据、单一隐藏桥，以及完整 Java/native
   标准输出一致性。
