@@ -75,3 +75,8 @@ The runtime coverage requires `g++` and JNI headers. It compiles and runs C++
 harnesses for a nested string condy and a used raw `MethodType`; the existing
 string-concat `invokedynamic` and monitor harnesses remain in the same focused
 suite.
+
+JUnit XML from the focused run records:
+
+- `IrCompilerTest`: 121 tests, 0 skipped, 0 failures, 0 errors
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors

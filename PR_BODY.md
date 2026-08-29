@@ -35,10 +35,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Focused JUnit XML counts will be recorded after the required compile-and-run
-acceptance pass. The suite includes executed `g++` harnesses for nested string
-condy, a used raw `MethodType`, existing string-concat `invokedynamic`, and
-existing monitor behavior.
+JUnit XML from the focused compile-and-run acceptance pass:
+
+- `IrCompilerTest`: 121 tests, 0 skipped, 0 failures, 0 errors
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors
+
+The passing suite includes executed `g++` harnesses for nested string condy, a
+used raw `MethodType`, existing string-concat `invokedynamic`, and existing
+monitor behavior. The condy resolver test also executes the generated JVM
+resolver twice and verifies that both nested and outer bootstraps run once.
 
 Ship-ready: **No**  
 Review mode: **(c) executed tests, no stacked review**
