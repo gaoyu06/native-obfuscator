@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the plain-JVM/current-transpiler benchmark pair."""
+"""Build and run plain-JVM, legacy-JNI, and IR-JNI benchmarks."""
 
 import json
 import os
@@ -15,21 +15,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RESULT = ROOT / "build" / "benchmarks" / "results.json"
 WORK = ROOT / "build" / "benchmarks" / "work"
+LOG_DIR = ROOT / "build" / "benchmarks" / "logs"
 WARMUP = int(os.environ.get("BENCH_WARMUP", "5"))
 ITERATIONS = int(os.environ.get("BENCH_ITERATIONS", "10"))
+CODEGENS = ("legacy", "ir")
+KERNEL_METHODS = (
+    ("integer-loop", "benchmarks/kernels/IntegerLoopKernel", "run", "(I)J"),
+    ("string-concat-hash", "benchmarks/kernels/StringConcatHashKernel", "run", "(I)I"),
+    ("recursion", "benchmarks/kernels/RecursionKernel", "run", "(II)J"),
+    ("recursion", "benchmarks/kernels/RecursionKernel", "recurse", "(IJ)J"),
+)
 
 
 class HarnessFailure(RuntimeError):
-    def __init__(self, stage, message):
+    def __init__(self, stage, message, command=None):
         super().__init__(message)
         self.stage = stage
+        self.command = command
 
 
 def printable(command):
     return " ".join(shlex.quote(str(part)) for part in command)
 
 
-def execute(report, stage, command, cwd=ROOT, timeout=300, env=None):
+def execute(report, stage, command, cwd=ROOT, timeout=300, env=None, log_path=None):
     command = [str(part) for part in command]
     entry = {"stage": stage, "command": printable(command)}
     report["commands"].append(entry)
@@ -47,10 +56,17 @@ def execute(report, stage, command, cwd=ROOT, timeout=300, env=None):
     except (OSError, subprocess.TimeoutExpired) as error:
         entry["status"] = "FAIL"
         entry["failure"] = str(error)
-        raise HarnessFailure(stage, str(error))
+        raise HarnessFailure(stage, str(error), entry["command"])
 
     entry["exitCode"] = completed.returncode
     entry["status"] = "PASS" if completed.returncode == 0 else "FAIL"
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            "stdout:\n{}\nstderr:\n{}".format(completed.stdout, completed.stderr),
+            encoding="utf-8",
+        )
+        entry["log"] = str(log_path.relative_to(ROOT))
     if completed.returncode != 0:
         entry["stdout"] = completed.stdout
         entry["stderr"] = completed.stderr
@@ -62,6 +78,7 @@ def execute(report, stage, command, cwd=ROOT, timeout=300, env=None):
                 completed.stdout,
                 completed.stderr,
             ),
+            entry["command"],
         )
     return completed
 
@@ -83,17 +100,17 @@ def version(command):
         return "unavailable: {}".format(error)
 
 
-def cxx_compiler():
-    candidates = [
-        os.environ.get("CXX"),
-        shutil.which("g++"),
-        shutil.which("clang++"),
-        shutil.which("c++"),
-    ]
+def compiler(environment_name, names):
+    candidates = [os.environ.get(environment_name)] + list(names)
     for candidate in candidates:
         if candidate:
-            return str(Path(candidate).resolve())
-    return "c++"
+            resolved = shutil.which(candidate)
+            if resolved:
+                return str(Path(resolved).resolve())
+            path = Path(candidate)
+            if path.exists():
+                return str(path.resolve())
+    return names[-1]
 
 
 def java_home():
@@ -120,12 +137,12 @@ def parse_benchmark(stage, completed):
         )
 
 
-def find_native_library(output):
+def find_native_library(output, stage):
     names = {"libnative_library.so", "libnative_library.dylib", "native_library.dll"}
     matches = sorted(path for path in output.rglob("*") if path.name in names)
     if not matches:
         raise HarnessFailure(
-            "locate-native-library",
+            stage,
             "native build succeeded but produced none of: {}".format(
                 ", ".join(sorted(names))
             ),
@@ -133,12 +150,12 @@ def find_native_library(output):
     return matches[0]
 
 
-def assert_equivalent(plain, native):
+def assert_equivalent(plain, native, stage):
     plain_kernels = {item["name"]: item for item in plain["kernels"]}
     native_kernels = {item["name"]: item for item in native["kernels"]}
     if set(plain_kernels) != set(native_kernels):
         raise HarnessFailure(
-            "correctness-check",
+            stage,
             "plain/native kernel sets differ: {} vs {}".format(
                 sorted(plain_kernels), sorted(native_kernels)
             ),
@@ -148,11 +165,204 @@ def assert_equivalent(plain, native):
         actual = native_kernels[name]["checksum"]
         if expected != actual:
             raise HarnessFailure(
-                "correctness-check",
+                stage,
                 "{} checksum differs: plain={}, native={}".format(
                     name, expected, actual
                 ),
             )
+
+
+def classify_method_paths(output, transpile_output, codegen, plain):
+    measured_kernels = [item["name"] for item in plain["kernels"]]
+    configured_kernels = {item[0] for item in KERNEL_METHODS}
+    if set(measured_kernels) != configured_kernels:
+        raise HarnessFailure(
+            "{}:method-path-check".format(codegen),
+            "measured/configured kernel sets differ: {} vs {}".format(
+                sorted(measured_kernels), sorted(configured_kernels)
+            ),
+        )
+
+    fallback_logs = [
+        line.strip()
+        for line in transpile_output.splitlines()
+        if "IR codegen unsupported for " in line
+    ]
+    generated = ""
+    if codegen == "ir":
+        generated = "\n".join(
+            path.read_text(encoding="utf-8", errors="replace")
+            for path in sorted((output / "cpp").rglob("*"))
+            if path.suffix in {".cpp", ".hpp"}
+        )
+
+    method_paths = []
+    for kernel, owner, name, descriptor in KERNEL_METHODS:
+        method = "{}.{}{}".format(owner, name, descriptor)
+        if codegen == "legacy":
+            path = "legacy"
+            evidence = "--codegen=legacy selected"
+        else:
+            marker = "IR codegen: {}".format(method)
+            fallback_prefix = "IR codegen unsupported for {}#{}{}".format(
+                owner, name, descriptor
+            )
+            fallback_matches = [
+                line for line in fallback_logs if fallback_prefix in line
+            ]
+            if fallback_matches:
+                path = "legacy-fallback"
+                evidence = fallback_matches[0]
+            elif marker in generated:
+                path = "ir"
+                evidence = "// {}".format(marker)
+            else:
+                raise HarnessFailure(
+                    "{}:method-path-check".format(codegen),
+                    "no IR marker or fallback log found for {}".format(method),
+                )
+        method_paths.append(
+            {
+                "kernel": kernel,
+                "method": method,
+                "path": path,
+                "evidence": evidence,
+            }
+        )
+
+    kernel_paths = []
+    for kernel in measured_kernels:
+        methods = [item for item in method_paths if item["kernel"] == kernel]
+        paths = {item["path"] for item in methods}
+        if codegen == "legacy":
+            kernel_path = "legacy"
+            stayed_on_ir = None
+        elif paths == {"ir"}:
+            kernel_path = "ir"
+            stayed_on_ir = True
+        elif "legacy-fallback" in paths:
+            kernel_path = "legacy-fallback"
+            stayed_on_ir = False
+        else:
+            raise HarnessFailure(
+                "{}:method-path-check".format(codegen),
+                "unrecognized paths for {}: {}".format(kernel, sorted(paths)),
+            )
+        kernel_paths.append(
+            {
+                "kernel": kernel,
+                "path": kernel_path,
+                "stayedOnIr": stayed_on_ir,
+                "methods": [item["method"] for item in methods],
+            }
+        )
+    return method_paths, kernel_paths, fallback_logs
+
+
+def failure_record(error, default_stage):
+    if isinstance(error, HarnessFailure):
+        record = {"stage": error.stage, "reason": str(error)}
+        if error.command is not None:
+            record["command"] = error.command
+        return record
+    return {"stage": default_stage, "reason": str(error)}
+
+
+def run_native(report, codegen, input_jar, obfuscator_jar, plain, cc, cxx):
+    native_report = report["native"][codegen]
+    mode_work = WORK / codegen
+    output = mode_work / "transpiled"
+    output.mkdir(parents=True)
+
+    transpile_command = [
+        "java",
+        "-jar",
+        obfuscator_jar,
+        "--white-list={}".format(ROOT / "benchmarks" / "whitelist.txt"),
+        "--plain-lib-name=native_library",
+        "--codegen={}".format(codegen),
+        input_jar,
+        output,
+    ]
+    transpile_completed = execute(
+        report,
+        "{}:transpile".format(codegen),
+        transpile_command,
+        timeout=180,
+        log_path=LOG_DIR / "transpile-{}.log".format(codegen),
+    )
+    transpile_output = transpile_completed.stdout + transpile_completed.stderr
+    method_paths, kernel_paths, fallback_logs = classify_method_paths(
+        output, transpile_output, codegen, plain
+    )
+    native_report["methodPaths"] = method_paths
+    native_report["kernelPaths"] = kernel_paths
+    native_report["fallbackLogs"] = fallback_logs
+
+    cpp = output / "cpp"
+    cmake_build = cpp / "cmake-build"
+    build_env = os.environ.copy()
+    detected_java_home = java_home()
+    if detected_java_home:
+        build_env["JAVA_HOME"] = detected_java_home
+    native_report["nativeBuildSkipped"] = False
+    execute(
+        report,
+        "{}:cmake-configure".format(codegen),
+        [
+            "cmake",
+            "-S",
+            cpp,
+            "-B",
+            cmake_build,
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_C_COMPILER={}".format(cc),
+            "-DCMAKE_CXX_COMPILER={}".format(cxx),
+        ],
+        timeout=180,
+        env=build_env,
+    )
+    execute(
+        report,
+        "{}:native-build".format(codegen),
+        ["cmake", "--build", cmake_build, "--config", "Release", "--parallel"],
+        timeout=300,
+        env=build_env,
+    )
+
+    native_library = find_native_library(
+        cmake_build, "{}:locate-native-library".format(codegen)
+    )
+    shutil.copy2(native_library, output / native_library.name)
+    transpiled_jar = output / input_jar.name
+    native_command = [
+        "java",
+        "-Djava.library.path={}".format(output),
+        "-jar",
+        transpiled_jar,
+        "--mode=transpiled-jni-{}".format(codegen),
+        "--warmup={}".format(WARMUP),
+        "--iterations={}".format(ITERATIONS),
+    ]
+    native_completed = execute(
+        report,
+        "{}:transpiled-jni".format(codegen),
+        native_command,
+        cwd=output,
+        timeout=300,
+    )
+    native = parse_benchmark(
+        "{}:transpiled-jni".format(codegen), native_completed
+    )
+    assert_equivalent(plain, native, "{}:correctness-check".format(codegen))
+    native_report.update(
+        {
+            "status": "PASS",
+            "command": printable(native_command),
+            "library": str(native_library.relative_to(ROOT)),
+            "result": native,
+        }
+    )
 
 
 def write_report(report):
@@ -163,26 +373,36 @@ def write_report(report):
 
 
 def main():
-    compiler = cxx_compiler()
+    cxx = compiler("CXX", ("g++", "clang++", "c++"))
+    cc = compiler("CC", ("gcc", "clang", "cc"))
     report = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "status": "FAIL",
         "warmup": WARMUP,
         "iterations": ITERATIONS,
         "environment": {
+            "uname": version(["uname", "-a"]),
             "jdk": version(["java", "-version"]),
             "os": platform.platform(),
-            "compiler": {
-                "command": compiler,
-                "version": version([compiler, "--version"]),
+            "cCompiler": {
+                "command": cc,
+                "version": version([cc, "--version"]),
+            },
+            "cxxCompiler": {
+                "command": cxx,
+                "version": version([cxx, "--version"]),
             },
             "cmake": version(["cmake", "--version"]),
         },
         "commands": [],
         "plainJvm": {"status": "NOT_RUN"},
-        "transpiledNative": {
-            "status": "NOT_RUN",
-            "nativeBuildSkipped": True,
+        "native": {
+            codegen: {
+                "status": "NOT_RUN",
+                "codegen": codegen,
+                "nativeBuildSkipped": True,
+            }
+            for codegen in CODEGENS
         },
     }
 
@@ -203,8 +423,7 @@ def main():
 
         if WORK.exists():
             shutil.rmtree(WORK)
-        output = WORK / "transpiled"
-        output.mkdir(parents=True)
+        WORK.mkdir(parents=True)
 
         plain_command = [
             "java",
@@ -223,82 +442,37 @@ def main():
             "command": printable(plain_command),
             "result": plain,
         }
+    except (HarnessFailure, KeyError, OSError, ValueError) as error:
+        report["failure"] = failure_record(error, "configuration")
+        for codegen in CODEGENS:
+            report["native"][codegen]["status"] = "NOT_RUN"
+            report["native"][codegen]["reason"] = (
+                "plain-JVM/configuration prerequisite failed"
+            )
+        write_report(report)
+        return 1
 
-        transpile_command = [
-            "java",
-            "-jar",
-            obfuscator_jar,
-            "--white-list={}".format(ROOT / "benchmarks" / "whitelist.txt"),
-            "--plain-lib-name=native_library",
-            input_jar,
-            output,
-        ]
-        execute(report, "transpile", transpile_command, timeout=180)
+    failed_modes = []
+    for codegen in CODEGENS:
+        try:
+            run_native(
+                report, codegen, input_jar, obfuscator_jar, plain, cc, cxx
+            )
+        except (HarnessFailure, KeyError, OSError, ValueError) as error:
+            native_report = report["native"][codegen]
+            native_report["status"] = "FAIL"
+            native_report["failure"] = failure_record(
+                error, "{}:harness".format(codegen)
+            )
+            failed_modes.append(codegen)
 
-        cpp = output / "cpp"
-        cmake_build = cpp / "cmake-build"
-        build_env = os.environ.copy()
-        detected_java_home = java_home()
-        if detected_java_home:
-            build_env["JAVA_HOME"] = detected_java_home
-        execute(
-            report,
-            "cmake-configure",
-            [
-                "cmake",
-                "-S",
-                cpp,
-                "-B",
-                cmake_build,
-                "-DCMAKE_BUILD_TYPE=Release",
-                "-DCMAKE_CXX_COMPILER={}".format(compiler),
-            ],
-            timeout=180,
-            env=build_env,
-        )
-        report["transpiledNative"]["nativeBuildSkipped"] = False
-        execute(
-            report,
-            "native-build",
-            ["cmake", "--build", cmake_build, "--config", "Release", "--parallel"],
-            timeout=300,
-            env=build_env,
-        )
-
-        native_library = find_native_library(cmake_build)
-        shutil.copy2(native_library, output / native_library.name)
-        transpiled_jar = output / input_jar.name
-        native_command = [
-            "java",
-            "-Djava.library.path={}".format(output),
-            "-jar",
-            transpiled_jar,
-            "--mode=transpiled-jni",
-            "--warmup={}".format(WARMUP),
-            "--iterations={}".format(ITERATIONS),
-        ]
-        native_completed = execute(
-            report, "transpiled-jni", native_command, cwd=output, timeout=300
-        )
-        native = parse_benchmark("transpiled-jni", native_completed)
-        assert_equivalent(plain, native)
-        report["transpiledNative"] = {
-            "status": "PASS",
-            "nativeBuildSkipped": False,
-            "command": printable(native_command),
-            "library": str(native_library.relative_to(ROOT)),
-            "result": native,
+    if failed_modes:
+        report["failure"] = {
+            "stage": "native-modes",
+            "reason": "failed modes: {}".format(", ".join(failed_modes)),
         }
+    else:
         report["status"] = "PASS"
-    except (HarnessFailure, KeyError, ValueError) as error:
-        if isinstance(error, HarnessFailure):
-            stage = error.stage
-        else:
-            stage = "configuration"
-        report["failure"] = {"stage": stage, "reason": str(error)}
-        if report["transpiledNative"]["status"] != "PASS":
-            report["transpiledNative"]["status"] = "FAIL"
-            report["transpiledNative"]["failure"] = str(error)
 
     write_report(report)
     return 0 if report["status"] == "PASS" else 1
