@@ -356,6 +356,14 @@ public final class IrMethod {
                     + branch.getReference() + " -> " + branch.getTrueTarget().getName()
                     + ", " + branch.getFalseTarget().getName();
         }
+        if (terminator instanceof IrNodes.ReferenceCompareBranch) {
+            IrNodes.ReferenceCompareBranch branch =
+                    (IrNodes.ReferenceCompareBranch) terminator;
+            return "branch " + branch.getCondition().getMnemonic() + " "
+                    + branch.getLeft() + ", " + branch.getRight() + " -> "
+                    + branch.getTrueTarget().getName() + ", "
+                    + branch.getFalseTarget().getName();
+        }
         if (terminator instanceof IrNodes.Switch) {
             IrNodes.Switch switchTerminator = (IrNodes.Switch) terminator;
             String cases = "";

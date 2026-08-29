@@ -1393,6 +1393,18 @@ public final class IrCppEmitter {
                     new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));
             return;
         }
+        if (terminator instanceof IrNodes.ReferenceCompareBranch) {
+            IrNodes.ReferenceCompareBranch branch =
+                    (IrNodes.ReferenceCompareBranch) terminator;
+            CppAst.Expression condition = new CppAst.Binary(
+                    expression(branch.getLeft()),
+                    branch.getCondition().getCppOperator(),
+                    expression(branch.getRight()));
+            statements.add(new CppAst.If(condition,
+                    new CppAst.Block(edgeTransfer(predecessor, branch.getTrueTarget())),
+                    new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));
+            return;
+        }
         if (terminator instanceof IrNodes.Switch) {
             IrNodes.Switch switchTerminator = (IrNodes.Switch) terminator;
             List<CppAst.Block> cases = new ArrayList<>();

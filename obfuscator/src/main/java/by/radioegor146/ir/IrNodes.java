@@ -1876,6 +1876,84 @@ public final class IrNodes {
         }
     }
 
+    /**
+     * JVM {@code IF_ACMPEQ} / {@code IF_ACMPNE}. Compares two references by
+     * object identity (both null counts as equal). Kept separate from the
+     * null-only {@link ReferenceBranch} and from the i32 {@link Branch} because
+     * both operands are {@link IrType#REFERENCE}, not I32, and the comparison is
+     * pointer identity rather than a numeric relation. It never throws.
+     */
+    public static final class ReferenceCompareBranch implements IrTerminator {
+        public enum Condition {
+            EQ("if_acmpeq", "=="),
+            NE("if_acmpne", "!=");
+
+            private final String mnemonic;
+            private final String cppOperator;
+
+            Condition(String mnemonic, String cppOperator) {
+                this.mnemonic = mnemonic;
+                this.cppOperator = cppOperator;
+            }
+
+            public String getMnemonic() {
+                return mnemonic;
+            }
+
+            public String getCppOperator() {
+                return cppOperator;
+            }
+        }
+
+        private final Condition condition;
+        private final IrValue left;
+        private final IrValue right;
+        private final IrBlock trueTarget;
+        private final IrBlock falseTarget;
+        private final int bytecodeOffset;
+
+        public ReferenceCompareBranch(Condition condition, IrValue left, IrValue right,
+                                      IrBlock trueTarget, IrBlock falseTarget,
+                                      int bytecodeOffset) {
+            this.condition = Objects.requireNonNull(condition, "condition");
+            this.left = requireReference(left, "left");
+            this.right = requireReference(right, "right");
+            this.trueTarget = Objects.requireNonNull(trueTarget, "trueTarget");
+            this.falseTarget = Objects.requireNonNull(falseTarget, "falseTarget");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        public Condition getCondition() {
+            return condition;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        public IrBlock getTrueTarget() {
+            return trueTarget;
+        }
+
+        public IrBlock getFalseTarget() {
+            return falseTarget;
+        }
+
+        @Override
+        public List<IrBlock> getSuccessors() {
+            return Arrays.asList(trueTarget, falseTarget);
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class Switch implements IrTerminator {
         private final IrValue selector;
         private final List<Integer> keys;
