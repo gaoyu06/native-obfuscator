@@ -1126,12 +1126,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves a bounded multi-call form whose nonempty suffixes are pairwise
-     * different. A suffix may be straight-line, or (for exactly two calls)
-     * contain one proven int-family conditional whose closed, forward CFG
-     * reaches only RETURN. Every call site keeps locally visible
-     * receiver/argument inputs, and every complete path reaches RETURN after
-     * exactly one call. The independent body receives one trailing int
-     * selector after any proven prefix extra-local parameters.
+     * different. A suffix may be straight-line or contain one proven
+     * int-family conditional whose closed, forward CFG reaches only RETURN.
+     * Every call site keeps locally visible receiver/argument inputs, and
+     * every complete path reaches RETURN after exactly one call. The
+     * independent body receives one trailing int selector after any proven
+     * prefix extra-local parameters.
      */
     private static DistinctSuffix distinctSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -1142,7 +1142,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
 
         List<LinearSuffix> suffixes = new ArrayList<>();
-        boolean hasBranchedSuffix = false;
         for (int i = 0; i < callIndexes.size(); i++) {
             LinearSuffix suffix =
                     boundedDistinctSuffix(constructor, callIndexes.get(i));
@@ -1153,10 +1152,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 return null;
             }
             suffixes.add(suffix);
-            hasBranchedSuffix |= containsJump(constructor, suffix);
         }
-        if (hasBranchedSuffix && callIndexes.size() != 2
-                || suffixes.get(suffixes.size() - 1).endIndex
+        if (suffixes.get(suffixes.size() - 1).endIndex
                 != constructor.instructions.size()
                 || !hasDirectDeclaredChainInputs(constructor, callIndexes)
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
@@ -1348,16 +1345,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return count;
-    }
-
-    private static boolean containsJump(
-            MethodNode constructor, LinearSuffix suffix) {
-        for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
-            if (constructor.instructions.get(i) instanceof JumpInsnNode) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static boolean sameBoundedSuffix(
