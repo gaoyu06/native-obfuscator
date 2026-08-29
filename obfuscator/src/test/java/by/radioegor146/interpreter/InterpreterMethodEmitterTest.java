@@ -110,7 +110,7 @@ public class InterpreterMethodEmitterTest {
     }
 
     @Test
-    public void leavesUnsupportedMethodsForActiveCodegen() {
+    public void emitsMultiplyGolden() {
         MethodNode method = new MethodNode(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "multiply", "(II)I", null, null);
@@ -120,6 +120,129 @@ public class InterpreterMethodEmitterTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxStack = 2;
         method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertEquals(2, InterpreterMethodEmitter.ISA_VERSION);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                2, 1, 0,
+                20,
+                19), compiled.getCode());
+    }
+
+    @Test
+    public void emitsBitwiseGolden() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "bitwise", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IAND));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IOR));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 3;
+        method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                2, 1, 0,
+                21,
+                2, 0, 0,
+                2, 1, 0,
+                22,
+                23,
+                19), compiled.getCode());
+    }
+
+    @Test
+    public void emitsShiftGolden() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "shift", "(II)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISHL));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.ISHR));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IUSHR));
+        method.instructions.add(new InsnNode(Opcodes.IXOR));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 3;
+        method.maxLocals = 2;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                2, 1, 0,
+                24,
+                2, 0, 0,
+                2, 1, 0,
+                25,
+                23,
+                2, 0, 0,
+                2, 1, 0,
+                26,
+                23,
+                19), compiled.getCode());
+    }
+
+    @Test
+    public void emitsNegateDivideAndRemainder() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "arithmetic", "(III)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new InsnNode(Opcodes.IREM));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 3;
+
+        InterpreterMethodEmitter.CompiledMethod compiled =
+                InterpreterMethodEmitter.tryCompile(owner(), method);
+
+        assertNotNull(compiled);
+        assertArrayEquals(bytes(
+                2, 0, 0,
+                27,
+                2, 1, 0,
+                28,
+                2, 2, 0,
+                29,
+                19), compiled.getCode());
+    }
+
+    @Test
+    public void leavesUnsupportedConversionForActiveCodegen() {
+        MethodNode method = new MethodNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "unsupportedConversion", "(I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.I2L));
+        method.instructions.add(new InsnNode(Opcodes.L2I));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 1;
 
         assertNull(InterpreterMethodEmitter.tryCompile(owner(), method));
     }

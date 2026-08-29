@@ -18,12 +18,11 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * Minimal ASM-to-opcode-stream lowering for the first integer-only interpreter
- * slice.
+ * ASM-to-opcode-stream lowering for the integer-only interpreter slice.
  */
 public final class InterpreterMethodEmitter {
 
-    public static final int ISA_VERSION = 1;
+    public static final int ISA_VERSION = 2;
 
     public static final int IPUSH = 1;
     public static final int ILOAD = 2;
@@ -44,6 +43,16 @@ public final class InterpreterMethodEmitter {
     public static final int IF_ICMPLE = 17;
     public static final int GOTO = 18;
     public static final int IRETURN = 19;
+    public static final int IMUL = 20;
+    public static final int IAND = 21;
+    public static final int IOR = 22;
+    public static final int IXOR = 23;
+    public static final int ISHL = 24;
+    public static final int ISHR = 25;
+    public static final int IUSHR = 26;
+    public static final int INEG = 27;
+    public static final int IDIV = 28;
+    public static final int IREM = 29;
 
     private InterpreterMethodEmitter() {
     }
@@ -115,12 +124,10 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ICONST_4:
                 case Opcodes.ICONST_5:
                     return 5;
-                case Opcodes.IADD:
-                case Opcodes.ISUB:
                 case Opcodes.IRETURN:
                     return 1;
                 default:
-                    return -1;
+                    return arithmeticOpcode(opcode) >= 0 ? 1 : -1;
             }
         }
         if (instruction instanceof IntInsnNode) {
@@ -162,17 +169,16 @@ public final class InterpreterMethodEmitter {
                 case Opcodes.ICONST_5:
                     emitIntConstant(code, opcode - Opcodes.ICONST_0);
                     return true;
-                case Opcodes.IADD:
-                    code.write(IADD);
-                    return true;
-                case Opcodes.ISUB:
-                    code.write(ISUB);
-                    return true;
                 case Opcodes.IRETURN:
                     code.write(IRETURN);
                     return true;
                 default:
-                    return false;
+                    int interpretedOpcode = arithmeticOpcode(opcode);
+                    if (interpretedOpcode < 0) {
+                        return false;
+                    }
+                    code.write(interpretedOpcode);
+                    return true;
             }
         }
         if (instruction instanceof IntInsnNode) {
@@ -245,6 +251,37 @@ public final class InterpreterMethodEmitter {
                 return IF_ICMPLE;
             case Opcodes.GOTO:
                 return GOTO;
+            default:
+                return -1;
+        }
+    }
+
+    private static int arithmeticOpcode(int asmOpcode) {
+        switch (asmOpcode) {
+            case Opcodes.IADD:
+                return IADD;
+            case Opcodes.ISUB:
+                return ISUB;
+            case Opcodes.IMUL:
+                return IMUL;
+            case Opcodes.IAND:
+                return IAND;
+            case Opcodes.IOR:
+                return IOR;
+            case Opcodes.IXOR:
+                return IXOR;
+            case Opcodes.ISHL:
+                return ISHL;
+            case Opcodes.ISHR:
+                return ISHR;
+            case Opcodes.IUSHR:
+                return IUSHR;
+            case Opcodes.INEG:
+                return INEG;
+            case Opcodes.IDIV:
+                return IDIV;
+            case Opcodes.IREM:
+                return IREM;
             default:
                 return -1;
         }

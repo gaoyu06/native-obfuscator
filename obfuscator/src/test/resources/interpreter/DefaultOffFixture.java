@@ -17,4 +17,17 @@ public final class DefaultOffFixture {
     public static int multiply(int left, int right) {
         return left * right;
     }
+
+    public static int bitwise(int left, int right) {
+        return (left & right) ^ (left | right);
+    }
+
+    public static int shift(int value, int distance) {
+        return (value << distance) ^ (value >> distance) ^
+                (value >>> distance);
+    }
+
+    public static int unsupportedConversion(int value) {
+        return (int) (long) value;
+    }
 }
