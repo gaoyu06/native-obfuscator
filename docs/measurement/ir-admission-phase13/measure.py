@@ -385,6 +385,51 @@ def write_results(
         )
         writer.writeheader()
         writer.writerows(fixture_metadata)
+    raw_marker_counts: dict[str, collections.Counter[str]] = collections.defaultdict(
+        collections.Counter
+    )
+    for metadata in fixture_metadata:
+        if metadata["obfuscator_status"] != "ok":
+            continue
+        corpus = str(metadata["corpus"])
+        for key in (
+            "inventory",
+            "raw_ir_markers",
+            "raw_fallback_logs",
+            "raw_left_logs",
+            "excluded_ir_markers",
+            "excluded_fallback_logs",
+        ):
+            raw_marker_counts[corpus][key] += int(metadata[key])
+    with (work / "raw-marker-counts.tsv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+        writer.writerow(
+            [
+                "corpus",
+                "input_inventory",
+                "raw_ir_markers",
+                "excluded_ir_markers",
+                "matched_ir_markers",
+                "raw_fallback_logs",
+                "raw_left_logs",
+                "excluded_fallback_logs",
+            ]
+        )
+        for corpus, count in sorted(raw_marker_counts.items()):
+            writer.writerow(
+                [
+                    corpus,
+                    count["inventory"],
+                    count["raw_ir_markers"],
+                    count["excluded_ir_markers"],
+                    count["raw_ir_markers"] - count["excluded_ir_markers"],
+                    count["raw_fallback_logs"],
+                    count["raw_left_logs"],
+                    count["excluded_fallback_logs"],
+                ]
+            )
 
     counts: dict[str, collections.Counter[str]] = collections.defaultdict(
         collections.Counter
@@ -604,6 +649,8 @@ def main() -> int:
         write_results(work, rows, fixture_metadata)
         print("\nRaw counts:")
         print((work / "raw-counts.txt").read_text(encoding="utf-8"), end="")
+        print("\nRaw marker and log counts:")
+        print((work / "raw-marker-counts.tsv").read_text(encoding="utf-8"), end="")
         print("\nFallback histogram:")
         print((work / "fallback-histogram.tsv").read_text(encoding="utf-8"), end="")
         print("\nFallback family histogram:")
