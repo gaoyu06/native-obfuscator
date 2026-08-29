@@ -54,14 +54,17 @@ Prefix stores into non-parameter locals are classified separately:
   parameters in increasing local-index order. The wrapper loads them from their
   original local indexes after loading the receiver and declared constructor
   arguments.
+- Only prefix-stored, suffix-read extras are appended. An unassigned local
+  between two original indexes is not forwarded, so it does not need a
+  descriptor entry or a value at the chain call.
+- The independent suffix clone remaps forwarded loads, stores, and `IINC` from
+  each original index to its packed trailing parameter slot. Unrelated
+  suffix-only locals are moved after those parameters to keep local identities
+  distinct. The retained prefix and wrapper are not remapped.
 - Reference extras use `java/lang/Object`. Primitive extras retain the exact
   verifier carrier selected by their store/load family: `I`, `J`, `F`, or `D`.
-  A `long` or `double` consumes two local slots, so the next forwarded argument
-  starts after its empty second slot.
-- To preserve local numbering without rewriting the suffix, the forwarded
-  trailing span starts immediately after the declared constructor arguments.
-  Any intervening prefix local must also have one definitely assigned type at
-  the chain call. An unassigned gap or category-2 overlap remains rejected.
+  A packed `long` or `double` consumes two local slots. Category-2 overlap with
+  another suffix read remains rejected.
 
 Other guards remain unchanged:
 
@@ -96,17 +99,26 @@ Synthetic bytecode unit tests in
   class reaches the unresolved native bridge, proving JVM verification.
 - `forwardsPrefixExtraReferenceAndIntLocalsIntoSuffixDescriptors` checks linear
   reference and `int` extras in the independent suffix and hidden bridge
-  descriptors.
+  descriptors, including identity local mappings for contiguous extras.
+- `packsAndRemapsGappedPrefixExtrasInIndependentSuffix` checks that an unused
+  hole is omitted, a higher reference extra is packed into the trailing
+  parameter slot, suffix `ALOAD` and `IINC` indexes are remapped, and the
+  wrapper still loads the original prefix index.
 - `forwardsPrimitivePrefixExtrasWithExactTypesAndWideSlots` checks `I`, `J`, `F`,
   and `D` forwarding together, including the category-2 local positions.
 - `rewrittenPrefixExtraLocalConstructorPassesJvmVerification` serializes and
   loads the rewritten owner and hidden class; invocation reaches the unresolved
   native bridge only after JVM verification succeeds.
+- `rewrittenGappedPrefixExtraConstructorPassesJvmVerification` applies the same
+  JVM verification check to the packed gapped-extra shape.
 - `prefixExtraReferenceLocalCompilesAndRunsWithJavaParity` executes a synthetic
   class first as plain Java, then through the complete IR transform, generated
   CMake C++ library, hidden bridge registration, and
   `java -Xverify:all -Xcheck:jni`; both runs print
   `PREFIX-EXTRA-FORWARDED`.
+- `gappedPrefixExtraReferenceLocalCompilesAndRunsWithJavaParity` repeats that
+  compile-and-run parity path with the extra stored at local 3 and local 2
+  unused.
 - Negatives: prefix branch targeting a suffix label, suffix jump into the
   prefix, try/catch crossing the split, multiple this/super candidates, and
   prefix `ASTORE 0`. `rejectsConditionallyAssignedPrefixExtraBeforeMutation`
@@ -124,9 +136,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 126 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 129 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 133 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 136 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

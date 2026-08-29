@@ -105,7 +105,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         for (int i = split.callIndex + 1; i < constructor.instructions.size(); i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
             if (!(instruction instanceof FrameNode)) {
-                body.instructions.add(instruction.clone(labels));
+                AbstractInsnNode copy = instruction.clone(labels);
+                remapSuffixLocal(copy, split);
+                body.instructions.add(copy);
+                body.maxLocals = Math.max(
+                        body.maxLocals, requiredLocalSlots(copy));
             }
         }
         for (TryCatchBlockNode tryCatch : constructor.tryCatchBlocks) {
@@ -113,7 +117,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     labels.get(tryCatch.start), labels.get(tryCatch.end),
                     labels.get(tryCatch.handler), tryCatch.type));
         }
-        body.maxLocals = constructor.maxLocals;
+        body.maxLocals = Math.max(body.maxLocals, constructor.maxLocals);
         body.maxStack = constructor.maxStack;
         return body;
     }
@@ -249,7 +253,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         List<ExtraLocal> extraLocals =
                 extraLocals(constructor, callIndex);
         return new ConstructorSplit(
-                callIndex, widenedReferenceLocals, extraLocals);
+                callIndex, widenedReferenceLocals, extraLocals,
+                firstExtraLocal(constructor));
     }
 
     private static Set<Integer> forwardedReferenceLocals(MethodNode constructor) {
@@ -267,10 +272,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static List<ExtraLocal> extraLocals(
             MethodNode constructor, int callIndex) {
-        int firstExtraLocal = 1;
-        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
-            firstExtraLocal += argument.getSize();
-        }
+        int firstExtraLocal = firstExtraLocal(constructor);
 
         Map<Integer, Type> suffixReads = new TreeMap<>();
         for (int i = callIndex + 1; i < constructor.instructions.size(); i++) {
@@ -304,14 +306,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return new ArrayList<>();
         }
 
-        int lastRequiredLocal = -1;
-        for (Integer local : storedAndRead) {
-            lastRequiredLocal = Math.max(lastRequiredLocal, local);
-        }
-
         List<ExtraLocal> extras = new ArrayList<>();
-        int local = firstExtraLocal;
-        while (local <= lastRequiredLocal) {
+        int packedLocal = firstExtraLocal;
+        for (Map.Entry<Integer, Type> suffixRead : suffixReads.entrySet()) {
+            int local = suffixRead.getKey();
+            if (!storedAndRead.contains(local)) {
+                continue;
+            }
             int state = localStateAtCall(constructor, callIndex, local);
             if ((state & LOCAL_UNASSIGNED) != 0 || state == 0) {
                 throw unsupported(
@@ -329,8 +330,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         callIndex, constructor.instructions.get(callIndex));
             }
 
-            Type suffixType = suffixReads.get(local);
-            if (suffixType != null && !suffixType.equals(type)) {
+            Type suffixType = suffixRead.getValue();
+            if (!suffixType.equals(type)) {
                 throw unsupported(
                         "Constructor prefix extra local " + local
                                 + " is stored as " + type.getDescriptor()
@@ -338,32 +339,34 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                                 + suffixType.getDescriptor(),
                         callIndex, constructor.instructions.get(callIndex));
             }
-            if (type.getSize() == 2 && suffixReads.containsKey(local + 1)) {
-                throw unsupported(
-                        "Constructor suffix reads the second slot of category-2 "
-                                + "extra local " + local,
-                        callIndex, constructor.instructions.get(callIndex));
-            }
-            extras.add(new ExtraLocal(local, type));
-            local += type.getSize();
-        }
-
-        for (Integer required : storedAndRead) {
-            boolean forwarded = false;
-            for (ExtraLocal extra : extras) {
-                if (extra.index == required) {
-                    forwarded = true;
-                    break;
+            for (Map.Entry<Integer, Type> otherRead : suffixReads.entrySet()) {
+                if (otherRead.getKey() != local
+                        && localRangesOverlap(
+                        local, type, otherRead.getKey(), otherRead.getValue())) {
+                    throw unsupported(
+                            "Constructor suffix reads overlapping category-2 "
+                                    + "extra local slots at " + local,
+                            callIndex, constructor.instructions.get(callIndex));
                 }
             }
-            if (!forwarded) {
-                throw unsupported(
-                        "Constructor prefix extra local " + required
-                                + " overlaps another forwarded local",
-                        callIndex, constructor.instructions.get(callIndex));
-            }
+            extras.add(new ExtraLocal(local, packedLocal, type));
+            packedLocal += type.getSize();
         }
         return extras;
+    }
+
+    private static int firstExtraLocal(MethodNode constructor) {
+        int local = 1;
+        for (Type argument : Type.getArgumentTypes(constructor.desc)) {
+            local += argument.getSize();
+        }
+        return local;
+    }
+
+    private static boolean localRangesOverlap(
+            int leftLocal, Type leftType, int rightLocal, Type rightType) {
+        return leftLocal < rightLocal + rightType.getSize()
+                && rightLocal < leftLocal + leftType.getSize();
     }
 
     private static int localStateAtCall(
@@ -578,6 +581,52 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return splitArguments;
     }
 
+    private static void remapSuffixLocal(
+            AbstractInsnNode instruction, ConstructorSplit split) {
+        int local;
+        if (instruction instanceof IincInsnNode) {
+            local = ((IincInsnNode) instruction).var;
+        } else if (instruction instanceof VarInsnNode
+                && (loadType(instruction) != null
+                || storeType(instruction) != null)) {
+            local = ((VarInsnNode) instruction).var;
+        } else {
+            return;
+        }
+        if (local < split.firstExtraLocal) {
+            return;
+        }
+
+        // Packed extras occupy the suffix method's trailing parameter slots.
+        // Keep unrelated suffix-only locals distinct by moving them after the
+        // packed parameters; only this independent clone is rewritten.
+        int remapped = split.packedExtraEnd
+                + local - split.firstExtraLocal;
+        for (ExtraLocal extra : split.extraLocals) {
+            if (extra.index == local) {
+                remapped = extra.packedIndex;
+                break;
+            }
+        }
+        if (instruction instanceof IincInsnNode) {
+            ((IincInsnNode) instruction).var = remapped;
+        } else {
+            ((VarInsnNode) instruction).var = remapped;
+        }
+    }
+
+    private static int requiredLocalSlots(AbstractInsnNode instruction) {
+        if (instruction instanceof IincInsnNode) {
+            return ((IincInsnNode) instruction).var + 1;
+        }
+        Type type = loadType(instruction);
+        if (type == null) {
+            type = storeType(instruction);
+        }
+        return type == null
+                ? 0 : ((VarInsnNode) instruction).var + type.getSize();
+    }
+
     private static UnsupportedIrConstructException unsupported(
             String message, int index, AbstractInsnNode instruction) {
         return new UnsupportedIrConstructException(
@@ -610,22 +659,32 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final int callIndex;
         private final Set<Integer> widenedReferenceLocals;
         private final List<ExtraLocal> extraLocals;
+        private final int firstExtraLocal;
+        private final int packedExtraEnd;
 
         private ConstructorSplit(
                 int callIndex, Set<Integer> widenedReferenceLocals,
-                List<ExtraLocal> extraLocals) {
+                List<ExtraLocal> extraLocals, int firstExtraLocal) {
             this.callIndex = callIndex;
             this.widenedReferenceLocals = widenedReferenceLocals;
             this.extraLocals = extraLocals;
+            this.firstExtraLocal = firstExtraLocal;
+            int packedLocal = firstExtraLocal;
+            for (ExtraLocal extra : extraLocals) {
+                packedLocal += extra.type.getSize();
+            }
+            this.packedExtraEnd = packedLocal;
         }
     }
 
     private static final class ExtraLocal {
         private final int index;
+        private final int packedIndex;
         private final Type type;
 
-        private ExtraLocal(int index, Type type) {
+        private ExtraLocal(int index, int packedIndex, Type type) {
             this.index = index;
+            this.packedIndex = packedIndex;
             this.type = type;
         }
     }
