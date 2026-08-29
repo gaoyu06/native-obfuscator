@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing 2–8 pairwise-distinct constructor suffixes
-[#190](https://github.com/gaoyu06/native-obfuscator/pull/190)
-(parent re-ran 217/217: 210 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeDistinctSuffixesCompileAndRunWithJavaParity`)
-on the post-[#189](https://github.com/gaoyu06/native-obfuscator/pull/189)
-two-suffix tree. Active process:
+Last updated after landing the post-#190 leftover inventory
+[#191](https://github.com/gaoyu06/native-obfuscator/pull/191)
+(measurement only on `47e35fc`: ClassicTest 108/108, JDK 17/21/25
+82/82, 47/47, 21/21 IR, 0 leftovers)
+on the post-[#190](https://github.com/gaoyu06/native-obfuscator/pull/190)
+pairwise-distinct suffix tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -266,6 +266,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated `ATHROW` mixed catch (#188) | 210 tests (`IrCompilerTest` 203 + `CodegenModeTest` 7). Parent re-ran 210/210 including `relocatedPrefixAthrowHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Two distinct constructor suffixes (#189) | 214 tests (`IrCompilerTest` 207 + `CodegenModeTest` 7). Parent re-ran 214/214 including `twoDifferentSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | 2–8 pairwise-distinct constructor suffixes (#190) | 217 tests (`IrCompilerTest` 210 + `CodegenModeTest` 7). Parent re-ran 217/217 including `threeDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-#190 leftover inventory (#191) | Measurement only on `47e35fc`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -318,9 +319,9 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#181](https://github.com/gaoyu06/native-obfuscator/pull/181),
-  measured on post-#180 `c99b158`) observed 0 leftovers; that is not
-  coverage-complete. #169 remains the earlier post-#168 snapshot.
+  ([#191](https://github.com/gaoyu06/native-obfuscator/pull/191),
+  measured on post-#190 `47e35fc`) observed 0 leftovers; that is not
+  coverage-complete. #181 remains the earlier post-#180 snapshot.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
   handlers.
@@ -332,9 +333,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #190 (2–8
-  pairwise-distinct nonempty suffixes via one path-id bridge). /
-  落地 #190 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #191 (post-#190
+  leftover inventory on `47e35fc`). /
+  落地 #191 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
