@@ -252,6 +252,7 @@ public final class AsmToIr {
                                 || isIntUnaryOp(opcode)
                                 || isFloatingUnaryOp(opcode)
                                 || isFloatingCompareOp(opcode)
+                                || opcode == Opcodes.LCMP
                                 || isConversionOp(opcode)
                                 || isArrayLoad(opcode)
                                 || isArrayStore(opcode)
@@ -636,6 +637,10 @@ public final class AsmToIr {
             IrType type = floatingType(opcode);
             popType(stack, type, instruction);
             popType(stack, type, instruction);
+            stack.add(IrType.I32);
+        } else if (opcode == Opcodes.LCMP) {
+            popType(stack, IrType.I64, instruction);
+            popType(stack, IrType.I64, instruction);
             stack.add(IrType.I32);
         } else if (isConversionOp(opcode)) {
             IrNodes.Conversion.Operation operation = conversionOperation(opcode);
@@ -1143,6 +1148,13 @@ public final class AsmToIr {
                                 : IrNodes.FloatingCompare.NanResult.GREATER;
                 block.addInstruction(new IrNodes.FloatingCompare(result, left, right,
                         nanResult, instruction.getOriginalIndex()));
+                state.stack.add(result);
+            } else if (opcode == Opcodes.LCMP) {
+                IrValue right = pop(state, IrType.I64, instruction);
+                IrValue left = pop(state, IrType.I64, instruction);
+                IrValue result = irMethod.newInstructionValue(IrType.I32);
+                block.addInstruction(new IrNodes.LongCompare(result, left, right,
+                        instruction.getOriginalIndex()));
                 state.stack.add(result);
             } else if (isConversionOp(opcode)) {
                 IrNodes.Conversion.Operation operation = conversionOperation(opcode);

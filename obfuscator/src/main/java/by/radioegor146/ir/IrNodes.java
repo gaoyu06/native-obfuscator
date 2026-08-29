@@ -1531,6 +1531,48 @@ public final class IrNodes {
         }
     }
 
+    /**
+     * JVM {@code LCMP}. A signed i64 three-way compare with an i32 result.
+     * Longs have no NaN, so this is deliberately separate from the NaN-aware
+     * {@link FloatingCompare}. It never throws.
+     */
+    public static final class LongCompare implements IrInstruction {
+        private final IrValue result;
+        private final IrValue left;
+        private final IrValue right;
+        private final int bytecodeOffset;
+
+        public LongCompare(IrValue result, IrValue left, IrValue right,
+                           int bytecodeOffset) {
+            this.result = requireI32(result, "result");
+            this.left = requireI64(left, "left");
+            this.right = requireI64(right, "right");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public IrValue getLeft() {
+            return left;
+        }
+
+        public IrValue getRight() {
+            return right;
+        }
+
+        public String getMnemonic() {
+            return "lcmp";
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
     public static final class IntDivRem implements IrInstruction {
         public enum Operation {
             DIVIDE("idiv", "/"),
