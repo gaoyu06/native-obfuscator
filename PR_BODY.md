@@ -31,8 +31,29 @@ need a different, path-sensitive bridge design.
 
 ## Verification
 
-Acceptance command and exact JUnit XML counts will be recorded after the
-required pre-test commit and push.
+Executed:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+Result: `BUILD SUCCESSFUL`.
+
+Exact JUnit XML counts:
+
+```text
+IrCompilerTest: tests=116, skipped=0, failures=0, errors=0 (time=4.36 s)
+CodegenModeTest: tests=7, skipped=0, failures=0, errors=0 (time=0.878 s)
+Total: tests=123, skipped=0, failures=0, errors=0
+```
+
+`prefixReferenceParameterAstoreCompilesAndRunsWithJavaParity` executed (not
+skipped): the plain and transformed JVM runs both printed
+`forwarded-result`; the transformed run used the generated CMake/JNI library
+under `-Xverify:all -Xcheck:jni`. The existing
+`rewrittenConstructorPassesJvmVerification` also passed.
 
 ## 中文摘要
 
