@@ -354,7 +354,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 suffixTryCatches.add(tryCatch);
             } else {
                 RelocatedPrefixHandler relocated =
-                        relocatablePrefixReturnHandler(
+                        relocatablePrefixHandler(
                                 constructor, prefixLabels, suffixLabels,
                                 instructionIndexes, suffixStartIndex, tryCatch);
                 if (relocated == null) {
@@ -403,13 +403,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves the prefix-handler shapes that can be moved without changing their
      * exception behavior. The protected range is wholly in the suffix, and the
-     * isolated handler either pops or stores the caught exception and returns,
-     * or jumps to an equally isolated prefix return. With no extra incoming
-     * edge or other range role, the handler and optional return block can be
-     * removed from the wrapper and cloned into the suffix with the original
-     * table entry.
+     * isolated handler either returns after consuming the caught exception or
+     * rethrows that same exception directly or through one exact ASTORE/ALOAD
+     * pair. Return handlers may also jump to an equally isolated prefix return.
+     * With no extra incoming edge or other range role, the handler and optional
+     * return block can be removed from the wrapper and cloned into the suffix
+     * with the original table entry.
      */
-    private static RelocatedPrefixHandler relocatablePrefixReturnHandler(
+    private static RelocatedPrefixHandler relocatablePrefixHandler(
             MethodNode constructor,
             Set<LabelNode> prefixLabels, Set<LabelNode> suffixLabels,
             Map<LabelNode, Integer> instructionIndexes,
@@ -424,34 +425,65 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (handlerIndex == null) {
             return null;
         }
-        int consumeIndex =
+        int firstIndex =
                 firstExecutableIndex(constructor, handlerIndex + 1);
-        int successorIndex =
-                firstExecutableIndex(constructor, consumeIndex + 1);
         int previousIndex =
                 previousExecutableIndex(constructor, handlerIndex - 1);
-        if (consumeIndex >= constructor.instructions.size()
-                || successorIndex >= constructor.instructions.size()
+        if (firstIndex >= constructor.instructions.size()
                 || previousIndex < 0
-                || !consumesRelocatableCaughtException(
-                        constructor,
-                        constructor.instructions.get(consumeIndex))
                 || constructor.instructions.get(previousIndex)
                 .getOpcode() != Opcodes.GOTO
                 || !containsOnlyFrames(
-                        constructor, handlerIndex + 1, consumeIndex)
-                || !containsOnlyFrames(
-                        constructor, consumeIndex + 1, successorIndex)
+                        constructor, handlerIndex + 1, firstIndex)
                 || hasNormalTarget(constructor, tryCatch.handler)
                 || isTryRangeBoundary(constructor, tryCatch.handler)
                 || !isOnlyUsedBySuffixRanges(
                         constructor, suffixLabels, tryCatch.handler)) {
             return null;
         }
+        AbstractInsnNode first = constructor.instructions.get(firstIndex);
+        if (first.getOpcode() == Opcodes.ATHROW) {
+            return firstIndex < suffixStartIndex
+                    ? new RelocatedPrefixHandler(
+                    handlerIndex, firstIndex + 1)
+                    : null;
+        }
+
+        boolean popsException = first.getOpcode() == Opcodes.POP;
+        Integer storedExceptionLocal =
+                relocatableCaughtExceptionLocal(constructor, first);
+        if (!popsException && storedExceptionLocal == null) {
+            return null;
+        }
+        int successorIndex =
+                firstExecutableIndex(constructor, firstIndex + 1);
+        if (successorIndex >= constructor.instructions.size()
+                || !containsOnlyFrames(
+                        constructor, firstIndex + 1, successorIndex)) {
+            return null;
+        }
         AbstractInsnNode successor =
                 constructor.instructions.get(successorIndex);
+        if (storedExceptionLocal != null
+                && successor.getOpcode() == Opcodes.ALOAD) {
+            VarInsnNode reload = (VarInsnNode) successor;
+            int throwIndex =
+                    firstExecutableIndex(constructor, successorIndex + 1);
+            if (reload.var != storedExceptionLocal
+                    || throwIndex >= suffixStartIndex
+                    || constructor.instructions.get(throwIndex)
+                    .getOpcode() != Opcodes.ATHROW
+                    || !containsOnlyFrames(
+                    constructor, successorIndex + 1, throwIndex)
+                    || firstIndex >= suffixStartIndex
+                    || successorIndex >= suffixStartIndex) {
+                return null;
+            }
+            return new RelocatedPrefixHandler(
+                    handlerIndex, throwIndex + 1);
+        }
         if (successor.getOpcode() == Opcodes.RETURN) {
-            if (consumeIndex >= suffixStartIndex
+            if (firstIndex >= suffixStartIndex
                     || successorIndex >= suffixStartIndex) {
                 return null;
             }
@@ -469,7 +501,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!prefixLabels.contains(returnLabel)
                 || returnLabelIndex == null
                 || returnLabelIndex <= successorIndex
-                || consumeIndex >= suffixStartIndex
+                || firstIndex >= suffixStartIndex
                 || successorIndex >= suffixStartIndex
                 || returnLabelIndex >= suffixStartIndex
                 || !containsOnlyFrames(
@@ -500,16 +532,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 returnLabelIndex, returnIndex + 1);
     }
 
-    private static boolean consumesRelocatableCaughtException(
+    private static Integer relocatableCaughtExceptionLocal(
             MethodNode method, AbstractInsnNode instruction) {
-        if (instruction.getOpcode() == Opcodes.POP) {
-            return true;
-        }
         if (instruction.getOpcode() != Opcodes.ASTORE) {
-            return false;
+            return null;
         }
         int local = ((VarInsnNode) instruction).var;
-        return local != 0 && !isCategoryTwoHole(method, local);
+        return local != 0 && !isCategoryTwoHole(method, local)
+                ? local : null;
     }
 
     private static boolean isCategoryTwoHole(MethodNode method, int local) {
