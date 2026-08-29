@@ -68,7 +68,7 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load, plus a tree of at most three `IADD`, `ISUB`, `IMUL`, `IAND`,
+  argument load, plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`,
   `IOR`, `IXOR`, `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose
   leaves are each one of those already-proven int-family inputs).
 
@@ -159,12 +159,12 @@ One additional family is reduced to that same shared-join form:
   through `ICONST_5`, `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an
   int-family call argument; or exactly one `INEG` over a direct `ILOAD` of a
   declared int-family constructor argument. An int-family argument may also
-  have at most three
+  have at most four
   levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
   `IUSHR`, `IDIV`, or `IREM`. The operand proof recursively consumes one
   explicit depth budget per binary level, and the leaves remain direct loads,
   constants, or single-load `INEG` forms. This admits `IDIV`/`IREM` as inner
-  or outer nodes, including nesting with each other, while a fourth binary
+  or outer nodes, including nesting with each other, while a fifth binary
   level is rejected.
   Shift-count masking is not reproduced by this proof: every admitted shift
   remains in the retained bytecode prefix and therefore keeps JVM shift
@@ -238,7 +238,7 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Unproven extra-local or aliased chain inputs, binary expression trees deeper
-than three levels, other binary arithmetic, `IINC`, non-int-family constants,
+than four levels, other binary arithmetic, `IINC`, non-int-family constants,
 non-`Integer` `LDC`, fields, method calls, stack duplication, computed or
 rewritten receivers, or any other unlisted input remain rejected.
 Distinct joins, other conditional or switch forms,
@@ -773,6 +773,16 @@ Synthetic bytecode unit tests in
   nesting directions and the three-level mixed tree through plain Java and the
   complete CMake/g++ JNI transform under `java -Xverify:all -Xcheck:jni`,
   requiring identical stdout.
+- `admitsFourLevelNestedIntFamilyChainInputs` checks the bounded fourth level
+  with the former `four-level-iadd` and inner-`IDIV` leftovers plus an
+  outer-`IDIV` mixed tree. All arithmetic remains in the retained prefix and
+  the rewrite still allocates one hidden bridge.
+- `rewrittenFourLevelNestedChainInputsPassJvmVerification` loads every admitted
+  four-level shape and reaches the unresolved hidden bridge only after JVM
+  verification succeeds.
+- `fourLevelNestedChainInputsCompileAndRunWithJavaParity` executes all three
+  admitted four-level shapes through plain Java and the complete CMake/g++ JNI
+  transform under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs` applies the
   same leaf-only proof to one `ISUB` path, one `IMUL` path, and one direct-load
   path; it retains both arithmetic opcodes, all three calls, two shared-join
@@ -900,7 +910,7 @@ Synthetic bytecode unit tests in
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
-  four-level nested binary input (including a tree with inner `IDIV`),
+  five-level nested binary input (including a tree with inner `IDIV`),
   extra-local `IDIV`/`IREM` operands, an inner `IDIV` tree containing an
   extra-local or static-invoke operand, a rewritten `ASTORE 0` receiver, a
   standalone-`GOTO` suffix, a zero-call return, and skip-super paths before
