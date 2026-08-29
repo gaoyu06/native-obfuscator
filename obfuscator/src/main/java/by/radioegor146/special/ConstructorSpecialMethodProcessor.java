@@ -2285,6 +2285,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if ((opcode != Opcodes.LADD
                 && opcode != Opcodes.LSUB
                 && opcode != Opcodes.LMUL
+                && opcode != Opcodes.LDIV
+                && opcode != Opcodes.LREM
                 && opcode != Opcodes.LAND
                 && opcode != Opcodes.LOR
                 && opcode != Opcodes.LXOR
