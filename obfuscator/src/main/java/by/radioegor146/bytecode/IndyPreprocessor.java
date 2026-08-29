@@ -61,9 +61,14 @@ public class IndyPreprocessor implements Preprocessor {
                 }
 
 
+                // The third parameter may also be declared as TypeDescriptor, the supertype of
+                // MethodType: java.lang.runtime.ObjectMethods.bootstrap (records' equals/hashCode/
+                // toString) does that. This rewrite always passes an actual MethodType, and
+                // ObjectMethods.bootstrap returns a CallSite when given one.
                 if (bsmArguments.length < 3 || !bsmArguments[0].getDescriptor().equals("Ljava/lang/invoke/MethodHandles$Lookup;") ||
                         !bsmArguments[1].getDescriptor().equals("Ljava/lang/String;") ||
-                        !bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/MethodType;")) {
+                        !(bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/MethodType;") ||
+                                bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/TypeDescriptor;"))) {
                     InsnList resultInstructions = new InsnList();
                     resultInstructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/BootstrapMethodError")); // 1
                     resultInstructions.add(new InsnNode(Opcodes.DUP)); // 2

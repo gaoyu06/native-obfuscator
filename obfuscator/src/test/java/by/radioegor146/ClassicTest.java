@@ -2,6 +2,7 @@ package by.radioegor146;
 
 import by.radioegor146.helpers.ProcessHelper;
 import by.radioegor146.helpers.ProcessHelper.ProcessResult;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.function.Executable;
 
 import java.io.File;
@@ -14,6 +15,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ClassicTest implements Executable {
+
+    private static final String USE_ANNOTATIONS_MARKER = ".use-annotations";
 
     private final Path testData;
     private Path temp;
@@ -67,13 +70,35 @@ public class ClassicTest implements Executable {
             Files.find(testData, 10, (path, attr) -> true)
                     .filter(p -> Files.isRegularFile(p) && p.toString().endsWith(".j"))
                     .forEach(krakatauFiles::add);
-            Files.find(testData, 10, (path, attr) -> attr.isDirectory() || (!path.toString().endsWith(".java") && !path.toString().endsWith(".j")))
+            Files.find(testData, 10, (path, attr) -> attr.isDirectory() ||
+                            (!path.toString().endsWith(".java") && !path.toString().endsWith(".j") &&
+                                    !path.getFileName().toString().equals(USE_ANNOTATIONS_MARKER)))
                     .filter(Files::isRegularFile)
                     .forEach(resourceFiles::add);
 
+            if (!krakatauFiles.isEmpty()) {
+                if (!useKrakatau) {
+                    clean();
+                }
+                Assumptions.assumeTrue(useKrakatau,
+                        "Fixture requires krak2, but krak2 -V was not successful");
+            }
+
+            int javaRelease = requiredJavaRelease();
+            if (javaRelease > 0) {
+                ProcessResult releaseProbe = ProcessHelper.run(temp, 10_000,
+                        Arrays.asList("javac", "--release", Integer.toString(javaRelease), "-version"));
+                if (releaseProbe.timeout || releaseProbe.exitCode != 0) {
+                    clean();
+                }
+                Assumptions.assumeTrue(!releaseProbe.timeout && releaseProbe.exitCode == 0,
+                        String.format("Fixture requires javac with --release %d support; stdout=%s stderr=%s",
+                                javaRelease, releaseProbe.stdout, releaseProbe.stderr));
+            }
+
             Optional<String> mainClassOptional = javaFiles.stream()
                     .filter(uncheckedPredicate(p -> Files.lines(p).collect(Collectors.joining("\n"))
-                            .matches("(?s).*public(\\s+static)?\\s+void\\s+main.*")))
+                            .matches("(?s).*\\b(?:public\\s+)?(?:static\\s+)?void\\s+main\\s*\\(.*")))
                     .map(p -> testData.relativize(p).toString().replace('\\', '/'))
                     .map(f -> f.substring(0, f.lastIndexOf('.')))
                     .findAny();
@@ -96,7 +121,13 @@ public class ClassicTest implements Executable {
 
             System.out.println("Compiling...");
 
-            List<String> javacParameters = new ArrayList<>(Arrays.asList("javac", "-d", tempClasses.toString()));
+            List<String> javacParameters = new ArrayList<>(Collections.singletonList("javac"));
+            if (javaRelease > 0) {
+                javacParameters.add("--release");
+                javacParameters.add(Integer.toString(javaRelease));
+            }
+            javacParameters.add("-d");
+            javacParameters.add(tempClasses.toString());
             javaFiles.stream().map(Path::toString).forEach(javacParameters::add);
 
             ProcessHelper.run(temp, 10_000, javacParameters)
@@ -134,6 +165,7 @@ public class ClassicTest implements Executable {
             System.out.println(String.format("Took %dms", idealRunResult.execTime));
             idealRunResult.check("Ideal run");
 
+            boolean useAnnotations = Files.exists(testData.resolve(USE_ANNOTATIONS_MARKER));
             for (Platform platform : Platform.values()) {
                 System.out.println(String.format("Processing platform %s...", platform.toString()));
 
@@ -144,7 +176,7 @@ public class ClassicTest implements Executable {
                 Path resultJar = tempOutput.resolve("test.jar");
 
                 new NativeObfuscator().process(idealJar, tempOutput, Collections.emptyList(), Collections.emptyList(),
-                        null, "native_library", null, platform, true, true);
+                        null, "native_library", null, platform, useAnnotations, true);
 
                 System.out.println("Compiling CPP code...");
                 if (System.getProperty("os.name").toLowerCase().contains("windows")) {
@@ -195,6 +227,21 @@ public class ClassicTest implements Executable {
             e.printStackTrace(System.err);
             throw e;
         }
+    }
+
+    private int requiredJavaRelease() {
+        for (Path part : testData) {
+            if (part.toString().equals("jdk25")) {
+                return 25;
+            }
+            if (part.toString().equals("jdk21")) {
+                return 21;
+            }
+            if (part.toString().equals("jdk17")) {
+                return 17;
+            }
+        }
+        return 0;
     }
 
     private void fail(ProcessResult testRun, ProcessResult ideaRun) {
