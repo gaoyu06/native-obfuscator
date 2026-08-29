@@ -1767,6 +1767,110 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsStringAndIntConstantDynamicOnHiddenInterfaceCompanion()
+            throws Exception {
+        String counterName = "example/InterfaceCondyCounterUnit";
+        ClassNode counter = interfaceConstantDynamicCounter(counterName);
+        ClassNode owner = interfaceConstantDynamicOwner(
+                "example/InterfaceCondyUnit", counterName);
+        MethodNode method = interfaceConstantDynamicCombinedMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        String companionName = obfuscator.getHiddenMethodsPool()
+                .getCompanionClassName(owner.name);
+
+        IrMethod lowered = frontend.build(owner.name, companionName, method);
+        List<IrNodes.Invoke> resolverCalls = lowered.getBlocks().stream()
+                .flatMap(block -> block.getInstructions().stream())
+                .filter(IrNodes.Invoke.class::isInstance)
+                .map(IrNodes.Invoke.class::cast)
+                .filter(invoke -> invoke.getKind() == IrNodes.Invoke.Kind.STATIC
+                        && companionName.equals(invoke.getOwner())
+                        && invoke.getName().startsWith("$native$condy$"))
+                .collect(Collectors.toList());
+        assertEquals(2, resolverCalls.size());
+
+        MethodContext context = new MethodContext(
+                obfuscator, method, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(context.output.toString().contains("env->CallStaticObjectMethod"));
+        assertTrue(context.output.toString().contains("env->CallStaticIntMethod"));
+        assertTrue(owner.fields.isEmpty());
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        ClassNode companion =
+                obfuscator.getHiddenMethodsPool().getClasses().get(0);
+        assertEquals(companionName, companion.name);
+        assertTrue(companion.name.startsWith("native0/hidden/HiddenCondy$"));
+        assertEquals(6L, companion.fields.stream()
+                .filter(field -> field.name.startsWith("$native$condy$"))
+                .count());
+        assertEquals(0L, owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && (candidate.access & Opcodes.ACC_SYNCHRONIZED) != 0)
+                .count());
+
+        MethodNode stringResolver = companion.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc)
+                        && (candidate.access & Opcodes.ACC_SYNCHRONIZED) != 0)
+                .findFirst().orElseThrow(AssertionError::new);
+        MethodNode intResolver = companion.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()I".equals(candidate.desc)
+                        && (candidate.access & Opcodes.ACC_SYNCHRONIZED) != 0)
+                .findFirst().orElseThrow(AssertionError::new);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        Class<?> generatedCounter = loader.define(writeClass(counter));
+        Class<?> generatedCompanion = loader.define(writeClass(companion));
+        loader.define(writeClass(owner));
+        Method stringResolverMethod =
+                generatedCompanion.getDeclaredMethod(stringResolver.name);
+        Method intResolverMethod =
+                generatedCompanion.getDeclaredMethod(intResolver.name);
+        assertEquals("example.InterfaceCondyUnit",
+                stringResolverMethod.invoke(null));
+        assertEquals("example.InterfaceCondyUnit",
+                stringResolverMethod.invoke(null));
+        assertEquals(21, intResolverMethod.invoke(null));
+        assertEquals(21, intResolverMethod.invoke(null));
+        assertEquals(1, generatedCounter.getField("stringCalls").getInt(null));
+        assertEquals(1, generatedCounter.getField("intCalls").getInt(null));
+    }
+
+    @Test
+    public void rejectsUnsafeInterfaceConstantDynamicBeforeMutation() {
+        ClassNode owner = interfaceConstantDynamicOwner(
+                "example/UnsafeInterfaceCondy",
+                "example/UnsafeInterfaceCondyCounter");
+        MethodNode method = unlowerableConstantDynamicMethod();
+        owner.methods.add(method);
+        List<AbstractInsnNode> originalInstructions =
+                Arrays.asList(method.instructions.toArray());
+        int originalMethodCount = owner.methods.size();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(
+                obfuscator, method, 0, owner, 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertEquals(Opcodes.LDC, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "bootstrap is not REF_invokeStatic"));
+        assertEquals(originalInstructions,
+                Arrays.asList(method.instructions.toArray()));
+        assertEquals(originalMethodCount, owner.methods.size());
+        assertTrue(owner.fields.isEmpty());
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+    }
+
+    @Test
     public void admitsAndCachesStringConstantDynamicThroughSyntheticResolver()
             throws Exception {
         ClassNode owner = constantDynamicOwner();
@@ -1792,6 +1896,7 @@ public class IrCompilerTest {
         assertEquals("condy-value", resolverMethod.invoke(null));
         assertEquals(1, generated.getField("bootstrapCalls").getInt(null));
         assertEquals(1, generated.getField("outerBootstrapCalls").getInt(null));
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -1895,6 +2000,103 @@ public class IrCompilerTest {
                 + "}\n";
         compileAndRunCppHarness("ir-condy-run", source,
                 "Lowered ConstantDynamic did not return the cached resolver value");
+    }
+
+    @Test
+    public void interfaceConstantDynamicCompilesAndRunsWithHotSpotParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the interface ConstantDynamic runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the interface ConstantDynamic runtime test");
+
+        String interfaceName = "example/InterfaceCondyRuntime";
+        String counterName = "example/InterfaceCondyRuntimeCounter";
+        String mainName = "example/InterfaceCondyRuntimeMain";
+        Path directory = Files.createTempDirectory("ir-interface-condy-run");
+        Path inputJar = directory.resolve("interface-condy.jar");
+        Path outputDirectory = directory.resolve("output");
+        createInterfaceConstantDynamicJar(
+                inputJar, interfaceName, counterName, mainName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain interface ConstantDynamic Java run");
+        assertEquals(
+                "example.InterfaceCondyRuntimeexample.InterfaceCondyRuntime"
+                        + System.lineSeparator()
+                        + "42" + System.lineSeparator()
+                        + "1" + System.lineSeparator()
+                        + "1" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Arrays.asList(counterName, mainName,
+                        interfaceName + "#stringBootstrap!"
+                                + "(Ljava/lang/invoke/MethodHandles$Lookup;"
+                                + "Ljava/lang/String;Ljava/lang/Class;)"
+                                + "Ljava/lang/String;",
+                        interfaceName + "#intBootstrap!"
+                                + "(Ljava/lang/invoke/MethodHandles$Lookup;"
+                                + "Ljava/lang/String;Ljava/lang/Class;)I"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformedInterface = new ClassNode(Opcodes.ASM9);
+        ClassNode companion = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(interfaceName + ".class")))
+                    .accept(transformedInterface, 0);
+            JarEntry companionEntry = jar.stream()
+                    .filter(entry -> entry.getName()
+                            .startsWith("native0/hidden/HiddenCondy$"))
+                    .findFirst().orElseThrow(() -> new AssertionError(
+                            "Interface ConstantDynamic companion is missing"));
+            new org.objectweb.asm.ClassReader(jar.getInputStream(companionEntry))
+                    .accept(companion, 0);
+        }
+        assertEquals(0L, transformedInterface.fields.stream()
+                .filter(field -> field.name.startsWith("$native$condy$"))
+                .count());
+        assertEquals(2L, companion.methods.stream()
+                .filter(method -> method.name.startsWith("$native$condy$")
+                        && (method.access & Opcodes.ACC_SYNCHRONIZED) != 0)
+                .count());
+        assertEquals(6L, companion.fields.stream()
+                .filter(field -> field.name.startsWith("$native$condy$"))
+                .count());
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("interface ConstantDynamic CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("interface ConstantDynamic CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Interface ConstantDynamic native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native interface ConstantDynamic Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     @Test
@@ -4808,6 +5010,77 @@ public class IrCompilerTest {
                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private void createInterfaceConstantDynamicJar(
+            Path jarPath, String interfaceName, String counterName,
+            String mainName) throws IOException {
+        ClassNode owner =
+                interfaceConstantDynamicOwner(interfaceName, counterName);
+        owner.methods.add(interfaceConstantDynamicStringMethod(interfaceName));
+        owner.methods.add(interfaceConstantDynamicIntMethod(interfaceName));
+        ClassNode counter = interfaceConstantDynamicCounter(counterName);
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V11;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System", "out",
+                "Ljava/io/PrintStream;"));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, interfaceName, "stringValue",
+                "()Ljava/lang/String;", true));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println",
+                "(Ljava/lang/String;)V", false));
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System", "out",
+                "Ljava/io/PrintStream;"));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, interfaceName, "intValue",
+                "()I", true));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println",
+                "(I)V", false));
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System", "out",
+                "Ljava/io/PrintStream;"));
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, counterName, "stringCalls", "I"));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println",
+                "(I)V", false));
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System", "out",
+                "Ljava/io/PrintStream;"));
+        entry.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, counterName, "intCalls", "I"));
+        entry.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream", "println",
+                "(I)V", false));
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 2;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            for (ClassNode classNode : Arrays.asList(owner, counter, main)) {
+                output.putNextEntry(new JarEntry(classNode.name + ".class"));
+                output.write(writeClass(classNode));
+                output.closeEntry();
+            }
+        }
     }
 
     private void createPrimitiveClassLdcJar(
@@ -8113,6 +8386,170 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 0;
         method.maxStack = 1;
+        return method;
+    }
+
+    private ClassNode interfaceConstantDynamicCounter(String name) {
+        ClassNode counter = new ClassNode(Opcodes.ASM9);
+        counter.version = Opcodes.V11;
+        counter.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        counter.name = name;
+        counter.superName = "java/lang/Object";
+        counter.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "stringCalls", "I", null, null));
+        counter.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "intCalls", "I", null, null));
+
+        MethodNode string = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "stringValue",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;)Ljava/lang/String;",
+                null, null);
+        string.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, name, "stringCalls", "I"));
+        string.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        string.instructions.add(new InsnNode(Opcodes.IADD));
+        string.instructions.add(new FieldInsnNode(
+                Opcodes.PUTSTATIC, name, "stringCalls", "I"));
+        string.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        string.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL,
+                "java/lang/invoke/MethodHandles$Lookup", "lookupClass",
+                "()Ljava/lang/Class;", false));
+        string.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getName",
+                "()Ljava/lang/String;", false));
+        string.instructions.add(new InsnNode(Opcodes.ARETURN));
+        string.maxLocals = 1;
+        string.maxStack = 2;
+        counter.methods.add(string);
+
+        MethodNode integer = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "intValue",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;)I",
+                null, null);
+        integer.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, name, "intCalls", "I"));
+        integer.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        integer.instructions.add(new InsnNode(Opcodes.IADD));
+        integer.instructions.add(new FieldInsnNode(
+                Opcodes.PUTSTATIC, name, "intCalls", "I"));
+        integer.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 21));
+        integer.instructions.add(new InsnNode(Opcodes.IRETURN));
+        integer.maxLocals = 1;
+        integer.maxStack = 2;
+        counter.methods.add(integer);
+        return counter;
+    }
+
+    private ClassNode interfaceConstantDynamicOwner(
+            String name, String counterName) {
+        ClassNode owner = new ClassNode(Opcodes.ASM9);
+        owner.version = Opcodes.V11;
+        owner.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE
+                | Opcodes.ACC_ABSTRACT;
+        owner.name = name;
+        owner.superName = "java/lang/Object";
+
+        MethodNode stringBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "stringBootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;",
+                null, null);
+        stringBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        stringBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, counterName, "stringValue",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;)Ljava/lang/String;",
+                false));
+        stringBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        stringBootstrap.maxLocals = 3;
+        stringBootstrap.maxStack = 1;
+        owner.methods.add(stringBootstrap);
+
+        MethodNode intBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "intBootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)I",
+                null, null);
+        intBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        intBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, counterName, "intValue",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;)I", false));
+        intBootstrap.instructions.add(new InsnNode(Opcodes.IRETURN));
+        intBootstrap.maxLocals = 3;
+        intBootstrap.maxStack = 1;
+        owner.methods.add(intBootstrap);
+        return owner;
+    }
+
+    private MethodNode interfaceConstantDynamicCombinedMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "combined", "()I", null, null);
+        method.instructions.add(new LdcInsnNode(
+                interfaceStringConstant(owner)));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/String", "length",
+                "()I", false));
+        method.instructions.add(new LdcInsnNode(interfaceIntConstant(owner)));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private ConstantDynamic interfaceStringConstant(String owner) {
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "stringBootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/String;",
+                true);
+        return new ConstantDynamic(
+                "interfaceString", "Ljava/lang/String;", bootstrap);
+    }
+
+    private ConstantDynamic interfaceIntConstant(String owner) {
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "intBootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)I",
+                true);
+        return new ConstantDynamic("interfaceInt", "I", bootstrap);
+    }
+
+    private MethodNode interfaceConstantDynamicStringMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "stringValue", "()Ljava/lang/String;", null, null);
+        ConstantDynamic constant = interfaceStringConstant(owner);
+        method.instructions.add(new LdcInsnNode(constant));
+        method.instructions.add(new LdcInsnNode(constant));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/String", "concat",
+                "(Ljava/lang/String;)Ljava/lang/String;", false));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode interfaceConstantDynamicIntMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "intValue", "()I", null, null);
+        ConstantDynamic constant = interfaceIntConstant(owner);
+        method.instructions.add(new LdcInsnNode(constant));
+        method.instructions.add(new LdcInsnNode(constant));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
         return method;
     }
 

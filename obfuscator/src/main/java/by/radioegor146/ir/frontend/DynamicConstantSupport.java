@@ -1,5 +1,6 @@
 package by.radioegor146.ir.frontend;
 
+import by.radioegor146.HiddenMethodsPool;
 import by.radioegor146.Platform;
 import by.radioegor146.bytecode.LdcPreprocessor;
 import by.radioegor146.ir.UnsupportedIrConstructException;
@@ -56,6 +57,15 @@ public final class DynamicConstantSupport {
      * validates every special constant first and transforms a private copy.
      */
     public static MethodNode lower(String owner, MethodNode method) {
+        return lower(owner, owner, method);
+    }
+
+    /**
+     * Uses a separately validated resolver owner for interface constants while
+     * preserving the original owner as the IR method's lookup context.
+     */
+    public static MethodNode lower(String owner, String resolverOwner,
+                                   MethodNode method) {
         boolean needsCopy = false;
         AbstractInsnNode[] instructions = method.instructions.toArray();
         for (int index = 0; index < instructions.length; index++) {
@@ -94,7 +104,7 @@ public final class DynamicConstantSupport {
             ConstantDynamic constant =
                     (ConstantDynamic) ((LdcInsnNode) instruction).cst;
             copy.instructions.set(instruction, new MethodInsnNode(
-                    Opcodes.INVOKESTATIC, owner, resolverName(constant),
+                    Opcodes.INVOKESTATIC, resolverOwner, resolverName(constant),
                     "()" + constant.getDescriptor(), false));
         }
 
@@ -112,9 +122,14 @@ public final class DynamicConstantSupport {
 
     /**
      * Checks class-level constraints and name collisions before lowering can
-     * populate JNI caches. No class or method is changed by this check.
+     * populate JNI caches. No class, method, or hidden pool is changed by this
+     * check. The returned name is the resolver host to use in the private IR
+     * copy.
      */
-    public static void validateResolverInstallation(ClassNode owner, MethodNode method) {
+    public static String validateResolverInstallation(
+            ClassNode owner, MethodNode method, HiddenMethodsPool hiddenMethods) {
+        String resolverOwner = owner.name;
+        ClassNode resolverHost = owner;
         AbstractInsnNode[] instructions = method.instructions.toArray();
         for (int index = 0; index < instructions.length; index++) {
             AbstractInsnNode instruction = instructions[index];
@@ -123,16 +138,120 @@ public final class DynamicConstantSupport {
                     instanceof ConstantDynamic)) {
                 continue;
             }
-            if ((owner.access & Opcodes.ACC_INTERFACE) != 0) {
-                throw unsupported(
-                        "ConstantDynamic LDC in an interface cannot use the IR resolver cache",
-                        index);
-            }
             ConstantDynamic constant =
                     (ConstantDynamic) ((LdcInsnNode) instruction).cst;
-            validateResolverMembers(owner, constant, index,
+            validateDynamicConstant(constant, index,
                     Collections.newSetFromMap(
                             new IdentityHashMap<ConstantDynamic, Boolean>()));
+            if ((owner.access & Opcodes.ACC_INTERFACE) != 0) {
+                validateInterfaceCompanionPlacement(owner, hiddenMethods, index);
+                try {
+                    resolverOwner =
+                            hiddenMethods.getCompanionClassName(owner.name);
+                } catch (RuntimeException unsafePlacement) {
+                    throw unsupported("ConstantDynamic interface companion cannot be "
+                            + "placed safely: " + unsafePlacement.getMessage(), index);
+                }
+                resolverHost = hiddenMethods.findCompanionClass(owner.name);
+                validateInterfaceBootstrapBridges(owner, resolverHost, constant,
+                        index, Collections.newSetFromMap(
+                                new IdentityHashMap<ConstantDynamic, Boolean>()));
+            } else {
+                validateResolverMembers(owner, constant, index,
+                        Collections.newSetFromMap(
+                                new IdentityHashMap<ConstantDynamic, Boolean>()),
+                        false);
+            }
+        }
+        return resolverOwner;
+    }
+
+    /**
+     * Compatibility entry point for class owners. Interface callers must
+     * supply the hidden pool that owns their companion.
+     */
+    public static void validateResolverInstallation(
+            ClassNode owner, MethodNode method) {
+        if ((owner.access & Opcodes.ACC_INTERFACE) != 0
+                && containsDynamicConstant(method)) {
+            throw new IllegalArgumentException(
+                    "Interface ConstantDynamic validation requires a hidden-method pool");
+        }
+        validateResolverInstallation(owner, method,
+                new HiddenMethodsPool("native0/hidden"));
+    }
+
+    private static boolean containsDynamicConstant(MethodNode method) {
+        for (AbstractInsnNode instruction : method.instructions.toArray()) {
+            if (instruction instanceof LdcInsnNode
+                    && ((LdcInsnNode) instruction).cst instanceof ConstantDynamic) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void validateInterfaceCompanionPlacement(
+            ClassNode owner, HiddenMethodsPool hiddenMethods, int bytecodeOffset) {
+        if (hiddenMethods == null) {
+            throw unsupported(
+                    "ConstantDynamic interface companion has no hidden-method pool",
+                    bytecodeOffset);
+        }
+        if ((owner.access & Opcodes.ACC_PUBLIC) == 0) {
+            throw unsupported(
+                    "ConstantDynamic interface companion requires a public interface",
+                    bytecodeOffset);
+        }
+        if ((owner.access & Opcodes.ACC_ANNOTATION) != 0) {
+            throw unsupported(
+                    "ConstantDynamic interface companion is not supported for annotations",
+                    bytecodeOffset);
+        }
+        if ((owner.version & 0xffff) < Opcodes.V11) {
+            throw unsupported(
+                    "ConstantDynamic interface companion requires class-file version 55",
+                    bytecodeOffset);
+        }
+    }
+
+    private static void validateInterfaceBootstrapBridges(
+            ClassNode owner, ClassNode resolverHost, ConstantDynamic constant,
+            int bytecodeOffset, Set<ConstantDynamic> visited) {
+        if (!visited.add(constant)) {
+            return;
+        }
+        String resolver = resolverName(constant);
+        String bridge = bootstrapBridgeName(resolver);
+        boolean installedResolver = resolverHost != null
+                && isInstalledResolver(resolverHost, resolver, constant, true);
+        boolean installedBridge = resolverHost != null
+                && isInstalledBootstrapBridge(
+                        owner, resolverHost.name, resolver, constant);
+        if (installedResolver != installedBridge) {
+            throw unsupported(
+                    "ConstantDynamic interface resolver installation is incomplete",
+                    bytecodeOffset);
+        }
+        if (!installedBridge && hasMethodNamed(owner, bridge)) {
+            throw unsupported(
+                    "ConstantDynamic bootstrap bridge name collides with an "
+                            + "existing interface member",
+                    bytecodeOffset);
+        }
+        if (resolverHost != null) {
+            validateResolverMembers(resolverHost, constant, bytecodeOffset,
+                    Collections.newSetFromMap(
+                            new IdentityHashMap<ConstantDynamic, Boolean>()),
+                    true);
+        }
+        for (int index = 0;
+             index < constant.getBootstrapMethodArgumentCount(); index++) {
+            Object argument = constant.getBootstrapMethodArgument(index);
+            if (argument instanceof ConstantDynamic) {
+                validateInterfaceBootstrapBridges(owner, resolverHost,
+                        (ConstantDynamic) argument, bytecodeOffset, visited);
+            }
         }
     }
 
@@ -141,7 +260,14 @@ public final class DynamicConstantSupport {
      * have succeeded. Each resolver caches either the value (including null) or
      * the BootstrapMethodError under the class monitor.
      */
-    public static void installResolvers(ClassNode owner, MethodNode method) {
+    public static void installResolvers(
+            ClassNode owner, MethodNode method, HiddenMethodsPool hiddenMethods) {
+        ClassNode resolverHost = owner;
+        boolean interfaceOwner = (owner.access & Opcodes.ACC_INTERFACE) != 0;
+        if (interfaceOwner && containsDynamicConstant(method)) {
+            resolverHost = hiddenMethods.getCompanionClass(
+                    owner.name, owner.version);
+        }
         AbstractInsnNode[] instructions = method.instructions.toArray();
         for (int index = 0; index < instructions.length; index++) {
             AbstractInsnNode instruction = instructions[index];
@@ -153,40 +279,60 @@ public final class DynamicConstantSupport {
             ConstantDynamic constant =
                     (ConstantDynamic) ((LdcInsnNode) instruction).cst;
             String resolver = resolverName(constant);
-            if (!isInstalledResolver(owner, resolver, constant)) {
-                installResolver(owner, resolver, constant);
+            if (!isInstalledResolver(
+                    resolverHost, resolver, constant, interfaceOwner)) {
+                installResolver(owner, resolverHost, resolver, constant,
+                        interfaceOwner);
             }
         }
     }
 
-    private static void installResolver(ClassNode owner, String resolver,
-                                        ConstantDynamic constant) {
+    public static void installResolvers(ClassNode owner, MethodNode method) {
+        if ((owner.access & Opcodes.ACC_INTERFACE) != 0
+                && containsDynamicConstant(method)) {
+            throw new IllegalArgumentException(
+                    "Interface ConstantDynamic installation requires a hidden-method pool");
+        }
+        installResolvers(owner, method, new HiddenMethodsPool("native0/hidden"));
+    }
+
+    private static void installResolver(
+            ClassNode owner, ClassNode resolverHost, String resolver,
+            ConstantDynamic constant, boolean interfaceOwner) {
         for (int index = 0;
              index < constant.getBootstrapMethodArgumentCount(); index++) {
             Object argument = constant.getBootstrapMethodArgument(index);
             if (argument instanceof ConstantDynamic) {
                 ConstantDynamic nested = (ConstantDynamic) argument;
                 String nestedResolver = resolverName(nested);
-                if (!isInstalledResolver(owner, nestedResolver, nested)) {
-                    installResolver(owner, nestedResolver, nested);
+                if (!isInstalledResolver(
+                        resolverHost, nestedResolver, nested, interfaceOwner)) {
+                    installResolver(owner, resolverHost, nestedResolver, nested,
+                            interfaceOwner);
                 }
             }
         }
 
+        if (interfaceOwner) {
+            installBootstrapBridge(owner, resolverHost.name, resolver, constant);
+        }
+
         int fieldAccess = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC
                 | Opcodes.ACC_SYNTHETIC;
-        owner.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
+        resolverHost.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
                 stateField(resolver), "I", null, null));
-        owner.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
+        resolverHost.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
                 valueField(resolver), constant.getDescriptor(), null, null));
-        owner.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
+        resolverHost.fields.add(new FieldNode(Opcodes.ASM9, fieldAccess,
                 errorField(resolver), "Ljava/lang/BootstrapMethodError;",
                 null, null));
 
         Type constantType = Type.getType(constant.getDescriptor());
+        int resolverAccess = (interfaceOwner ? Opcodes.ACC_PUBLIC : Opcodes.ACC_PRIVATE)
+                | Opcodes.ACC_STATIC | Opcodes.ACC_SYNCHRONIZED
+                | Opcodes.ACC_SYNTHETIC;
         MethodNode method = new MethodNode(Opcodes.ASM9,
-                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC
-                        | Opcodes.ACC_SYNCHRONIZED | Opcodes.ACC_SYNTHETIC,
+                resolverAccess,
                 resolver, "()" + constant.getDescriptor(), null, null);
         LabelNode checkFailure = new LabelNode();
         LabelNode resolve = new LabelNode();
@@ -195,32 +341,39 @@ public final class DynamicConstantSupport {
         LabelNode wrapFailure = new LabelNode();
         LabelNode cacheFailure = new LabelNode();
 
-        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, resolverHost.name,
                 stateField(resolver), "I"));
         method.instructions.add(new InsnNode(Opcodes.ICONST_1));
         method.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPNE, checkFailure));
-        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, resolverHost.name,
                 valueField(resolver), constant.getDescriptor()));
         method.instructions.add(new InsnNode(
                 constantType.getOpcode(Opcodes.IRETURN)));
 
         method.instructions.add(checkFailure);
-        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, resolverHost.name,
                 stateField(resolver), "I"));
         method.instructions.add(new InsnNode(Opcodes.ICONST_2));
         method.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPNE, resolve));
-        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC, resolverHost.name,
                 errorField(resolver), "Ljava/lang/BootstrapMethodError;"));
         method.instructions.add(new InsnNode(Opcodes.ATHROW));
 
         method.instructions.add(resolve);
-        appendBootstrapInvocation(owner.name, method, constant);
+        if (interfaceOwner) {
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, owner.name,
+                    bootstrapBridgeName(resolver),
+                    "()" + constant.getDescriptor(), true));
+        } else {
+            appendBootstrapInvocation(owner.name, method, constant);
+        }
         method.instructions.add(new InsnNode(
                 constantType.getSize() == 2 ? Opcodes.DUP2 : Opcodes.DUP));
-        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, resolverHost.name,
                 valueField(resolver), constant.getDescriptor()));
         method.instructions.add(new InsnNode(Opcodes.ICONST_1));
-        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, resolverHost.name,
                 stateField(resolver), "I"));
         method.instructions.add(tryEnd);
         method.instructions.add(new InsnNode(
@@ -246,10 +399,10 @@ public final class DynamicConstantSupport {
 
         method.instructions.add(cacheFailure);
         method.instructions.add(new InsnNode(Opcodes.DUP));
-        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, resolverHost.name,
                 errorField(resolver), "Ljava/lang/BootstrapMethodError;"));
         method.instructions.add(new InsnNode(Opcodes.ICONST_2));
-        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner.name,
+        method.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, resolverHost.name,
                 stateField(resolver), "I"));
         method.instructions.add(new InsnNode(Opcodes.ATHROW));
 
@@ -257,7 +410,26 @@ public final class DynamicConstantSupport {
                 resolve, tryEnd, handler, "java/lang/Throwable"));
         method.maxLocals = 1;
         method.maxStack = bootstrapStackSize(constant);
-        owner.methods.add(method);
+        resolverHost.methods.add(method);
+    }
+
+    private static void installBootstrapBridge(
+            ClassNode owner, String resolverHost, String resolver,
+            ConstantDynamic constant) {
+        String bridgeName = bootstrapBridgeName(resolver);
+        if (hasMethodNamed(owner, bridgeName)) {
+            return;
+        }
+        MethodNode bridge = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                bridgeName, "()" + constant.getDescriptor(), null, null);
+        appendBootstrapInvocation(resolverHost, bridge, constant);
+        Type constantType = Type.getType(constant.getDescriptor());
+        bridge.instructions.add(new InsnNode(
+                constantType.getOpcode(Opcodes.IRETURN)));
+        bridge.maxLocals = 0;
+        bridge.maxStack = bootstrapStackSize(constant);
+        owner.methods.add(bridge);
     }
 
     private static void appendBootstrapInvocation(String owner, MethodNode method,
@@ -424,12 +596,13 @@ public final class DynamicConstantSupport {
 
     private static void validateResolverMembers(
             ClassNode owner, ConstantDynamic constant, int bytecodeOffset,
-            Set<ConstantDynamic> visited) {
+            Set<ConstantDynamic> visited, boolean externallyCallable) {
         if (!visited.add(constant)) {
             return;
         }
         String resolver = resolverName(constant);
-        if (!isInstalledResolver(owner, resolver, constant)
+        if (!isInstalledResolver(
+                owner, resolver, constant, externallyCallable)
                 && (hasMethodNamed(owner, resolver)
                 || hasField(owner, stateField(resolver))
                 || hasField(owner, valueField(resolver))
@@ -443,7 +616,7 @@ public final class DynamicConstantSupport {
             Object argument = constant.getBootstrapMethodArgument(index);
             if (argument instanceof ConstantDynamic) {
                 validateResolverMembers(owner, (ConstantDynamic) argument,
-                        bytecodeOffset, visited);
+                        bytecodeOffset, visited, externallyCallable);
             }
         }
     }
@@ -612,21 +785,58 @@ public final class DynamicConstantSupport {
         return resolver + "$error";
     }
 
+    private static String bootstrapBridgeName(String resolver) {
+        return resolver + "$bootstrap";
+    }
+
     private static boolean isInstalledResolver(
-            ClassNode owner, String resolver, ConstantDynamic constant) {
+            ClassNode owner, String resolver, ConstantDynamic constant,
+            boolean externallyCallable) {
+        int visibility = externallyCallable
+                ? Opcodes.ACC_PUBLIC : Opcodes.ACC_PRIVATE;
+        int requiredAccess = visibility | Opcodes.ACC_STATIC
+                | Opcodes.ACC_SYNCHRONIZED | Opcodes.ACC_SYNTHETIC;
         boolean resolverMethod = owner.methods.stream().anyMatch(method ->
                 resolver.equals(method.name)
                         && ("()" + constant.getDescriptor()).equals(method.desc)
-                        && (method.access & (Opcodes.ACC_PRIVATE
+                        && (method.access & (Opcodes.ACC_PUBLIC
+                        | Opcodes.ACC_PRIVATE
                         | Opcodes.ACC_STATIC | Opcodes.ACC_SYNCHRONIZED
                         | Opcodes.ACC_SYNTHETIC))
-                        == (Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC
-                        | Opcodes.ACC_SYNCHRONIZED | Opcodes.ACC_SYNTHETIC));
+                        == requiredAccess);
         return resolverMethod
                 && hasField(owner, stateField(resolver), "I")
                 && hasField(owner, valueField(resolver), constant.getDescriptor())
                 && hasField(owner, errorField(resolver),
                 "Ljava/lang/BootstrapMethodError;");
+    }
+
+    private static boolean isInstalledBootstrapBridge(
+            ClassNode owner, String resolverHost, String resolver,
+            ConstantDynamic constant) {
+        String bridgeName = bootstrapBridgeName(resolver);
+        for (MethodNode method : owner.methods) {
+            if (!bridgeName.equals(method.name)
+                    || !("()" + constant.getDescriptor()).equals(method.desc)
+                    || (method.access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_PRIVATE
+                    | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC))
+                    != (Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC
+                    | Opcodes.ACC_SYNTHETIC)) {
+                continue;
+            }
+            for (AbstractInsnNode instruction : method.instructions.toArray()) {
+                if (instruction instanceof MethodInsnNode) {
+                    MethodInsnNode invoke = (MethodInsnNode) instruction;
+                    if (invoke.getOpcode() == Opcodes.INVOKESTATIC
+                            && resolverHost.equals(invoke.owner)
+                            && resolverName(constant).equals(invoke.name)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     private static boolean hasMethodNamed(ClassNode owner, String name) {
