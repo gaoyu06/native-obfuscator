@@ -1,81 +1,66 @@
-# Add JVM-accurate evaluator LDIV/LREM / 为 evaluator 添加 JVM 精确的 LDIV/LREM
+# Review evaluator LDIV/LREM / 复核 evaluator LDIV/LREM
 
-## (a) Change scope / 改动范围
+## (a) Scope and verdict / 范围与结论
 
-Extend the optional shared IR evaluator with JVM-accurate `LDIV` and `LREM`.
-Java serialization and the C++ evaluator append the same contiguous opcodes,
-`0x2b` and `0x2c`, after the existing `0x23`–`0x2a` i64 block. A zero divisor
-uses the trampoline's `JNIEnv*` to leave `ArithmeticException` pending and exits
-evaluation immediately. `Long.MIN_VALUE / -1` returns `Long.MIN_VALUE`, and the
-matching remainder returns zero, without invoking signed C++ overflow.
+**Verdict: Accept.** The review found no correctness defect, so the review
+branch is documentation-only. Java serialization and the C++ evaluator agree
+on `LDIV=0x2b` and `LREM=0x2c`. A zero divisor requests a pending
+`ArithmeticException` and exits the evaluator immediately. The
+`Long.MIN_VALUE / -1` and remainder cases return `Long.MIN_VALUE` and zero
+without executing overflowing signed C++ arithmetic.
 
-为可选的共享 IR evaluator 新增 JVM 精确的 `LDIV` 与 `LREM`。Java 序列化器和
-C++ evaluator 在已有 `0x23`–`0x2a` i64 块之后一致追加连续 opcode：
-`0x2b` 与 `0x2c`。除数为零时，通过 trampoline 传入的 `JNIEnv*` 保留 pending
-`ArithmeticException` 并立即退出 evaluator。`Long.MIN_VALUE / -1` 返回
-`Long.MIN_VALUE`，对应余数为零，且不会触发 C++ 有符号溢出。
+**结论：接受。** 本次复核未发现正确性缺陷，因此 review 分支仅修改文档。Java
+序列化端与 C++ evaluator 对 `LDIV=0x2b`、`LREM=0x2c` 保持一致。除数为零时，
+实现会产生 pending `ArithmeticException` 并立即退出 evaluator；
+`Long.MIN_VALUE / -1` 及对应余数分别得到 `Long.MIN_VALUE` 与零，且不会执行
+会溢出的 C++ 有符号运算。
 
-The command-line defaults remain `--codegen=legacy` and `--ir-lower=direct`;
-the evaluator remains `--codegen=ir --ir-lower=eval`. Unsupported methods are
-still rejected before method/output/cache mutation and then use the existing
-per-method fallback. The shared frontend and direct IR lowering also admit
-`LDIV`/`LREM` so the evaluator can receive these typed nodes; direct lowering
-uses the same JVM edge-case rules.
+Generated `divide(JJ)J` and `remainder(JJ)J` methods remain on
+`evaluate_i64`. The shared frontend admits both operations for direct IR, where
+the structured emitter applies the same JVM edge cases and existing exception
+dispatch. Unsupported evaluator methods are rejected before method, output,
+registration, or cache mutation. Defaults remain `--codegen=legacy` and
+`--ir-lower=direct`.
 
-命令行默认值仍为 `--codegen=legacy` 与 `--ir-lower=direct`；evaluator 仍通过
-`--codegen=ir --ir-lower=eval` 启用。不支持的方法仍在修改方法、输出或缓存前被拒绝，
-随后沿用现有逐方法回退。共享 frontend 与 direct IR lowering 也接纳
-`LDIV`/`LREM`，使 evaluator 能收到这些类型化节点；direct lowering 使用相同的
-JVM 边界语义。
+生成的 `divide(JJ)J` 与 `remainder(JJ)J` 仍走 `evaluate_i64`。共享 frontend
+也允许 direct IR 使用这两个操作；结构化 emitter 使用相同 JVM 边界规则和现有异常
+分发。不支持的 evaluator 方法会在方法、输出、注册或缓存发生修改之前被拒绝。默认值
+仍为 `--codegen=legacy` 与 `--ir-lower=direct`。
 
-This change adds no benchmark numbers and does not rewrite #53 or #59.
+This review adds no benchmark numbers and does not rewrite #53 or #59.
 
-本改动不新增 benchmark 数字，也不改写 #53 或 #59。
+本复核不新增 benchmark 数字，也不改写 #53 或 #59。
 
 ## (b) Ship-ready? / 是否可直接上线
 
-**No.** The evaluator remains an opt-in, deliberately narrow lowering with
-per-method fallback for unsupported IR.
+**No.** The evaluator remains an opt-in, deliberately limited lowering with
+per-method legacy fallback outside its supported IR subset.
 
-**否。** evaluator 仍是可选且范围受限的 lowering；不支持的 IR 继续逐方法回退。
+**否。** evaluator 仍是可选且范围受限的 lowering；超出支持 IR 子集的方法继续逐方法
+回退到 legacy。
 
-## (c) Review required? / 是否需要 review
+## (c) Findings and review notes / 发现与复核说明
 
-**Yes.** Review the Java/C++ opcode agreement, pending-exception exit, signed
-division edge cases, generated trampoline selection, direct-IR admission, and
-the fallback-before-mutation invariant.
+No correctness blocker was found and compiler code was not changed. One
+non-blocking coverage note remains: the evaluator has a linked runtime harness
+for division edges and pending exceptions, while direct IR checks generated
+source and g++ syntax rather than executing an exception-catching native
+fixture. Code inspection confirms that direct lowering exits or dispatches
+before reaching its division expression.
 
-**是。** 需要审阅 Java/C++ opcode 一致性、pending exception 退出、有符号除法
-边界、生成 trampoline 的选择、direct-IR 准入，以及修改前回退不变量。
+未发现正确性阻塞项，也未修改编译器代码。唯一的非阻塞覆盖说明是：evaluator 已有
+链接后运行的 harness 覆盖除法边界与 pending exception；direct IR 则检查生成源码及
+g++ 语法，尚未执行可捕获异常的原生 fixture。代码检查确认 direct lowering 会在到达
+除法表达式之前退出或进入异常分发。
 
 ## (d) Verification / 验证
 
-The focused `CC=gcc CXX=g++` Gradle run passed **32/32**, with 0 skipped,
-failures, or errors: `CodegenModeTest` 4/4, `IrCompilerTest` 19/19, and
-`InterpreterStreamStrategyTest` 9/9.
+The independent `CC=gcc CXX=g++` focused rerun is pending in this pre-test
+commit. The final revision will report counts from JUnit XML for
+`CodegenModeTest`, `IrCompilerTest`, and `InterpreterStreamStrategyTest`, and
+will state whether each toolchain-gated native test actually ran.
 
-- Serializer assertions pin `LDIV=0x2b` and `LREM=0x2c` and assert the same
-  constants in the C++ evaluator.
-- The g++ translation-unit smoke, direct-source syntax check, and linked native
-  harness executed. The harness verified signed divide/remainder, both zero
-  divisor exceptions through fake JNI `FindClass`/`ThrowNew`, immediate exit,
-  `Long.MIN_VALUE / -1 == Long.MIN_VALUE`, and remainder zero.
-- Generated-source inspection found evaluator data plus `evaluate_i64`
-  trampolines for both `divide(JJ)J` and `remainder(JJ)J`, with no direct or
-  legacy body.
-- The unsupported-unary test still proves rejection before method, output,
-  registration, or cache mutation. CLI tests still prove the `legacy` codegen
-  and `direct` IR-lowering defaults.
-
-聚焦 `CC=gcc CXX=g++` Gradle 测试共 **32/32** 通过，0 skipped、0 failures、
-0 errors：`CodegenModeTest` 4/4、`IrCompilerTest` 19/19、
-`InterpreterStreamStrategyTest` 9/9。
-
-- 序列化断言固定 `LDIV=0x2b` 与 `LREM=0x2c`，并断言 C++ evaluator 使用相同常量。
-- g++ 翻译单元检查、direct 生成源码语法检查与链接后的原生 harness 均实际执行；
-  harness 验证了有符号除法/余数、通过 fake JNI `FindClass`/`ThrowNew` 产生的两种
-  零除数异常、立即退出、`Long.MIN_VALUE / -1 == Long.MIN_VALUE` 及余数为零。
-- 生成源码检查确认 `divide(JJ)J` 与 `remainder(JJ)J` 均使用 evaluator 数据和
-  `evaluate_i64` trampoline，且没有 direct 或 legacy 方法体。
-- 不支持的一元操作测试继续证明方法、输出、注册与缓存修改前即拒绝；CLI 测试继续
-  证明默认 codegen 为 `legacy`、默认 IR lowering 为 `direct`。
+本次独立 `CC=gcc CXX=g++` 聚焦重跑将在该 pre-test 提交之后执行。最终版本会从
+JUnit XML 记录 `CodegenModeTest`、`IrCompilerTest` 与
+`InterpreterStreamStrategyTest` 的真实计数，并确认每个受 toolchain 条件控制的
+原生测试是否实际运行。
