@@ -748,7 +748,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
 
             Integer targetIndex = indexes.get(target);
-            if (targetIndex == null || targetIndex >= joinIndex) {
+            if (targetIndex == null || targetIndex <= switchIndex
+                    || targetIndex >= joinIndex) {
                 return null;
             }
             int executableIndex =
