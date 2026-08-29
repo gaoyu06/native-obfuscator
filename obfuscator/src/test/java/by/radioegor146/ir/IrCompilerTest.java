@@ -4,6 +4,7 @@ import by.radioegor146.CodegenMode;
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
+import by.radioegor146.bytecode.PreprocessorUtils;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
@@ -216,6 +217,46 @@ public class IrCompilerTest {
                 2, owner, 0);
         compiler.processMethod(virtualInvoke);
         assertTrue(virtualInvoke.output.toString().contains("env->CallIntMethod"));
+    }
+
+    @Test
+    public void lowersPreprocessorIntrinsicsAndMethodHandleInvokesInIr() {
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        IrMethodCompiler compiler = new IrMethodCompiler(new MethodShellEmitter(obfuscator));
+
+        MethodContext locals = new MethodContext(obfuscator,
+                preprocessorLocalsMethod(), 0, owner(), 0);
+        compiler.processMethod(locals);
+        assertTrue(locals.output.toString().contains("utils::get_lookup(env, clazz)"));
+        assertTrue(locals.output.toString().contains("= classloader;"));
+        assertTrue(locals.output.toString().contains("= clazz;"));
+        assertFalse(locals.output.toString().contains("native.magic"));
+
+        MethodContext linkCallSite = new MethodContext(obfuscator,
+                linkCallSiteMethod(), 1, owner(), 0);
+        compiler.processMethod(linkCallSite);
+        assertTrue(linkCallSite.output.toString().contains("utils::link_call_site(env"));
+        assertFalse(linkCallSite.output.toString().contains("native.magic"));
+
+        MethodContext invokeReverse = new MethodContext(obfuscator,
+                invokeReverseMethod(), 2, owner(), 0);
+        compiler.processMethod(invokeReverse);
+        assertTrue(invokeReverse.output.toString().contains("env->CallStaticIntMethod"));
+        assertFalse(invokeReverse.output.toString().contains("native.magic"));
+
+        MethodContext invokeExact = new MethodContext(obfuscator,
+                methodHandleInvokeExactMethod(), 3, owner(), 0);
+        compiler.processMethod(invokeExact);
+        assertTrue(invokeExact.output.toString().contains("env->CallStaticIntMethod"));
+        assertFalse(invokeExact.output.toString().contains("\"invokeExact\""));
+
+        assertEquals(1, obfuscator.getHiddenMethodsPool().getClasses().size());
+        ClassNode hidden = obfuscator.getHiddenMethodsPool().getClasses().get(0);
+        assertEquals("native0/hidden/Hidden0", hidden.name);
+        assertTrue(hidden.methods.stream().anyMatch(method ->
+                method.name.startsWith("invokereverse")));
+        assertTrue(hidden.methods.stream().anyMatch(method ->
+                method.name.startsWith("mhinvoke")));
     }
 
     @Test
@@ -2829,6 +2870,60 @@ public class IrCompilerTest {
                 "example/Math", "add", "(II)I", false));
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode preprocessorLocalsMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "preprocessorLocals", "()V", null, null);
+        method.instructions.add(PreprocessorUtils.LOOKUP_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(PreprocessorUtils.CLASSLOADER_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(PreprocessorUtils.CLASS_LOCAL.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode linkCallSiteMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "linkCallSite", "()V", null, null);
+        for (int i = 0; i < 6; i++) {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        }
+        method.instructions.add(PreprocessorUtils.LINK_CALL_SITE_METHOD.get());
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 0;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private MethodNode invokeReverseMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "invokeReverse", "(Ljava/lang/invoke/MethodHandle;I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(PreprocessorUtils.INVOKE_REVERSE.apply("(I)I"));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode methodHandleInvokeExactMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "invokeExact", "(Ljava/lang/invoke/MethodHandle;I)I", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/invoke/MethodHandle", "invokeExact", "(I)I", false));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 2;
         method.maxStack = 2;
         return method;
     }

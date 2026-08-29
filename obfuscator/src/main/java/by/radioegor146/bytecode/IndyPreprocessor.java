@@ -61,9 +61,12 @@ public class IndyPreprocessor implements Preprocessor {
                 }
 
 
+                // ObjectMethods.bootstrap declares TypeDescriptor, the supertype of the
+                // MethodType value supplied by this rewrite, as its third parameter.
                 if (bsmArguments.length < 3 || !bsmArguments[0].getDescriptor().equals("Ljava/lang/invoke/MethodHandles$Lookup;") ||
                         !bsmArguments[1].getDescriptor().equals("Ljava/lang/String;") ||
-                        !bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/MethodType;")) {
+                        !(bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/MethodType;") ||
+                                bsmArguments[2].getDescriptor().equals("Ljava/lang/invoke/TypeDescriptor;"))) {
                     InsnList resultInstructions = new InsnList();
                     resultInstructions.add(new TypeInsnNode(Opcodes.NEW, "java/lang/BootstrapMethodError")); // 1
                     resultInstructions.add(new InsnNode(Opcodes.DUP)); // 2

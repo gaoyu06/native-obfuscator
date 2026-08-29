@@ -2,7 +2,10 @@ package by.radioegor146.ir.emit;
 
 import by.radioegor146.CachedFieldInfo;
 import by.radioegor146.CachedMethodInfo;
+import by.radioegor146.HiddenMethodsPool;
 import by.radioegor146.MethodContext;
+import by.radioegor146.bytecode.MethodHandleUtils;
+import by.radioegor146.bytecode.PreprocessorUtils;
 import by.radioegor146.ir.IrBlock;
 import by.radioegor146.ir.IrExceptionEdge;
 import by.radioegor146.ir.IrInstruction;
@@ -12,7 +15,9 @@ import by.radioegor146.ir.IrPhi;
 import by.radioegor146.ir.IrTerminator;
 import by.radioegor146.ir.IrType;
 import by.radioegor146.ir.IrValue;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.MethodInsnNode;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -813,6 +818,61 @@ public final class IrCppEmitter {
     private List<CppAst.Statement> emitInvoke(IrMethod method, IrBlock block,
                                               IrNodes.Invoke invoke,
                                               MethodContext context) {
+        MethodInsnNode bytecodeInvoke = new MethodInsnNode(Opcodes.INVOKESTATIC,
+                invoke.getOwner(), invoke.getName(), invoke.getDescriptor(), false);
+        if (PreprocessorUtils.isLookupLocal(bytecodeInvoke)) {
+            List<CppAst.Statement> statements = new ArrayList<>();
+            statements.add(new CppAst.If(new CppAst.Unary("!", variable("lookup")),
+                    new CppAst.Block(Arrays.<CppAst.Statement>asList(
+                            new CppAst.Assignment(variable("lookup"),
+                                    new CppAst.Call("utils::get_lookup", Arrays.asList(
+                                            variable("env"), variable("clazz")))),
+                            exceptionCheck(method, block))), null));
+            statements.add(new CppAst.Assignment(variable(invoke.getResult()),
+                    variable("lookup")));
+            return statements;
+        }
+        if (PreprocessorUtils.isClassLoaderLocal(bytecodeInvoke)) {
+            return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                    variable(invoke.getResult()), variable("classloader")));
+        }
+        if (PreprocessorUtils.isClassLocal(bytecodeInvoke)) {
+            return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                    variable(invoke.getResult()), variable("clazz")));
+        }
+        if (PreprocessorUtils.isLinkCallSiteMethod(bytecodeInvoke)) {
+            List<CppAst.Expression> arguments = new ArrayList<>();
+            arguments.add(variable("env"));
+            for (IrValue argument : invoke.getArguments()) {
+                arguments.add(expression(argument));
+            }
+            List<CppAst.Statement> statements = new ArrayList<>();
+            statements.add(new CppAst.Assignment(variable(invoke.getResult()),
+                    new CppAst.Call("utils::link_call_site", arguments)));
+            statements.add(exceptionCheck(method, block));
+            return statements;
+        }
+        if (PreprocessorUtils.isInvokeReverse(bytecodeInvoke)) {
+            HiddenMethodsPool.HiddenMethod helper =
+                    MethodHandleUtils.getInvokeReverseHelper(
+                            context.obfuscator, invoke.getDescriptor());
+            return emitInvoke(method, block, helperInvoke(invoke, helper,
+                    invoke.getArguments()), context);
+        }
+        if ("java/lang/invoke/MethodHandle".equals(invoke.getOwner())
+                && ("invokeExact".equals(invoke.getName())
+                || "invoke".equals(invoke.getName()))
+                && invoke.getKind() == IrNodes.Invoke.Kind.VIRTUAL) {
+            HiddenMethodsPool.HiddenMethod helper =
+                    MethodHandleUtils.getInvokeHelper(context.obfuscator,
+                            invoke.getDescriptor());
+            List<IrValue> arguments = new ArrayList<>();
+            arguments.add(invoke.getReceiver());
+            arguments.addAll(invoke.getArguments());
+            return emitInvoke(method, block, helperInvoke(invoke, helper, arguments),
+                    context);
+        }
+
         boolean staticInvoke = invoke.getKind() == IrNodes.Invoke.Kind.STATIC;
         boolean specialInvoke = invoke.getKind() == IrNodes.Invoke.Kind.SPECIAL;
         CachedMethodInfo info = new CachedMethodInfo(invoke.getOwner(), invoke.getName(),
@@ -852,6 +912,15 @@ public final class IrCppEmitter {
         }
         statements.add(exceptionCheck(method, block));
         return statements;
+    }
+
+    private IrNodes.Invoke helperInvoke(IrNodes.Invoke original,
+                                        HiddenMethodsPool.HiddenMethod helper,
+                                        List<IrValue> arguments) {
+        return new IrNodes.Invoke(original.getResult(), IrNodes.Invoke.Kind.STATIC,
+                helper.getClassNode().name, helper.getMethodNode().name,
+                helper.getMethodNode().desc, null, arguments,
+                original.getBytecodeOffset(), original.getSourceLine());
     }
 
     private String invokeCallMethod(IrNodes.Invoke invoke) {

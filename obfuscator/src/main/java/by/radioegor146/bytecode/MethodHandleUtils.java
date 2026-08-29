@@ -1,9 +1,15 @@
 package by.radioegor146.bytecode;
 
+import by.radioegor146.HiddenMethodsPool;
+import by.radioegor146.NativeObfuscator;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class MethodHandleUtils {
 
@@ -118,5 +124,93 @@ public class MethodHandleUtils {
                 break;
         }
         return instructions;
+    }
+
+    public static HiddenMethodsPool.HiddenMethod getInvokeHelper(
+            NativeObfuscator obfuscator, String invokeDescriptor) {
+        String targetDescriptor = simplifyDescriptor(invokeDescriptor);
+        List<Type> helperArguments = new ArrayList<>();
+        helperArguments.add(Type.getObjectType("java/lang/invoke/MethodHandle"));
+        helperArguments.addAll(Arrays.asList(Type.getArgumentTypes(targetDescriptor)));
+        String helperDescriptor = Type.getMethodDescriptor(
+                Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
+        return createInvokeHelper(obfuscator, "mhinvoke", helperDescriptor,
+                targetDescriptor, 0);
+    }
+
+    public static HiddenMethodsPool.HiddenMethod getInvokeReverseHelper(
+            NativeObfuscator obfuscator, String markerDescriptor) {
+        Type[] markerArguments = Type.getArgumentTypes(markerDescriptor);
+        if (markerArguments.length == 0
+                || !"Ljava/lang/invoke/MethodHandle;".equals(
+                markerArguments[markerArguments.length - 1].getDescriptor())) {
+            throw new IllegalArgumentException(
+                    "Invoke-reverse marker must end in a MethodHandle argument");
+        }
+
+        Type[] targetArguments = Arrays.copyOf(markerArguments, markerArguments.length - 1);
+        String targetDescriptor = simplifyDescriptor(Type.getMethodDescriptor(
+                Type.getReturnType(markerDescriptor), targetArguments));
+        List<Type> helperArguments = new ArrayList<>(
+                Arrays.asList(Type.getArgumentTypes(targetDescriptor)));
+        helperArguments.add(Type.getObjectType("java/lang/invoke/MethodHandle"));
+        String helperDescriptor = Type.getMethodDescriptor(
+                Type.getReturnType(targetDescriptor), helperArguments.toArray(new Type[0]));
+        return createInvokeHelper(obfuscator, "invokereverse", helperDescriptor,
+                targetDescriptor, helperArguments.size() - 1);
+    }
+
+    private static HiddenMethodsPool.HiddenMethod createInvokeHelper(
+            NativeObfuscator obfuscator, String helperName, String helperDescriptor,
+            String targetDescriptor, int methodHandleArgument) {
+        return obfuscator.getHiddenMethodsPool().getMethod(
+                helperName, helperDescriptor, method -> {
+                    method.visibleAnnotations = new ArrayList<>();
+                    method.visibleAnnotations.add(
+                            new AnnotationNode("Ljava/lang/invoke/LambdaForm$Hidden;"));
+                    method.visibleAnnotations.add(
+                            new AnnotationNode("Ljdk/internal/vm/annotation/Hidden;"));
+
+                    Type[] helperArguments = Type.getArgumentTypes(helperDescriptor);
+                    int[] localIndexes = new int[helperArguments.length];
+                    int local = 0;
+                    for (int i = 0; i < helperArguments.length; i++) {
+                        localIndexes[i] = local;
+                        local += helperArguments[i].getSize();
+                    }
+
+                    method.instructions.add(
+                            new VarInsnNode(Opcodes.ALOAD, localIndexes[methodHandleArgument]));
+                    for (int i = 0; i < helperArguments.length; i++) {
+                        if (i == methodHandleArgument) {
+                            continue;
+                        }
+                        Type argument = helperArguments[i];
+                        method.instructions.add(new VarInsnNode(
+                                argument.getOpcode(Opcodes.ILOAD), localIndexes[i]));
+                    }
+                    method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                            "java/lang/invoke/MethodHandle", "invoke", targetDescriptor));
+                    method.instructions.add(new InsnNode(
+                            Type.getReturnType(targetDescriptor).getOpcode(Opcodes.IRETURN)));
+                });
+    }
+
+    private static String simplifyDescriptor(String descriptor) {
+        Type returnType = simplifyType(Type.getReturnType(descriptor));
+        Type[] argumentTypes = Arrays.stream(Type.getArgumentTypes(descriptor))
+                .map(MethodHandleUtils::simplifyType)
+                .toArray(Type[]::new);
+        return Type.getMethodDescriptor(returnType, argumentTypes);
+    }
+
+    private static Type simplifyType(Type type) {
+        if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
+            return Type.getObjectType("java/lang/Object");
+        }
+        if (type.getSort() == Type.METHOD) {
+            throw new IllegalArgumentException("Method types are not invocation carriers");
+        }
+        return type;
     }
 }

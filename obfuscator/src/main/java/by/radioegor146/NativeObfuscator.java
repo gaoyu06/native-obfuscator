@@ -318,7 +318,12 @@ public class NativeObfuscator {
                             ClassMethodFilter.cleanAnnotations(classNode);
                         }
 
-                        classNode.version = 52;
+                        // Injected code needs at least Java 8, but newer input versions carry
+                        // version-gated metadata such as nests, records and sealed subclasses.
+                        // Raising old classes is safe; downgrading modern classes is not.
+                        if ((classNode.version & 0xFFFF) < Opcodes.V1_8) {
+                            classNode.version = Opcodes.V1_8;
+                        }
                         ClassWriter classWriter = new SafeClassWriter(metadataReader,
                                 ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
                         classNode.accept(classWriter);
@@ -341,13 +346,17 @@ public class NativeObfuscator {
                 }
             });
 
-            if (platform == Platform.ANDROID) {
-                for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
-                    ClassWriter classWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-                    hiddenClass.accept(classWriter);
-                    Util.writeEntry(out, hiddenClass.name + ".class", classWriter.toByteArray());
-                }
-            } else {
+            // Hidden MethodHandle trampolines are ordinary symbolic call targets from the
+            // generated native code. Keep them loadable by the transformed application's
+            // class loader on every platform, including HOTSPOT. HOTSPOT additionally embeds
+            // them in the native library to preserve the existing eager DefineClass path.
+            for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
+                ClassWriter classWriter = new SafeClassWriter(metadataReader,
+                        ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+                hiddenClass.accept(classWriter);
+                Util.writeEntry(out, hiddenClass.name + ".class", classWriter.toByteArray());
+            }
+            if (platform != Platform.ANDROID) {
                 for (ClassNode hiddenClass : hiddenMethodsPool.getClasses()) {
                     String hiddenClassFileName = "data_" + Util.escapeCppNameString(hiddenClass.name.replace('/', '_'));
 
