@@ -2375,7 +2375,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves at most one FADD, FSUB, FMUL, FDIV, or FREM over two float
      * leaves. The separate one-level budget keeps nested float binaries
-     * fail-closed; FNEG is not admitted.
+     * fail-closed; an admitted FNEG leaf does not consume that binary budget.
      */
     private static Integer previousProvenFloatChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2411,7 +2411,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one float leaf: a declared FLOAD, FCONST_0/1/2, or an LDC whose
-     * constant is a Float.
+     * constant is a Float, or one FNEG over a direct declared FLOAD.
      */
     private static Integer previousProvenFloatChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2425,7 +2425,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || isFloatConstant(input)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
-        return null;
+        if (input.getOpcode() != Opcodes.FNEG) {
+            return null;
+        }
+        int operandIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (operandIndex < 0
+                || !isDirectDeclaredArgumentLoad(
+                constructor.instructions.get(operandIndex),
+                Type.FLOAT_TYPE, declaredArguments)) {
+            return null;
+        }
+        return previousExecutableIndex(constructor, operandIndex - 1);
     }
 
     private static boolean isFloatConstant(AbstractInsnNode input) {

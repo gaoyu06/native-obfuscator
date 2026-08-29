@@ -75,7 +75,8 @@ The constructor split now covers these related prefix shapes:
   int-family leaves;
   one leaf-only `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` for a float
   argument, whose leaves are declared float-argument loads, `FCONST_0`,
-  `FCONST_1`, `FCONST_2`, or `LDC` of `Float`;
+  `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a direct
+  declared float-argument load;
   int-family constants; or one `INEG` over a direct declared int-family
   argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
@@ -199,12 +200,14 @@ One additional family is reduced to that same shared-join form:
 - A float call argument may instead contain exactly one `FADD`, `FSUB`,
   `FMUL`, `FDIV`, or `FREM` over two non-recursive float leaves. A float leaf
   must be a matching declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`,
-  `FCONST_2`, or `LDC` of `Float`. This proof has its own one-level binary
-  budget: nested float binaries, `FNEG`, extra-local float loads, and computed
-  double or reference inputs remain rejected. The admitted arithmetic stays
-  in the retained bytecode prefix, preserving Java evaluation order, rounding,
-  signed-zero, infinity, and NaN behavior without reproducing float arithmetic
-  in C++.
+  `FCONST_2`, or `LDC` of `Float`, or one `FNEG` whose sole operand is a
+  matching declared-argument `FLOAD`. This proof has its own one-level binary
+  budget, which `FNEG` does not consume: nested and extra-local float binaries,
+  extra-local float loads, `FNEG` of a constant, double `FNEG`, and `FNEG` of
+  an extra-local or computed value remain rejected, as do computed double or
+  reference inputs. The admitted arithmetic stays in the retained bytecode
+  prefix, preserving Java evaluation order, rounding, signed-zero, infinity,
+  and NaN behavior without reproducing float arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. Every `ASTORE 0`
   must precede the first chain call. Besides an identity-preserving store, its
@@ -807,6 +810,16 @@ Synthetic bytecode unit tests in
 - `threeImmediateFaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
   float inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring exactly matching float stdout.
+- `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
+  over each direct declared float load while retaining all three negations,
+  all three chain calls, two join `GOTO`s, and one hidden bridge.
+- `rewrittenThreeImmediateFnegSuperReturnsPassJvmVerification` selects every
+  rewritten path through a Java 8 owner and float-taking superclass, reaching
+  the unresolved hidden bridge only after JVM verification succeeds.
+- `threeImmediateFnegSuperReturnsCompileAndRunWithJavaParity` exercises finite
+  positive and negative float inputs through plain Java and the complete
+  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring exactly
+  matching float stdout.
 - `admitsThreeImmediateReturnsWithFsubAndFmulOfProvenChainInputs` checks
   leaf-only float subtraction and multiplication while retaining all three
   matching operations, all three chain calls, two join `GOTO`s, and one hidden
