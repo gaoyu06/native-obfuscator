@@ -2495,7 +2495,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one double leaf: a declared DLOAD, DCONST_0/1, or an LDC whose
-     * constant is a Double.
+     * constant is a Double, or one DNEG over a direct declared DLOAD.
      */
     private static Integer previousProvenDoubleChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2509,7 +2509,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || isDoubleConstant(input)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
-        return null;
+        if (input.getOpcode() != Opcodes.DNEG) {
+            return null;
+        }
+        int operandIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (operandIndex < 0
+                || !isDirectDeclaredArgumentLoad(
+                constructor.instructions.get(operandIndex),
+                Type.DOUBLE_TYPE, declaredArguments)) {
+            return null;
+        }
+        return previousExecutableIndex(constructor, operandIndex - 1);
     }
 
     private static boolean isDoubleConstant(AbstractInsnNode input) {
