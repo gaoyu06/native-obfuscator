@@ -1,152 +1,98 @@
-# IR compiler phase 12 / IR 编译器第十二阶段
+# Phase 12 IR admission measurement / Phase 12 IR 接纳率测量
 
-Required base / 必须基于:
-`cursor/ir-compiler-phase11-6d81`
-(`6fc64927a53c777a36c38e54aaed01b1bd696ed3`, draft PR #78).
-The docs-only phase-11 review branches #82/#83 are not used. /
-必须基于 `cursor/ir-compiler-phase11-6d81`
-（`6fc64927a53c777a36c38e54aaed01b1bd696ed3`，草稿 PR #78），
-不使用仅含文档的 phase-11 审阅分支 #82/#83。
+## (a) Change scope / 改动范围
 
-## Summary / 摘要
+**English**
 
-Phase 12 admits supported user/test class constructor bodies into the optional
-Java bytecode → typed CFG IR → C++/JNI compiler. The complete constructor is
-validated before mutation. The verifier-required `this(...)`/`super(...)` call
-stays in the Java constructor, while the initialized suffix runs through a
-hidden static native bridge with local 0 represented as `REFERENCE`. The
-constructor itself never receives illegal `ACC_NATIVE`. The default remains
-`legacy`.
+This is documentation and measurement only. It adds a two-class,
+Java-8-targeted corpus under `docs/measurement/ir-admission-phase12/` and the
+reproducible report `docs/benchmarks/ir-admission-phase12.md`. The corpus
+exercises a constructor, integer/long/reference fields, an interface default
+method, an interface call, and an unsupported float-conversion opcode.
 
-第十二阶段将受支持的用户/测试类构造函数方法体纳入可选的 Java 字节码 → typed
-CFG IR → C++/JNI 编译路径。完整构造函数会在 mutation 前验证。verifier 要求的
-`this(...)`/`super(...)` 调用保留在 Java 构造函数中；初始化后的后缀通过 hidden
-static native bridge 执行，local 0 表示为 `REFERENCE`。构造函数本身不会被非法地
-标记为 `ACC_NATIVE`。默认值仍为 `legacy`。
+On the compiler/runtime tip from draft PR #89, the exact six-method input
+produced five IR markers and one logged per-method fallback. The report records
+every method and descriptor, the exact fallback diagnostic, commands,
+toolchain, date, input JAR hash, and the one-tip scope limitation. It makes no
+speedup or production-coverage claim. No compiler/runtime source, default, or
+snippet resource is changed.
 
-## (a) Change scope / 本次改动范围
+**中文**
 
-- Makes `MethodProcessor.shouldProcess` codegen-mode aware: `<init>` remains
-  excluded in `legacy` and is considered only in explicit IR mode.
-- Validates the complete constructor with the existing frontend before
-  creating output, cache entries, a hidden bridge, or rewritten bytecode.
-- Requires one linear direct `this(...)` or `super(...)` call, then lowers the
-  independently valid initialized suffix through a hidden static native bridge.
-- Keeps the constructor non-native and passes initialized `this` as local 0 /
-  `REFERENCE` / `jobject obj`.
-- Retains the existing full-IR `<init>` representation and
-  `CallNonvirtualVoidMethod` family. The executable bridge preserves the
-  verifier-required call in bytecode so it is not executed twice.
-- Reuses exact phase-10 `SetIntField`, `SetLongField`, and `SetObjectField`
-  carriers for `I`, `J`, object, and array stores.
-- Keeps unprotected exceptional exits as JNI `void` returns with the exception
-  pending.
-- Leaves an unsupported constructor as unchanged Java bytecode instead of
-  sending it to the constructor-excluding legacy method shell.
-- Conservatively rejects a prefix `ASTORE` to local 0 or a forwarded
-  reference/array parameter. This review fix prevents a wrong local-0 receiver
-  and bridge calls whose verifier type no longer matches the descriptor.
-- Adds simple-field/getter, subclass `super(...)`, delegated `this(...)`,
-  object/array field, prefix reference-local safety, fallback-before-mutation,
-  and retained g++ smoke coverage.
-- Preserves phase-9 array returns, phase-10 fields, phase-11 invokes, the
-  `legacy` default, and all snippet resources.
+本改动仅包含文档与测量。在
+`docs/measurement/ir-admission-phase12/` 下新增一个以 Java 8 为目标的双类语料，
+并新增可复现报告 `docs/benchmarks/ir-admission-phase12.md`。语料覆盖构造函数、
+整数/长整数/引用字段、接口 default 方法、接口调用，以及不受支持的浮点转换
+opcode。
 
-- 使 `MethodProcessor.shouldProcess` 感知 codegen mode：`<init>` 在 `legacy`
-  中仍被排除，仅在显式 IR mode 下成为候选。
-- 在创建输出、cache entry、hidden bridge 或改写字节码前，先用现有 frontend
-  验证完整构造函数。
-- 要求存在一个线性的直接 `this(...)` 或 `super(...)` 调用，再将可独立验证的
-  已初始化后缀通过 hidden static native bridge 降级。
-- 构造函数保持非 native；已初始化的 `this` 作为 local 0 / `REFERENCE` /
-  `jobject obj` 传入。
-- 保留完整 IR 中现有的 `<init>` 表示及 `CallNonvirtualVoidMethod` family。
-  可执行 bridge 将 verifier 要求的调用保留在字节码中，避免重复执行构造函数。
-- 对 `I`、`J`、对象及数组字段写入复用 phase-10 的精确 `SetIntField`、
-  `SetLongField` 与 `SetObjectField` carrier。
-- 无保护异常出口继续以 JNI `void` 返回，并保持异常 pending。
-- 不受支持的构造函数保持原 Java 字节码，不会送入本就排除构造函数的 legacy
-  method shell。
-- 保守拒绝在前缀中通过 `ASTORE` 覆盖 local 0 或需要转发的引用/数组参数。
-  该审阅修复可防止 local 0 接收错误对象，以及 bridge 调用的 verifier 类型与
-  descriptor 不匹配。
-- 新增简单字段/ getter、子类 `super(...)`、委托 `this(...)`、对象/数组字段、
-  前缀引用 local 安全、mutation 前 fallback 及保留的 g++ smoke 覆盖。
-- 保留 phase-9 数组返回、phase-10 字段、phase-11 invoke、`legacy` 默认值及
-  全部 snippet resources。
+在草稿 PR #89 的 compiler/runtime tip 上，这个包含六个方法的精确输入产生了
+五个 IR marker 与一条逐方法 fallback 日志。报告逐项记录方法与 descriptor、
+原始 fallback 诊断、命令、工具链、日期、输入 JAR hash 及单一 tip 的范围限制。
+本文不声称存在加速或生产覆盖率，也未修改 compiler/runtime 源码、默认值或
+snippet resource。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
 **No / 否。**
 
-This remains a partial, opt-in compiler slice. Constructors with unsupported
-operations, non-linear initialization prefixes, cross-split exception regions,
-or suffix dependencies on prefix-only locals remain as Java bytecode.
-Float/double, invokedynamic, `POP2`, `MULTIANEWARRAY`, other primitive field or
-invoke carriers, and other operations outside the documented subset still
-fall back. Focused unit tests and C++ syntax checks do not replace native
-runtime-parity gates on every supported platform.
+**English**
 
-这仍是部分、可选的编译器增量。含不支持操作、非线性初始化前缀、跨 split
-异常区域，或后缀依赖仅在前缀初始化的局部变量的构造函数仍保留为 Java 字节码。
-float/double、invokedynamic、`POP2`、`MULTIANEWARRAY`、其他 primitive 字段或
-invoke carrier，以及文档范围外的操作仍会 fallback。聚焦单测与 C++ 语法检查
-不能替代全部受支持平台上的 native 运行时等价性门禁。
+This is a controlled measurement, not a production compiler change or a
+production-readiness gate. The observed five-to-one split applies only to the
+named two-class JAR on one draft PR #89 tip and does not establish wider
+coverage, runtime parity, or performance.
 
-## (c) Is review required? / 上线前是否需要 review？
+**中文**
+
+这是受控测量，并非生产编译器改动或生产就绪门禁。观测到的五比一结果仅适用于
+草稿 PR #89 单一 tip 上指定的双类 JAR，不能证明更广泛的覆盖率、运行时等价性
+或性能。
+
+## (c) Is review required? / 是否需要 review？
 
 **Yes / 是。**
 
-Review must confirm the verifier-safe split, full-body admission before
-mutation, exact local-0 receiver mapping, constructor bridge descriptor and
-argument order, retained `this(...)`/`super(...)` bytecode call, I/J/reference
-field carriers, JNI void exceptional exits, and unchanged-constructor fallback.
-The stacked phase-9 through phase-11 regressions must remain present.
+**English**
 
-Review 必须确认 verifier-safe split、mutation 前的完整方法体 admission、精确的
-local-0 receiver 映射、构造函数 bridge 描述符与参数顺序、保留的
-`this(...)`/`super(...)` 字节码调用、I/J/引用字段 carrier、JNI void 异常出口，
-以及构造函数保持不变的 fallback。堆叠的 phase-9 至 phase-11 回归必须保留。
+Review should confirm that the inventory contains exactly the six input
+methods, each table row matches its JVM descriptor, all five IR classifications
+have generated IR markers, and the one fallback reason is copied exactly from
+the compiler log. Review should also confirm that generated `<clinit>` methods
+are excluded and that no production source or default changed.
 
-## (d) Review preconditions / Review 前置条件
+**中文**
 
-1. Compare against `cursor/ir-compiler-phase11-6d81` at `6fc6492…` (draft
-   PR #78), not `master` or docs-only review branches #82/#83.
-   必须基于 `cursor/ir-compiler-phase11-6d81` 的 `6fc6492…`（草稿 PR #78）
-   比较，不得改用 `master` 或仅含文档的审阅分支 #82/#83。
-2. Re-run the focused command with `CC=gcc CXX=g++ --rerun-tasks` and inspect
-   the JUnit XML. Review-branch result: `IrCompilerTest` 58 plus
-   `CodegenModeTest` 2, total 60; zero skipped, failures, or errors.
-   使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦命令并读取 JUnit XML。
-   审阅分支结果为 `IrCompilerTest` 58 加 `CodegenModeTest` 2，共 60；跳过、
-   失败、错误均为零。
-3. With g++ and JNI headers present, require
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to be unskipped
-   and independently run `g++ -std=c++17 -fsyntax-only` on the retained unit.
-   The review run's unskipped smoke and independent 61-`JNICALL`-function
-   syntax check both exited zero.
-   当 g++ 与 JNI headers 存在时，必须确认
-   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
-   unit 独立运行 `g++ -std=c++17 -fsyntax-only`。审阅运行中未跳过的 smoke
-   与独立的 61 个 `JNICALL` 函数语法检查均以零退出。
-4. Inspect a successful constructor rewrite: `<init>` must remain non-native,
-   retain exactly its direct `this(...)`/`super(...)` prefix, invoke the hidden
-   bridge with initialized `this` plus descriptor arguments, and return `V`.
-   检查成功的构造函数改写：`<init>` 必须保持非 native，精确保留其直接
-   `this(...)`/`super(...)` 前缀，以已初始化的 `this` 加描述符参数调用 hidden
-   bridge，并以 `V` 返回。
-5. Inspect a rejected constructor after an unsupported opcode. Its instruction
-   list and `ACC_NATIVE` state, output/native metadata, hidden bridge state, and
-   all four caches must remain unchanged.
-   检查因不支持 opcode 被拒绝的构造函数：其指令列表、`ACC_NATIVE` 状态、
-   output/native metadata、hidden bridge 状态及四类 cache 均必须保持不变。
-6. Verify source and tests still retain the `legacy` CLI/API default, phase-9
-   `jarray` return cast, phase-10 field families, phase-11 invoke families, and
-   `sources/cppsnippets.properties`.
-   确认源码与测试仍保留 `legacy` CLI/API 默认值、phase-9 `jarray` 返回转换、
-   phase-10 字段 family、phase-11 invoke family 及
-   `sources/cppsnippets.properties`。
+Review 应确认输入清单恰好包含六个方法、表中每行与其 JVM descriptor 一致、
+五项 IR 分类均有生成的 IR marker，且唯一 fallback 原因逐字复制自 compiler
+日志。还应确认工具生成的 `<clinit>` 未计入输入方法，并且生产源码与默认值
+均未改变。
 
-Detailed evidence / 详细证据:
-`docs/architecture/ir-phase12-review.md` and
-`docs/architecture/ir-phase12-status.md`.
+## (d) Review evidence / Review 证据
+
+**English**
+
+1. Compare against `cursor/ir-phase12-sol-review-6d81` at
+   `481b7b108388380bfbbdf94703ee56eb4b601b02`.
+2. Run the build, corpus compilation, `javap`, opt-in CLI, marker count, and
+   fallback count exactly as listed in
+   `docs/benchmarks/ir-admission-phase12.md`.
+3. Confirm the observed counts are six input methods, five IR methods, and one
+   per-method fallback.
+4. Confirm the fallback log names
+   `measurement/phase12/AdmissionTarget#unsupported(I)I` and reports
+   `Unsupported instruction for phase-two IR at bytecode instruction 3 (opcode 134)`.
+5. Inspect the branch diff and confirm it contains only this PR body, the
+   benchmark report, and the two measurement-only Java sources.
+
+**中文**
+
+1. 与 `cursor/ir-phase12-sol-review-6d81` 的
+   `481b7b108388380bfbbdf94703ee56eb4b601b02` 比较。
+2. 严格按照 `docs/benchmarks/ir-admission-phase12.md` 中列出的命令运行构建、
+   语料编译、`javap`、显式 IR CLI、marker 计数与 fallback 计数。
+3. 确认观测计数为六个输入方法、五个 IR 方法和一个逐方法 fallback。
+4. 确认 fallback 日志指向
+   `measurement/phase12/AdmissionTarget#unsupported(I)I`，且报告
+   `Unsupported instruction for phase-two IR at bytecode instruction 3 (opcode 134)`。
+5. 检查分支 diff，确认仅包含本 PR body、benchmark 报告和两个仅用于测量的
+   Java 源文件。
