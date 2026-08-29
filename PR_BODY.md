@@ -1,108 +1,117 @@
-# IR compiler phase 9 / IR 编译器第九阶段
+# IR compiler phase 10 / IR 编译器第十阶段
 
 Preferred base / 首选基线:
-`cursor/ir-compiler-phase8-6d81`
-(`95eb5ffd2fc5a9515af65c1d15403e7c983c64a5`).
+`cursor/ir-phase9-sol-review-6d81`
+(`0e323da959d34f29b3c3cede206e48aa96a4559e`).
+This is the reviewed phase-9 tip containing the array-return `jarray` carrier
+fix. / 这是包含数组返回 `jarray` carrier 修复的 phase-9 已审查 tip。
 
 ## Summary / 摘要
 
-This review accepts the phase-9 Java bytecode → typed CFG IR → C++/JNI
-lowering after fixing array-return JNI carrier matching. The reviewed path
-supports reference-returning method bodies, typed null values and branches, and
-category-one discard. The default remains `legacy`. Review evidence is in
-`docs/architecture/ir-phase9-review.md`.
+Phase 10 adds typed instance and static field access to the optional Java
+bytecode → typed CFG IR → C++/JNI compiler. Exact `I`, exact `J`, and object or
+array reference fields now use their matching JNI carriers and accessors. The
+default remains `legacy`.
 
-本次审查修复数组返回的 JNI carrier 匹配后，接受第九阶段 Java 字节码 → typed CFG
-IR → C++/JNI lowering。审查后的路径支持引用返回方法体、typed null 值与分支及
-category-one 丢弃。默认值仍为 `legacy`。审查证据见
-`docs/architecture/ir-phase9-review.md`。
+第十阶段为可选的 Java 字节码 → typed CFG IR → C++/JNI 编译路径增加 typed 实例与
+静态字段访问。精确 `I`、精确 `J` 以及对象或数组引用字段分别使用匹配的 JNI
+carrier 与 accessor。默认值仍为 `legacy`。
 
 ## (a) Change scope / 本次改动范围
 
-- Reviews `ARETURN` descriptor/carrier matching and fixes array-return
-  functions by casting the coarsened `jobject` SSA value to the shell's
-  `jarray` return type. Object returns keep the existing carrier. Unprotected
-  JNI failures return `nullptr` with the exception pending.
-- Adds a typed `ACONST_NULL` IR value that emits `nullptr`.
-- Adds dedicated structured reference conditions for `IFNULL` and `IFNONNULL`;
-  they are not represented as integer compares.
-- Admits `POP` only for one-slot/category-one values. `POP2`, category-two
-  `POP`, and other category-two stack manipulation still fall back.
-- Adds a regression for allocated-array return and expands the retained g++
-  translation unit. Existing focused regressions cover allocated-object and
-  null returns, both null branch directions, category-one discard,
-  category-two rejection, and fallback-before-mutation.
-- Keeps constructor method bodies excluded, the default `legacy`, and all
-  existing snippets.
+- Admits `GETFIELD`, `PUTFIELD`, `GETSTATIC`, and `PUTSTATIC` for exact `I`,
+  exact `J`, and object/array field descriptors.
+- Maps `I` to `IrType.I32` / `jint`, `J` to `IrType.I64` / `jlong`, and
+  object/array descriptors to `IrType.REFERENCE` / `jobject`; there is no
+  implicit integer widening for field access.
+- Selects `Get/Set[Static]IntField`, `Get/Set[Static]LongField`, or
+  `Get/Set[Static]ObjectField` from the descriptor while retaining the existing
+  `CachedFieldInfo`, `cfields`, `GetFieldID`, and `GetStaticFieldID` paths.
+- Routes a null instance receiver through the block exceptional exit with
+  `NullPointerException` pending.
+- Rejects field sorts `Z`, `B`, `C`, `S`, `F`, and `D` during frontend
+  admission. They remain per-method fallback cases.
+- Adds instance/static get+put round-trips for `I`, `J`, object references, and
+  `[I` fields; null-receiver and fallback-before-mutation regressions; and all
+  new methods to the retained g++ translation unit.
+- Preserves the phase-9 array-return regression and `jarray` boundary cast,
+  constructor-method exclusion, `legacy` default, and every existing snippet.
 
-- 审查 `ARETURN` 的描述符/carrier 匹配，并在数组返回函数边界将统一的 `jobject`
-  SSA 值显式转换为 JNI 外壳要求的 `jarray`；对象返回保持现有 carrier。未受保护的
-  JNI 失败会在异常保持 pending 时返回 `nullptr`。
-- 新增 typed `ACONST_NULL` IR 值并发射 `nullptr`。
-- 为 `IFNULL` 与 `IFNONNULL` 新增专用 structured reference condition；不会将其
-  表示为整数比较。
-- 仅为单 slot/category-one 值接纳 `POP`；`POP2`、对 category-two 值的 `POP`
-  及其他 category-two stack manipulation 仍会 fallback。
-- 新增分配数组返回回归并扩展保留的 g++ translation unit。已有聚焦回归覆盖分配
-  对象与 null 返回、null 分支两个方向、category-one 丢弃、category-two 拒绝，
-  以及新接纳操作之后的 mutation 前 fallback。
-- 构造器方法体仍不处理，默认值仍为 `legacy`，全部现有 snippets 均保留。
+- 为精确 `I`、精确 `J` 及对象/数组字段描述符接纳 `GETFIELD`、`PUTFIELD`、
+  `GETSTATIC` 与 `PUTSTATIC`。
+- 将 `I` 映射到 `IrType.I32` / `jint`，将 `J` 映射到 `IrType.I64` /
+  `jlong`，将对象/数组描述符映射到 `IrType.REFERENCE` / `jobject`；字段访问
+  不进行隐式整数拓宽。
+- 根据描述符选择 `Get/Set[Static]IntField`、`Get/Set[Static]LongField` 或
+  `Get/Set[Static]ObjectField`，并保留现有 `CachedFieldInfo`、`cfields`、
+  `GetFieldID` 与 `GetStaticFieldID` 路径。
+- 实例字段接收者为 null 时，在 `NullPointerException` 保持 pending 的情况下走
+  当前 block 的异常出口。
+- 在 frontend 准入阶段拒绝 `Z`、`B`、`C`、`S`、`F` 与 `D` 字段 sort；这些
+  情况继续按方法 fallback。
+- 新增实例/静态 `I`、`J`、对象引用及 `[I` 字段的 get+put round-trip，
+  null-receiver 与 mutation 前 fallback 回归，并将全部新方法加入保留的 g++
+  translation unit。
+- 保留 phase-9 数组返回回归与 `jarray` 边界转换、构造器方法体排除、
+  `legacy` 默认值及全部现有 snippets。
 
 ## (b) Can this ship to production as-is? / 是否可直接上线？
 
 **No / 否。**
 
-Phase 9 remains a partial, opt-in compiler slice. Unsupported bytecodes and
-descriptors still fall back, including float/double, `MULTIANEWARRAY`,
-non-`int` primitive arrays, reference fields, `INVOKEINTERFACE`, invokedynamic,
-non-constructor `INVOKESPECIAL`, constructor method bodies, and category-two
-stack manipulation. Focused unit and C++ syntax evidence does not replace
+Phase 10 remains a partial, opt-in compiler slice. Unsupported bytecodes and
+descriptors still fall back, including the six other primitive field sorts,
+float/double operations, `MULTIANEWARRAY`, non-`int` primitive array
+operations, `INVOKEINTERFACE`, invokedynamic, non-constructor
+`INVOKESPECIAL`, constructor method bodies, and category-two stack
+manipulation. Focused unit and C++ syntax evidence does not replace
 supported-platform native runtime-parity gates.
 
-第九阶段仍是部分、可选的编译器增量。不支持的字节码与描述符仍会 fallback，包括
-float/double、`MULTIANEWARRAY`、非 `int` primitive array、reference field、
-`INVOKEINTERFACE`、invokedynamic、非构造器 `INVOKESPECIAL`、构造器方法体及
-category-two stack manipulation。聚焦单测与 C++ 语法证据不能替代受支持平台上的
-native 运行时等价性门禁。
+第十阶段仍是部分、可选的编译器增量。不支持的字节码与描述符仍会 fallback，包括
+其余六种 primitive 字段 sort、float/double 操作、`MULTIANEWARRAY`、非 `int`
+primitive array 操作、`INVOKEINTERFACE`、invokedynamic、非构造器
+`INVOKESPECIAL`、构造器方法体及 category-two stack manipulation。聚焦单测与
+C++ 语法证据不能替代受支持平台上的 native 运行时等价性门禁。
 
 ## (c) Is review required? / 上线前是否需要 review？
 
 **Yes / 是。**
 
-Yes. This branch contains that review. It found and fixed the array-return
-carrier mismatch, then rechecked JNI default returns on exceptional exits,
-explicit reference-null branch typing and control flow, category-one `POP`
-validation, and fallback-before-mutation. Verdict: **Accept**.
+Review must confirm descriptor-exact IR typing and JNI accessor selection,
+field cache identity for instance versus static access, null-receiver
+exception routing, and fallback-before-mutation. The stacked phase-9
+array-return carrier fix must remain present.
 
-是。本分支即该审查结果。审查发现并修复了数组返回 carrier 不匹配，随后重新核对
-异常出口的 JNI 默认返回、显式 reference-null 分支 typing 与控制流、category-one
-`POP` 校验及 mutation 前 fallback。结论：**接受**。
+Review 必须确认描述符精确的 IR typing 与 JNI accessor 选择、实例和静态访问的
+字段缓存身份、null receiver 异常路由，以及 mutation 前 fallback。堆叠基线中的
+phase-9 数组返回 carrier 修复必须保留。
 
 ## (d) Review preconditions / Review 前置条件
 
-1. Compare and land on `cursor/ir-compiler-phase8-6d81` at `95eb5ffd…`, not
-   `master` or a review-only branch, preserving the compiler stack order.
-   必须基于 `cursor/ir-compiler-phase8-6d81` 的 `95eb5ffd…` 比较与落地，不得改用
-   `master` 或仅审查分支，并保持编译器堆叠顺序。
+1. Compare against `cursor/ir-phase9-sol-review-6d81` at `0e323da…`, not
+   `master`, the unfixed phase-9 branch, or the Fable review branch.
+   必须基于 `cursor/ir-phase9-sol-review-6d81` 的 `0e323da…` 比较，不得改用
+   `master`、未修复的 phase-9 分支或 Fable review 分支。
 2. Re-run the focused Gradle command with `CC=gcc CXX=g++ --rerun-tasks` and
-   inspect the actual JUnit XML counts. Reviewed result: `IrCompilerTest` 43
-   plus `CodegenModeTest` 2, total 45; zero skipped, failures, or errors. The
-   additional test is the array-return regression.
+   inspect the actual JUnit XML counts. Recorded result: `IrCompilerTest` 47
+   plus `CodegenModeTest` 2, total 49; zero skipped, failures, or errors.
    使用 `CC=gcc CXX=g++ --rerun-tasks` 重跑聚焦 Gradle 命令，并检查实际 JUnit
-   XML 计数。审查结果为 43 + 2，共 45 个测试；跳过、失败、错误均为零。新增的
-   一个测试是数组返回回归。
-3. When g++ and JNI headers are present, require the g++ testcase to remain
+   XML 计数。记录结果为 47 + 2，共 49 个测试；跳过、失败、错误均为零。
+3. With g++ and JNI headers present, require
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` to remain
    unskipped and independently run `g++ -std=c++17 -fsyntax-only` on the exact
-   retained generated translation unit. Reviewed result: the unskipped
-   40-method smoke and independent syntax check both exited zero.
-   当 g++ 与 JNI headers 存在时，必须确认 g++ 测试未跳过，并对保留的同一份生成
-   translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。审查结果：未跳过的
-   40-method smoke 及独立语法检查均以零退出。
-4. Require supported-platform/JDK CI and native runtime-parity checks before
-   any production decision.
-   任何生产决策前都必须通过受支持平台/JDK 的 CI 及 native 运行时等价性检查。
-5. During conflict resolution, retain the array-return `jarray` cast, exception
-   routing, constructor-method exclusion, explicit reference branch semantics,
-   fallback-before-mutation, the `legacy` default, and existing snippets.
-   解决冲突时必须保留数组返回的 `jarray` 转换、异常路由、构造器方法体排除策略、
-   显式引用分支语义、mutation 前 fallback、`legacy` 默认值及现有 snippets。
+   retained generated translation unit. Recorded result: the 50-method smoke
+   and independent syntax check both exited zero.
+   当 g++ 与 JNI headers 存在时，必须确认
+   `generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` 未跳过，并对保留的
+   同一份生成 translation unit 独立运行 `g++ -std=c++17 -fsyntax-only`。记录
+   结果：50-method smoke 与独立语法检查均以零退出。
+4. Inspect generated C++ for exact `Int`, `Long`, and `Object` instance/static
+   accessor families and verify null get/put exits keep the NPE pending.
+   检查生成 C++ 是否使用精确的 `Int`、`Long` 与 `Object` 实例/静态 accessor
+   family，并确认 null get/put 异常出口保持 NPE pending。
+5. During conflict resolution, retain fallback-before-mutation, the phase-9
+   `jarray` cast, constructor-method exclusion, the `legacy` default, and all
+   existing snippets.
+   解决冲突时必须保留 mutation 前 fallback、phase-9 `jarray` 转换、构造器方法体
+   排除策略、`legacy` 默认值及全部现有 snippets。
