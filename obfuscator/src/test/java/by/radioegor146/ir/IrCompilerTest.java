@@ -4,6 +4,8 @@ import by.radioegor146.CodegenMode;
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
+import by.radioegor146.Platform;
+import by.radioegor146.bytecode.IndyPreprocessor;
 import by.radioegor146.bytecode.PreprocessorUtils;
 import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
@@ -257,6 +259,28 @@ public class IrCompilerTest {
                 method.name.startsWith("invokereverse")));
         assertTrue(hidden.methods.stream().anyMatch(method ->
                 method.name.startsWith("mhinvoke")));
+    }
+
+    @Test
+    public void acceptsTypeDescriptorBootstrapParameterDuringIndyPreprocessing() {
+        MethodNode method = typeDescriptorBootstrapMethod();
+        new IndyPreprocessor().process(owner(), method, Platform.STD_JAVA);
+
+        boolean callsBootstrap = false;
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction
+                : method.instructions.toArray()) {
+            if (instruction instanceof LdcInsnNode
+                    && "Wrong 3 first arguments in bsm".equals(
+                    ((LdcInsnNode) instruction).cst)) {
+                throw new AssertionError("TypeDescriptor bootstrap was rejected");
+            }
+            if (instruction instanceof MethodInsnNode) {
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                callsBootstrap |= "example/Bootstrap".equals(invoke.owner)
+                        && "bootstrap".equals(invoke.name);
+            }
+        }
+        assertTrue(callsBootstrap);
     }
 
     @Test
@@ -2925,6 +2949,23 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.IRETURN));
         method.maxLocals = 2;
         method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode typeDescriptorBootstrapMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "typeDescriptorBootstrap", "()Ljava/lang/Object;", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, "example/Bootstrap",
+                "bootstrap",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/invoke/TypeDescriptor;)"
+                        + "Ljava/lang/invoke/CallSite;",
+                false);
+        method.instructions.add(new InvokeDynamicInsnNode(
+                "dynamic", "()Ljava/lang/Object;", bootstrap));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
         return method;
     }
 
