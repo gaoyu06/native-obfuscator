@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the post-#190 leftover inventory
-[#191](https://github.com/gaoyu06/native-obfuscator/pull/191)
-(measurement only on `47e35fc`: ClassicTest 108/108, JDK 17/21/25
-82/82, 47/47, 21/21 IR, 0 leftovers)
-on the post-[#190](https://github.com/gaoyu06/native-obfuscator/pull/190)
-pairwise-distinct suffix tree. Active process:
+Last updated after landing proven extras through distinct suffixes
+[#192](https://github.com/gaoyu06/native-obfuscator/pull/192)
+(parent re-ran 221/221: 214 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity`)
+on the post-[#191](https://github.com/gaoyu06/native-obfuscator/pull/191)
+inventory tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -140,7 +140,10 @@ legacy。不能当成 JDK 支持矩阵。
   [#190](https://github.com/gaoyu06/native-obfuscator/pull/190) admits
   two through eight pairwise-distinct nonempty linear suffixes on
   that same path-id bridge (`IFNE` for two paths, `TABLESWITCH`
-  for three or more). Non-identity `ASTORE 0`, unproven
+  for three or more).
+  [#192](https://github.com/gaoyu06/native-obfuscator/pull/192) forwards
+  proven prefix extras through that path-id bridge (extras before the
+  trailing path-id `int`). Non-identity `ASTORE 0`, unproven
   prefix→suffix jumps/switches, other mixed try/catch placements,
   remaining multi-super shapes (nested arithmetic, `IDIV`/`IREM`,
   branched suffixes, hybrid identical-plus-distinct sets), and
@@ -267,6 +270,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Two distinct constructor suffixes (#189) | 214 tests (`IrCompilerTest` 207 + `CodegenModeTest` 7). Parent re-ran 214/214 including `twoDifferentSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | 2–8 pairwise-distinct constructor suffixes (#190) | 217 tests (`IrCompilerTest` 210 + `CodegenModeTest` 7). Parent re-ran 217/217 including `threeDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#190 leftover inventory (#191) | Measurement only on `47e35fc`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Extras through distinct suffixes (#192) | 221 tests (`IrCompilerTest` 214 + `CodegenModeTest` 7). Parent re-ran 221/221 including `twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -333,9 +337,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #191 (post-#190
-  leftover inventory on `47e35fc`). /
-  落地 #191 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #192 (proven
+  extras through distinct path-id suffixes). /
+  落地 #192 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
