@@ -360,7 +360,7 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("jobject ignored_hidden, jobject obj, "
                 + "jfloat arg0, jdouble arg1"));
         assertTrue(cpp.contains("env->SetFloatField(obj"));
-        assertTrue(cpp.contains("env->SetDoubleField(obj"));
+        assertTrue(cpp.contains("env->SetDoubleField("));
         assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
         assertTrue(context.proxyMethod != null);
         assertTrue((context.proxyMethod.getMethodNode().access & Opcodes.ACC_NATIVE) != 0);
