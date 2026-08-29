@@ -1,12 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after landing isolated prefix `ASTORE n; RETURN` /
-`ASTORE n; GOTO ret` mixed catch
-[#187](https://github.com/gaoyu06/native-obfuscator/pull/187)
-(parent re-ran 205/205: 198 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `relocatedPrefixAstoreReturnHandlerCompilesAndRunsWithJavaParity`)
-on the post-[#186](https://github.com/gaoyu06/native-obfuscator/pull/186)
-shift-input tree. Active process:
+Last updated after landing isolated prefix `ATHROW` /
+`ASTORE n; ALOAD n; ATHROW` mixed catch
+[#188](https://github.com/gaoyu06/native-obfuscator/pull/188)
+(parent re-ran 210/210: 203 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `relocatedPrefixAthrowHandlerCompilesAndRunsWithJavaParity`)
+on the post-[#187](https://github.com/gaoyu06/native-obfuscator/pull/187)
+ASTORE-return tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -130,11 +130,14 @@ legacy。不能当成 JDK 支持矩阵。
   [#187](https://github.com/gaoyu06/native-obfuscator/pull/187) admits
   a suffix-protected range whose isolated prefix handler is
   `ASTORE n; RETURN` or `ASTORE n; GOTO ret` (`n` is a non-receiver
-  reference slot). Non-identity `ASTORE 0`, unproven prefix→suffix
-  jumps/switches, other mixed try/catch placements, remaining
-  multi-super shapes (nested arithmetic, `IDIV`/`IREM`,
-  non-identical suffixes), and extras still unassigned on a
-  bridge-taking path are still rejected.
+  reference slot).
+  [#188](https://github.com/gaoyu06/native-obfuscator/pull/188) admits
+  the same suffix-range shape whose isolated prefix handler is
+  `ATHROW` or `ASTORE n; ALOAD n; ATHROW`. Non-identity `ASTORE 0`,
+  unproven prefix→suffix jumps/switches, other mixed try/catch
+  placements, remaining multi-super shapes (nested arithmetic,
+  `IDIV`/`IREM`, non-identical suffixes), and extras still
+  unassigned on a bridge-taking path are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -252,6 +255,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Leaf-only `IAND`/`IOR`/`IXOR` chain inputs (#185) | 197 tests (`IrCompilerTest` 190 + `CodegenModeTest` 7). Parent re-ran 197/197 including `threeImmediateBitwiseSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Leaf-only `ISHL`/`ISHR`/`IUSHR` chain inputs (#186) | 200 tests (`IrCompilerTest` 193 + `CodegenModeTest` 7). Parent re-ran 200/200 including `threeImmediateShiftSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Isolated `ASTORE n; RETURN` mixed catch (#187) | 205 tests (`IrCompilerTest` 198 + `CodegenModeTest` 7). Parent re-ran 205/205 including `relocatedPrefixAstoreReturnHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
+| Isolated `ATHROW` mixed catch (#188) | 210 tests (`IrCompilerTest` 203 + `CodegenModeTest` 7). Parent re-ran 210/210 including `relocatedPrefixAthrowHandlerCompilesAndRunsWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -298,7 +302,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
 - Admit remaining IR leftovers so methods stop falling back:
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
-  placements beyond #171/#184/#187, remaining multi-super shapes
+  placements beyond #171/#184/#187/#188, remaining multi-super shapes
   such as nested arithmetic, `IDIV`/`IREM`, or non-identical suffixes,
   extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
@@ -317,9 +321,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #187 (isolated
-  prefix `ASTORE n; RETURN` / `ASTORE n; GOTO ret` mixed catch). /
-  落地 #187 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #188 (isolated
+  prefix `ATHROW` / `ASTORE n; ALOAD n; ATHROW` mixed catch). /
+  落地 #188 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
