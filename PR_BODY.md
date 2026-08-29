@@ -28,8 +28,9 @@ production goal, and the default `--codegen` mode remains `legacy`.
 
 Review the canonical-range classifier in
 `ConstructorSpecialMethodProcessor.duplicatedSuffix()`, the metadata-only label
-handling used to compare linear copies, and the reuse of the existing generic
-strict-diamond catch relocation path after normalization.
+handling used to compare normal linear copies, the isolated canonical
+suffix-handler tail proof, and the reuse of the existing generic strict-diamond
+catch relocation path after normalization.
 
 Focused gate:
 
@@ -41,6 +42,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 The runtime fixture requires `cmake` and `g++` and compares plain Java with the
 IR JNI output under `-Xverify:all -Xcheck:jni`.
+
+Focused JUnit XML result: `IrCompilerTest` 264/264 and `CodegenModeTest` 7/7;
+271 total, with 0 failures, 0 errors, and 0 skipped.
 
 ## (d) Preconditions
 
@@ -72,7 +76,7 @@ IR JNI output under `-Xverify:all -Xcheck:jni`.
 
 ## (c) 审查 / 门禁
 
-请重点审查 `ConstructorSpecialMethodProcessor.duplicatedSuffix()` 中对规范范围的分类、线性副本比较时仅忽略非执行元数据标签的处理，以及归一化后继续复用现有严格菱形 CFG 异常迁移路径的逻辑。
+请重点审查 `ConstructorSpecialMethodProcessor.duplicatedSuffix()` 中对规范范围的分类、比较正常线性副本时仅忽略非执行元数据标签的处理、规范后缀隔离处理器尾部的证明，以及归一化后继续复用现有严格菱形 CFG 异常迁移路径的逻辑。
 
 聚焦门禁：
 
@@ -84,6 +88,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 运行时夹具需要 `cmake` 和 `g++`，并在 `-Xverify:all -Xcheck:jni`
 下比较普通 Java 与 IR JNI 输出。
+
+聚焦 JUnit XML 结果：`IrCompilerTest` 为 264/264，
+`CodegenModeTest` 为 7/7；总计 271 个测试，0 个失败、0 个错误、0 个跳过。
 
 ## (d) 前置条件
 

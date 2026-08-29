@@ -141,13 +141,16 @@ One additional family is reduced to that same shared-join form:
   which case each call is immediately followed by `RETURN`.
 - The copies may not contain branches, switches, throws, nested constructor
   calls, or unsafe constants. Non-executable labels and frames are ignored when
-  comparing copies, while every executable instruction and operand must match
-  the final bytecode-order copy.
+  comparing each normal copy through its first `RETURN`, while every executable
+  instruction and operand in those normal copies must match the final
+  bytecode-order copy.
 - A try/catch entry is accepted when all three labels are before the first
-  chain call, or when all three labels are wholly in the canonical final copy.
-  A protected range wholly in that canonical copy may instead target one of
-  the already-proven isolated prefix handlers. The noncanonical copies may not
-  own any table labels, so normalization never leaves dangling entries.
+  chain call, or when its protected range is wholly in the canonical final copy
+  and its suffix-owned handler is one isolated `POP; RETURN` or safe
+  `ASTORE n; RETURN` tail after the normal suffix return. A protected range
+  wholly in that canonical copy may instead target one of the already-proven
+  isolated prefix handlers. The noncanonical copies may not own any table
+  labels, so normalization never leaves dangling entries.
 - With three or more candidates, each call's complete input sequence must
   additionally start with direct `ALOAD 0`, or a direct `ALOAD` of the proven
   original-receiver alias after the prefix overwrite described below. In
@@ -877,9 +880,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 260 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 264 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 267 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 271 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
