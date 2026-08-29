@@ -18,7 +18,8 @@ The command-line defaults remain:
   C++ emitter.
 - `eval` uses `InterpreterStreamStrategy`. It emits one method-data array and a
   JNI trampoline that passes Java integer/long arguments through `jlong`
-  carriers to `native_jvm::ir_eval::evaluate_i32` or `evaluate_i64`.
+  carriers, plus the current `JNIEnv*`, to
+  `native_jvm::ir_eval::evaluate_i32` or `evaluate_i64`.
 
 The evaluator source is copied to the generated `cpp/` tree and added to the
 existing CMake shared-library target only for `--codegen=ir --ir-lower=eval`.
@@ -65,10 +66,11 @@ Instructions follow immediately:
 | `0x28` | `src:u16` | `LRETURN`: return an i64 register as `jlong` |
 | `0x29` | `dst:u16, src:u16` | `I2L`: sign-extend an i32 register to i64 |
 | `0x2a` | `dst:u16, src:u16` | `L2I`: keep the low 32 bits of an i64 register |
+| `0x2b` | `dst:u16, lhs:u16, rhs:u16` | Signed `LDIV`; throw `ArithmeticException` when `rhs` is zero |
+| `0x2c` | `dst:u16, lhs:u16, rhs:u16` | Signed `LREM`; throw `ArithmeticException` when `rhs` is zero |
 
-`0x23`–`0x2a` are the first eight-opcode contiguous unused range after the
-existing `0x13`–`0x18` arithmetic block; `0x20`–`0x22` retain their existing
-control-flow and i32-return assignments.
+`0x2b` and `0x2c` extend the existing contiguous `0x23`–`0x2a` i64 block.
+`0x20`–`0x22` retain their existing control-flow and i32-return assignments.
 
 Bitwise operations and left shifts run on the 32-bit unsigned carrier and copy
 the result bits back to `jint`, preserving JVM wraparound without signed C++
@@ -82,6 +84,13 @@ preserving JVM two's-complement wraparound. `I2L` sign-extends `jint`; `L2I`
 truncates to the low 32 bits. JVM local `LLOAD`/`LSTORE` instructions disappear
 into SSA in the frontend; the evaluator `LLOAD` materializes i64 parameters and
 `LSTORE` stages the i64 return without changing those values.
+
+`LDIV` and `LREM` use signed C++ division only after checking its two JVM edge
+cases. A zero divisor creates a pending `java/lang/ArithmeticException` through
+the trampoline's `JNIEnv*` and exits evaluation immediately.
+`Long.MIN_VALUE / -1` bypasses signed C++ overflow and returns
+`Long.MIN_VALUE`; the corresponding remainder returns zero. All other results
+use truncation toward zero, matching JVM long division.
 
 Branch condition values are `0 EQ`, `1 NE`, `2 LT`, `3 GE`, `4 GT`, and
 `5 LE`. An `rhs` value of `0xffff` means the literal integer zero, matching the
@@ -101,8 +110,8 @@ The evaluator lowering currently accepts:
   return;
 - i32 constants;
 - `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`, and `IUSHR`;
-- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `I2L`, `L2I`, and `LRETURN`
-  through the shared typed SSA representation;
+- `LLOAD`, `LSTORE`, `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `I2L`, `L2I`,
+  and `LRETURN` through the shared typed SSA representation;
 - `GOTO`, all unary and binary integer comparisons represented by the IR, and
   `IRETURN`;
 - local-variable and operand-stack merges already represented as IR phi values.
@@ -115,8 +124,8 @@ existing per-method legacy fallback remains safe.
 The current evaluator path falls back for instance methods, void/reference
 signatures, exception edges, JNI-dependent nodes (fields, invokes, arrays, and
 throws), integer operations outside the operations above, unary integer
-operations, and any other IR node not listed here. `LDIV` and `LREM` remain
-fallbacks because the evaluator does not yet implement their JVM
-division-by-zero and `Long.MIN_VALUE / -1` behavior. Long constants also remain
-fallbacks. Float/double and object values are outside this evaluator slice. The
-direct IR strategy retains its existing broader support.
+operations, and any other IR node not listed here. Long constants remain
+fallbacks. Float/double and object values are outside this evaluator slice.
+The shared frontend and direct IR strategy also admit `LDIV`/`LREM`; direct
+lowering applies the same zero-divisor and `Long.MIN_VALUE / -1` rules and can
+route a pending exception through its existing exception-edge dispatch.
