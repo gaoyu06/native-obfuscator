@@ -13,6 +13,7 @@ import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
 import by.radioegor146.source.ClassSourceBuilder;
+import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -580,6 +581,90 @@ public class IrCompilerTest {
         assertTrue(context.proxyMethod != null);
         assertTrue((context.proxyMethod.getMethodNode().access & Opcodes.ACC_NATIVE) != 0);
         assertTrue(realOpcodes(constructor).contains(Opcodes.INVOKESTATIC));
+    }
+
+    @Test
+    public void admitsPrefixLocalBranchConstructorWithHiddenBridge() {
+        MethodNode constructor = prefixLocalBranchConstructor();
+        ClassNode owner = constructorOwner("example/Validated", "example/Base");
+
+        // The complete constructor (including the uninitialized-this prefix and
+        // the this/super call) must build, and the split must produce the
+        // initialized-this suffix without rejecting the prefix-local branch.
+        frontend.build(owner.name, constructor);
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(owner, constructor);
+        assertTrue(nativeBody != null);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue(cpp.contains("void JNICALL __ngen_special_init_0_0(JNIEnv *env, "
+                + "jobject ignored_hidden, jobject obj, jint arg0)"));
+        assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
+        assertTrue(context.proxyMethod != null);
+        assertTrue((context.proxyMethod.getMethodNode().access
+                & Opcodes.ACC_NATIVE) != 0);
+
+        // The prefix-local branch and the this/super call stay in bytecode; the
+        // suffix is reached through the hidden bridge, so the constructor is no
+        // longer its original full body.
+        assertTrue(realOpcodes(constructor).contains(Opcodes.IFNE));
+        String bridgeName = context.proxyMethod.getMethodNode().name;
+        assertTrue(retainsBridgeInvocation(constructor, bridgeName));
+        MethodInsnNode retainedSuper = retainedThisOrSuperCall(constructor, owner);
+        assertEquals("example/Base", retainedSuper.owner);
+        assertEquals("<init>", retainedSuper.name);
+        assertEquals(Opcodes.INVOKESPECIAL, retainedSuper.getOpcode());
+    }
+
+    @Test
+    public void rejectsPrefixBranchTargetingSuffixLabel() {
+        ClassNode owner = constructorOwner("example/Skip", "java/lang/Object");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, prefixBranchTargetingSuffixConstructor()));
+        assertEquals(Opcodes.IFNE, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor prefix branches across the this/super call"));
+    }
+
+    @Test
+    public void rejectsSuffixJumpIntoConstructorPrefix() {
+        ClassNode owner = constructorOwner("example/Loop", "java/lang/Object");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, suffixJumpIntoPrefixConstructor()));
+        assertEquals(Opcodes.GOTO, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor suffix jumps into its bytecode prefix"));
+    }
+
+    @Test
+    public void rejectsTryCatchCrossingConstructorSplit() {
+        ClassNode owner = constructorOwner("example/Guarded", "java/lang/Object");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, tryCatchCrossingConstructor()));
+        assertTrue(error.getMessage().contains(
+                "Constructor exception regions may not cross the this/super split"));
+    }
+
+    @Test
+    public void rejectsMultipleThisOrSuperCandidates() {
+        ClassNode owner = constructorOwner("example/Twice", "java/lang/Object");
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, multipleSuperCallConstructor()));
+        assertEquals(Opcodes.INVOKESPECIAL, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Constructor has multiple possible this/super calls"));
     }
 
     @Test
@@ -3772,6 +3857,129 @@ public class IrCompilerTest {
         method.maxLocals = 1;
         method.maxStack = 2;
         return method;
+    }
+
+    private MethodNode prefixLocalBranchConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode chain = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                "java/lang/Math", "abs", "(I)I", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, chain));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW,
+                "java/lang/IllegalArgumentException"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("zero"));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/IllegalArgumentException", "<init>",
+                "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(chain);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "example/Base", "<init>", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 3;
+        method.maxStack = 3;
+        return method;
+    }
+
+    private MethodNode prefixBranchTargetingSuffixConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode suffix = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, suffix));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(suffix);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 2;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode suffixJumpIntoPrefixConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        LabelNode prefix = new LabelNode();
+        method.instructions.add(prefix);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, prefix));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode tryCatchCrossingConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/Throwable"));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode multipleSuperCallConstructor() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private boolean retainsBridgeInvocation(MethodNode method, String bridgeName) {
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof MethodInsnNode
+                    && instruction.getOpcode() == Opcodes.INVOKESTATIC
+                    && bridgeName.equals(((MethodInsnNode) instruction).name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private MethodInsnNode retainedThisOrSuperCall(MethodNode method, ClassNode owner) {
+        for (org.objectweb.asm.tree.AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof MethodInsnNode
+                    && instruction.getOpcode() == Opcodes.INVOKESPECIAL) {
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                if ("<init>".equals(invoke.name)
+                        && (owner.name.equals(invoke.owner)
+                        || owner.superName.equals(invoke.owner))) {
+                    return invoke;
+                }
+            }
+        }
+        throw new AssertionError("no retained this/super call");
     }
 
     private MethodNode unsupportedConstructor() {

@@ -138,15 +138,42 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     "Constructor has no direct this/super constructor call");
         }
 
+        Set<LabelNode> prefixLabels = new HashSet<>();
+        for (int i = 0; i <= callIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction instanceof LabelNode) {
+                prefixLabels.add((LabelNode) instruction);
+            }
+        }
+
         Set<Integer> forwardedReferenceLocals = forwardedReferenceLocals(constructor);
         for (int i = 0; i <= callIndex; i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
-            if (instruction instanceof JumpInsnNode
-                    || instruction instanceof TableSwitchInsnNode
-                    || instruction instanceof LookupSwitchInsnNode) {
-                throw unsupported(
-                        "Control flow before the this/super call cannot be split safely",
-                        i, instruction);
+            // Prefix-local branches keep both edges in the retained bytecode, so
+            // the this/super call can still be reached. A branch whose target
+            // lands in the suffix would skip the mandatory chain call.
+            if (instruction instanceof JumpInsnNode) {
+                if (!prefixLabels.contains(((JumpInsnNode) instruction).label)) {
+                    throw unsupported(
+                            "Constructor prefix branches across the this/super call",
+                            i, instruction);
+                }
+            } else if (instruction instanceof TableSwitchInsnNode) {
+                TableSwitchInsnNode table = (TableSwitchInsnNode) instruction;
+                if (!prefixLabels.contains(table.dflt)
+                        || !prefixLabels.containsAll(table.labels)) {
+                    throw unsupported(
+                            "Constructor prefix branches across the this/super call",
+                            i, instruction);
+                }
+            } else if (instruction instanceof LookupSwitchInsnNode) {
+                LookupSwitchInsnNode lookup = (LookupSwitchInsnNode) instruction;
+                if (!prefixLabels.contains(lookup.dflt)
+                        || !prefixLabels.containsAll(lookup.labels)) {
+                    throw unsupported(
+                            "Constructor prefix branches across the this/super call",
+                            i, instruction);
+                }
             }
             if (instruction.getOpcode() == Opcodes.ASTORE
                     && forwardedReferenceLocals.contains(
