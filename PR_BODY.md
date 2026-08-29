@@ -1,94 +1,62 @@
-# English
+# docs: Sol review of #137 eval port
 
-## (a) Scope
+## English
 
-Ports the opt-in shared IR evaluator lowering onto current `master`.
-`--codegen=legacy`, `--backend=cpp`, and `--ir-lower=direct` remain the
-defaults. `--ir-lower=eval` is consulted only after an `IrMethod` is built on
-the `--codegen=ir` path; supported methods become a compact little-endian
-method-data stream plus a C++17 evaluator trampoline. Unsupported methods keep
-the existing per-method legacy fallback.
+### (a) Scope
 
-The evaluator covers i32 constants, i32 arithmetic/bitwise/shifts and control
-flow, i64 parameter/load/store/add/subtract/multiply/bitwise/shifts/return, and
-`I2L`/`L2I`. Opcodes `0x2b`/`0x2c` stay reserved: this change does not add
-frontend or evaluator support for `LDIV`/`LREM`.
+Independently review draft PR #137 at `c384cb5` against `master` at `76ebedd`.
+The review checks CLI/API defaults, interpreter-first dispatch, the
+pre-mutation fallback boundary, all Java/C++ opcode assignments, source-file
+selection, frontend ownership, and omitted-vs-explicit `direct` output
+identity. It adds the review note
+`docs/reviews/ir-eval-port-sol.md`; no compiler source is changed.
 
-## (b) Ship-ready?
+### (b) Ship-ready?
 
-**No.** This is default-off compiler/codegen infrastructure with a narrow
-capability slice. It is not a packer, protector, obfuscation product, or
-anti-analysis feature. Issue #53 evaluator median remains `N/A`.
+**No.** The eval lowering remains an optional, deliberately limited
+compiler/codegen path. The default remains `--ir-lower=direct`.
 
-## (c) Review required?
+### (c) Review result
 
-**Yes.** Please review:
+**Accept with nits.** No blocking compiler-correctness defect was found.
+All 28 Java serializer and C++ evaluator opcode names and values agree;
+`0x2b`/`0x2c` remain unused. The committed opcode-map regression checks only
+selected constants, so a future data-driven full-map assertion would improve
+drift detection.
 
-- exact Java serializer ↔ C++ evaluator opcode agreement;
-- capability validation and complete serialization before
-  `MethodShellEmitter` can mutate bytecode or registration output;
-- the recorded default-off `diff -r` checks;
-- preservation of interpreter-first dispatch, constructor restoration,
-  classfile versions, existing process overloads, and SDK source copying;
-- absence of frontend edits and absence of `LDIV`/`LREM` work owned by the
-  parallel IR agent.
+### (d) Integration evidence
 
-## (d) Preconditions
+Independent dynamic reruns are pending and will be recorded before handoff.
+The review already confirms that `legacy`, `cpp`, and `direct` remain the
+defaults; all existing `NativeObfuscator.process` overloads remain available;
+the five excluded frontend/emitter/test files are absent from the implementation
+diff; benchmark/status files are unchanged; the #53 median remains `N/A`; and
+no JDK support level or requirement-7 result is asserted.
 
-- Re-run the focused Java/C++ evaluator tests.
-- Confirm omitted `--ir-lower` matches explicit `direct`, including the
-  default legacy generation tree.
-- Do not back-fill issue #53 with invented measurements.
-- Do not flip the `legacy`, `cpp`, or `direct` defaults.
+## 中文
 
-## Verification
+### (a) 范围
 
-- Focused CLI/evaluator suite: 16/16 passed.
-- Existing direct-IR and interpreter-dispatch suites: 96/96 passed.
-- Omitted-vs-explicit-direct `diff -r`: exit 0 for default legacy and IR.
-- Generated evaluator CMake project: GCC/G++ configure, compile, and link
-  completed with exit 0.
+独立审查 draft PR #137：tip 为 `c384cb5`，`master` 基线为 `76ebedd`。
+审查范围包括 CLI/API 默认值、interpreter 优先分派、mutation 前 fallback 边界、
+Java/C++ 全部 opcode 编号、source file 选择、frontend 代码归属，以及省略
+`--ir-lower` 与显式 `direct` 的输出一致性。新增审查文档
+`docs/reviews/ir-eval-port-sol.md`，不修改编译器源码。
 
-# 中文
+### (b) Ship-ready？
 
-## (a) 范围
+**No / 否。** eval lowering 仍是可选且能力范围有限的 compiler/codegen 路径；
+默认值继续为 `--ir-lower=direct`。
 
-把可选的共享 IR evaluator lowering 移植到当前 `master`。默认值保持
-`--codegen=legacy`、`--backend=cpp` 和 `--ir-lower=direct`。
-`--ir-lower=eval` 只在 `--codegen=ir` 成功构建 `IrMethod` 后参与选择；
-支持的方法会降低为小端紧凑 method-data 和 C++17 evaluator trampoline。
-不支持的方法继续逐方法回退到现有 legacy 生成器。
+### (c) 审查结论
 
-当前切片包括 i32 常量、算术/位运算/移位与控制流，以及 i64 参数装载、复制、
-加减乘、位运算、移位、返回和 `I2L`/`L2I`。`0x2b`/`0x2c` 仍保留；
-本改动不增加 frontend 或 evaluator 的 `LDIV`/`LREM` 支持。
+**接受（附带小问题）。** 未发现阻塞性的编译器正确性缺陷。Java serializer 与
+C++ evaluator 的 28 个 opcode 名称和值完全一致，`0x2b`/`0x2c` 继续未使用。
+现有 opcode-map 回归测试只检查部分常量，后续可用数据驱动的全表断言加强漂移检测。
 
-## (b) 可以发布吗？
+### (d) 集成证据
 
-**不可以。** 这是默认关闭、能力范围很窄的编译器/codegen 基础设施，不是 packer、
-protector、混淆产品或 anti-analysis 功能。#53 的 evaluator median 仍为 `N/A`。
-
-## (c) 需要审阅吗？
-
-**需要。** 请重点检查：
-
-- Java serializer 与 C++ evaluator 的 opcode 是否逐项一致；
-- 能力检查和完整序列化是否都发生在 `MethodShellEmitter` 修改字节码或注册输出之前；
-- 文档记录的默认关闭 `diff -r` 结果；
-- interpreter 优先分派、构造器恢复、classfile 版本、已有 process overload 和 SDK
-  源文件复制是否保持不变；
-- 是否完全没有修改 frontend，也没有拿走并行 IR agent 的 `LDIV`/`LREM` 工作。
-
-## (d) 前置条件
-
-- 重新运行聚焦 Java/C++ evaluator 测试。
-- 确认省略 `--ir-lower` 与显式 `direct` 一致，包括默认 legacy 生成树。
-- 不得为 #53 补写虚构测量值。
-- 不得改变 `legacy`、`cpp` 或 `direct` 默认值。
-
-## 验证
-
-- 聚焦 CLI/evaluator 测试：16/16 通过。
-- 现有 direct-IR 与 interpreter 分派测试：96/96 通过。
-- 省略与显式 `direct` 的两组 `diff -r`：退出码均为 0。
-- 生成的 evaluator CMake 工程：GCC/G++ 配置、编译、链接退出码为 0。
+独立动态复跑正在进行，交付前会补充结果。静态审查已确认 `legacy`、`cpp` 和
+`direct` 默认值保持不变；既有 `NativeObfuscator.process` overload 均保留；
+五个排除的 frontend/emitter/test 文件均不在实现差异中；benchmark/status 文件
+未修改；#53 median 仍为 `N/A`；没有新增 JDK 支持级别或 requirement-7 结论。
