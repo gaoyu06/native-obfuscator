@@ -14,6 +14,7 @@ import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
@@ -24,6 +25,7 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.MultiANewArrayInsnNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.util.ArrayDeque;
@@ -50,6 +52,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         String name = String.format("special_init_%d_%d",
                 context.classIndex, context.methodIndex);
         ConstructorSplit split = split(context.clazz, context.method);
+        if (split.duplicatedSuffix != null) {
+            normalizeDuplicatedSuffix(
+                    context.method, split.duplicatedSuffix);
+            split = split(context.clazz, context.method);
+        }
         retainedPrefixTryCatches =
                 new ArrayList<>(split.prefixTryCatches);
         relocatedPrefixHandlers =
@@ -201,13 +208,27 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int suffixStartIndex = diagnosticCallIndex + 1;
         int wrapperEndIndex = suffixStartIndex;
         Set<Integer> admittedJoinGotos = new HashSet<>();
+        DuplicatedSuffix duplicatedSuffix = null;
         if (callIndexes.size() > 1) {
             SharedSuffix sharedSuffix =
                     sharedSuffix(constructor, callIndexes);
-            suffixStartIndex = sharedSuffix.joinIndex;
-            wrapperEndIndex =
-                    firstExecutableIndex(constructor, suffixStartIndex);
-            admittedJoinGotos.addAll(sharedSuffix.gotoIndexes);
+            if (sharedSuffix != null) {
+                suffixStartIndex = sharedSuffix.joinIndex;
+                wrapperEndIndex =
+                        firstExecutableIndex(constructor, suffixStartIndex);
+                admittedJoinGotos.addAll(sharedSuffix.gotoIndexes);
+            } else {
+                duplicatedSuffix =
+                        duplicatedSuffix(constructor, callIndexes);
+                if (duplicatedSuffix == null) {
+                    throw unsupported(
+                            "Constructor chain calls do not share one suffix join",
+                            diagnosticCallIndex,
+                            constructor.instructions.get(diagnosticCallIndex));
+                }
+                suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
+                wrapperEndIndex = suffixStartIndex;
+            }
         }
 
         Set<LabelNode> prefixLabels = new HashSet<>();
@@ -336,7 +357,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 widenedReferenceLocals, extraLocals,
                 firstExtraLocal(constructor),
                 prefixTryCatches, suffixTryCatches,
-                new ArrayList<>(relocatedByLabel.values()));
+                new ArrayList<>(relocatedByLabel.values()),
+                duplicatedSuffix);
     }
 
     private static boolean containsTryCatchLabels(
@@ -460,9 +482,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int nextExecutable = firstExecutableIndex(
                 constructor, lastCallIndex + 1);
         if (nextExecutable >= constructor.instructions.size()) {
-            throw unsupported(
-                    "Constructor chain calls do not share one suffix join",
-                    lastCallIndex, constructor.instructions.get(lastCallIndex));
+            return null;
         }
 
         int joinIndex = -1;
@@ -476,9 +496,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         if (join == null) {
-            throw unsupported(
-                    "Constructor chain calls do not share one suffix join",
-                    lastCallIndex, constructor.instructions.get(lastCallIndex));
+            return null;
         }
 
         Set<Integer> gotoIndexes = new HashSet<>();
@@ -487,22 +505,237 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             int successorIndex =
                     firstExecutableIndex(constructor, callIndex + 1);
             if (successorIndex >= constructor.instructions.size()) {
-                throw unsupported(
-                        "Constructor chain calls do not share one suffix join",
-                        callIndex, constructor.instructions.get(callIndex));
+                return null;
             }
             AbstractInsnNode successor =
                     constructor.instructions.get(successorIndex);
             if (!(successor instanceof JumpInsnNode)
                     || successor.getOpcode() != Opcodes.GOTO
                     || ((JumpInsnNode) successor).label != join) {
-                throw unsupported(
-                        "Constructor chain calls do not share one suffix join",
-                        callIndex, constructor.instructions.get(callIndex));
+                return null;
             }
             gotoIndexes.add(successorIndex);
         }
         return new SharedSuffix(joinIndex, gotoIndexes);
+    }
+
+    /**
+     * Proves one additional two-call shape: both calls fall through to
+     * non-empty, straight-line, structurally identical suffix copies ending in
+     * RETURN. The canonical final copy can then be shared by replacing the
+     * first copy with a GOTO. Empty copies stay rejected so separate returns
+     * are not generalized into a multi-exit rewrite.
+     */
+    private static DuplicatedSuffix duplicatedSuffix(
+            MethodNode constructor, List<Integer> callIndexes) {
+        if (callIndexes.size() != 2
+                || !constructor.tryCatchBlocks.isEmpty()) {
+            return null;
+        }
+
+        LinearSuffix first =
+                linearSuffix(constructor, callIndexes.get(0));
+        LinearSuffix second =
+                linearSuffix(constructor, callIndexes.get(1));
+        if (first == null || second == null
+                || first.endIndex > callIndexes.get(1)
+                || second.endIndex != constructor.instructions.size()
+                || !sameLinearSuffix(constructor, first, second)) {
+            return null;
+        }
+
+        for (AbstractInsnNode instruction : constructor.instructions) {
+            if (instruction.getOpcode() == Opcodes.ASTORE
+                    && ((VarInsnNode) instruction).var == 0) {
+                return null;
+            }
+        }
+
+        int firstExtraLocal = firstExtraLocal(constructor);
+        for (int i = second.startIndex; i < second.endIndex; i++) {
+            int local = readLocal(constructor.instructions.get(i));
+            if (local >= firstExtraLocal) {
+                return null;
+            }
+        }
+        if (!hasEmptyChainEntryStacks(constructor, callIndexes)) {
+            return null;
+        }
+
+        return new DuplicatedSuffix(
+                callIndexes.get(0), callIndexes.get(1),
+                first.startIndex, first.endIndex, second.startIndex);
+    }
+
+    private static LinearSuffix linearSuffix(
+            MethodNode constructor, int callIndex) {
+        int bodyInstructions = 0;
+        for (int i = callIndex + 1;
+             i < constructor.instructions.size(); i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            int opcode = instruction.getOpcode();
+            if (opcode < 0) {
+                return null;
+            }
+            if (opcode == Opcodes.RETURN) {
+                return bodyInstructions == 0
+                        ? null : new LinearSuffix(callIndex + 1, i + 1);
+            }
+            if (isReturn(opcode) || opcode == Opcodes.ATHROW
+                    || opcode == Opcodes.JSR || opcode == Opcodes.RET
+                    || instruction instanceof JumpInsnNode
+                    || instruction instanceof TableSwitchInsnNode
+                    || instruction instanceof LookupSwitchInsnNode
+                    || !isComparableLinearInstruction(instruction)) {
+                return null;
+            }
+            bodyInstructions++;
+        }
+        return null;
+    }
+
+    private static boolean sameLinearSuffix(
+            MethodNode constructor, LinearSuffix left, LinearSuffix right) {
+        int leftLength = left.endIndex - left.startIndex;
+        int rightLength = right.endIndex - right.startIndex;
+        if (leftLength != rightLength) {
+            return false;
+        }
+        for (int i = 0; i < leftLength; i++) {
+            if (!sameLinearInstruction(
+                    constructor.instructions.get(left.startIndex + i),
+                    constructor.instructions.get(right.startIndex + i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isComparableLinearInstruction(
+            AbstractInsnNode instruction) {
+        if (instruction instanceof InsnNode
+                || instruction instanceof IntInsnNode
+                || instruction instanceof VarInsnNode
+                || instruction instanceof TypeInsnNode
+                || instruction instanceof FieldInsnNode
+                || instruction instanceof IincInsnNode) {
+            return true;
+        }
+        if (instruction instanceof MethodInsnNode) {
+            return !"<init>".equals(
+                    ((MethodInsnNode) instruction).name);
+        }
+        if (instruction instanceof LdcInsnNode) {
+            Object constant = ((LdcInsnNode) instruction).cst;
+            return constant instanceof String
+                    || constant instanceof Integer
+                    || constant instanceof Float
+                    || constant instanceof Long
+                    || constant instanceof Double
+                    || constant instanceof Type;
+        }
+        return false;
+    }
+
+    private static boolean sameLinearInstruction(
+            AbstractInsnNode left, AbstractInsnNode right) {
+        if (left.getOpcode() != right.getOpcode()
+                || left.getClass() != right.getClass()
+                || (!isComparableLinearInstruction(left)
+                && left.getOpcode() != Opcodes.RETURN)) {
+            return false;
+        }
+        if (left instanceof InsnNode) {
+            return true;
+        }
+        if (left instanceof IntInsnNode) {
+            return ((IntInsnNode) left).operand
+                    == ((IntInsnNode) right).operand;
+        }
+        if (left instanceof VarInsnNode) {
+            return ((VarInsnNode) left).var
+                    == ((VarInsnNode) right).var;
+        }
+        if (left instanceof TypeInsnNode) {
+            return ((TypeInsnNode) left).desc.equals(
+                    ((TypeInsnNode) right).desc);
+        }
+        if (left instanceof FieldInsnNode) {
+            FieldInsnNode leftField = (FieldInsnNode) left;
+            FieldInsnNode rightField = (FieldInsnNode) right;
+            return leftField.owner.equals(rightField.owner)
+                    && leftField.name.equals(rightField.name)
+                    && leftField.desc.equals(rightField.desc);
+        }
+        if (left instanceof MethodInsnNode) {
+            MethodInsnNode leftMethod = (MethodInsnNode) left;
+            MethodInsnNode rightMethod = (MethodInsnNode) right;
+            return leftMethod.owner.equals(rightMethod.owner)
+                    && leftMethod.name.equals(rightMethod.name)
+                    && leftMethod.desc.equals(rightMethod.desc)
+                    && leftMethod.itf == rightMethod.itf;
+        }
+        if (left instanceof IincInsnNode) {
+            IincInsnNode leftIncrement = (IincInsnNode) left;
+            IincInsnNode rightIncrement = (IincInsnNode) right;
+            return leftIncrement.var == rightIncrement.var
+                    && leftIncrement.incr == rightIncrement.incr;
+        }
+        if (left instanceof LdcInsnNode) {
+            return ((LdcInsnNode) left).cst.equals(
+                    ((LdcInsnNode) right).cst);
+        }
+        return false;
+    }
+
+    /**
+     * The hidden bridge cannot carry an existing operand stack. This analysis
+     * also proves that each selected call consumes the constructor receiver.
+     */
+    private static boolean hasEmptyChainEntryStacks(
+            MethodNode constructor, List<Integer> callIndexes) {
+        ReceiverFrame[] frames;
+        try {
+            frames = receiverFrames(
+                    constructor, constructor.instructions.size() - 1,
+                    new ArrayList<>());
+        } catch (ReceiverAnalysisFailure failure) {
+            return false;
+        }
+        for (Integer callIndex : callIndexes) {
+            ReceiverFrame frame = frames[callIndex];
+            MethodInsnNode call =
+                    (MethodInsnNode) constructor.instructions.get(callIndex);
+            int argumentValues = Type.getArgumentTypes(call.desc).length;
+            if (Type.getReturnType(call.desc).getSort() != Type.VOID
+                    || frame == null
+                    || frame.stack.size() != argumentValues + 1
+                    || !frame.stack.get(0).receiver) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void normalizeDuplicatedSuffix(
+            MethodNode constructor, DuplicatedSuffix suffix) {
+        AbstractInsnNode firstCall =
+                constructor.instructions.get(suffix.firstCallIndex);
+        AbstractInsnNode canonicalCall =
+                constructor.instructions.get(suffix.canonicalCallIndex);
+        List<AbstractInsnNode> discarded = new ArrayList<>();
+        for (int i = suffix.firstStartIndex;
+             i < suffix.firstEndIndex; i++) {
+            discarded.add(constructor.instructions.get(i));
+        }
+        for (AbstractInsnNode instruction : discarded) {
+            constructor.instructions.remove(instruction);
+        }
+
+        LabelNode join = new LabelNode();
+        constructor.instructions.insert(
+                firstCall, new JumpInsnNode(Opcodes.GOTO, join));
+        constructor.instructions.insert(canonicalCall, join);
     }
 
     private static int firstExecutableIndex(
@@ -1780,6 +2013,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final List<TryCatchBlockNode> prefixTryCatches;
         private final List<TryCatchBlockNode> suffixTryCatches;
         private final List<RelocatedPrefixHandler> relocatedPrefixHandlers;
+        private final DuplicatedSuffix duplicatedSuffix;
 
         private ConstructorSplit(
                 int suffixStartIndex, int wrapperEndIndex,
@@ -1787,7 +2021,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 List<ExtraLocal> extraLocals, int firstExtraLocal,
                 List<TryCatchBlockNode> prefixTryCatches,
                 List<TryCatchBlockNode> suffixTryCatches,
-                List<RelocatedPrefixHandler> relocatedPrefixHandlers) {
+                List<RelocatedPrefixHandler> relocatedPrefixHandlers,
+                DuplicatedSuffix duplicatedSuffix) {
             this.suffixStartIndex = suffixStartIndex;
             this.wrapperEndIndex = wrapperEndIndex;
             this.widenedReferenceLocals = widenedReferenceLocals;
@@ -1796,6 +2031,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             this.prefixTryCatches = prefixTryCatches;
             this.suffixTryCatches = suffixTryCatches;
             this.relocatedPrefixHandlers = relocatedPrefixHandlers;
+            this.duplicatedSuffix = duplicatedSuffix;
             int packedLocal = firstExtraLocal;
             for (ExtraLocal extra : extraLocals) {
                 packedLocal += extra.type.getSize();
@@ -1821,6 +2057,35 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private SharedSuffix(int joinIndex, Set<Integer> gotoIndexes) {
             this.joinIndex = joinIndex;
             this.gotoIndexes = gotoIndexes;
+        }
+    }
+
+    private static final class LinearSuffix {
+        private final int startIndex;
+        private final int endIndex;
+
+        private LinearSuffix(int startIndex, int endIndex) {
+            this.startIndex = startIndex;
+            this.endIndex = endIndex;
+        }
+    }
+
+    private static final class DuplicatedSuffix {
+        private final int firstCallIndex;
+        private final int canonicalCallIndex;
+        private final int firstStartIndex;
+        private final int firstEndIndex;
+        private final int canonicalStartIndex;
+
+        private DuplicatedSuffix(
+                int firstCallIndex, int canonicalCallIndex,
+                int firstStartIndex, int firstEndIndex,
+                int canonicalStartIndex) {
+            this.firstCallIndex = firstCallIndex;
+            this.canonicalCallIndex = canonicalCallIndex;
+            this.firstStartIndex = firstStartIndex;
+            this.firstEndIndex = firstEndIndex;
+            this.canonicalStartIndex = canonicalStartIndex;
         }
     }
 

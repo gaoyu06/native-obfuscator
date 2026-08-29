@@ -8,7 +8,7 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers seven related prefix shapes:
+The constructor split now covers eight related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
 - try/catch entries whose start, end, and handler labels all remain in the
@@ -23,7 +23,9 @@ The constructor split now covers seven related prefix shapes:
 - extra reference or primitive locals written in the prefix and read in the
   suffix, when their incoming state at the chain call is provable; and
 - multiple direct this/super calls in a strict diamond that converges at one
-  shared suffix label.
+  shared suffix label; and
+- exactly two direct this/super calls whose separate non-empty straight-line
+  suffix copies are proven instruction-for-instruction identical.
 
 ## Current rule
 
@@ -56,10 +58,26 @@ fail-closed rule:
   join label, and one hidden-bridge invocation. `createNativeBody` starts at
   the shared join and emits that suffix once.
 
-Separate returns, distinct joins, post-call prefix work before convergence,
-unreachable candidates, and otherwise non-identical per-call suffixes remain
-rejected. This is intentionally a one-join diamond admission, not a general
-multi-exit constructor rewriter.
+One additional shape is reduced to that same shared-join form:
+
+- There must be exactly two candidates, each immediately followed by a
+  non-empty straight-line suffix copy ending in `RETURN`.
+- The copies may not contain labels, branches, switches, throws, nested
+  constructor calls, unsafe constants, or exception-table coverage. Every
+  executable instruction and operand in the two copies must match.
+- A receiver-state CFG analysis proves that each call consumes the original
+  constructor receiver with no older operand-stack values. The suffix may
+  enter with only the receiver and declared constructor arguments; prefix
+  `ASTORE 0` and extra-local suffix inputs are not admitted for this shape.
+- After all checks pass, the first suffix copy is replaced with `GOTO` and the
+  second copy receives the shared join label. The existing strict-diamond
+  split then retains both calls and emits the canonical suffix once behind one
+  hidden bridge.
+
+Immediate separate returns, distinct joins, work between a chain call and an
+existing join, unreachable candidates, and non-identical per-call suffixes
+remain rejected. This is intentionally a narrow normalization to the proven
+one-join form, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -198,6 +216,15 @@ Synthetic bytecode unit tests in
   negative constructor arguments through the plain Java class and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`; both runs print the
   same superclass and shared-suffix field values.
+- `admitsMultipleSuperWithIdenticalLinearSuffixCopies` proves that two
+  separate, identical field-writing suffix copies produce one native body and
+  normalize to a retained two-call wrapper with one hidden bridge.
+- `rewrittenIdenticalMultiSuperSuffixCopiesPassJvmVerification` executes both
+  retained chain-call paths through JVM verification up to the unresolved
+  native bridge.
+- `identicalMultiSuperSuffixCopiesCompileAndRunWithJavaParity` exercises both
+  paths through plain Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsPrefixOnlyTryCatchAndRetainsItInRewrittenConstructor` proves that the
   independent suffix has no prefix handler while the rewritten constructor
   retains the complete prefix exception-table entry and forwards its assigned
@@ -220,11 +247,11 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
-- Multi-call negatives cover a non-identity prefix `ASTORE 0`, a zero-call edge
-  into the suffix, try/catch spanning a chain call and suffix code, a path that
-  executes two chain calls, and distinct per-call suffixes. Existing
-  prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
-  negatives remain.
+- Multi-call negatives cover immediate separate returns, a non-identity prefix
+  `ASTORE 0`, a zero-call edge into the suffix, try/catch spanning a chain call
+  and suffix code, a path that executes two chain calls, and distinct non-empty
+  per-call suffixes. Existing prefix-to-suffix, suffix-to-prefix, and
+  conditionally assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
@@ -237,9 +264,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 151 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 155 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 158 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 162 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
