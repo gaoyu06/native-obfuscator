@@ -8,12 +8,16 @@ import by.radioegor146.ir.IrPhi;
 import by.radioegor146.ir.IrType;
 import by.radioegor146.ir.IrValue;
 import by.radioegor146.ir.UnsupportedIrConstructException;
+import by.radioegor146.Platform;
+import by.radioegor146.bytecode.IndyPreprocessor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -46,6 +50,7 @@ public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
 
     public IrMethod build(String owner, MethodNode method) {
+        method = admitInvokeDynamic(owner, method);
         method = splitReferenceAndIntTemporarySlots(method);
         MethodShape shape = validateMethodShape(method);
         CfgBuilder.Graph graph = cfgBuilder.build(method);
@@ -157,6 +162,54 @@ public final class AsmToIr {
         propagateReferenceDescriptors(irMethod);
         MonitorStructureValidator.validate(irMethod);
         return irMethod;
+    }
+
+    /**
+     * Lowers {@code invokedynamic} into the marker/link-call-site/trampoline form
+     * the IR backend already emits, by running the shared {@link IndyPreprocessor}
+     * on a private copy of the method. Production input reaches this frontend
+     * already preprocessed, so the scan below finds nothing and returns the
+     * original node untouched; the copy path only fires when a raw
+     * {@code invokedynamic} reaches the IR frontend directly.
+     *
+     * <p>Bootstrap shapes the preprocessor cannot lower (for example an impossible
+     * bootstrap argument arity, or a constant carrier it does not know how to box)
+     * are rejected before any mutation: the copy is discarded and the caller's
+     * method is left byte-for-byte unchanged, so the method stays safe to fall
+     * back per method. {@code LDC} of {@code ConstantDynamic} is not handled by the
+     * preprocessor and is left in place; it is rejected later by the ordinary
+     * unsupported-constant validation, also before mutation.
+     */
+    private MethodNode admitInvokeDynamic(String owner, MethodNode method) {
+        boolean hasDynamic = false;
+        for (AbstractInsnNode node : method.instructions.toArray()) {
+            if (node instanceof InvokeDynamicInsnNode) {
+                hasDynamic = true;
+                break;
+            }
+        }
+        if (!hasDynamic) {
+            return method;
+        }
+
+        MethodNode copy = new MethodNode(Opcodes.ASM9, method.access, method.name,
+                method.desc, method.signature,
+                method.exceptions.toArray(new String[method.exceptions.size()]));
+        method.accept(copy);
+        ClassNode ownerNode = new ClassNode(Opcodes.ASM9);
+        ownerNode.name = owner;
+        try {
+            // STD_JAVA lowers each call site to a self-contained bootstrap plus
+            // MethodHandle.invokeWithArguments; it needs no reverse-invoke hidden
+            // class and runs on any conforming JVM, so it is the portable choice
+            // for a frontend that does not carry the runtime platform.
+            new IndyPreprocessor().process(ownerNode, copy, Platform.STD_JAVA);
+        } catch (RuntimeException preprocessingFailure) {
+            throw new UnsupportedIrConstructException(
+                    "invokedynamic bootstrap shape is not lowerable by the IR frontend: "
+                            + preprocessingFailure.getMessage());
+        }
+        return copy;
     }
 
     private MethodShape validateMethodShape(MethodNode method) {
