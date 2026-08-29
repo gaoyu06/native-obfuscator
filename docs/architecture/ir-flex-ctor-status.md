@@ -177,7 +177,7 @@ One additional family is reduced to that same shared-join form:
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
-- A long call argument may instead have at most two levels of `LADD`, `LSUB`,
+- A long call argument may instead have at most three levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
   value while keeping the count as a non-recursive int-family leaf. A long
@@ -186,7 +186,7 @@ One additional family is reduced to that same shared-join form:
   declared-argument `LLOAD`; an int-family count leaf uses the existing
   declared-argument `ILOAD` and int-family constant proof. A standalone
   `LNEG` leaf is admitted under the same operand restriction. This proof has
-  its own explicit two-level binary budget: three-or-more nested long
+  its own explicit three-level binary budget: four-or-more nested long
   binaries, computed shift counts, extra-local value or count loads, `LNEG`
   of a constant, double `LNEG`, and `LNEG` of an extra-local or computed value
   remain rejected. The retained bytecode prefix executes admitted operations,
