@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing closed int branches in 3–8 distinct suffixes
-[#194](https://github.com/gaoyu06/native-obfuscator/pull/194)
-(parent re-ran 229/229: 222 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeBranchedDistinctSuffixesCompileAndRunWithJavaParity`)
-on the post-[#193](https://github.com/gaoyu06/native-obfuscator/pull/193)
-two-call branched-suffix tree. Active process:
+Last updated after landing closed switches in distinct suffixes
+[#195](https://github.com/gaoyu06/native-obfuscator/pull/195)
+(parent re-ran 233/233: 226 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `suffixSwitchDistinctSuffixesCompileAndRunWithJavaParity`)
+on the post-[#194](https://github.com/gaoyu06/native-obfuscator/pull/194)
+3–8-call branched-suffix tree. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -149,11 +149,15 @@ legacy。不能当成 JDK 支持矩阵。
   exactly two distinct suffixes.
   [#194](https://github.com/gaoyu06/native-obfuscator/pull/194) lifts
   that same closed-branch proof onto the 3–8-call path-id
-  `TABLESWITCH` bridge. Non-identity `ASTORE 0`, unproven
+  `TABLESWITCH` bridge.
+  [#195](https://github.com/gaoyu06/native-obfuscator/pull/195) admits
+  one closed `TABLESWITCH` or `LOOKUPSWITCH` inside a distinct suffix
+  when the key is a proven int-family `ILOAD` and every arm stays
+  in-suffix and reaches `RETURN`. Non-identity `ASTORE 0`, unproven
   prefix→suffix jumps/switches, other mixed try/catch placements,
   remaining multi-super shapes (nested arithmetic, `IDIV`/`IREM`,
-  suffix switches, hybrid identical-plus-distinct sets), and extras
-  still unassigned on a bridge-taking path are still rejected.
+  hybrid identical-plus-distinct sets), and extras still unassigned
+  on a bridge-taking path are still rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
 - **Classfile versions.** Processed classes keep their input major version.
@@ -278,6 +282,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extras through distinct suffixes (#192) | 221 tests (`IrCompilerTest` 214 + `CodegenModeTest` 7). Parent re-ran 221/221 including `twoDistinctSuffixesWithExtraCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Closed int branches in distinct suffixes (#193) | 225 tests (`IrCompilerTest` 218 + `CodegenModeTest` 7). Parent re-ran 225/225 including `branchedDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Closed int branches in 3–8 distinct suffixes (#194) | 229 tests (`IrCompilerTest` 222 + `CodegenModeTest` 7). Parent re-ran 229/229 including `threeBranchedDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Closed switches in distinct suffixes (#195) | 233 tests (`IrCompilerTest` 226 + `CodegenModeTest` 7). Parent re-ran 233/233 including `suffixSwitchDistinctSuffixesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -325,8 +330,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   leftover constructor-split rejects (non-identity `ASTORE 0`,
   unproven prefix→suffix jumps/switches, other mixed try/catch
   placements beyond #171/#184/#187/#188, remaining multi-super shapes
-  such as nested arithmetic, `IDIV`/`IREM`, suffix switches, or
-  hybrid identical-plus-distinct suffix sets,
+  such as nested arithmetic, `IDIV`/`IREM`, or hybrid
+  identical-plus-distinct suffix sets,
   extras still unassigned on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
@@ -344,9 +349,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #194 (closed
-  int-family branches inside 2–8 distinct suffixes). /
-  落地 #194 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #195 (closed
+  in-suffix switches on the distinct-suffix path-id bridge). /
+  落地 #195 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
