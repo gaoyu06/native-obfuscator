@@ -90,6 +90,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     public void postProcess(MethodContext context) {
         ConstructorSplit split = split(context.clazz, context.method);
         Map<LabelNode, LabelNode> labels = labels(context.method);
+        if (split.distinctSuffix != null) {
+            InsnList wrapper = cloneRange(
+                    context.method, 0,
+                    split.distinctSuffix.callIndexes.get(0) + 1,
+                    labels, relocatedPrefixHandlers);
+            appendBridgeInvocation(context, split, wrapper, 0);
+            wrapper.add(cloneRange(
+                    context.method,
+                    split.distinctSuffix.suffixes.get(0).endIndex,
+                    split.distinctSuffix.callIndexes.get(1) + 1,
+                    labels, relocatedPrefixHandlers));
+            appendBridgeInvocation(context, split, wrapper, 1);
+            context.method.instructions = wrapper;
+            context.method.maxStack = Math.max(
+                    context.method.maxStack,
+                    bridgeArgumentSlots(context.proxyMethod));
+            return;
+        }
+
         InsnList wrapper = cloneRange(
                 context.method, 0, split.wrapperEndIndex, labels,
                 relocatedPrefixHandlers);
@@ -99,6 +118,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     labels.get(tryCatch.start), labels.get(tryCatch.end),
                     labels.get(tryCatch.handler), tryCatch.type));
         }
+        appendBridgeInvocation(context, split, wrapper, null);
+        context.method.instructions = wrapper;
+        context.method.tryCatchBlocks.addAll(wrapperTryCatches);
+    }
+
+    private static void appendBridgeInvocation(
+            MethodContext context, ConstructorSplit split,
+            InsnList wrapper, Integer pathId) {
         wrapper.add(new VarInsnNode(Opcodes.ALOAD, 0));
 
         int local = 1;
@@ -110,14 +137,26 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             wrapper.add(new VarInsnNode(
                     extra.type.getOpcode(Opcodes.ILOAD), extra.index));
         }
+        if (pathId != null) {
+            wrapper.add(new InsnNode(
+                    pathId == 0 ? Opcodes.ICONST_0 : Opcodes.ICONST_1));
+        }
 
         HiddenMethodsPool.HiddenMethod bridge = context.proxyMethod;
         wrapper.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
                 bridge.getClassNode().name, bridge.getMethodNode().name,
                 bridge.getMethodNode().desc, false));
         wrapper.add(new InsnNode(Opcodes.RETURN));
-        context.method.instructions = wrapper;
-        context.method.tryCatchBlocks.addAll(wrapperTryCatches);
+    }
+
+    private static int bridgeArgumentSlots(
+            HiddenMethodsPool.HiddenMethod bridge) {
+        int slots = 0;
+        for (Type argument :
+                Type.getArgumentTypes(bridge.getMethodNode().desc)) {
+            slots += argument.getSize();
+        }
+        return slots;
     }
 
     /**
@@ -136,17 +175,30 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         ? null : constructor.exceptions.toArray(new String[0]));
 
         Map<LabelNode, LabelNode> labels = labels(constructor);
-        for (int i = split.suffixStartIndex;
-             i < constructor.instructions.size(); i++) {
-            AbstractInsnNode instruction = constructor.instructions.get(i);
-            if (!(instruction instanceof FrameNode)) {
-                AbstractInsnNode copy = instruction.clone(labels);
-                remapSuffixLocal(copy, split);
-                body.instructions.add(copy);
-                body.maxLocals = Math.max(
-                        body.maxLocals, requiredLocalSlots(copy));
-            }
+        if (split.distinctSuffix != null) {
+            LabelNode secondSuffix = new LabelNode();
+            int pathIdLocal = firstExtraLocal(constructor);
+            body.instructions.add(new VarInsnNode(
+                    Opcodes.ILOAD, pathIdLocal));
+            body.instructions.add(new JumpInsnNode(
+                    Opcodes.IFNE, secondSuffix));
+            appendRelocatedRange(
+                    body, constructor, labels, split,
+                    split.distinctSuffix.suffixes.get(0).startIndex,
+                    split.distinctSuffix.suffixes.get(0).endIndex);
+            body.instructions.add(secondSuffix);
+            appendRelocatedRange(
+                    body, constructor, labels, split,
+                    split.distinctSuffix.suffixes.get(1).startIndex,
+                    split.distinctSuffix.suffixes.get(1).endIndex);
+            body.maxLocals = Math.max(body.maxLocals, pathIdLocal + 1);
+            body.maxStack = Math.max(constructor.maxStack, 1);
+            return body;
         }
+
+        appendRelocatedRange(
+                body, constructor, labels, split,
+                split.suffixStartIndex, constructor.instructions.size());
         for (RelocatedPrefixHandler handler :
                 split.relocatedPrefixHandlers) {
             appendRelocatedRange(
@@ -223,6 +275,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         int wrapperEndIndex = suffixStartIndex;
         Set<Integer> admittedPrefixSuffixBranches = new HashSet<>();
         DuplicatedSuffix duplicatedSuffix = null;
+        DistinctSuffix distinctSuffix = null;
         SharedSuffix sharedSuffix = null;
         if (callIndexes.size() > 1) {
             sharedSuffix = sharedSuffix(constructor, callIndexes);
@@ -236,10 +289,22 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 duplicatedSuffix =
                         duplicatedSuffix(constructor, callIndexes);
                 if (duplicatedSuffix == null) {
-                    throw unsupported(
-                            "Constructor chain calls do not share one suffix join",
-                            diagnosticCallIndex,
-                            constructor.instructions.get(diagnosticCallIndex));
+                    distinctSuffix =
+                            distinctSuffix(constructor, callIndexes);
+                    if (distinctSuffix == null) {
+                        throw unsupported(
+                                "Constructor chain calls do not share one suffix join",
+                                diagnosticCallIndex,
+                                constructor.instructions.get(
+                                        diagnosticCallIndex));
+                    }
+                    return new ConstructorSplit(
+                            distinctSuffix.suffixes.get(0).startIndex,
+                            distinctSuffix.suffixes.get(0).startIndex,
+                            new HashSet<>(), new ArrayList<>(),
+                            firstExtraLocal(constructor),
+                            new ArrayList<>(), new ArrayList<>(),
+                            new ArrayList<>(), null, distinctSuffix);
                 }
                 suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
                 wrapperEndIndex = suffixStartIndex;
@@ -390,7 +455,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 firstExtraLocal(constructor),
                 prefixTryCatches, suffixTryCatches,
                 new ArrayList<>(relocatedByLabel.values()),
-                duplicatedSuffix);
+                duplicatedSuffix, distinctSuffix);
     }
 
     private static boolean containsTryCatchLabels(
@@ -1019,6 +1084,70 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return new DuplicatedSuffix(
                 discarded, callIndexes.get(callIndexes.size() - 1),
                 canonical.startIndex);
+    }
+
+    /**
+     * Proves the bounded two-call form whose nonempty linear suffixes differ.
+     * Both call sites keep locally visible receiver/argument inputs, and every
+     * complete path reaches RETURN after exactly one call. The independent
+     * body receives one trailing int selector; suffix locals are therefore
+     * restricted to declared constructor slots in this increment.
+     */
+    private static DistinctSuffix distinctSuffix(
+            MethodNode constructor, List<Integer> callIndexes) {
+        if (callIndexes.size() != 2
+                || !constructor.tryCatchBlocks.isEmpty()) {
+            return null;
+        }
+
+        List<LinearSuffix> suffixes = new ArrayList<>();
+        for (int i = 0; i < callIndexes.size(); i++) {
+            LinearSuffix suffix =
+                    linearSuffix(constructor, callIndexes.get(i));
+            if (suffix == null || suffix.endIndex - suffix.startIndex <= 1
+                    || (i == 0
+                    && suffix.endIndex > callIndexes.get(1))) {
+                return null;
+            }
+            suffixes.add(suffix);
+        }
+        if (suffixes.get(1).endIndex != constructor.instructions.size()
+                || sameLinearSuffix(
+                constructor, suffixes.get(0), suffixes.get(1))
+                || !hasDirectDeclaredChainInputs(constructor, callIndexes)
+                || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
+            return null;
+        }
+
+        int firstExtraLocal = firstExtraLocal(constructor);
+        for (AbstractInsnNode instruction : constructor.instructions) {
+            if (instruction.getOpcode() == Opcodes.JSR
+                    || instruction.getOpcode() == Opcodes.RET
+                    || instruction.getOpcode() == Opcodes.ASTORE
+                    && ((VarInsnNode) instruction).var == 0) {
+                return null;
+            }
+        }
+        for (LinearSuffix suffix : suffixes) {
+            for (int i = suffix.startIndex; i < suffix.endIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                int local = readLocal(instruction);
+                Type stored = storeType(instruction);
+                if (local >= firstExtraLocal
+                        || stored != null
+                        && ((VarInsnNode) instruction).var
+                        >= firstExtraLocal) {
+                    return null;
+                }
+            }
+        }
+
+        validateChainCounts(
+                constructor, callIndexes,
+                constructor.instructions.size(), true);
+        return new DistinctSuffix(
+                new ArrayList<>(callIndexes), suffixes);
     }
 
     private static LinearSuffix linearSuffix(
@@ -2547,11 +2676,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             local += arguments[i].getSize();
         }
         Type[] splitArguments =
-                new Type[arguments.length + split.extraLocals.size()];
+                new Type[arguments.length + split.extraLocals.size()
+                        + (split.distinctSuffix == null ? 0 : 1)];
         System.arraycopy(arguments, 0, splitArguments, 0, arguments.length);
         for (int i = 0; i < split.extraLocals.size(); i++) {
             splitArguments[arguments.length + i] =
                     split.extraLocals.get(i).type;
+        }
+        if (split.distinctSuffix != null) {
+            splitArguments[splitArguments.length - 1] = Type.INT_TYPE;
         }
         return splitArguments;
     }
@@ -2653,6 +2786,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         private final List<TryCatchBlockNode> suffixTryCatches;
         private final List<RelocatedPrefixHandler> relocatedPrefixHandlers;
         private final DuplicatedSuffix duplicatedSuffix;
+        private final DistinctSuffix distinctSuffix;
 
         private ConstructorSplit(
                 int suffixStartIndex, int wrapperEndIndex,
@@ -2661,7 +2795,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 List<TryCatchBlockNode> prefixTryCatches,
                 List<TryCatchBlockNode> suffixTryCatches,
                 List<RelocatedPrefixHandler> relocatedPrefixHandlers,
-                DuplicatedSuffix duplicatedSuffix) {
+                DuplicatedSuffix duplicatedSuffix,
+                DistinctSuffix distinctSuffix) {
             this.suffixStartIndex = suffixStartIndex;
             this.wrapperEndIndex = wrapperEndIndex;
             this.widenedReferenceLocals = widenedReferenceLocals;
@@ -2671,6 +2806,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             this.suffixTryCatches = suffixTryCatches;
             this.relocatedPrefixHandlers = relocatedPrefixHandlers;
             this.duplicatedSuffix = duplicatedSuffix;
+            this.distinctSuffix = distinctSuffix;
             int packedLocal = firstExtraLocal;
             for (ExtraLocal extra : extraLocals) {
                 packedLocal += extra.type.getSize();
@@ -2740,6 +2876,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             this.discarded = discarded;
             this.canonicalCallIndex = canonicalCallIndex;
             this.canonicalStartIndex = canonicalStartIndex;
+        }
+    }
+
+    private static final class DistinctSuffix {
+        private final List<Integer> callIndexes;
+        private final List<LinearSuffix> suffixes;
+
+        private DistinctSuffix(
+                List<Integer> callIndexes, List<LinearSuffix> suffixes) {
+            this.callIndexes = callIndexes;
+            this.suffixes = suffixes;
         }
     }
 
