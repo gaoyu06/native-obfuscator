@@ -46,9 +46,10 @@ The constructor split now covers these related prefix shapes:
   nonempty suffixes end in `RETURN` and are pairwise not
   instruction-identical, when every call consumes the original `ALOAD 0`
   receiver and only locally proven chain arguments; any suffix may additionally
-  contain one closed int-family conditional branch whose arms stay in that
-  suffix and reach `RETURN`; prefix-assigned extras read by those suffixes must
-  have one compatible type on every bridge-taking path, and every retained
+  contain one closed int-family conditional branch, or one closed
+  `TABLESWITCH`/`LOOKUPSWITCH` over a proven int-family load, whose arms stay in
+  that suffix and reach `RETURN`; prefix-assigned extras read by those suffixes
+  must have one compatible type on every bridge-taking path, and every retained
   path calls one hidden bridge with a trailing constant path id; and
 - three or more direct this/super calls with the same identical straight-line
   suffix-copy proof, where every call additionally consumes the original
@@ -161,18 +162,21 @@ without normalizing the suffixes to one copied join:
 - Each call must fall through to its own nonempty suffix ending in `RETURN`.
   Any suffix may contain one unary `IFxx` over a direct declared int-family
   `ILOAD` or proven int-family extra, or one `IF_ICMPxx` whose second input is
-  another such load or an int-family constant. Every target and both
-  fallthrough arms must stay inside that suffix and reach `RETURN`; a `GOTO`
-  is accepted only as part of this conditional form and only when it targets
-  an in-suffix `RETURN`. Back edges, switches, throws, nested constructor
-  calls, and unproven extra-local accesses are rejected. A suffix may load a
-  prefix-assigned extra only when the extra has one exact compatible
-  primitive/reference carrier on every path that reaches any hidden-bridge
-  invocation. The suffix ranges may not overlap, the final range must end at
-  method end, and every pair of suffixes must be CFG-distinct. Fully identical
-  copies continue to use the existing normalization above; a mixture
-  containing an identical pair remains rejected rather than combining join
-  normalization with path selection.
+  another such load or an int-family constant. Alternatively, it may contain
+  one `TABLESWITCH` or `LOOKUPSWITCH` immediately preceded by a direct
+  declared int-family `ILOAD` or proven int-family extra load. Every switch
+  case/default target and every conditional arm must stay forward inside that
+  suffix and reach `RETURN`; a `GOTO` is accepted only as part of one of these
+  closed control-flow forms and only when it targets an in-suffix `RETURN`.
+  A suffix cannot combine a conditional and a switch. Back edges, computed
+  switch keys, throws, nested constructor calls, and unproven extra-local
+  accesses are rejected. A suffix may load a prefix-assigned extra only when
+  the extra has one exact compatible primitive/reference carrier on every path
+  that reaches any hidden-bridge invocation. The suffix ranges may not overlap,
+  the final range must end at method end, and every pair of suffixes must be
+  CFG-distinct. Fully identical copies continue to use the existing
+  normalization above; a mixture containing an identical pair remains
+  rejected rather than combining join normalization with path selection.
 - The independent IR method appends one `int` parameter. It first branches on
   that path id, then contains every proven suffix instruction range. Two paths
   retain the existing `IFNE` dispatch. Three or more paths use a `TABLESWITCH`
@@ -186,17 +190,18 @@ without normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Extra-local or aliased chain inputs, nested binary expressions (including
-nested bitwise and shift forms), `IDIV`, `IREM`, other
-binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
-fields, method calls, stack duplication, computed or rewritten receivers, or
-any other unlisted input remain rejected. Distinct joins, other conditional or
-switch forms, condition/switch-key loads that are not direct declared
-int-family arguments, switches or escaping control flow in a distinct suffix,
-labels or control flow in a copied suffix, nonempty
-exception tables for the post-chain forms, zero-call paths, unreachable
-candidates, unproven or suffix-only extra-local accesses, partly identical
-suffix sets, and pairwise-distinct per-call suffixes above the bounded
-eight-call rule also remain rejected.
+nested bitwise and shift forms), `IDIV`, `IREM`, other binary arithmetic,
+`IINC`, non-int-family constants, non-`Integer` `LDC`, fields, method calls,
+stack duplication, computed or rewritten receivers, or any other unlisted
+input remain rejected. Distinct joins, other conditional or switch forms,
+unproven condition/switch-key loads, computed keys, escaping switch targets,
+labels or control flow in a copied suffix, nonempty exception tables for the
+post-chain forms, zero-call paths, unreachable candidates, unproven or
+suffix-only extra-local accesses, partly identical suffix sets, and
+pairwise-distinct per-call suffixes above the bounded eight-call rule also
+remain rejected. Hybrid identical-plus-distinct suffix sets, non-identity
+`ASTORE 0` aliasing, and unlisted mixed prefix/suffix catch forms remain
+rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
 multi-exit constructor rewriter.
 
@@ -437,6 +442,18 @@ Synthetic bytecode unit tests in
   and both in-suffix branch arms through plain Java and the complete CMake/g++
   JNI transform under `java -Xverify:all -Xcheck:jni`, requiring identical
   stdout.
+- `admitsTwoDistinctSuffixesWithInSuffixSwitch` checks both switch opcodes in
+  pairwise-distinct suffixes, with direct declared int-family keys, closed
+  in-suffix `RETURN` arms, two bytecode bridge sites, and one hidden method.
+- `rewrittenSuffixSwitchDistinctSuffixesPassJvmVerification` selects both
+  retained prefix paths and every table/lookup arm after loading the rewritten
+  owner, superclass, and hidden class.
+- `suffixSwitchDistinctSuffixesCompileAndRunWithJavaParity` exercises both
+  switch opcodes, retained paths, and all switch arms through plain Java and the
+  complete CMake/g++ JNI transform under `java -Xverify:all -Xcheck:jni`,
+  requiring identical stdout.
+- `rejectsEscapingOrUnprovenSuffixSwitchBeforeMutation` keeps cross-suffix and
+  prefix targets plus computed keys fail-closed before hidden-method allocation.
 - `admitsThreeDistinctSuffixesWithInSuffixIntBranch` proves that the same
   closed conditional proof works with three pairwise-distinct suffixes behind
   the existing path-id `TABLESWITCH` dispatch and one hidden bridge.

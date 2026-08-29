@@ -1127,7 +1127,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves a bounded multi-call form whose nonempty suffixes are pairwise
      * different. A suffix may be straight-line or contain one proven
-     * int-family conditional whose closed, forward CFG reaches only RETURN.
+     * int-family conditional or switch whose closed, forward CFG reaches only
+     * RETURN.
      * Every call site keeps locally visible receiver/argument inputs, and
      * every complete path reaches RETURN after exactly one call. The
      * independent body receives one trailing int selector after any proven
@@ -1186,9 +1187,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Finds the complete CFG reachable immediately after one chain call.
-     * Conditional targets must stay forward in the resulting range, all
-     * executable instructions in that range must be reachable, and every
-     * path must terminate with RETURN.
+     * Conditional and switch targets must stay forward in the resulting
+     * range, all executable instructions in that range must be reachable, and
+     * every path must terminate with RETURN.
      */
     private static LinearSuffix boundedDistinctSuffix(
             MethodNode constructor, int callIndex) {
@@ -1203,6 +1204,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         ArrayDeque<Integer> pending = new ArrayDeque<>();
         List<Integer> conditionalBranches = new ArrayList<>();
         List<Integer> gotos = new ArrayList<>();
+        Integer switchIndex = null;
         pending.add(startIndex);
         int endIndex = startIndex;
         boolean reachesReturn = false;
@@ -1226,10 +1228,43 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 continue;
             }
             if (isReturn(opcode) || opcode == Opcodes.ATHROW
-                    || opcode == Opcodes.JSR || opcode == Opcodes.RET
-                    || instruction instanceof TableSwitchInsnNode
-                    || instruction instanceof LookupSwitchInsnNode) {
+                    || opcode == Opcodes.JSR || opcode == Opcodes.RET) {
                 return null;
+            }
+            if (instruction instanceof TableSwitchInsnNode
+                    || instruction instanceof LookupSwitchInsnNode) {
+                if (switchIndex != null || !conditionalBranches.isEmpty()) {
+                    return null;
+                }
+                int keyIndex =
+                        previousExecutableIndex(constructor, index - 1);
+                if (keyIndex < startIndex
+                        || !hasProvenDistinctSuffixSwitchKey(
+                        constructor, startIndex, keyIndex)) {
+                    return null;
+                }
+                List<LabelNode> targets = new ArrayList<>();
+                if (instruction instanceof TableSwitchInsnNode) {
+                    TableSwitchInsnNode table =
+                            (TableSwitchInsnNode) instruction;
+                    targets.add(table.dflt);
+                    targets.addAll(table.labels);
+                } else {
+                    LookupSwitchInsnNode lookup =
+                            (LookupSwitchInsnNode) instruction;
+                    targets.add(lookup.dflt);
+                    targets.addAll(lookup.labels);
+                }
+                for (LabelNode target : targets) {
+                    Integer targetIndex = labelIndexes.get(target);
+                    if (targetIndex == null || targetIndex < startIndex
+                            || targetIndex <= index) {
+                        return null;
+                    }
+                    pending.add(targetIndex);
+                }
+                switchIndex = index;
+                continue;
             }
             if (instruction instanceof JumpInsnNode) {
                 JumpInsnNode jump = (JumpInsnNode) instruction;
@@ -1242,6 +1277,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     gotos.add(index);
                 } else if (isUnaryIntCompare(opcode)
                         || isBinaryIntCompare(opcode)) {
+                    if (switchIndex != null) {
+                        return null;
+                    }
                     conditionalBranches.add(index);
                     if (conditionalBranches.size() > 1
                             || index + 1 >= instructionCount) {
@@ -1272,12 +1310,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 return null;
             }
         }
-        if (conditionalBranches.isEmpty()) {
+        if (conditionalBranches.isEmpty() && switchIndex == null) {
             if (!gotos.isEmpty()) {
                 return null;
             }
         } else {
-            if (!hasProvenDistinctSuffixCondition(
+            if (!conditionalBranches.isEmpty()
+                    && !hasProvenDistinctSuffixCondition(
                     constructor, startIndex, conditionalBranches.get(0))) {
                 return null;
             }
@@ -1295,6 +1334,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return new LinearSuffix(startIndex, endIndex);
+    }
+
+    private static boolean hasProvenDistinctSuffixSwitchKey(
+            MethodNode constructor, int suffixStart, int keyIndex) {
+        AbstractInsnNode key = constructor.instructions.get(keyIndex);
+        if (!isDistinctSuffixIntLoad(constructor, key)) {
+            return false;
+        }
+        int local = ((VarInsnNode) key).var;
+        for (int i = suffixStart; i < keyIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction instanceof IincInsnNode
+                    && ((IincInsnNode) instruction).var == local
+                    || instruction.getOpcode() == Opcodes.ISTORE
+                    && ((VarInsnNode) instruction).var == local) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean hasProvenDistinctSuffixCondition(
@@ -1380,12 +1438,81 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                         != rightInstructions.indexOf(rightTarget)) {
                     return false;
                 }
+            } else if (leftInstruction instanceof TableSwitchInsnNode
+                    || rightInstruction instanceof TableSwitchInsnNode) {
+                if (!(leftInstruction instanceof TableSwitchInsnNode)
+                        || !(rightInstruction instanceof TableSwitchInsnNode)) {
+                    return false;
+                }
+                TableSwitchInsnNode leftSwitch =
+                        (TableSwitchInsnNode) leftInstruction;
+                TableSwitchInsnNode rightSwitch =
+                        (TableSwitchInsnNode) rightInstruction;
+                if (leftSwitch.min != rightSwitch.min
+                        || leftSwitch.max != rightSwitch.max
+                        || !sameBoundedSwitchTargets(
+                        constructor, leftInstructions, rightInstructions,
+                        leftSwitch.dflt, rightSwitch.dflt,
+                        leftSwitch.labels, rightSwitch.labels)) {
+                    return false;
+                }
+            } else if (leftInstruction instanceof LookupSwitchInsnNode
+                    || rightInstruction instanceof LookupSwitchInsnNode) {
+                if (!(leftInstruction instanceof LookupSwitchInsnNode)
+                        || !(rightInstruction instanceof LookupSwitchInsnNode)) {
+                    return false;
+                }
+                LookupSwitchInsnNode leftSwitch =
+                        (LookupSwitchInsnNode) leftInstruction;
+                LookupSwitchInsnNode rightSwitch =
+                        (LookupSwitchInsnNode) rightInstruction;
+                if (!leftSwitch.keys.equals(rightSwitch.keys)
+                        || !sameBoundedSwitchTargets(
+                        constructor, leftInstructions, rightInstructions,
+                        leftSwitch.dflt, rightSwitch.dflt,
+                        leftSwitch.labels, rightSwitch.labels)) {
+                    return false;
+                }
             } else if (!sameLinearInstruction(
                     leftInstruction, rightInstruction)) {
                 return false;
             }
         }
         return true;
+    }
+
+    private static boolean sameBoundedSwitchTargets(
+            MethodNode constructor, List<Integer> leftInstructions,
+            List<Integer> rightInstructions, LabelNode leftDefault,
+            LabelNode rightDefault, List<LabelNode> leftLabels,
+            List<LabelNode> rightLabels) {
+        if (leftLabels.size() != rightLabels.size()
+                || !sameBoundedSwitchTarget(
+                constructor, leftInstructions, rightInstructions,
+                leftDefault, rightDefault)) {
+            return false;
+        }
+        for (int i = 0; i < leftLabels.size(); i++) {
+            if (!sameBoundedSwitchTarget(
+                    constructor, leftInstructions, rightInstructions,
+                    leftLabels.get(i), rightLabels.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameBoundedSwitchTarget(
+            MethodNode constructor, List<Integer> leftInstructions,
+            List<Integer> rightInstructions, LabelNode leftTarget,
+            LabelNode rightTarget) {
+        Map<LabelNode, Integer> indexes = labelIndexes(constructor);
+        int leftExecutable = firstExecutableIndex(
+                constructor, indexes.get(leftTarget));
+        int rightExecutable = firstExecutableIndex(
+                constructor, indexes.get(rightTarget));
+        return leftInstructions.indexOf(leftExecutable)
+                == rightInstructions.indexOf(rightExecutable);
     }
 
     private static List<Integer> executableIndexes(

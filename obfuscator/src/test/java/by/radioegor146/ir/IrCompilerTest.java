@@ -1740,6 +1740,66 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsTwoDistinctSuffixesWithInSuffixSwitch() {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "Lookup" : "Table";
+            ClassNode owner = constructorOwner(
+                    "example/SwitchedSuffixes" + kind,
+                    "example/MultiSuperBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor =
+                    switchedDistinctSuffixConstructor(
+                            owner.name, owner.superName, lookup);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(III)V", nativeBody.desc, kind);
+            java.util.List<Integer> nativeOpcodes = realOpcodes(nativeBody);
+            assertEquals(Opcodes.ILOAD, nativeOpcodes.get(0), kind);
+            assertEquals(Opcodes.IFNE, nativeOpcodes.get(1), kind);
+            int switchOpcode =
+                    lookup ? Opcodes.LOOKUPSWITCH : Opcodes.TABLESWITCH;
+            assertEquals(2, Collections.frequency(
+                    nativeOpcodes, switchOpcode), kind);
+            assertTrue(nativeOpcodes.indexOf(switchOpcode) > 1, kind);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(2, directChainCallCount(constructor, owner), kind);
+            assertEquals(2, hiddenBridgeCallCount(constructor), kind);
+            assertEquals(1L,
+                    Arrays.stream(constructor.instructions.toArray())
+                            .filter(MethodInsnNode.class::isInstance)
+                            .map(MethodInsnNode.class::cast)
+                            .filter(invoke ->
+                                    invoke.getOpcode() == Opcodes.INVOKESTATIC
+                                            && invoke.owner.contains("/hidden/"))
+                            .map(invoke -> invoke.owner + "." + invoke.name
+                                    + invoke.desc)
+                            .distinct().count(),
+                    kind);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), kind);
+            assertEquals(
+                    "(Ljava/lang/Object;III)V",
+                    context.proxyMethod.getMethodNode().desc, kind);
+            assertFalse(realOpcodes(constructor).contains(
+                    Opcodes.PUTFIELD), kind);
+        }
+    }
+
+    @Test
     public void admitsThreeDistinctSuffixesWithInSuffixIntBranch() {
         ClassNode owner = constructorOwner(
                 "example/ThreeBranchedSuffixes",
@@ -2204,6 +2264,49 @@ public class IrCompilerTest {
             assertTrue(context.proxyMethod == null, shape);
             assertTrue(obfuscator.getHiddenMethodsPool()
                     .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void rejectsEscapingOrUnprovenSuffixSwitchBeforeMutation() {
+        for (boolean lookup : new boolean[]{false, true}) {
+            for (String shape : Arrays.asList(
+                    "cross-suffix", "suffix-prefix", "computed-key")) {
+                String kind = lookup ? "lookup" : "table";
+                ClassNode owner = constructorOwner(
+                        "example/RejectedSuffixSwitch"
+                                + kind + shape.replace("-", ""),
+                        "example/MultiSuperBase");
+                owner.fields.add(new FieldNode(
+                        Opcodes.ACC_PUBLIC, "result", "I", null, null));
+                MethodNode constructor =
+                        switchedDistinctSuffixConstructor(
+                                owner.name, owner.superName, lookup);
+                makeSuffixSwitchInvalid(constructor, shape);
+                int instructionCount = constructor.instructions.size();
+                java.util.List<Integer> opcodes = realOpcodes(constructor);
+                NativeObfuscator obfuscator = new NativeObfuscator();
+                MethodContext context =
+                        new MethodContext(
+                                obfuscator, constructor, 0, owner, 0);
+
+                assertThrows(
+                        UnsupportedIrConstructException.class,
+                        () -> new IrMethodCompiler(
+                                new MethodShellEmitter(obfuscator))
+                                .processMethod(context),
+                        kind + " " + shape);
+
+                assertUnchangedAfterRejectedIr(
+                        constructor, context, obfuscator);
+                assertEquals(instructionCount,
+                        constructor.instructions.size(), kind + " " + shape);
+                assertEquals(opcodes, realOpcodes(constructor),
+                        kind + " " + shape);
+                assertTrue(context.proxyMethod == null, kind + " " + shape);
+                assertTrue(obfuscator.getHiddenMethodsPool()
+                        .getClasses().isEmpty(), kind + " " + shape);
+            }
         }
     }
 
@@ -2974,6 +3077,60 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;III)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenSuffixSwitchDistinctSuffixesPassJvmVerification()
+            throws Exception {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "Lookup" : "Table";
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedSuffixSwitch" + kind + "Base");
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedSuffixSwitch" + kind, base.name);
+            owner.version = Opcodes.V1_8;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor =
+                    switchedDistinctSuffixConstructor(
+                            owner.name, base.name, lookup);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] keys = lookup
+                    ? new int[]{7, 42, 99} : new int[]{0, 1, 99};
+            for (int selector : new int[]{7, -7}) {
+                for (int key : keys) {
+                    InvocationTargetException error = assertThrows(
+                            InvocationTargetException.class,
+                            () -> verified.getConstructor(
+                                    int.class, int.class)
+                                    .newInstance(selector, key),
+                            kind + " selector " + selector + " key " + key);
+                    assertTrue(
+                            error.getCause() instanceof UnsatisfiedLinkError,
+                            kind + " selector " + selector + " key " + key);
+                }
+            }
+            assertEquals(2, directChainCallCount(constructor, owner), kind);
+            assertEquals(2, hiddenBridgeCallCount(constructor), kind);
+            assertEquals(
+                    "(Ljava/lang/Object;III)V",
+                    context.proxyMethod.getMethodNode().desc, kind);
+        }
     }
 
     @Test
@@ -4127,6 +4284,123 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native branched-suffix Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void suffixSwitchDistinctSuffixesCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the suffix-switch runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the suffix-switch runtime test");
+
+        String ownerPrefix = "example/SuffixSwitchRuntime";
+        String tableOwner = ownerPrefix + "Table";
+        String lookupOwner = ownerPrefix + "Lookup";
+        String baseName = ownerPrefix + "Base";
+        String mainName = ownerPrefix + "Main";
+        Path directory =
+                Files.createTempDirectory("ir-suffix-switch-run");
+        Path inputJar = directory.resolve("suffix-switches.jar");
+        Path outputDirectory = directory.resolve("output");
+        createSwitchedDistinctSuffixJar(
+                inputJar, tableOwner, lookupOwner, baseName, mainName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain suffix-switch Java run");
+        assertEquals(
+                "0" + System.lineSeparator()
+                        + "1" + System.lineSeparator()
+                        + "2" + System.lineSeparator()
+                        + "3" + System.lineSeparator()
+                        + "4" + System.lineSeparator()
+                        + "5" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "1" + System.lineSeparator()
+                        + "2" + System.lineSeparator()
+                        + "3" + System.lineSeparator()
+                        + "4" + System.lineSeparator()
+                        + "5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String ownerName :
+                    Arrays.asList(tableOwner, lookupOwner)) {
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(2, directChainCallCount(
+                        transformedConstructor, transformed), ownerName);
+                assertEquals(2, hiddenBridgeCallCount(
+                        transformedConstructor), ownerName);
+                assertEquals(1L,
+                        Arrays.stream(
+                                        transformedConstructor.instructions
+                                                .toArray())
+                                .filter(MethodInsnNode.class::isInstance)
+                                .map(MethodInsnNode.class::cast)
+                                .filter(invoke ->
+                                        invoke.getOpcode()
+                                                == Opcodes.INVOKESTATIC
+                                                && invoke.owner.contains(
+                                                "/hidden/"))
+                                .map(invoke -> invoke.owner + "."
+                                        + invoke.name + invoke.desc)
+                                .distinct().count(),
+                        ownerName);
+                assertFalse(realOpcodes(transformedConstructor)
+                        .contains(Opcodes.PUTFIELD), ownerName);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("suffix-switch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("suffix-switch CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Suffix-switch native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native suffix-switch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -9783,6 +10057,49 @@ public class IrCompilerTest {
         }
     }
 
+    private void createSwitchedDistinctSuffixJar(
+            Path jarPath, String tableOwnerName, String lookupOwnerName,
+            String baseName, String mainName) throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode tableOwner =
+                switchedDistinctSuffixOwner(tableOwnerName, baseName, false);
+        ClassNode lookupOwner =
+                switchedDistinctSuffixOwner(lookupOwnerName, baseName, true);
+        ClassNode main = constructorOwner(mainName, "java/lang/Object");
+        main.version = Opcodes.V1_8;
+        main.methods.add(switchedDistinctSuffixMain(
+                tableOwnerName, lookupOwnerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            for (ClassNode classNode :
+                    Arrays.asList(base, tableOwner, lookupOwner, main)) {
+                output.putNextEntry(new JarEntry(
+                        classNode.name + ".class"));
+                output.write(writeClass(classNode));
+                output.closeEntry();
+            }
+        }
+    }
+
+    private ClassNode switchedDistinctSuffixOwner(
+            String ownerName, String baseName, boolean lookup) {
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(switchedDistinctSuffixConstructor(
+                ownerName, baseName, lookup));
+        return owner;
+    }
+
     private void createThreeBranchedDistinctSuffixJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -11415,6 +11732,106 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode switchedDistinctSuffixConstructor(
+            String owner, String superName, boolean lookup) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(II)V", null, null);
+        LabelNode prefixStart = new LabelNode();
+        LabelNode negative = new LabelNode();
+        method.instructions.add(prefixStart);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        appendSwitchedSuffix(method, owner, lookup, 0);
+        method.instructions.add(negative);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.INEG));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(I)V", false));
+        appendSwitchedSuffix(method, owner, lookup, 3);
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private void appendSwitchedSuffix(
+            MethodNode method, String owner, boolean lookup, int firstValue) {
+        LabelNode first = new LabelNode();
+        LabelNode second = new LabelNode();
+        LabelNode dflt = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        if (lookup) {
+            method.instructions.add(new LookupSwitchInsnNode(
+                    dflt, new int[]{7, 42},
+                    new LabelNode[]{first, second}));
+        } else {
+            method.instructions.add(new TableSwitchInsnNode(
+                    0, 1, dflt, first, second));
+        }
+        appendSwitchedSuffixArm(method, owner, first, firstValue);
+        appendSwitchedSuffixArm(method, owner, second, firstValue + 1);
+        appendSwitchedSuffixArm(method, owner, dflt, firstValue + 2);
+    }
+
+    private void appendSwitchedSuffixArm(
+            MethodNode method, String owner, LabelNode label, int value) {
+        method.instructions.add(label);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0 + value));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
+    private void makeSuffixSwitchInvalid(
+            MethodNode method, String shape) {
+        java.util.List<AbstractInsnNode> switches = Arrays.stream(
+                        method.instructions.toArray())
+                .filter(instruction ->
+                        instruction instanceof TableSwitchInsnNode
+                                || instruction instanceof LookupSwitchInsnNode)
+                .collect(Collectors.toList());
+        AbstractInsnNode firstSwitch = switches.get(0);
+        if ("cross-suffix".equals(shape)) {
+            setSwitchDefault(firstSwitch,
+                    switchLabels(switches.get(1)).get(0));
+        } else if ("suffix-prefix".equals(shape)) {
+            setSwitchDefault(firstSwitch,
+                    (LabelNode) method.instructions.getFirst());
+        } else if ("computed-key".equals(shape)) {
+            InsnList computation = new InsnList();
+            computation.add(new InsnNode(Opcodes.ICONST_1));
+            computation.add(new InsnNode(Opcodes.IADD));
+            method.instructions.insertBefore(firstSwitch, computation);
+        } else {
+            throw new IllegalArgumentException("Unknown shape " + shape);
+        }
+    }
+
+    private java.util.List<LabelNode> switchLabels(
+            AbstractInsnNode instruction) {
+        if (instruction instanceof TableSwitchInsnNode) {
+            return ((TableSwitchInsnNode) instruction).labels;
+        }
+        return ((LookupSwitchInsnNode) instruction).labels;
+    }
+
+    private void setSwitchDefault(
+            AbstractInsnNode instruction, LabelNode dflt) {
+        if (instruction instanceof TableSwitchInsnNode) {
+            ((TableSwitchInsnNode) instruction).dflt = dflt;
+        } else {
+            ((LookupSwitchInsnNode) instruction).dflt = dflt;
+        }
+    }
+
     private MethodNode branchedDistinctSuffixWithEscapingBranchConstructor(
             String owner, String superName, String shape) {
         MethodNode method =
@@ -12289,6 +12706,29 @@ public class IrCompilerTest {
         appendBranchedDistinctSuffixPrint(method, owner, 7, 1);
         appendBranchedDistinctSuffixPrint(method, owner, -7, 0);
         appendBranchedDistinctSuffixPrint(method, owner, -7, 1);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 5;
+        return method;
+    }
+
+    private MethodNode switchedDistinctSuffixMain(
+            String tableOwner, String lookupOwner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int selector : new int[]{7, -7}) {
+            for (int key : new int[]{0, 1, 99}) {
+                appendBranchedDistinctSuffixPrint(
+                        method, tableOwner, selector, key);
+            }
+        }
+        for (int selector : new int[]{7, -7}) {
+            for (int key : new int[]{7, 42, 99}) {
+                appendBranchedDistinctSuffixPrint(
+                        method, lookupOwner, selector, key);
+            }
+        }
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 5;
