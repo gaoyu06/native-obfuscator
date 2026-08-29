@@ -192,8 +192,8 @@ public final class IrNodes {
     }
 
     /**
-     * An object or array class literal. Primitive class literals are rejected
-     * by the frontend because they require wrapper {@code TYPE} field lookup.
+     * An object or array class literal. The frontend rewrites primitive class
+     * constants to wrapper {@code TYPE} field reads before constructing IR.
      */
     public static final class ClassConst implements IrInstruction {
         private final IrValue result;
