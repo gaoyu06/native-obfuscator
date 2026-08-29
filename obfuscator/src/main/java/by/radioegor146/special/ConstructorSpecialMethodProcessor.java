@@ -2264,9 +2264,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves one LADD whose operands are non-recursive long leaves. The
-     * separate one-level budget prevents the int-family depth bound from
-     * admitting nested long arithmetic.
+     * Proves one LADD, LSUB, or LMUL whose operands are non-recursive long
+     * leaves. The separate one-level budget prevents the int-family depth
+     * bound from admitting nested long arithmetic.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2276,7 +2276,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
-        if (input.getOpcode() != Opcodes.LADD
+        int opcode = input.getOpcode();
+        if ((opcode != Opcodes.LADD
+                && opcode != Opcodes.LSUB
+                && opcode != Opcodes.LMUL)
                 || remainingBinaryLevels == 0) {
             return null;
         }

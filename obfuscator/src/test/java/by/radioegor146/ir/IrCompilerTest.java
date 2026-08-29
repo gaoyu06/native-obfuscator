@@ -3330,6 +3330,49 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithLsubAndLmulOfProvenChainInputs() {
+        for (String shape : Arrays.asList("long-lsub", "long-lmul")) {
+            ClassNode owner = constructorOwner(
+                    "example/ThreeLongArithmeticMultiReturn"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperLongBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IJ)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            int opcode = "long-lsub".equals(shape)
+                    ? Opcodes.LSUB : Opcodes.LMUL;
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcode), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeDivRemMultiReturn",
@@ -3745,7 +3788,7 @@ public class IrCompilerTest {
     public void rejectsUnprovenLongComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "long-nested-ladd", "long-extra-local",
-                "long-lsub", "long-lmul", "long-ldiv")) {
+                "long-ldiv", "long-land")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedLongComputed"
                             + shape.replace("-", ""),
@@ -5000,6 +5043,66 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;IJ)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateLsubLmulSuperReturnsPassJvmVerification()
+            throws Exception {
+        for (String shape : Arrays.asList("long-lsub", "long-lmul")) {
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperLongBase(
+                            "example/VerifiedThreeLongArithmeticBase"
+                                    + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedThreeLongArithmetic" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            long[] values = {11L, -22L, Long.MIN_VALUE};
+            for (int i = 0; i < selectors.length; i++) {
+                int selector = selectors[i];
+                long value = values[i];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, long.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            int opcode = "long-lsub".equals(shape)
+                    ? Opcodes.LSUB : Opcodes.LMUL;
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcode), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+        }
     }
 
     @Test
@@ -7797,6 +7900,108 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native long three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateLsubLmulSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the long arithmetic runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the long arithmetic runtime test");
+
+        String ownerName = "example/ThreeLongArithmeticReturnRuntime";
+        String lmulName = ownerName + "$Lmul";
+        String baseName = "example/ThreeLongArithmeticReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-three-long-arithmetic-run");
+        Path inputJar = directory.resolve("three-long-arithmetic-return.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeLsubLmulReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain long arithmetic multi-super Java run");
+        assertEquals(
+                "10" + System.lineSeparator()
+                        + "-23" + System.lineSeparator()
+                        + Long.MAX_VALUE + System.lineSeparator()
+                        + "11" + System.lineSeparator()
+                        + "-22" + System.lineSeparator()
+                        + Long.MIN_VALUE + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String transformedName :
+                    Arrays.asList(ownerName, lmulName)) {
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(transformedName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                int opcode = transformedName.equals(ownerName)
+                        ? Opcodes.LSUB : Opcodes.LMUL;
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed));
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor));
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor), opcode));
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO));
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN));
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("long arithmetic multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("long arithmetic multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Long arithmetic native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native long arithmetic multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -14143,6 +14348,44 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeLsubLmulReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperLongBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode lsubOwner = constructorOwner(ownerName, baseName);
+        lsubOwner.version = Opcodes.V1_8;
+        lsubOwner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "long-lsub"));
+        ClassNode lmulOwner =
+                constructorOwner(ownerName + "$Lmul", baseName);
+        lmulOwner.version = Opcodes.V1_8;
+        lmulOwner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "long-lmul"));
+        lsubOwner.methods.add(multipleSuperThreeLsubLmulReturnsMain(
+                lsubOwner.name, lmulOwner.name, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS,
+                lsubOwner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(lsubOwner.name + ".class"));
+            output.write(writeClass(lsubOwner));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(lmulOwner.name + ".class"));
+            output.write(writeClass(lmulOwner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeIdivIremReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -17747,12 +17990,14 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.LADD));
         } else if ("long-lsub".equals(shape)
                 || "long-lmul".equals(shape)
-                || "long-ldiv".equals(shape)) {
+                || "long-ldiv".equals(shape)
+                || "long-land".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.LCONST_1));
             int opcode = "long-lsub".equals(shape) ? Opcodes.LSUB
                     : "long-lmul".equals(shape) ? Opcodes.LMUL
-                    : Opcodes.LDIV;
+                    : "long-ldiv".equals(shape) ? Opcodes.LDIV
+                    : Opcodes.LAND;
             method.instructions.add(new InsnNode(opcode));
         } else if ("float-binary".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
@@ -18370,6 +18615,29 @@ public class IrCompilerTest {
                 method, owner, superName, -7, -22L);
         appendMultipleSuperLongPrint(
                 method, owner, superName, 0, Long.MAX_VALUE);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 6;
+        return method;
+    }
+
+    private MethodNode multipleSuperThreeLsubLmulReturnsMain(
+            String lsubOwner, String lmulOwner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperLongPrint(
+                method, lsubOwner, superName, 7, 11L);
+        appendMultipleSuperLongPrint(
+                method, lsubOwner, superName, -7, -22L);
+        appendMultipleSuperLongPrint(
+                method, lsubOwner, superName, 0, Long.MIN_VALUE);
+        appendMultipleSuperLongPrint(
+                method, lmulOwner, superName, 7, 11L);
+        appendMultipleSuperLongPrint(
+                method, lmulOwner, superName, -7, -22L);
+        appendMultipleSuperLongPrint(
+                method, lmulOwner, superName, 0, Long.MIN_VALUE);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 6;
