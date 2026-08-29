@@ -1,11 +1,9 @@
 # Project status on master / master 现状
 
-Last updated after landing JEP 472 native-access packaging
-[#145](https://github.com/gaoyu06/native-obfuscator/pull/145)
-(Fable accept-with-nits
-[#147](https://github.com/gaoyu06/native-obfuscator/pull/147))
-on the post-[#141](https://github.com/gaoyu06/native-obfuscator/pull/141)
-JDK 25 E2E tree.
+Last updated after landing prefix-local constructor splits
+[#146](https://github.com/gaoyu06/native-obfuscator/pull/146)
+on the post-[#145](https://github.com/gaoyu06/native-obfuscator/pull/145)
+JEP 472 packaging tree.
 This page is the current public status. It does not complete the original
 production goal and must not be read as a support matrix. The long
 maintainer brief in [goal-status-and-options.md](goal-status-and-options.md)
@@ -27,6 +25,11 @@ now includes the pre-landing #108–#117 notes; it is still not this page.
   Unsupported methods fall back per-method. Rejected constructors are restored
   from the original class bytes so indy preprocessor markers are not left in
   output.
+  [#146](https://github.com/gaoyu06/native-obfuscator/pull/146) admits
+  prefix-local branches (every target still in the prefix) so a JEP 513-style
+  prologue like `if (...) throw; super(...)` can split. Prefix + this/super
+  stay in bytecode. A prefix branch into the suffix is still rejected. This
+  is not a JDK 25 support badge and was not re-run as a Temurin 25 E2E.
 - **Classfile versions.** Processed classes keep their input major version.
   Only classes older than Java 8 are raised to the Java 8 floor. Nest, record,
   and `PermittedSubclasses` attributes are no longer dropped by stamping 52.
@@ -115,7 +118,9 @@ Admission 不是行为正确性。五个 fixture 的 5/5 只是一台 Linux VM �
 
 Old sibling evaluator PRs #42–#87 **conflict with the phase-18 + #124 line**
 and must not be merged. The current-master port is #137 (landed). Their
-reader/bench notes remain historical.
+reader/bench notes remain historical. Open drafts #9–#117 and #121 are the
+pre-#118 stacked tips; merging them onto current `master` would regress the
+tree. Close them as superseded, do not merge.
 
 - Older opcode interpreter / compact encoding / link-only output, PRs #17–#28
   (superseded as a *first increment* by #124; those sibling flags are still
@@ -140,15 +145,13 @@ reader/bench notes remain historical.
 
 ## Suggested next engineering (not scheduled here) / 后续工程（此处不排期）
 
-- Admit intra-prefix constructor control flow so JEP 513 prologues can split
-  (`Main$Validated.<init>(I)V` leftover from #141; open as #146).
 - Widen the interpreter to objects and exception dispatch.
 - Human decisions in `human-decision-matrix.md` before any support badge.
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #145/#147 (JEP 472
-  packaging). / 落地 #145/#147 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #146 (prefix-local
+  constructor splits). / 落地 #146 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge leaked
   into the README. / 是，确认 README 没有写成产品支持。
