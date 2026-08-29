@@ -1873,6 +1873,17 @@ public class IrCompilerTest {
                     nativeOpcodes.get(nativeOpcodes.size() - 2), kind);
             assertEquals(Opcodes.RETURN,
                     nativeOpcodes.get(nativeOpcodes.size() - 1), kind);
+            if (storeException) {
+                VarInsnNode handlerStore = Arrays.stream(
+                                nativeBody.instructions.toArray())
+                        .filter(VarInsnNode.class::isInstance)
+                        .map(VarInsnNode.class::cast)
+                        .filter(instruction ->
+                                instruction.getOpcode() == Opcodes.ASTORE)
+                        .findFirst().orElseThrow(AssertionError::new);
+                assertEquals(4, handlerStore.var,
+                        "handler local must not alias path id");
+            }
             frontend.build(owner.name, nativeBody);
 
             NativeObfuscator obfuscator = new NativeObfuscator();

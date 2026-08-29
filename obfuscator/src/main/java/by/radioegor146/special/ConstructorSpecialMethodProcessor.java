@@ -3423,8 +3423,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
         // Packed extras occupy the suffix method's trailing parameter slots.
         // Keep unrelated suffix-only locals distinct by moving them after the
-        // packed parameters; only this independent clone is rewritten.
+        // packed parameters and, for path-selected bodies, the selector;
+        // only this independent clone is rewritten.
         int remapped = split.packedExtraEnd
+                + (split.distinctSuffix == null ? 0 : 1)
                 + local - split.firstExtraLocal;
         for (ExtraLocal extra : split.extraLocals) {
             if (extra.index == local) {
