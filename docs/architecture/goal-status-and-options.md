@@ -4,9 +4,11 @@
 
 This is a maintainer snapshot of `origin/master` at `e7ca4c8` and the pull
 requests returned by `gh pr list --state all --limit 100` on 2026-08-29. PRs
-#1–#89 are all open drafts. `master` is unchanged from the preceding brief and
-contains none of their code or documentation. Results below are evidence
-recorded on the named branch, not invented merge, review, or CI results.
+#1–#94 are all open drafts. `master` is unchanged from the preceding brief and
+contains none of their code or documentation. This refresh carries the brief
+through PR #94; the previous brief [#91](https://github.com/gaoyu06/native-obfuscator/pull/91)
+covered work through #89. Results below are evidence recorded on the named
+branch, not invented merge, review, or CI results.
 
 PRs [#1](https://github.com/gaoyu06/native-obfuscator/pull/1) and
 [#2](https://github.com/gaoyu06/native-obfuscator/pull/2) are Gemini research
@@ -130,6 +132,21 @@ fix**，记录 58 + 2 = 60 个测试及 61-method g++ 烟测。[#88](https://git
 在 #68 上加入 `LDIV=0x2b` 与 `LREM=0x2c`，使 `(JJ)J` divide/remainder 保持
 在 eval 路径；记录 32/32，且不新增 benchmark 数字。[#87](https://github.com/gaoyu06/native-obfuscator/pull/87)
 是对 #85 的纯文档 Sol **accept** 审阅，同样记录 32/32。
+[#90](https://github.com/gaoyu06/native-obfuscator/pull/90) 叠加在首选
+phase-12 tip #89 上，将仍为 opt-in 的 IR phase 13 扩展至 `Z`/`B`/`C`/`S`
+字段与 invoke descriptor 的精确 Boolean/Byte/Char/Short JNI family；stack/local
+carrier 保持 `I32` 并显式 widen/narrow，`F`/`D` 仍 fallback，默认仍为 legacy。
+其状态记录 62 + 2 = 64 个聚焦测试及未跳过的 87-`JNICALL` g++ 烟测。#90 是首选
+phase-13 tip；[#93](https://github.com/gaoyu06/native-obfuscator/pull/93) 是
+Sol 对 #90 的纯文档审阅，记录 **pass/accept**、64/64 且无编译器改动，
+[#94](https://github.com/gaoyu06/native-obfuscator/pull/94) 是 Fable 对 #90
+的纯文档审阅，记录 **accept**、64/64 且无编译器改动；其唯一非阻塞 nit 是 boolean
+*invoke 参数* 被 `& 1` 掩码，而 JVM 不在调用点做掩码，对 javac 输出不可观察，
+仅为文档说明、无代码改动。两项审阅均不构成上线就绪结论。独立的测量路线中，
+[#92](https://github.com/gaoyu06/native-obfuscator/pull/92) 叠加在 #89 上、仅做
+测量：两个类、六个方法的 Java 8 语料记录 **5 IR / 1 fallback**，fallback 为
+`AdmissionTarget.unsupported(I)I`，opcode 134（`I2F`），且 `<clinit>` 已排除。
+该 5/6（83.3%）不是生产 IR 覆盖率，也不是加速结论，编译器/运行时代码未改。
 
 This documentation-only update carries the brief through #44's
 accept-with-nits review of evaluator #42, #45's Fable accept-with-nits review
@@ -256,10 +273,30 @@ adds `LDIV=0x2b` and `LREM=0x2c`; generated `(JJ)J` divide/remainder methods
 stay on eval. It records 32/32 and adds no benchmark numbers.
 [#87](https://github.com/gaoyu06/native-obfuscator/pull/87) is Sol's
 documentation-only **accept** review of #85 and also records 32/32.
+[#90](https://github.com/gaoyu06/native-obfuscator/pull/90), stacked on
+preferred phase-12 tip #89, extends still-opt-in IR phase 13 with the exact
+Boolean/Byte/Char/Short JNI families for `Z`/`B`/`C`/`S` field and invoke
+descriptors; stack/local carriers stay `I32` with explicit widen/narrow, `F`/`D`
+still fall back, and legacy remains the default. Its status records 62 + 2 = 64
+focused tests and an unskipped 87-`JNICALL` g++ smoke. #90 is the preferred
+phase-13 tip. [#93](https://github.com/gaoyu06/native-obfuscator/pull/93) is
+Sol's documentation-only **pass/accept** review of #90 with 64/64 and no
+compiler change, and [#94](https://github.com/gaoyu06/native-obfuscator/pull/94)
+is Fable's documentation-only **accept** review of #90 with 64/64 and no
+compiler change. #94's sole non-blocking nit is that boolean *invoke arguments*
+are masked `& 1` while the JVM does not mask at the call site; it is unobservable
+for javac output and is a docs-only note with no code change. Neither review is
+a ship-readiness finding. Separately,
+[#92](https://github.com/gaoyu06/native-obfuscator/pull/92) is a
+measurement-only six-method admission report stacked on #89: a two-class Java 8
+corpus recorded **5 IR / 1 fallback**, the one fallback being
+`AdmissionTarget.unsupported(I)I` at opcode 134 (`I2F`), with `<clinit>`
+excluded. Its 5/6 (83.3%) is not production IR coverage or a speedup claim and
+changes no compiler or runtime code.
 
 ### (b) 是否可直接上线 / Can this ship to production as-is?
 
-**No / 否。** PRs #1–#89 均为草稿，`master` 未包含这些能力；默认 codegen
+**No / 否。** PRs #1–#94 均为草稿，`master` 未包含这些能力；默认 codegen
 仍是 legacy。#56 的 accept 审阅不把 #54 的不完整 opt-in phase 7 变成上线
 批准；#61 对 #57 的 accept 审阅同样不是上线批准；#57 仍是窄范围、opt-in
 且逐方法 fallback 的 evaluator lowering。#62 仍是部分、opt-in 且逐方法
@@ -279,9 +316,13 @@ AES-256-GCM 实现并非已交付 SDK，首选 #81 虽修复输出长度溢出�
 不是上线批准，且 tiny-AES-c 并非 side-channel hardened。#84 的构造器支持仍是
 部分、opt-in 且默认 legacy；首选 #89 修复 forwarded-reference-local 正确性问题，
 但不是上线批准，#88 又仅审阅未修复 #84。#85 仍是窄范围 opt-in evaluator 扩展，
-#87 的纯文档 accept 同样不是上线批准。
+#87 的纯文档 accept 同样不是上线批准。#90 将仍为 opt-in 的 phase 13 扩展至
+`Z`/`B`/`C`/`S` 字段与 invoke，`F`/`D` 仍 fallback，默认仍为 legacy；#93 的
+pass 与 #94 的 accept 均为 #90 的纯文档审阅，不改编译器，也不是上线批准。
+#92 是叠加在 #89 上、仅测量的六方法 5/6 接纳率，不代表生产 IR 覆盖率，
+也不是上线批准。
 
-**No.** PRs #1–#89 remain drafts and `master` has none of these capabilities;
+**No.** PRs #1–#94 remain drafts and `master` has none of these capabilities;
 the default codegen remains legacy. #56's accept review does not turn #54's
 incomplete opt-in phase 7 into ship approval, and #61's accept review of #57
 is likewise not ship approval. #57 remains a narrow, opt-in evaluator lowering
@@ -307,18 +348,25 @@ and tiny-AES-c is not side-channel hardened. #84's constructor support remains
 partial, opt-in, and legacy-default; preferred #89 fixes the forwarded-reference
 local correctness issue but is not ship approval, while #88 reviews only
 unfixed #84. #85 remains a narrow opt-in evaluator extension, and #87's
-documentation-only accept is likewise not ship approval.
+documentation-only accept is likewise not ship approval. #90 extends still-opt-in
+phase 13 to `Z`/`B`/`C`/`S` field and invoke families with `F`/`D` still on
+fallback and legacy still default; #93's pass and #94's accept are
+documentation-only reviews of #90 that change no compiler code and are not ship
+approval. #92 is a measurement-only six-method 5/6 admission report stacked on
+#89; it is not production IR coverage and not ship approval.
 
 ### (c) 上线前是否需要 review / Is review required?
 
 **Yes / 是。** 每个实现 PR 均需独立代码审查、rebase 后复测及适用的产品/发布
-审批。本文中的 benchmark 与 reader 结论也必须按其记录的 kernel、artifact
-和方法边界审查，不能外推。
+审批。本文中的 benchmark、reader 与 #92 的 admission 测量结论也必须按其记录的
+kernel、artifact、语料和方法边界审查，不能外推；#92 的 5/6 尤其不得当作生产
+覆盖率门槛。
 
 **Yes.** Each implementation PR still needs independent code review, post-rebase
-verification, and applicable product/release approval. Benchmark and reader
-claims must also be reviewed within their recorded kernel, artifact, and method
-boundaries rather than generalized.
+verification, and applicable product/release approval. Benchmark, reader, and
+#92's admission-measurement claims must also be reviewed within their recorded
+kernel, artifact, corpus, and method boundaries rather than generalized; #92's
+5/6 in particular is not a production coverage gate.
 
 ### (d) review 的前置条件 / Review preconditions
 
@@ -359,9 +407,13 @@ boundaries rather than generalized.
    `docs/architecture/ir-phase12-review.md`、#88 的
    `docs/architecture/ir-phase12-fable-review.md`、#85 的
    `docs/architecture/ir-evaluator-backend.md` 与双语 `PR_BODY.md`，以及
-   #87 的 `docs/architecture/ir-evaluator-ldiv-review.md`。
+   #87 的 `docs/architecture/ir-evaluator-ldiv-review.md`；#90 的
+   `docs/architecture/ir-phase13-status.md`、#93 的
+   `docs/architecture/ir-phase13-review.md`、#94 的
+   `docs/architecture/ir-phase13-fable-review.md`，以及 #92 的
+   `docs/benchmarks/ir-admission-phase12.md`。
    Continue to use the #34–#42 records for their claims, and use only those
-   named branch documents for the new #44–#89 claims.
+   named branch documents for the new #44–#94 claims.
 2. #53 仅对 `IrFriendlyIntKernel.run(I)I` 记录本地中位数：JVM
    12,207,144.5 ns、legacy 202,090,247.0 ns、direct IR 11,311,481.5 ns。
    direct IR 保持在 IR 路径；eval 因 `USHR` 回退到 legacy，eval 中位数为
@@ -513,30 +565,59 @@ boundaries rather than generalized.
    adds evaluator `LDIV=0x2b` and `LREM=0x2c`, keeps `(JJ)J` on eval, records
    32/32, and adds no benchmark; #87 is Sol's documentation-only **accept**
    review with 32/32. None is a ship-readiness finding.
-11. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
+11. #90 叠加在首选 #89 上，将仍为 opt-in 的 phase 13 扩展至 `Z`/`B`/`C`/`S`
+   字段与 invoke 的精确 Boolean/Byte/Char/Short JNI family；stack/local carrier
+   保持 `I32` 并显式 widen/narrow，`F`/`D` 仍 fallback，默认仍为 legacy，记录
+   62 + 2 = 64 个测试及未跳过的 87-`JNICALL` g++ 烟测。#93 是 Sol 对 #90 的
+   纯文档 **pass/accept** 审阅，#94 是 Fable 对 #90 的纯文档 **accept** 审阅，
+   均记录 64/64 且无编译器改动；#94 的唯一非阻塞 nit 是 boolean invoke 参数被
+   `& 1` 掩码，而 JVM 不在调用点掩码，对 javac 输出不可观察。#90 是首选 phase-13
+   tip，#93/#94 仅为其上的纯文档审阅。#92 是叠加在 #89 上、仅测量的六方法接纳率
+   报告，记录 5 IR / 1 fallback（`AdmissionTarget.unsupported(I)I`，opcode 134
+   `I2F`，`<clinit>` 已排除），5/6 不是生产覆盖率，也不改编译器。以上均不是上线
+   就绪结论。 #90 is stacked on preferred #89 and extends still-opt-in phase 13
+   to the exact Boolean/Byte/Char/Short JNI families for `Z`/`B`/`C`/`S` field
+   and invoke descriptors; stack/local carriers stay `I32` with explicit
+   widen/narrow, `F`/`D` still fall back, legacy remains the default, and it
+   records 62 + 2 = 64 tests plus an unskipped 87-`JNICALL` g++ smoke. #93 is
+   Sol's documentation-only **pass/accept** review and #94 is Fable's
+   documentation-only **accept** review; both record 64/64 with no compiler
+   change, and #94's sole non-blocking nit is that boolean invoke arguments are
+   masked `& 1` while the JVM does not mask at the call site, unobservable for
+   javac output. #90 is the preferred phase-13 tip and #93/#94 are only
+   documentation-only reviews on it. #92 is a measurement-only six-method
+   admission report stacked on #89 recording 5 IR / 1 fallback
+   (`AdmissionTarget.unsupported(I)I`, opcode 134 `I2F`, `<clinit>` excluded);
+   its 5/6 is not production coverage and changes no compiler code. None is a
+   ship-readiness finding.
+12. 选项 A 仍是先前简报对 v1 **产品范围**的建议，不是缩小书面工程目标的建议；
    下一工程方向不是继续调整 encoding，而是设计不会把源算法直线、可读地降为
    native code 或可解码 evaluator blob 的 lowering；#45 → #47 → #51 →
    #54 → #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 →
-   #78 → #82/#83 → #84 → #89/#88 的
-   direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上）、
+   #78 → #82/#83 → #84 → #89/#88 → #90 → #93/#94 的
+   direct-IR coverage/review（#73 仅叠加在首选且含修复的 #70 上，#90 叠加在首选
+   #89 上，#93/#94 是 #90 的纯文档审阅）、
    #34 → #53 的 benchmark 与叠加
-   在 #57 上的独立 #59 后续测量、#42 → #44 → #48 → #50 的独立 evaluator
+   在 #57 上的独立 #59 后续测量、叠加在 #89 上、仅测量的 #92 admission 报告、
+   #42 → #44 → #48 → #50 的独立 evaluator
    实验、#57/#61、#68/#69 与 #85/#87 ISA/review sibling、SDK #12 → #15 → #46 →
    #72 → #75 → #80 → #81（首选 AES tip）、compatibility #6 → #9 → #14 →
-   #41，以及 options brief … → #74 → #79 → #86 → 本 PR 分别继续。
+   #41，以及 options brief … → #74 → #79 → #86 → #91 → 本 PR 分别继续。
    Option A remains the prior v1 **product** recommendation, not a recommendation
    to shrink the written goal; the next lowering must avoid straight-line
    readable native output of the source algorithm and decodable evaluator
    blobs. The #45 → #47 → #51 → #54 → #56 → #62 → #63/#64 → #66 →
-   #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88 direct-IR
-   coverage/review lane,
-   with #73 stacked only on preferred, fixed #70,
+   #70/#71 → #73 → #76/#77 → #78 → #82/#83 → #84 → #89/#88 → #90 →
+   #93/#94 direct-IR coverage/review lane,
+   with #73 stacked only on preferred, fixed #70, #90 stacked on preferred #89,
+   and #93/#94 as documentation-only reviews of #90,
    the #34 → #53 benchmark lane plus separate #59 follow-up stacked on #57,
+   the measurement-only #92 admission report stacked on #89,
    the #42 → #44 → #48 → #50 evaluator experiment with #57/#61, #68/#69,
    and #85/#87 as ISA/review siblings,
    SDK #12 → #15 → #46 → #72 → #75 → #80 → #81 (the preferred AES tip),
    compatibility #6 → #9 → #14 → #41, and options briefs … → #74 → #79 →
-   #86 → this PR continue as separate lanes.
+   #86 → #91 → this PR continue as separate lanes.
 
 | Area | Done on a draft branch | In flight | Not started or not evidenced |
 |---|---|---|---|
@@ -554,13 +635,26 @@ accept it without establishing ship-readiness. The SDK lane continues #72 →
 #75 → #80 → #81; #81 is the preferred AES tip because it contains the
 `NO_SDK_SIZE_OVERFLOW_V1` correctness fix absent from #80. Neither AES draft is
 a shipped SDK, and tiny-AES-c is not side-channel hardened.
-This wave continues direct IR through #84 → #89/#88. #84 records constructor
+The prior wave continued direct IR through #84 → #89/#88. #84 records constructor
 bodies via a hidden bridge, a non-native `<init>`, retained bytecode
 `this`/`super` prefix, 59 tests, and a 61-method smoke. Preferred #89 contains
 the forwarded-reference-local safety fix and records 60 tests; #88 accepts
-only unfixed #84 with 59 tests. The evaluator lane continues #68/#69 →
+only unfixed #84 with 59 tests. The evaluator lane continued #68/#69 →
 #85/#87: `LDIV=0x2b` and `LREM=0x2c`, `(JJ)J` retained on eval, 32/32 on both
 implementation and docs-only review, and no new benchmark numbers.
+
+This refresh extends direct IR through #90 → #93/#94. #90, stacked on preferred
+phase-12 tip #89, adds still-opt-in phase-13 `Z`/`B`/`C`/`S` field and invoke
+JNI families with explicit widen/narrow; `F`/`D` still fall back and legacy
+remains the default. It records 62 + 2 = 64 focused tests and an unskipped
+87-`JNICALL` g++ smoke. #93 is Sol's documentation-only **pass/accept** review
+and #94 is Fable's documentation-only **accept** review; both record 64/64 and
+change no compiler code, and #94's sole non-blocking nit is that boolean invoke
+arguments are masked `& 1` while the JVM does not mask at the call site,
+unobservable for javac output. Separately, #92 is a measurement-only six-method
+admission report stacked on #89: it records 5 IR / 1 fallback, the fallback
+being `AdmissionTarget.unsupported(I)I` at opcode 134 (`I2F`) with `<clinit>`
+excluded. Its 5/6 is not production IR coverage and changes no compiler code.
 
 ### Reader-eval evidence
 
@@ -651,13 +745,15 @@ source algorithm as straight-line readable native code or a decodable
 evaluator blob shipped with its evaluator; encoding tweaks alone are not that
 design. Wider opt-in direct-IR coverage/review in #45 → #47 → #51 → #54 →
 #56 → #62 → #63/#64 → #66 → #70/#71 → #73 → #76/#77 → #78 → #82/#83 →
-#84 → #89/#88
-(with #73 based only on preferred, fixed #70), the #34 → #53 benchmark lane plus #59
-stacked on #57, the separate #42 → #44 → #48 → #50 evaluator experiment with
+#84 → #89/#88 → #90 → #93/#94
+(with #73 based only on preferred, fixed #70, #90 based on preferred #89, and
+#93/#94 as documentation-only reviews of #90), the #34 → #53 benchmark lane plus
+#59 stacked on #57, the measurement-only #92 admission report stacked on #89,
+the separate #42 → #44 → #48 → #50 evaluator experiment with
 #57/#61, #68/#69, and #85/#87 as ISA/review siblings, the SDK #12 → #15 →
 #46 → #72 → #75 → #80 → #81, with #81 preferred over unfixed #80, and
 compatibility #6 → #9 → #14 → #41 stacks, and options briefs
-… → #74 → #79 → #86 → this PR continue as separate engineering lanes.
+… → #74 → #79 → #86 → #91 → this PR continue as separate engineering lanes.
 
 #### Other product decisions
 
@@ -725,7 +821,10 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    [#83](https://github.com/gaoyu06/native-obfuscator/pull/83) →
    [#84](https://github.com/gaoyu06/native-obfuscator/pull/84) →
    [#89](https://github.com/gaoyu06/native-obfuscator/pull/89) /
-   [#88](https://github.com/gaoyu06/native-obfuscator/pull/88). Rebase after
+   [#88](https://github.com/gaoyu06/native-obfuscator/pull/88) →
+   [#90](https://github.com/gaoyu06/native-obfuscator/pull/90) →
+   [#93](https://github.com/gaoyu06/native-obfuscator/pull/93) /
+   [#94](https://github.com/gaoyu06/native-obfuscator/pull/94). Rebase after
    #6 so the duplicated JUnit-launcher change is resolved once. Do not squash
    away review fixes or treat #47/#51/#54/#56/#62 as parity or ship-ready. #39 and
    #45 are the docs-only Fable reviews of phases 4 and 5; #51 is Sol's phase-6
@@ -768,6 +867,16 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    its post-fix record is 60 tests and a 61-method smoke. #88 is a parallel
    docs-only **accept** review of unfixed #84 with 59 tests and does not contain
    #89's fix. None is a ship-readiness finding.
+   #90 is based on preferred #89 and adds still-opt-in phase-13 `Z`/`B`/`C`/`S`
+   field and invoke JNI families with explicit widen/narrow; `F`/`D` still fall
+   back, legacy remains default, and it records 62 + 2 = 64 tests plus an
+   unskipped 87-`JNICALL` g++ smoke. #93 and #94 are parallel documentation-only
+   reviews of #90, not compiler successors: #93 records Sol's **pass/accept** and
+   #94 records Fable's **accept**, both with 64/64 and no compiler change; #94's
+   sole non-blocking nit is that boolean invoke arguments are masked `& 1` while
+   the JVM does not mask at the call site, unobservable for javac output. Prefer
+   #90 as the implementation tip over treating either review as the change. None
+   is a ship-readiness finding.
    [#42](https://github.com/gaoyu06/native-obfuscator/pull/42) is a separate
    sibling lane from #39, not the next item in the direct-IR stack. Review it
    through [#44](https://github.com/gaoyu06/native-obfuscator/pull/44), then
@@ -805,6 +914,12 @@ rebasing. For a stacked PR, merge the base first, retarget the next PR to
    fallback; it is evidence, not an implementation merge prerequisite. Keep
    #59 as the distinct sibling/follow-up benchmark stacked on #57 rather than
    collapsing the two runs.
+   [#92](https://github.com/gaoyu06/native-obfuscator/pull/92) is a
+   measurement-only admission report stacked on #89: a two-class, six-method
+   Java 8 corpus recorded 5 IR / 1 fallback (the `AdmissionTarget.unsupported(I)I`
+   method at opcode 134, `I2F`, with `<clinit>` excluded). It is scoped
+   measurement evidence, not a production coverage gate and not an implementation
+   merge prerequisite; do not generalize its 5/6 beyond that corpus.
    Separately,
    [#35](https://github.com/gaoyu06/native-obfuscator/pull/35) is an eval-only
    live-artifact sibling on #33; keep the #35 →
@@ -918,6 +1033,20 @@ parallel, but their order within each arrowed stack must be preserved.
 - #85 adds evaluator `LDIV=0x2b` and `LREM=0x2c` on #68, keeps `(JJ)J` on eval,
   records 32/32, and adds no benchmark. #87 is its docs-only **accept** review
   with 32/32; neither is ship-ready.
+- #90 remains an opt-in, partial phase 13 on preferred #89. It adds the exact
+  Boolean/Byte/Char/Short JNI families for `Z`/`B`/`C`/`S` field and invoke
+  descriptors with explicit widen/narrow, but `F`/`D`, non-int arrays, `POP2`,
+  and invokedynamic still fall back and legacy remains the default. Its 64 tests
+  and unskipped 87-`JNICALL` g++ smoke do not make it ship-ready. #93 and #94
+  are documentation-only reviews (Sol **pass/accept** and Fable **accept**), both
+  64/64 with no compiler change; #94's only nit is that boolean invoke arguments
+  are masked `& 1` while the JVM does not mask at the call site, unobservable for
+  javac output. Neither review is a compiler fix or a ship-readiness finding.
+- #92 is a measurement-only admission report on the #89 tip, not a coverage
+  gate. Its two-class, six-method Java 8 corpus recorded 5 IR / 1 fallback (the
+  `AdmissionTarget.unsupported(I)I` method at opcode 134, `I2F`, with `<clinit>`
+  excluded). This 5/6 (83.3%) is synthetic and must not be generalized to
+  production IR coverage; it changes no compiler code.
 - #46 cleanly stacks `NativeStrings` on SDK v1 without duplicating the general
   benchmark harness. Its status document records the local diagnostic as
   slower than Java and explicitly rejects a portable or speedup claim.
@@ -949,7 +1078,7 @@ parallel, but their order within each arrowed stack must be preserved.
   target evaluator-data marker was present and no target-method or `IUSHR`
   fallback occurred. This is one local diagnostic, not a portable result or
   speedup claim; #53's eval median remains `N/A`.
-- PRs #1–#89 are still open drafts. `master` contains none of their work.
+- PRs #1–#94 are still open drafts. `master` contains none of their work.
 
 ## Before any production claim
 
@@ -969,7 +1098,11 @@ not the union of claims from draft branches:
    compile generated C++ with warnings-as-errors/sanitizers, run `-Xcheck:jni`,
    retain #89's forwarded-reference-local constructor fix rather than using
    unfixed #84/#88, and make a reviewed default/fallback/legacy-retirement
-   decision.
+   decision. Do not flip the default: #90 adds only the still-opt-in phase-13
+   `Z`/`B`/`C`/`S` field and invoke families with `F`/`D` still on fallback, and
+   #93/#94 are documentation-only reviews of #90, not compiler fixes. Treat #92's
+   5/6 admission measurement as scoped evidence, not a coverage gate, and prefer
+   #90 as the implementation tip over either review.
 4. Replace the one-machine diagnostic benchmark with controlled repeated raw
    results, forked/JMH and native-only isolation where applicable, end-to-end
    cost data, and human-approved workload budgets. Either meet those budgets or
