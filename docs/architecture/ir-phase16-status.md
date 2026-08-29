@@ -84,16 +84,53 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --rerun-tasks
 ```
 
-`IrCompilerTest` covers all nine ordered pairings of `I32`, `F32`, and
+Result on 2026-08-29: `BUILD SUCCESSFUL`.
+
+Counts read directly from Gradle's JUnit XML:
+
+```text
+IrCompilerTest: tests=78, skipped=0, failures=0, errors=0 (time=0.725 s)
+CodegenModeTest: tests=2, skipped=0, failures=0, errors=0 (time=0.098 s)
+Total: 80 tests, 0 skipped, 0 failures, 0 errors
+```
+
+The five new focused tests cover all nine ordered pairings of `I32`, `F32`, and
 `REFERENCE` for `SWAP`; rejection with `I64`/`F64` in either position;
 `Object[]` and `String[]` store/load round trips; null, negative-index, and
 `index == length` paths; JNI-raised `ArrayStoreException`; and
-fallback-before-mutation after all three newly admitted operations. The
-retained smoke translation unit includes the phase-9 through phase-15
-regressions and is compiled by an unskipped `g++ -std=c++17 -fsyntax-only`
-test. Final XML counts, the retained translation-unit path, and the
-independent syntax-only result are recorded after running the required
-verification.
+fallback-before-mutation after all three newly admitted operations.
+Phase-9 through phase-15 regressions remain in the same focused suite,
+including `jarray` `ARETURN`, constructor/prefix-local checks, exact Z/B/C/S
+and F/D carriers, and String/Class/Long LDC.
+
+### Real g++ smoke evidence
+
+Environment:
+
+```text
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+openjdk version "21.0.10" 2026-01-20
+JNI headers: /usr/lib/jvm/java-21-openjdk-amd64/include
+```
+
+`generatedCppPassesGppSyntaxCheckWhenToolchainAvailable` is a required test,
+not an assumption-based skip. It ran in 0.255 s and has no `<skipped>` child
+in the JUnit XML. The retained translation unit contains exactly 128
+`JNICALL` functions (the phase-15 unit's 119 plus nine phase-16 smoke
+methods).
+
+The retained unit
+`/tmp/ir-compile-smoke7492160452615799211/ir-smoke.cpp` was independently
+checked with:
+
+```text
+g++ -std=c++17 -fsyntax-only \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include \
+  -I/usr/lib/jvm/java-21-openjdk-amd64/include/linux \
+  /tmp/ir-compile-smoke7492160452615799211/ir-smoke.cpp
+```
+
+`g++` exited zero with empty diagnostics.
 
 ### Default and retained assets
 
