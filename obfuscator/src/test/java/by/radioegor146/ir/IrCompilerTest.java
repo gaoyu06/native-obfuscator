@@ -9,6 +9,7 @@ import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -29,6 +30,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.tree.IincInsnNode;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -353,6 +355,30 @@ public class IrCompilerTest {
         assertEquals(opcodes, realOpcodes(constructor));
         assertTrue(context.proxyMethod == null);
         assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+    }
+
+    @Test
+    public void rewrittenConstructorPassesJvmVerification() throws Exception {
+        ClassNode owner = constructorOwner("example/Verified", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = intFieldConstructor();
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(7));
+        assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
     }
 
     @Test
@@ -1528,6 +1554,13 @@ public class IrCompilerTest {
         return count;
     }
 
+    private byte[] writeClass(ClassNode classNode) {
+        ClassWriter writer = new ClassWriter(
+                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
     private String assertFieldRoundTrip(MethodNode method, IrType expectedType,
                                         String getAccessor, String setAccessor) {
         IrMethod ir = frontend.build("example/Math", method);
@@ -2682,5 +2715,11 @@ public class IrCompilerTest {
         method.maxLocals = 2;
         method.maxStack = 2;
         return method;
+    }
+
+    private static final class ByteArrayClassLoader extends ClassLoader {
+        private Class<?> define(byte[] bytecode) {
+            return defineClass(null, bytecode, 0, bytecode.length);
+        }
     }
 }
