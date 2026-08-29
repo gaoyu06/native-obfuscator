@@ -70,7 +70,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Type[] constructorArguments = splitArgumentTypes(context.method, split);
         if (split.receiverAliasForwarding) {
             context.constructorClassloaderArgumentIndex =
-                    constructorArguments.length - 1;
+                    constructorArguments.length - 1
+                            - (split.distinctSuffix == null ? 0 : 1);
         }
         Type[] bridgeArguments = new Type[constructorArguments.length + 1];
         bridgeArguments[0] = Type.getType(Object.class);
@@ -204,7 +205,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
         Map<LabelNode, LabelNode> labels = labels(constructor);
         if (split.distinctSuffix != null) {
-            int pathIdLocal = split.packedExtraEnd;
+            int pathIdLocal = split.packedExtraEnd
+                    + (split.receiverAliasForwarding ? 1 : 0);
             body.instructions.add(new VarInsnNode(
                     Opcodes.ILOAD, pathIdLocal));
             int suffixCount = split.distinctSuffix.suffixes.size();
@@ -375,13 +377,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     MultiSuperTryCatches tryCatches =
                             distinctSuffixTryCatches(
                                     constructor, callIndexes, distinctSuffix);
+                    boolean receiverAliasForwarding = validateReceiverStores(
+                            constructor, constructor.instructions.size(),
+                            callIndexes, tryCatches.prefix, true);
+                    if (hasReceiverStoreBefore(
+                            constructor, callIndexes.get(0))
+                            && !receiverAliasForwarding) {
+                        throw unsupported(
+                                "Constructor path-selected ASTORE 0 does not "
+                                        + "provably use receiver-alias forwarding",
+                                callIndexes.get(0),
+                                constructor.instructions.get(callIndexes.get(0)));
+                    }
                     return new ConstructorSplit(
                             distinctSuffix.suffixes.get(0).startIndex,
                             distinctSuffix.suffixes.get(0).startIndex,
                             new HashSet<>(), extraLocals,
                             firstExtraLocal(constructor),
                             tryCatches.prefix, tryCatches.suffix,
-                            tryCatches.relocated, false,
+                            tryCatches.relocated, receiverAliasForwarding,
                             null, distinctSuffix);
                 }
                 suffixStartIndex = duplicatedSuffix.canonicalStartIndex;
@@ -1247,7 +1261,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         if (callIndexes.size() > 2) {
             if (!hasDirectDeclaredChainInputs(
-                    constructor, callIndexes)) {
+                    constructor, callIndexes, false)) {
                 return null;
             }
         }
@@ -1307,6 +1321,38 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
 
+        boolean hasPrefixReceiverStore = false;
+        int firstCallIndex = callIndexes.get(0);
+        Set<Integer> declaredReferenceLocals =
+                forwardedReferenceLocals(constructor);
+        for (int i = 0; i < constructor.instructions.size(); i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() == Opcodes.JSR
+                    || instruction.getOpcode() == Opcodes.RET) {
+                return null;
+            }
+            if (instruction.getOpcode() == Opcodes.ASTORE
+                    && ((VarInsnNode) instruction).var == 0) {
+                if (i >= firstCallIndex) {
+                    return null;
+                }
+                int valueIndex =
+                        previousExecutableIndex(constructor, i - 1);
+                if (valueIndex < 0) {
+                    return null;
+                }
+                AbstractInsnNode value =
+                        constructor.instructions.get(valueIndex);
+                if (value.getOpcode() != Opcodes.ACONST_NULL
+                        && (value.getOpcode() != Opcodes.ALOAD
+                        || !declaredReferenceLocals.contains(
+                        ((VarInsnNode) value).var))) {
+                    return null;
+                }
+                hasPrefixReceiverStore = true;
+            }
+        }
+
         List<LinearSuffix> suffixes = new ArrayList<>();
         for (int i = 0; i < callIndexes.size(); i++) {
             LinearSuffix suffix =
@@ -1321,7 +1367,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         if (suffixes.get(suffixes.size() - 1).endIndex
                 != constructor.instructions.size()
-                || !hasDirectDeclaredChainInputs(constructor, callIndexes)
+                || !hasDirectDeclaredChainInputs(
+                        constructor, callIndexes, hasPrefixReceiverStore)
                 || !hasEmptyChainEntryStacks(constructor, callIndexes)) {
             return null;
         }
@@ -1336,15 +1383,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         if (!hasDistinctPair) {
             return null;
-        }
-
-        for (AbstractInsnNode instruction : constructor.instructions) {
-            if (instruction.getOpcode() == Opcodes.JSR
-                    || instruction.getOpcode() == Opcodes.RET
-                    || instruction.getOpcode() == Opcodes.ASTORE
-                    && ((VarInsnNode) instruction).var == 0) {
-                return null;
-            }
         }
 
         validateChainCounts(
@@ -1868,15 +1906,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Restricts the 3+-return normalization to calls whose complete operand
-     * sequence is visible locally: ALOAD 0 followed by direct declared-argument
-     * loads, int-family constants, one INEG over a direct declared int-family
-     * argument load, or an admitted int binary tree of at most two levels over
-     * those int-family leaves. IDIV and IREM are admitted only as one-level
-     * operations whose two operands are leaves.
+     * Restricts bounded multi-call forms to calls whose complete operand
+     * sequence is visible locally: a direct receiver ALOAD followed by direct
+     * declared-argument loads, int-family constants, one INEG over a direct
+     * declared int-family argument load, or an admitted int binary tree of at
+     * most two levels over those int-family leaves. IDIV and IREM are admitted
+     * only as one-level operations whose two operands are leaves. The
+     * identical-copy form requires ALOAD 0; the distinct-suffix form may accept
+     * a direct alias load only when its separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
-            MethodNode constructor, List<Integer> callIndexes) {
+            MethodNode constructor, List<Integer> callIndexes,
+            boolean allowReceiverAlias) {
         Map<Integer, Type> declaredArguments = new HashMap<>();
         int declaredLocal = 1;
         for (Type argument : Type.getArgumentTypes(constructor.desc)) {
@@ -1902,7 +1943,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             if (inputIndex < 0
                     || constructor.instructions.get(inputIndex).getOpcode()
                     != Opcodes.ALOAD
-                    || ((VarInsnNode) constructor.instructions.get(inputIndex)).var
+                    || !allowReceiverAlias
+                    && ((VarInsnNode) constructor.instructions.get(inputIndex)).var
                     != 0) {
                 return false;
             }
@@ -2283,6 +2325,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         return opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN;
     }
 
+    private static boolean hasReceiverStoreBefore(
+            MethodNode constructor, int endIndex) {
+        for (int i = 0; i < endIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() == Opcodes.ASTORE
+                    && ((VarInsnNode) instruction).var == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Set<Integer> forwardedReferenceLocals(MethodNode constructor) {
         Set<Integer> locals = new HashSet<>();
         int local = 1;
@@ -2586,10 +2640,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves that every retained ASTORE 0 is reachable with a stack input and
      * that each selected chain call consumes the original constructor receiver.
-     * A single-call constructor, or the exact two-call shared-join diamond, may
-     * forward that receiver through an alias while local 0 receives another
-     * reference. Other multi-call forms remain limited to identity-preserving
-     * stores.
+     * A single-call constructor, the exact two-call shared-join diamond, or a
+     * bounded path-selected distinct-suffix constructor may forward that
+     * receiver through an alias while local 0 receives another reference.
+     * Other multi-call forms remain limited to identity-preserving stores.
      */
     private static boolean validateReceiverStores(
             MethodNode constructor, int splitIndex, List<Integer> callIndexes,
