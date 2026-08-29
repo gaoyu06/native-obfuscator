@@ -521,10 +521,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one additional two-call shape: both calls fall through to
-     * non-empty, straight-line, structurally identical suffix copies ending in
-     * RETURN. The canonical final copy can then be shared by replacing the
-     * first copy with a GOTO. Empty copies stay rejected so separate returns
-     * are not generalized into a multi-exit rewrite.
+     * straight-line, structurally identical suffix copies ending in RETURN.
+     * The copy may be empty, making RETURN the immediate successor of each
+     * call. The canonical final copy can then be shared by replacing the first
+     * copy with a GOTO; this does not generalize to multiple native exits.
      */
     private static DuplicatedSuffix duplicatedSuffix(
             MethodNode constructor, List<Integer> callIndexes) {
@@ -569,7 +569,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     private static LinearSuffix linearSuffix(
             MethodNode constructor, int callIndex) {
-        int bodyInstructions = 0;
         for (int i = callIndex + 1;
              i < constructor.instructions.size(); i++) {
             AbstractInsnNode instruction = constructor.instructions.get(i);
@@ -578,8 +577,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 return null;
             }
             if (opcode == Opcodes.RETURN) {
-                return bodyInstructions == 0
-                        ? null : new LinearSuffix(callIndex + 1, i + 1);
+                return new LinearSuffix(callIndex + 1, i + 1);
             }
             if (isReturn(opcode) || opcode == Opcodes.ATHROW
                     || opcode == Opcodes.JSR || opcode == Opcodes.RET
@@ -589,7 +587,6 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                     || !isComparableLinearInstruction(instruction)) {
                 return null;
             }
-            bodyInstructions++;
         }
         return null;
     }
