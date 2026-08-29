@@ -39,10 +39,11 @@ The constructor split now covers these related prefix shapes:
 - exactly two direct this/super calls whose separate straight-line suffix
   copies, including immediate `RETURN` copies, are proven
   instruction-for-instruction identical; and
-- three or more direct this/super calls where every call consumes the original
+- three or more direct this/super calls with the same identical straight-line
+  suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load) and is immediately followed by `RETURN`.
+  argument load).
 
 ## Current rule
 
@@ -108,19 +109,20 @@ fail-closed rule:
 
 One additional family is reduced to that same shared-join form:
 
-- With exactly two candidates, each must be immediately followed by a
+- With two or more candidates, each must be immediately followed by a
   straight-line suffix copy ending in `RETURN`. The copies may be empty, in
   which case each call is immediately followed by `RETURN`.
 - The copies may not contain labels, branches, switches, throws, nested
   constructor calls, unsafe constants, or exception-table coverage. Every
-  executable instruction and operand in the two copies must match.
-- With three or more candidates, every suffix copy must consist only of the
-  immediate `RETURN`. Each call's complete input sequence must start with a
-  direct `ALOAD 0`. In invocation order, each argument must then be either a
-  direct load of a declared constructor argument with a matching JVM carrier;
-  `ICONST_M1` through `ICONST_5`, `BIPUSH`, `SIPUSH`, or `LDC` of `Integer`
-  for an int-family call argument; or exactly one `INEG` over a direct `ILOAD`
-  of a declared int-family constructor argument.
+  executable instruction and operand in every copy must match the final
+  bytecode-order copy.
+- With three or more candidates, each call's complete input sequence must
+  additionally start with a direct `ALOAD 0`. In invocation order, each
+  argument must then be either a direct load of a declared constructor
+  argument with a matching JVM carrier; `ICONST_M1` through `ICONST_5`,
+  `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
+  or exactly one `INEG` over a direct `ILOAD` of a declared int-family
+  constructor argument.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -128,17 +130,17 @@ One additional family is reduced to that same shared-join form:
 - After all checks pass, every noncanonical suffix copy is replaced with
   `GOTO` and the final copy receives the shared join label. The existing
   strict-diamond split then retains every call and emits the canonical suffix
-  once behind one hidden bridge. For the 3+ form, that suffix contains only
-  `RETURN`.
+  once behind one hidden bridge.
 
-Three-or-more returns with extra-local or aliased inputs, binary arithmetic,
-`IINC`, non-int-family constants, non-`Integer` `LDC`, fields, method calls,
-stack duplication, computed or rewritten receivers, or any other unlisted
-input remain rejected. Distinct joins, other conditional or switch forms,
-condition/switch-key loads that are not direct declared int-family arguments,
-post-call work, nonempty exception tables for the post-chain forms,
-zero-call paths, unreachable candidates, and non-identical per-call suffixes
-also remain rejected.
+Three-or-more calls with extra-local or aliased chain inputs, binary
+arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`, fields,
+method calls, stack duplication, computed or rewritten receivers, or any
+other unlisted input remain rejected. Distinct joins, other conditional or
+switch forms, condition/switch-key loads that are not direct declared
+int-family arguments, labels or control flow in a copied suffix, nonempty
+exception tables for the post-chain forms, zero-call paths, unreachable
+candidates, extra-local suffix reads, and non-identical per-call suffixes also
+remain rejected.
 This is intentionally a narrow set of proven one-join forms, not a general
 multi-exit constructor rewriter.
 
@@ -355,6 +357,16 @@ Synthetic bytecode unit tests in
   direct-load, `INEG`, and `ICONST_0` paths through plain Java and the complete
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical
   stdout.
+- `admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies` proves that
+  three instruction-identical `ICONST_4; POP; RETURN` copies normalize to two
+  retained `GOTO`s, one canonical suffix, and one hidden bridge while retaining
+  the #179 direct-load/`INEG`/constant chain-input proof.
+- `rewrittenThreeIdenticalNonemptySuffixCopiesPassJvmVerification` serializes
+  the rewritten owner, superclass, and hidden class, then selects all three
+  paths up to the unresolved native bridge after JVM verification.
+- `threeIdenticalNonemptySuffixCopiesCompileAndRunWithJavaParity` selects all
+  three paths through plain Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsPrefixOnlyTryCatchAndRetainsItInRewrittenConstructor` proves that the
   independent suffix has no prefix handler while the rewritten constructor
   retains the complete prefix exception-table entry and forwards its assigned
@@ -377,13 +389,13 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
-- Three-call immediate-return negatives reject extra-local inputs, a rewritten
-  `ASTORE 0` receiver, `IADD`, post-call work, a zero-call return, and a
-  nonempty exception table before mutation. Other multi-call negatives still
-  cover try/catch spanning a chain call and suffix code, a path that executes
-  two chain calls, and distinct non-empty per-call suffixes. Existing
-  prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
-  negatives remain.
+- Three-call negatives reject extra-local chain or suffix inputs, a rewritten
+  `ASTORE 0` receiver, `IADD`, non-identical post-call work, a branched suffix,
+  a zero-call return, and a nonempty exception table before mutation. Other
+  multi-call negatives still cover try/catch spanning a chain call and suffix
+  code, a path that executes two chain calls, and distinct non-empty per-call
+  suffixes. Existing prefix-to-suffix, suffix-to-prefix, and conditionally
+  assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
