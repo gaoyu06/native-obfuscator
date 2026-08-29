@@ -70,6 +70,28 @@ and generated-library packaging.
 
 ## Verification / 验证结果
 
-Verification results will be recorded after the committed branch is tested.
+- `CC=gcc CXX=g++` generated-library integration: **PASS**, including CMake,
+  G++, `-Xcheck:jni`, 4 HMAC vectors, null contracts, and existing primitive
+  and NativeStrings checks.
+- Full `:sdk:test :obfuscator:test` with repository-required Krakatau2:
+  **13/13 tests passed** (8 generated fixtures, 4 focused unit tests, 1 SDK
+  integration test); `:sdk:test` has no test sources.
+- `:sdk:jar :obfuscator:assemble`: **PASS**.
+- Exported-symbol inspection includes `no_sdk_hmac_sha256_v1`.
+- No HMAC benchmark was run. The inherited NativeStrings diagnostic ran once
+  during the recorded final suite: Java median 5,292,741 ns, NativeStrings
+  median 16,394,713 ns, with all raw samples and environment in
+  `docs/sdk/v1-status.md`. NativeStrings was slower in this local run.
 
-提交分支完成测试后记录验证结果。
+- 使用 `CC=gcc CXX=g++` 的生成库集成测试：**通过**，覆盖 CMake、G++、
+  `-Xcheck:jni`、4 个 HMAC 向量、null 契约及既有 primitive/NativeStrings
+  检查。
+- 配置仓库要求的 Krakatau2 后，完整 `:sdk:test :obfuscator:test`：
+  **13/13 通过**（8 个生成 fixture、4 个既有单元测试、1 个 SDK 集成测试）；
+  `:sdk:test` 没有测试源码。
+- `:sdk:jar :obfuscator:assemble`：**通过**。
+- 导出符号检查包含 `no_sdk_hmac_sha256_v1`。
+- 未运行 HMAC benchmark。最终完整 suite 中记录了一次继承的 NativeStrings
+  诊断：Java 中位数 5,292,741 ns，NativeStrings 中位数 16,394,713 ns；
+  原始样本和环境均记录于 `docs/sdk/v1-status.md`。本次本地运行中
+  NativeStrings 更慢。

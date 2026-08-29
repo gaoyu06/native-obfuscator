@@ -71,8 +71,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test \
   --no-build-cache --rerun-tasks --info
 ```
 
-Result on the NativeStrings-on-SDK branch: **PASS** (`BUILD SUCCESSFUL`, test
-completed in 2792 ms). The test:
+Result on the HMAC-SHA-256 SDK branch: **PASS** (`BUILD SUCCESSFUL`, test
+completed in 2544 ms in the final full-module run). The test:
 
 1. generates the output JAR and C++ tree;
 2. confirms the primitive, NativeStrings, and SHA-256 sources are listed by
@@ -80,8 +80,9 @@ completed in 2792 ms). The test:
 3. configures and links `libnative_library.so` with CMake and G++;
 4. injects it as `native0/x64-linux.so` for `LoaderUnpack`;
 5. runs the output JAR with `-Xcheck:jni`;
-6. verifies the empty and `abc` SHA-256 vectors, 9 input sizes against
-   `MessageDigest`, 5 equality cases, ABI version 1, and null contracts;
+6. verifies the empty and `abc` SHA-256 vectors, 4 published HMAC-SHA-256
+   vectors, 9 input sizes against `MessageDigest`, 5 equality cases, ABI
+   version 1, and null contracts;
 7. verifies native string length and hash for 5 UTF-16 vectors, 4
    concatenations, and string null contracts;
 8. runs the minimal Java/NativeStrings string measurement and rejects unequal
@@ -90,7 +91,7 @@ completed in 2792 ms). The test:
 Verifier output:
 
 ```text
-NativePrimitivesVerifier: PASS (2 FIPS vectors, 9 MessageDigest cases, 5 equality cases, 5 string vectors, 4 concatenations)
+NativePrimitivesVerifier: PASS (2 FIPS vectors, 4 HMAC-SHA-256 vectors, 9 MessageDigest cases, 5 equality cases, 5 string vectors, 4 concatenations)
 ```
 
 ### Local NativeStrings measurement
@@ -99,19 +100,21 @@ This branch does not copy the full benchmark harness from PR #10. The
 integration test instead runs one dependency-free diagnostic workload in
 separate Java and NativeStrings processes. Each sample performs 127 calls of
 256 UTF-16 concat/length/hash iterations. Both modes produced checksum
-`231461089`; 5 warmups and 10 measured iterations were used.
+`231461089`; 5 warmups and 10 measured iterations were used. The samples below
+are from one local process pair in the final full-module run, not an aggregate
+or a portable performance result. No HMAC performance measurement was made.
 
 Unit: nanoseconds per complete sample.
 
 | Mode | Raw samples | Median |
 | --- | --- | ---: |
-| Java | 5141571, 4953808, 4740505, 5415515, 5070776, 5479848, 5514323, 5411874, 5227697, 5225557 | 5226627 |
-| SDK `NativeStrings` | 17949770, 18011104, 18384960, 16461922, 16669859, 16825945, 16250059, 16588246, 16011566, 17851418 | 16747902 |
+| Java | 3808864, 2541130, 2670761, 5375462, 5923559, 5223219, 5778503, 5265139, 5718555, 5320343 | 5292741 |
+| SDK `NativeStrings` | 23952281, 21693655, 20047868, 15871892, 15751482, 16917534, 15799645, 15869699, 15846734, 20719102 | 16394713 |
 
-In this run, `NativeStrings` was about 3.20x slower than Java for this exact
-workload. This is local diagnostic evidence, not a portable performance claim.
-The snippet-transpiled JNI comparison was not re-run because its harness lives
-in PR #10/#27 and is intentionally not duplicated on this branch.
+In this run, `NativeStrings` had the higher median (16,394,713 ns versus
+5,292,741 ns for Java). This is local diagnostic evidence, not a portable
+performance claim. The snippet-transpiled JNI comparison was not re-run because
+its harness lives in PR #10/#27 and is intentionally not duplicated here.
 
 Assembly command:
 
@@ -121,10 +124,18 @@ Assembly command:
 
 Result: **PASS** (`BUILD SUCCESSFUL`).
 
-The first integration invocation stopped before CMake because Gradle 9.3.1
-requires an explicit JUnit Platform launcher. Adding launcher 1.4.2 to match the
-existing JUnit 5.4.2 runtime resolved that test-runner failure; all subsequent
-native integration invocations passed.
+Full module test command:
+
+```text
+PATH="<Krakatau target/release>:$PATH" CC=gcc CXX=g++ ./gradlew \
+  :sdk:test :obfuscator:test --no-build-cache --rerun-tasks --info
+```
+
+Result: **PASS**, 13 JUnit/dynamic tests (13 passed, 0 failed, 0 skipped).
+This count comprises 8 generated fixture tests, 4 existing focused unit tests,
+and 1 native SDK integration test. `:sdk:test` reported `NO-SOURCE`. Krakatau2
+was built from `Storyyeller/Krakatau` following the repository CI setup because
+the initial environment did not include `krak2`.
 
 Generated-library symbol inspection found:
 
@@ -132,6 +143,7 @@ Generated-library symbol inspection found:
 JNI_OnLoad
 no_sdk_abi_version_v1
 no_sdk_equal_constant_time_v1
+no_sdk_hmac_sha256_v1
 no_sdk_sha256_v1
 ```
 
