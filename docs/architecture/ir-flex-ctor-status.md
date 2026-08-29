@@ -8,11 +8,13 @@ verifier-required this/super `INVOKESPECIAL <init>` call) and an initialized-thi
 suffix that is compiled by the IR frontend and reached through a hidden static
 native bridge.
 
-The constructor split now covers six related prefix shapes:
+The constructor split now covers seven related prefix shapes:
 
 - branches and switches that remain entirely in the retained prefix;
 - try/catch entries whose start, end, and handler labels all remain in the
   retained prefix;
+- suffix-protected try/catch entries targeting an isolated prefix
+  `POP; RETURN` handler that has no normal incoming edge;
 - `ASTORE 0` writes whose stack input is proven to be the original constructor
   receiver, with every selected this/super call proven to consume that same
   receiver;
@@ -109,7 +111,7 @@ Prefix stores into non-parameter locals are classified separately:
 Other guards remain unchanged:
 
 - Suffix jumps/switches into the prefix are rejected.
-- try/catch regions crossing the split are rejected.
+- All other try/catch label placements crossing the split are rejected.
 - Prefix `ASTORE 0` that is not proven identity-preserving is rejected for both
   single- and multi-call shapes.
 - `jsr`/`ret` remains unsupported.
@@ -125,11 +127,19 @@ Try/catch entries are classified independently and fail closed:
   suffix start, the entry is admitted. `postProcess` clones the complete entry
   with the retained prefix and does not expose it to the JNI shell or copy it
   into `createNativeBody`.
+- One exact mixed placement is also admitted: `start` and `end` are suffix
+  labels, while `handler` is a prefix label whose executable sequence is
+  exactly `POP; RETURN` (stack-map frames may separate those nodes). The
+  preceding executable instruction must be `GOTO`, no jump or switch may
+  target the handler, and the label may not also delimit a protected range.
+  `createNativeBody` appends this isolated handler to the suffix clone and
+  preserves the original exception-table edge. `postProcess` omits the
+  now-dead prefix copy from the bytecode wrapper.
 - If all three labels are in the suffix, the entry remains admitted and is
   cloned into `createNativeBody` for IR lowering.
-- Every mixed placement is rejected, including a prefix protected range with a
-  suffix handler and a suffix protected range with a prefix handler. The
-  hidden bridge is outside every admitted prefix protected range, so native
+- Every other mixed placement is rejected, including a prefix protected range
+  with a suffix handler and a suffix protected range with a prefix handler.
+  The hidden bridge is outside every admitted prefix protected range, so native
   suffix exceptions cannot enter a bytecode handler before the bridge.
 
 `createNativeBody` still emits the suffix only. `postProcess` keeps the prefix
@@ -200,8 +210,16 @@ Synthetic bytecode unit tests in
 - `prefixOnlyTryCatchConstructorCompilesAndRunsWithJavaParity` compares normal
   and caught inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`.
+- `admitsSuffixTryCatchWithIsolatedPrefixReturnHandler` checks that the one
+  admitted mixed handler is present in the independent suffix CFG and absent
+  from the bytecode wrapper.
+- `rewrittenRelocatedPrefixReturnHandlerPassesJvmVerification` loads the
+  rewritten owner and reaches the unresolved bridge after JVM verification.
+- `relocatedPrefixReturnHandlerCompilesAndRunsWithJavaParity` compares normal
+  division and caught divide-by-zero paths through plain Java and the complete
+  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
-  assignments of the start, end, and handler labels.
+  assignments at non-boundary labels and verifies rejection before mutation.
 - Multi-call negatives cover a non-identity prefix `ASTORE 0`, a zero-call edge
   into the suffix, try/catch spanning a chain call and suffix code, a path that
   executes two chain calls, and distinct per-call suffixes. Existing
@@ -219,9 +237,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records:
 
-- `IrCompilerTest`: 148 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 151 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 155 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 158 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

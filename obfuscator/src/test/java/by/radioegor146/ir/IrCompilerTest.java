@@ -712,6 +712,44 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsSuffixTryCatchWithIsolatedPrefixReturnHandler() {
+        ClassNode owner = constructorOwner(
+                "example/RelocatedCatch", "java/lang/Object");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                suffixTryCatchWithPrefixReturnHandler(owner.name);
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(1, nativeBody.tryCatchBlocks.size());
+        assertEquals(Arrays.asList(
+                        Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
+                        Opcodes.ISTORE, Opcodes.ALOAD, Opcodes.ILOAD,
+                        Opcodes.PUTFIELD, Opcodes.RETURN,
+                        Opcodes.POP, Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertFalse(realOpcodes(constructor).contains(Opcodes.POP));
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertTrue(context.output.toString().contains("goto IR_CATCH_"));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     public void admitsSuffixOnlyTryCatchInNativeBody() {
         ClassNode owner = constructorOwner(
                 "example/SuffixCatch", "java/lang/Object");
@@ -815,14 +853,26 @@ public class IrCompilerTest {
                 constructorOwner("example/MixedCatch", "java/lang/Object");
         for (int prefixMask = 1; prefixMask < 7; prefixMask++) {
             final int placement = prefixMask;
+            MethodNode constructor =
+                    mixedTryCatchLabelsConstructor(placement);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(obfuscator, constructor, 0, owner, 0);
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
             UnsupportedIrConstructException error = assertThrows(
                     UnsupportedIrConstructException.class,
-                    () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                            owner, mixedTryCatchLabelsConstructor(placement)),
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
                     "mixed try/catch label mask " + placement);
             assertTrue(error.getMessage().contains(
                     "Constructor exception regions may not cross "
                             + "the this/super split"));
+            assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+            assertEquals(opcodes, realOpcodes(constructor));
+            assertEquals(1, constructor.tryCatchBlocks.size());
+            assertTrue(context.proxyMethod == null);
+            assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
         }
     }
 
@@ -1272,6 +1322,38 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenRelocatedPrefixReturnHandlerPassesJvmVerification()
+            throws Exception {
+        ClassNode owner = constructorOwner(
+                "example/VerifiedRelocatedCatch", "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor =
+                suffixTryCatchWithPrefixReturnHandler(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+
+        InvocationTargetException bridge = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(0));
+        assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+    }
+
+    @Test
     public void prefixExtraReferenceLocalCompilesAndRunsWithJavaParity()
             throws Exception {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
@@ -1501,6 +1583,78 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native prefix-catch Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void relocatedPrefixReturnHandlerCompilesAndRunsWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the relocated-catch runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the relocated-catch runtime test");
+
+        String ownerName = "example/RelocatedCatchRuntime";
+        Path directory = Files.createTempDirectory("ir-relocated-catch-run");
+        Path inputJar = directory.resolve("relocated-catch.jar");
+        Path outputDirectory = directory.resolve("output");
+        createRelocatedPrefixReturnHandlerJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(), "-Xverify:all",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain relocated-catch Java run");
+        assertEquals(
+                "4" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class"))).accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(transformedConstructor.tryCatchBlocks.isEmpty());
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertFalse(realOpcodes(transformedConstructor).contains(Opcodes.POP));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("relocated-catch CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".", "--config", "Release"))
+                .check("relocated-catch CMake build");
+
+        Path library;
+        try (Stream<Path> files = Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Relocated-catch native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native relocated-catch Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -5498,6 +5652,29 @@ public class IrCompilerTest {
         }
     }
 
+    private void createRelocatedPrefixReturnHandlerJar(
+            Path jarPath, String ownerName) throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                suffixTryCatchWithPrefixReturnHandler(ownerName));
+        owner.methods.add(relocatedPrefixReturnHandlerMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperDiamondJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -6651,6 +6828,41 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode suffixTryCatchWithPrefixReturnHandler(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode handler = new LabelNode();
+        LabelNode chain = new LabelNode();
+        LabelNode start = new LabelNode();
+        LabelNode end = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, chain));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(chain);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        method.instructions.add(start);
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 24));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IDIV));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, owner, "result", "I"));
+        method.instructions.add(end);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                start, end, handler, "java/lang/ArithmeticException"));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode suffixOnlyTryCatchConstructor(String owner) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
@@ -7054,6 +7266,44 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
                 "println", "(I)V", false));
+    }
+
+    private MethodNode relocatedPrefixReturnHandlerMain(String owner) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 6));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner,
+                "<init>", "(I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner,
+                "<init>", "(I)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, owner, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
+        return method;
     }
 
     private MethodNode referenceParameterReassignedBeforeSuperConstructor() {
