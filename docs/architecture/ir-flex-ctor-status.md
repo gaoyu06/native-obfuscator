@@ -43,7 +43,8 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads, int-family constants, or one `INEG` over a direct declared int-family
-  argument load).
+  argument load, plus one `IADD` whose two operands are each one of those
+  already-proven int-family inputs).
 
 ## Current rule
 
@@ -122,7 +123,10 @@ One additional family is reduced to that same shared-join form:
   argument with a matching JVM carrier; `ICONST_M1` through `ICONST_5`,
   `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an int-family call argument;
   or exactly one `INEG` over a direct `ILOAD` of a declared int-family
-  constructor argument.
+  constructor argument. An int-family argument may also be exactly one `IADD`
+  whose left and right operands are independently one of those direct loads,
+  constants, or single-load `INEG` forms. The operand proof is leaf-only, so
+  neither operand may itself be an `IADD`.
 - A receiver-state CFG analysis proves that each call consumes the original
   constructor receiver with no older operand-stack values. The suffix may
   enter with only the receiver and declared constructor arguments; prefix
@@ -132,11 +136,11 @@ One additional family is reduced to that same shared-join form:
   strict-diamond split then retains every call and emits the canonical suffix
   once behind one hidden bridge.
 
-Three-or-more calls with extra-local or aliased chain inputs, binary
-arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`, fields,
-method calls, stack duplication, computed or rewritten receivers, or any
-other unlisted input remain rejected. Distinct joins, other conditional or
-switch forms, condition/switch-key loads that are not direct declared
+Three-or-more calls with extra-local or aliased chain inputs, nested `IADD`,
+other binary arithmetic, `IINC`, non-int-family constants, non-`Integer` `LDC`,
+fields, method calls, stack duplication, computed or rewritten receivers, or
+any other unlisted input remain rejected. Distinct joins, other conditional
+or switch forms, condition/switch-key loads that are not direct declared
 int-family arguments, labels or control flow in a copied suffix, nonempty
 exception tables for the post-chain forms, zero-call paths, unreachable
 candidates, extra-local suffix reads, and non-identical per-call suffixes also
@@ -347,20 +351,20 @@ Synthetic bytecode unit tests in
 - `admitsThreeSuperCallsWithImmediateSeparateReturns` proves that three calls
   using only the original receiver and direct declared-argument loads normalize
   to two retained `GOTO`s, one canonical `RETURN`, and one hidden bridge.
-- `admitsThreeImmediateReturnsWithComputedChainInputs` applies the same
-  normalization to a direct declared-argument load, one `INEG` over that load,
-  and `ICONST_0`.
-- `rewrittenThreeImmediateSuperReturnsPassJvmVerification` selects each computed
-  or constant call path and reaches the unresolved bridge only after JVM
-  verification succeeds.
-- `threeImmediateSuperReturnsCompileAndRunWithJavaParity` selects all three
-  direct-load, `INEG`, and `ICONST_0` paths through plain Java and the complete
-  CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`, requiring identical
-  stdout.
+- `admitsThreeImmediateReturnsWithIaddOfProvenChainInputs` applies the same
+  normalization to `ILOAD 1; ICONST_1; IADD`, one `INEG` over the declared
+  load, and `ICONST_0`; it retains all three calls and one hidden bridge while
+  the native body contains only the shared `RETURN`.
+- `rewrittenThreeImmediateIaddSuperReturnsPassJvmVerification` selects each
+  `IADD`, `INEG`, or constant call path and reaches the unresolved bridge only
+  after the rewritten owner and hidden class pass JVM verification.
+- `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity` selects all three
+  paths through plain Java and the complete CMake/g++ JNI transform under
+  `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `admitsThreeSuperCallsWithIdenticalNonemptyLinearSuffixCopies` proves that
   three instruction-identical `ICONST_4; POP; RETURN` copies normalize to two
   retained `GOTO`s, one canonical suffix, and one hidden bridge while retaining
-  the #179 direct-load/`INEG`/constant chain-input proof.
+  the same `IADD`/`INEG`/constant chain-input proof.
 - `rewrittenThreeIdenticalNonemptySuffixCopiesPassJvmVerification` serializes
   the rewritten owner, superclass, and hidden class, then selects all three
   paths up to the unresolved native bridge after JVM verification.
@@ -389,13 +393,14 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI transform under `-Xverify:all -Xcheck:jni`.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
-- Three-call negatives reject extra-local chain or suffix inputs, a rewritten
-  `ASTORE 0` receiver, `IADD`, non-identical post-call work, a branched suffix,
-  a zero-call return, and a nonempty exception table before mutation. Other
-  multi-call negatives still cover try/catch spanning a chain call and suffix
-  code, a path that executes two chain calls, and distinct non-empty per-call
-  suffixes. Existing prefix-to-suffix, suffix-to-prefix, and conditionally
-  assigned extra-local negatives remain.
+- Three-call negatives reject direct extra-local inputs, `IADD` using an extra
+  local, nested `IADD`, a rewritten `ASTORE 0` receiver, non-identical
+  post-call work, a branched suffix, a zero-call return, skip-super paths, and
+  nonempty exception tables before mutation. Other multi-call negatives still
+  cover try/catch spanning a chain call and suffix code, a path that executes
+  two chain calls, and distinct non-empty per-call suffixes. Existing
+  prefix-to-suffix, suffix-to-prefix, and conditionally assigned extra-local
+  negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
