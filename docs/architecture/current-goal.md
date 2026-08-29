@@ -60,8 +60,8 @@ The goal is complete only when all of the following are true:
    shared-label diamond, conditionally assigned extras), remaining
    unsafe/unproven condy shapes (non-static, varargs, malformed,
    cyclic; stay reject-before-mutation), and `jsr` / `ret` (obsolete;
-   reject is fine). In-tree ClassicTest / JDK fixture admission (#162
-   measurement on post-#161 master) observed no leftover methods; that
+   reject is fine). In-tree ClassicTest / JDK fixture admission (#169
+   measurement on post-#168 master) observed no leftover methods; that
    is not a complete JVM inventory.
 2. **Do not flip `--codegen` off `legacy`** until those supported methods
    no longer need fallback. The default flip is reversible and comes

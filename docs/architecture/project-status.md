@@ -221,8 +221,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   non-diamond multi-super, conditionally assigned extras) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#162](https://github.com/gaoyu06/native-obfuscator/pull/162),
-  measured on post-#161 master) observed 0 leftovers; that is not
+  ([#169](https://github.com/gaoyu06/native-obfuscator/pull/169),
+  measured on post-#168 `74dc433`) observed 0 leftovers; that is not
   coverage-complete.
 - After coverage: reversible `--codegen` default flip to `ir`, soak,
   then delete `Snippets` / `cppsnippets.properties` / string-concat
