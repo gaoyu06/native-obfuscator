@@ -2327,7 +2327,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves an isolated retained-prefix allocation with zero through four
+     * Proves an isolated retained-prefix allocation with zero through five
      * single-instruction proven int-family initializer leaves. The allocated
      * reference descriptor must exactly match the chain argument descriptor.
      * Wider or computed initializer inputs fail closed.
@@ -2348,7 +2348,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!"<init>".equals(initializer.name)
                 || !Type.VOID_TYPE.equals(
                 Type.getReturnType(initializer.desc))
-                || initializerArguments.length > 4
+                || initializerArguments.length > 5
                 || initializer.itf) {
             return null;
         }
