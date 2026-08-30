@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#304 master
+# IR leftover inventory on post-#309 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `580ec948f3284af1ca99a073ba656017172d223e`
-- Measurement commit: `580ec948f3284af1ca99a073ba656017172d223e`
-- This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
+- Measured compiler base (merge-base with `origin/master`): `688c0ea22719350a49d98b3e3787f56e3c72ea7b`
+- Measurement commit: `688c0ea22719350a49d98b3e3787f56e3c72ea7b`
+- This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
 - Java 8 remains the only version described as fully supported.
-- This is the post-#304 leftover-docs tree: #304 admitted extra-local six-argument `NEW`, after #303 isolated float `NEW` and #302 extra-local five-argument `NEW`.
-- This post-#304 remeasurement supersedes #301 on `d070653d8176ef5bab338f76eb2992c1bffbbfbf` (post-#299).
+- This is the post-#309 leftover-docs tree: #309 admitted the extra-local double-copy `NEW` initializer, after #308 extra-local float and #307 extra-local long `NEW` initializers.
+- This post-#309 remeasurement supersedes #306 on `580ec948f3284af1ca99a073ba656017172d223e` (post-#304). #301 remains the earlier post-#299 snapshot.
 - Ship-ready: **No**.
 - Admitted: **No** (measurement only).
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
