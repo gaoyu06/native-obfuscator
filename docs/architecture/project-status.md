@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after extra-local five-arg `NEW` initializer
-[#302](https://github.com/gaoyu06/native-obfuscator/pull/302)
-(parent XML 529; latest leftover inventory remains
+Last updated after isolated float `NEW` initializer
+[#303](https://github.com/gaoyu06/native-obfuscator/pull/303)
+(parent XML 532; latest leftover inventory remains
 [#301](https://github.com/gaoyu06/native-obfuscator/pull/301)
 on post-[#299](https://github.com/gaoyu06/native-obfuscator/pull/299)
 `d070653`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -648,6 +648,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local four-arg `NEW` initializer (#300) | 526 tests (`IrCompilerTest` 519 + `CodegenModeTest` 7). Parent re-ran 526/526 including `threeImmediateNewExtraLocalFourArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#299 leftover inventory (#301) | Measurement only on `d070653`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local five-arg `NEW` initializer (#302) | 529 tests (`IrCompilerTest` 522 + `CodegenModeTest` 7). Parent re-ran 529/529 including `threeImmediateNewExtraLocalFiveArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Isolated float `NEW` chain inputs (#303) | 532 tests (`IrCompilerTest` 525 + `CodegenModeTest` 7). Parent re-ran 532/532 including `threeImmediateNewFloatArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -759,6 +760,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Isolated five-arg int-family `NEW` chain inputs are admitted by #290.
   Isolated six-arg int-family `NEW` chain inputs are admitted by #294.
   Isolated one-arg long `NEW` chain inputs are admitted by #299.
+  Isolated float `NEW` chain inputs are admitted by #303.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
   strengthens those fail-closed tests. Do not admit computed/`INEG`
   extra-array stores, overwritten extras, prior array stores, or a
@@ -767,9 +769,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. Do not admit `NEW` with
   seven or more initializer arguments, array-allocation opcodes,
   extra-local of `this`, or overwritten / computed extras as
-  initializer arguments. Float/double `NEW` initializer
-  arguments stay reject-before-mutation; #293 strengthens those
-  fail-closed tests. Do not admit those leftovers. Isolated long
+  initializer arguments. Isolated float initializer arguments are
+  admitted by #303. Double `NEW` initializer arguments stay
+  reject-before-mutation; #293/#303 strengthen those fail-closed
+  tests. Do not admit the remaining double leftover. Isolated long
   initializer arguments are admitted by #299.
   Unproven `GETFIELD` forms stay reject-before-mutation; #277
   strengthens those fail-closed tests.
@@ -817,9 +820,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #302
-  (extra-local int-copy as a five-arg NEW initializer). /
-  落地 #302 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #303
+  (isolated float NEW initializer). /
+  落地 #303 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
