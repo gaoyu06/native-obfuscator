@@ -12,8 +12,11 @@
 
 ### Verification
 
-- Focused Gradle/XML results will be recorded after the pre-test commit is
-  pushed.
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test` with the eight focused new and
+  existing extra-local array admission, rejection, JVM-verification, and
+  Java-parity methods
+- parsed `obfuscator/build/test-results/test/TEST-by.radioegor146.ir.IrCompilerTest.xml`:
+  8 tests, 0 failures, 0 errors, 0 skipped
 
 Ship-ready: **No**
 
@@ -32,6 +35,11 @@ Ship-ready: **No**
 
 ### 验证
 
-- 在测试前提交推送后，将补充聚焦 Gradle 测试和 XML 汇总结果。
+- 使用 `CC=gcc CXX=g++ ./gradlew :obfuscator:test` 运行了 8 个聚焦测试，
+  覆盖新增及已有的额外数组局部变量准入、拒绝、JVM 校验和 Java 行为
+  一致性场景
+- 解析
+  `obfuscator/build/test-results/test/TEST-by.radioegor146.ir.IrCompilerTest.xml`
+  的结果为：8 个测试，0 个失败，0 个错误，0 个跳过
 
 可发布：**否**
