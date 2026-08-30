@@ -738,9 +738,16 @@ Synthetic bytecode unit tests in
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
 - `rejectsPrefixBranchTargetingSuffixLabelBeforeMutation`,
   `rejectsSwitchPathThatSkipsEveryChainCallBeforeMutation`, and
-  `rejectsMultipleSuperPathThatSkipsEveryChainCallBeforeMutation` keep direct
-  and switch-based skip-initialization paths fail-closed before constructor,
-  hidden-method, generated-source, or cache mutation.
+  `rejectsMultipleSuperPathThatSkipsEveryChainCallBeforeMutation`, plus the
+  `skip-super` variants in the immediate-return and distinct-suffix reject
+  suites, keep direct and switch-based skip-initialization paths fail-closed.
+  They preserve every constructor instruction object, generated source,
+  hidden-method inventory, and the singular `MethodContext.proxyMethod`.
+- `skipSuperConstructorShapesPassJava8JvmVerification` loads the untouched
+  Java 8 direct-branch, table/lookup-switch, shared-join, immediate-return, and
+  two-/three-distinct-suffix fixtures. Their ordinary paths construct normally,
+  while their legal pre-super exceptional paths still throw without executing
+  a chain call, documenting that IR rejection is deliberately conservative.
 - `rejectsUnprovenPostChainSwitchShapes` applies the same pre-mutation checks to
   both switch opcodes with a computed key, extra prefix-return work, or an
   exception table. `unprovenPostChainSwitchShapesPassJava8JvmVerification`
