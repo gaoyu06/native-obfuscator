@@ -21,7 +21,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Local JUnit XML: pending focused gate.
+Local JUnit XML:
+
+- `IrCompilerTest`: 494 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 501 tests, 0 failures, 0 errors, 0 skipped.
 
 - Admitted: **No** (leftover remains reject)
 - Ship-ready: **No**
@@ -49,7 +53,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本地 JUnit XML：等待 focused gate。
+本地 JUnit XML：
+
+- `IrCompilerTest`：494 tests，0 failures，0 errors，0 skipped。
+- `CodegenModeTest`：7 tests，0 failures，0 errors，0 skipped。
+- 合计：501 tests，0 failures，0 errors，0 skipped。
 
 - Admitted: **No**（leftover 继续拒绝）
 - Ship-ready: **No**
