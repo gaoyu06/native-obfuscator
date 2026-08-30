@@ -1615,6 +1615,20 @@ Synthetic bytecode unit tests in
   bridge and singular `MethodContext.proxyMethod`. Rewritten classfile-52
   bytecode and selector paths `7`, `-7`, and `0` preserve JVM verification
   and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewExtraLocalThreeArgChainInputs`,
+  `rewrittenThreeImmediateNewExtraLocalThreeArgChainInputsPassJvmVerification`,
+  and
+  `threeImmediateNewExtraLocalThreeArgChainInputsCompileAndRunWithJavaParity`
+  compose the three-argument leaf with the same proven prefix extra-local int
+  copy: `NEW Color; DUP; ILOAD 3; ICONST_2; ICONST_3;
+  INVOKESPECIAL Color.<init>(III)V`. The prefix `ILOAD 2; ISTORE 3`, complete
+  allocations, and initializer calls stay in retained JVM bytecode; the
+  native body contains only `RETURN`, and the rewrite keeps one hidden bridge
+  and singular `MethodContext.proxyMethod`. The existing per-argument
+  int-family proof admits this composition without a processor change.
+  Rewritten classfile-52 bytecode and selector paths `7`, `-7`, and `0`
+  preserve JVM verification and plain-Java/CMake/g++ JNI parity under
+  `-Xverify:all -Xcheck:jni`.
 - `admitsThreeImmediateReturnsWithNewThreeArgChainInputs`,
   `rewrittenThreeImmediateNewThreeArgChainInputsPassJvmVerification`, and
   `threeImmediateNewThreeArgChainInputsCompileAndRunWithJavaParity` extend the
@@ -1723,10 +1737,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-This increment adds three six-argument `NEW` admission tests and extends the
-two existing `NEW` reject harnesses with the synthetic seven-int boundary,
-on top of the #293 unproven wide NEW fail-closed audit. Parent re-runs the
-focused gate; child pre-rebase totals are discarded.
+This increment adds three extra-local three-argument `NEW` composition tests
+on top of the landed extra-local two-argument and isolated three-argument
+coverage. Child-local JUnit XML reports 513 `IrCompilerTest` tests and 7
+`CodegenModeTest` tests (520 total), all passing. These are not parent totals;
+the parent re-runs the focused gate after integration.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
