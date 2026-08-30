@@ -2276,7 +2276,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.LONG) {
             return previousProvenLongChainOperand(
                     constructor, inputIndex, declaredArguments,
-                    prefixLongCopies,
+                    prefixIntCopies, prefixLongCopies,
                     MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS);
         }
         if (expected.getSort() == Type.FLOAT) {
@@ -2364,14 +2364,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves a long operand with a bounded number of binary levels. Long shifts
-     * consume an int-family count leaf after their recursively proven long
-     * value; the other admitted binaries recursively prove both long operands.
+     * consume a single-instruction int-family count leaf after their
+     * recursively proven long value; the other admitted binaries recursively
+     * prove both long operands.
      * Every binary descent consumes one level from the separate eight-level
      * long budget, so nine-or-more nested long binaries remain rejected.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixLongCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
@@ -2402,32 +2404,31 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (longShift) {
             int countIndex =
                     previousExecutableIndex(constructor, inputIndex - 1);
-            if (countIndex < 0) {
-                return null;
-            }
-            AbstractInsnNode count =
-                    constructor.instructions.get(countIndex);
-            if (!isDirectDeclaredIntArgumentLoad(count, declaredArguments)
-                    && !isIntFamilyConstant(count)) {
+            int beforeSingleCount =
+                    previousExecutableIndex(constructor, countIndex - 1);
+            Integer beforeCount = previousProvenIntChainLeaf(
+                    constructor, countIndex, declaredArguments,
+                    prefixIntCopies);
+            if (beforeCount == null
+                    || beforeCount != beforeSingleCount) {
                 return null;
             }
             return previousProvenLongChainOperand(
-                    constructor,
-                    previousExecutableIndex(constructor, countIndex - 1),
-                    declaredArguments, prefixLongCopies,
+                    constructor, beforeCount,
+                    declaredArguments, prefixIntCopies, prefixLongCopies,
                     remainingBinaryLevels - 1);
         }
         Integer beforeRight = previousProvenLongChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, prefixLongCopies,
+                declaredArguments, prefixIntCopies, prefixLongCopies,
                 remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenLongChainOperand(
                 constructor, beforeRight, declaredArguments,
-                prefixLongCopies,
+                prefixIntCopies, prefixLongCopies,
                 remainingBinaryLevels - 1);
     }
 
