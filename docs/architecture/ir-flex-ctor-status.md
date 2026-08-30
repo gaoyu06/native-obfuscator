@@ -333,7 +333,10 @@ normalizing the suffixes to one copied join:
   switch keys, throws, nested constructor calls, and unproven extra-local
   accesses are rejected. A suffix may load a prefix-assigned extra only when
   the extra has one exact compatible primitive/reference carrier on every path
-  that reaches any hidden-bridge invocation. The suffix ranges may not overlap,
+  that reaches any hidden-bridge invocation. This includes bridge-taking paths
+  whose selected suffix does not read that extra: all path-id call sites target
+  the one fixed hidden-bridge descriptor and therefore must supply the same
+  packed arguments. The suffix ranges may not overlap,
   and the final normal range must end at method end or immediately before the
   one isolated handler tail. The tail is not another path-id suffix. A path-id
   set may contain an identical pair when at least one suffix CFG differs. Each
@@ -452,8 +455,11 @@ Prefix stores into non-parameter locals are classified separately:
   mutation, with the local index in the diagnostic.
 - For path-selected suffixes, the same proof checks the incoming local state
   at every chain call that is followed by a bridge invocation. An assignment on
-  only some bridge-taking paths is rejected; an immediate-return sibling that
-  does not invoke the bridge remains outside this requirement.
+  only some bridge-taking paths is rejected, even when the selected suffix on
+  an unassigned path does not read the local, because one native method and one
+  descriptor serve every path and no synthetic argument is introduced. An
+  immediate-return sibling that does not invoke the bridge remains outside this
+  requirement.
 - The independent suffix descriptor and hidden static bridge append the extra
   parameters in increasing local-index order. The wrapper loads them from their
   original local indexes after loading the receiver and declared constructor
@@ -784,7 +790,10 @@ Synthetic bytecode unit tests in
   CMake/g++ JNI run under `java -Xverify:all -Xcheck:jni`.
 - `rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation` checks that
   assigning the extra on only one of two bridge-taking paths fails before a
-  hidden method is allocated.
+  hidden method is allocated, even when the unassigned path's suffix never
+  reads that local. The fixture remains verifier-valid Java 8 bytecode, as
+  `unassignedExtraUnusedOnOneDistinctSuffixPassesJvmVerification` proves by
+  loading and executing both original paths.
 - `admitsThreeSuperCallsWithDistinctStraightLineSuffixes` proves three
   pairwise-distinct field-writing suffixes produce one `TABLESWITCH`-selected
   independent IR body, three exclusive calls to the same hidden bridge, and
@@ -1493,9 +1502,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 458 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 459 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 465 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 466 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
