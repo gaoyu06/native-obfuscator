@@ -4158,6 +4158,88 @@ public class IrCompilerTest {
                 .count());
     }
 
+    @Test
+    public void admitsThreeImmediateReturnsWithExtraArrayExtraIndexChainInputs() {
+        String[] shapes = {
+                "reference-computed-extra-array-extra-index",
+                "int-iaload-extra-array-extra-index",
+                "int-baload-extra-array-extra-index",
+                "int-baload-boolean-extra-array-extra-index",
+                "int-caload-extra-array-extra-index",
+                "int-saload-extra-array-extra-index"
+        };
+        String[] arrayDescriptors = {
+                "[Ljava/lang/Object;", "[I", "[B", "[Z", "[C", "[S"
+        };
+        int[] loadOpcodes = {
+                Opcodes.AALOAD, Opcodes.IALOAD, Opcodes.BALOAD,
+                Opcodes.BALOAD, Opcodes.CALOAD, Opcodes.SALOAD
+        };
+        for (int i = 0; i < shapes.length; i++) {
+            String shape = shapes[i];
+            ClassNode base = i == 0
+                    ? multipleSuperReferenceBase(
+                            "example/ExtraArrayExtraIndexBase" + i)
+                    : multipleSuperBase(
+                            "example/ExtraArrayExtraIndexBase" + i);
+            ClassNode owner = constructorOwner(
+                    "example/ExtraArrayExtraIndex" + i, base.name);
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(II" + arrayDescriptors[i] + ")V",
+                    nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            assertFalse(realOpcodes(nativeBody).contains(loadOpcodes[i]),
+                    shape);
+            assertFalse(realOpcodes(nativeBody).contains(Opcodes.ASTORE),
+                    shape);
+            assertFalse(realOpcodes(nativeBody).contains(Opcodes.ISTORE),
+                    shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(
+                    constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), loadOpcodes[i]), shape);
+            assertEquals(Collections.singletonList(4),
+                    variableIndexes(constructor, Opcodes.ASTORE), shape);
+            assertEquals(Collections.singletonList(5),
+                    variableIndexes(constructor, Opcodes.ISTORE), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.ALOAD), 4), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.ILOAD), 5), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;II"
+                            + arrayDescriptors[i] + ")V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
 
     @Test
     public void admitsThreeImmediateReturnsWithExtraLocalIntChainInputs() {
@@ -6659,7 +6741,6 @@ public class IrCompilerTest {
                 "-extra-array-declared-overwrite",
                 "-extra-array-store",
                 "-extra-array-computed-index",
-                "-extra-array-extra-index",
                 "-extra-array-wrong-source"
         };
         for (String baseShape : baseShapes) {
@@ -6749,6 +6830,60 @@ public class IrCompilerTest {
                 assertTrue(obfuscator.getHiddenMethodsPool()
                         .getClasses().isEmpty(), shape);
                 fixture++;
+            }
+        }
+    }
+
+    @Test
+    public void rejectsUnprovenExtraArrayExtraIndexChainInputsBeforeMutation() {
+        String[] baseShapes = {
+                "reference-computed", "int-iaload"
+        };
+        String[] rejectedSuffixes = {
+                "-extra-array-computed-store-extra-index",
+                "-extra-array-overwrite-extra-index",
+                "-extra-array-declared-overwrite-extra-index",
+                "-extra-array-store-extra-index",
+                "-extra-array-wrong-source-extra-index",
+                "-extra-array-computed-index",
+                "-extra-array-ineg-index",
+                "-extra-array-extra-index-computed-store",
+                "-extra-array-extra-index-overwrite"
+        };
+        for (String baseShape : baseShapes) {
+            for (String rejectedSuffix : rejectedSuffixes) {
+                String shape = baseShape + rejectedSuffix;
+                ClassNode owner = constructorOwner(
+                        "example/RejectedExtraArrayExtraIndex"
+                                + shape.replace("-", ""),
+                        baseShape.startsWith("reference")
+                                ? "example/MultiSuperReferenceBase"
+                                : "example/MultiSuperBase");
+                MethodNode constructor =
+                        threeImmediateReturnsWithComputedInput(
+                                owner.superName, shape);
+                int instructionCount = constructor.instructions.size();
+                java.util.List<Integer> opcodes = realOpcodes(constructor);
+                NativeObfuscator obfuscator = new NativeObfuscator();
+                MethodContext context =
+                        new MethodContext(
+                                obfuscator, constructor, 0, owner, 0);
+
+                assertThrows(
+                        UnsupportedIrConstructException.class,
+                        () -> new IrMethodCompiler(
+                                new MethodShellEmitter(obfuscator))
+                                .processMethod(context),
+                        shape);
+
+                assertUnchangedAfterRejectedIr(
+                        constructor, context, obfuscator);
+                assertEquals(instructionCount,
+                        constructor.instructions.size(), shape);
+                assertEquals(opcodes, realOpcodes(constructor), shape);
+                assertTrue(context.proxyMethod == null, shape);
+                assertTrue(obfuscator.getHiddenMethodsPool()
+                        .getClasses().isEmpty(), shape);
             }
         }
     }
@@ -9017,6 +9152,97 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraArrayExtraIndexPassJvmVerification()
+            throws Exception {
+        String[] shapes = {
+                "reference-computed-extra-array-extra-index",
+                "int-iaload-extra-array-extra-index"
+        };
+        String[] arrayDescriptors = {"[Ljava/lang/Object;", "[I"};
+        Class<?>[] arrayClasses = {Object[].class, int[].class};
+        Object[] sampleArrays = {
+                new Object[]{"ZERO", "VALUE", "TWO"},
+                new int[]{11, 22, 33}
+        };
+        int[] loadOpcodes = {Opcodes.AALOAD, Opcodes.IALOAD};
+        for (int i = 0; i < shapes.length; i++) {
+            String shape = shapes[i];
+            Class<?> arrayClass = arrayClasses[i];
+            Object sampleArray = sampleArrays[i];
+            ClassNode base = i == 0
+                    ? multipleSuperReferenceBase(
+                            "example/VerifiedExtraArrayExtraIndexBase" + i)
+                    : multipleSuperBase(
+                            "example/VerifiedExtraArrayExtraIndexBase" + i);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedExtraArrayExtraIndex" + i,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            for (int selector : new int[]{7, -7, 0}) {
+                InvocationTargetException bridge = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(
+                                        int.class, int.class, arrayClass)
+                                .newInstance(new Object[]{
+                                        selector, 1, sampleArray}),
+                        shape);
+                assertTrue(bridge.getCause()
+                        instanceof UnsatisfiedLinkError, shape);
+            }
+            InvocationTargetException nullArray = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(
+                                    int.class, int.class, arrayClass)
+                            .newInstance(new Object[]{7, 0, null}),
+                    shape);
+            assertTrue(nullArray.getCause()
+                    instanceof NullPointerException, shape);
+            InvocationTargetException bounds = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(
+                                    int.class, int.class, arrayClass)
+                            .newInstance(new Object[]{
+                                    7, 3, sampleArray}),
+                    shape);
+            assertTrue(bounds.getCause()
+                    instanceof ArrayIndexOutOfBoundsException, shape);
+            assertEquals(3, directChainCallCount(
+                    constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), loadOpcodes[i]), shape);
+            assertEquals(Collections.singletonList(4),
+                    variableIndexes(constructor, Opcodes.ASTORE), shape);
+            assertEquals(Collections.singletonList(5),
+                    variableIndexes(constructor, Opcodes.ISTORE), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;II"
+                            + arrayDescriptors[i] + ")V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+        }
     }
 
 
@@ -15807,6 +16033,139 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local array AALOAD multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-array/extra-index "
+                        + "runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-array/extra-index "
+                        + "runtime test");
+
+        String[] ownerNames = {
+                "example/ExtraArrayExtraIndexAaloadRuntime",
+                "example/ExtraArrayExtraIndexIaloadRuntime"
+        };
+        String[] baseNames = {
+                "example/ExtraArrayExtraIndexAaloadRuntimeBase",
+                "example/ExtraArrayExtraIndexIaloadRuntimeBase"
+        };
+        String[] shapes = {
+                "reference-computed-extra-array-extra-index",
+                "int-iaload-extra-array-extra-index"
+        };
+        int[] loadOpcodes = {Opcodes.AALOAD, Opcodes.IALOAD};
+        Path directory =
+                Files.createTempDirectory(
+                        "ir-extra-array-extra-index-run");
+        Path inputJar =
+                directory.resolve("extra-array-extra-index.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperExtraArrayExtraIndexJar(
+                inputJar, ownerNames, baseNames, shapes);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-array/extra-index multi-super Java run");
+        assertEquals(
+                "POSITIVE" + System.lineSeparator()
+                        + "NEGATIVE" + System.lineSeparator()
+                        + "ZERO" + System.lineSeparator()
+                        + "11" + System.lineSeparator()
+                        + "22" + System.lineSeparator()
+                        + "33" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerNames[0] + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int i = 0; i < ownerNames.length; i++) {
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerNames[i] + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shapes[i]);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shapes[i]);
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        loadOpcodes[i]), shapes[i]);
+                assertEquals(Collections.singletonList(4),
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ASTORE),
+                        shapes[i]);
+                assertEquals(Collections.singletonList(5),
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ISTORE),
+                        shapes[i]);
+                assertEquals(3, Collections.frequency(
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ALOAD),
+                        4), shapes[i]);
+                assertEquals(3, Collections.frequency(
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ILOAD),
+                        5), shapes[i]);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        Opcodes.GOTO), shapes[i]);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        Opcodes.RETURN), shapes[i]);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-array/extra-index CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-array/extra-index CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-array/extra-index native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-array/extra-index multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -26102,6 +26461,48 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperExtraArrayExtraIndexJar(
+            Path jarPath, String[] ownerNames, String[] baseNames,
+            String[] shapes) throws IOException {
+        ClassNode[] bases = {
+                multipleSuperReferenceBase(baseNames[0]),
+                multipleSuperBase(baseNames[1])
+        };
+        ClassNode[] owners = new ClassNode[ownerNames.length];
+        for (int i = 0; i < ownerNames.length; i++) {
+            bases[i].version = Opcodes.V1_8;
+            ClassNode owner =
+                    constructorOwner(ownerNames[i], baseNames[i]);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseNames[i], shapes[i]));
+            owners[i] = owner;
+        }
+        owners[0].methods.add(multipleSuperExtraArrayExtraIndexMain(
+                ownerNames, baseNames, shapes));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS,
+                ownerNames[0].replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            for (int i = 0; i < ownerNames.length; i++) {
+                output.putNextEntry(
+                        new JarEntry(bases[i].name + ".class"));
+                output.write(writeClass(bases[i]));
+                output.closeEntry();
+                output.putNextEntry(
+                        new JarEntry(owners[i].name + ".class"));
+                output.write(writeClass(owners[i]));
+                output.closeEntry();
+            }
+        }
+    }
+
     private void createMultipleSuperThreeExtraLocalLongReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -31370,6 +31771,16 @@ public class IrCompilerTest {
                 && shape.contains("-extra-index");
     }
 
+    private boolean isReferenceComputedExtraArrayShape(String shape) {
+        return shape.startsWith("reference-computed")
+                && shape.contains("-extra-array");
+    }
+
+    private boolean isReferenceComputedExtraIndexShape(String shape) {
+        return shape.startsWith("reference-computed")
+                && shape.contains("-extra-index");
+    }
+
     private boolean isWideArrayLoadShape(String shape) {
         return shape.startsWith("long-laload")
                 || shape.startsWith("float-faload")
@@ -31479,7 +31890,10 @@ public class IrCompilerTest {
     }
 
     private String intArrayLoadDescriptor(String shape) {
-        if (shape.endsWith("-extra-array-wrong-source")) {
+        if (shape.contains("-extra-array-wrong-source")) {
+            if (shape.startsWith("int-iaload")) {
+                return "[B";
+            }
             if (shape.startsWith("int-baload")) {
                 return shape.startsWith("int-baload-boolean")
                         ? "[C" : "[I";
@@ -31580,35 +31994,31 @@ public class IrCompilerTest {
             constructorDescriptor = "(ID)V";
             callDescriptor = "(D)V";
         } else if (shape.startsWith("reference-computed")) {
-            if (isReferenceComputedVariableIndexShape(shape)) {
-                constructorDescriptor = "(II[Ljava/lang/Object;)V";
-            } else if ("reference-computed-extra-array-computed-store"
-                    .equals(shape)) {
-                constructorDescriptor = "(I[[Ljava/lang/Object;)V";
-            } else if ("reference-computed-extra-array-primitive-result"
-                    .equals(shape)) {
-                constructorDescriptor = "(I[[I)V";
-            } else {
-                constructorDescriptor = "(I[Ljava/lang/Object;)V";
-            }
+            String arrayDescriptor =
+                    shape.contains("-extra-array-computed-store")
+                            ? "[[Ljava/lang/Object;"
+                            : shape.contains("-extra-array-wrong-source")
+                            ? "[Ljava/lang/String;"
+                            : shape.contains(
+                                    "-extra-array-primitive-result")
+                            ? "[[I" : "[Ljava/lang/Object;";
+            constructorDescriptor =
+                    (isReferenceComputedVariableIndexShape(shape)
+                            ? "(II" : "(I") + arrayDescriptor + ")V";
             callDescriptor =
-                    "reference-computed-extra-array-primitive-result"
-                            .equals(shape)
+                    shape.contains("-extra-array-primitive-result")
                             ? "([I)V" : "(Ljava/lang/Object;)V";
         } else if (isIntArrayLoadShape(shape)) {
-            if (shape.endsWith("-extra-array-computed-store")) {
-                constructorDescriptor =
-                        "(I[" + intArrayLoadDescriptor(shape) + ")V";
-            } else if ("int-iaload-extra-array-non-int-source"
-                    .equals(shape)) {
-                constructorDescriptor = "(I[B)V";
-            } else if (isIntArrayLoadVariableIndexShape(shape)) {
-                constructorDescriptor =
-                        "(II" + intArrayLoadDescriptor(shape) + ")V";
-            } else {
-                constructorDescriptor =
-                        "(I" + intArrayLoadDescriptor(shape) + ")V";
+            String arrayDescriptor = intArrayLoadDescriptor(shape);
+            if (shape.contains("-extra-array-computed-store")) {
+                arrayDescriptor = "[" + arrayDescriptor;
+            } else if (shape.contains(
+                    "-extra-array-non-int-source")) {
+                arrayDescriptor = "[B";
             }
+            constructorDescriptor =
+                    (isIntArrayLoadVariableIndexShape(shape)
+                            ? "(II" : "(I") + arrayDescriptor + ")V";
             callDescriptor = "(I)V";
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
@@ -31623,43 +32033,116 @@ public class IrCompilerTest {
                 || "int-ineg-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
             method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
-        } else if ("reference-computed-extra-index".equals(shape)) {
-            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
-            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4));
-        } else if ("reference-computed-extra-index-computed-store"
-                .equals(shape)) {
-            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
-            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-            method.instructions.add(new InsnNode(Opcodes.IADD));
-            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4));
-        } else if ("reference-computed-extra-index-unproven"
-                .equals(shape)) {
-            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4));
+        } else if (shape.startsWith("reference-computed")
+                && (isReferenceComputedExtraArrayShape(shape)
+                || isReferenceComputedExtraIndexShape(shape))) {
+            boolean variableIndex =
+                    isReferenceComputedVariableIndexShape(shape);
+            int nextExtraLocal = variableIndex ? 4 : 3;
+            if (isReferenceComputedExtraArrayShape(shape)) {
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ALOAD, variableIndex ? 3 : 2));
+                if (shape.contains("-extra-array-computed-store")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_0));
+                    method.instructions.add(
+                            new InsnNode(Opcodes.AALOAD));
+                }
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ASTORE, nextExtraLocal));
+                if (shape.contains("-extra-array-overwrite")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ACONST_NULL));
+                    method.instructions.add(new VarInsnNode(
+                            Opcodes.ASTORE, nextExtraLocal));
+                } else if (shape.contains(
+                        "-extra-array-declared-overwrite")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ACONST_NULL));
+                    method.instructions.add(new VarInsnNode(
+                            Opcodes.ASTORE, variableIndex ? 3 : 2));
+                } else if (shape.contains("-extra-array-store")) {
+                    method.instructions.add(new VarInsnNode(
+                            Opcodes.ALOAD, variableIndex ? 3 : 2));
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_0));
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ACONST_NULL));
+                    method.instructions.add(
+                            new InsnNode(Opcodes.AASTORE));
+                }
+                nextExtraLocal++;
+            }
+            if (isReferenceComputedExtraIndexShape(shape)) {
+                if (shape.contains("-extra-index-unproven")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_0));
+                } else {
+                    method.instructions.add(
+                            new VarInsnNode(Opcodes.ILOAD, 2));
+                    if (shape.contains(
+                            "-extra-index-computed-store")) {
+                        method.instructions.add(
+                                new InsnNode(Opcodes.ICONST_0));
+                        method.instructions.add(
+                                new InsnNode(Opcodes.IADD));
+                    }
+                }
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ISTORE, nextExtraLocal));
+                if (shape.contains("-extra-index-overwrite")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_0));
+                    method.instructions.add(new VarInsnNode(
+                            Opcodes.ISTORE, nextExtraLocal));
+                }
+            }
         } else if (isIntArrayLoadExtraArrayShape(shape)) {
-            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
-            if (shape.endsWith("-extra-array-computed-store")) {
+            boolean variableIndex =
+                    isIntArrayLoadVariableIndexShape(shape);
+            int extraArrayLocal = variableIndex ? 4 : 3;
+            method.instructions.add(new VarInsnNode(
+                    Opcodes.ALOAD, variableIndex ? 3 : 2));
+            if (shape.contains("-extra-array-computed-store")) {
                 method.instructions.add(new InsnNode(Opcodes.ICONST_0));
                 method.instructions.add(new InsnNode(Opcodes.AALOAD));
             }
-            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
-            if (shape.endsWith("-extra-array-overwrite")) {
+            method.instructions.add(new VarInsnNode(
+                    Opcodes.ASTORE, extraArrayLocal));
+            if (shape.contains("-extra-array-overwrite")) {
                 method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
-            } else if (shape.endsWith(
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ASTORE, extraArrayLocal));
+            } else if (shape.contains(
                     "-extra-array-declared-overwrite")) {
                 method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
-            } else if (shape.endsWith("-extra-array-store")) {
-                method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ASTORE, variableIndex ? 3 : 2));
+            } else if (shape.contains("-extra-array-store")) {
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ALOAD, variableIndex ? 3 : 2));
                 method.instructions.add(new InsnNode(Opcodes.ICONST_0));
                 method.instructions.add(new InsnNode(Opcodes.ICONST_1));
                 method.instructions.add(new InsnNode(
                         intArrayStoreOpcode(shape)));
-            } else if (shape.endsWith(
-                    "-extra-array-extra-index")) {
-                method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
-                method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4));
+            }
+            if (isIntArrayLoadExtraIndexShape(shape)) {
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ILOAD, 2));
+                if (shape.contains("-extra-index-computed-store")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_1));
+                    method.instructions.add(
+                            new InsnNode(Opcodes.IADD));
+                }
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ISTORE, extraArrayLocal + 1));
+                if (shape.contains("-extra-index-overwrite")) {
+                    method.instructions.add(
+                            new InsnNode(Opcodes.ICONST_0));
+                    method.instructions.add(new VarInsnNode(
+                            Opcodes.ISTORE, extraArrayLocal + 1));
+                }
             }
         } else if (isIntArrayLoadExtraIndexShape(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
@@ -31746,29 +32229,6 @@ public class IrCompilerTest {
         } else if ("long-lshl-extra-long-count".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
-        } else if (shape.startsWith(
-                "reference-computed-extra-array")) {
-            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
-            if ("reference-computed-extra-array-computed-store"
-                    .equals(shape)) {
-                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-                method.instructions.add(new InsnNode(Opcodes.AALOAD));
-            }
-            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
-            if ("reference-computed-extra-array-overwrite".equals(shape)) {
-                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
-            } else if ("reference-computed-extra-array-declared-overwrite"
-                    .equals(shape)) {
-                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
-            } else if ("reference-computed-extra-array-store"
-                    .equals(shape)) {
-                method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
-                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
-                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
-                method.instructions.add(new InsnNode(Opcodes.AASTORE));
-            }
         }
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
@@ -31799,15 +32259,17 @@ public class IrCompilerTest {
                 || isReferenceComputedVariableIndexShape(shape)
                 || shape.startsWith(
                         "reference-computed-extra-array") ? 4 : 3;
-        if (shape.startsWith("reference-computed-extra-index")) {
-            method.maxLocals = 5;
+        if (shape.startsWith("reference-computed")) {
+            method.maxLocals =
+                    (isReferenceComputedVariableIndexShape(shape) ? 4 : 3)
+                    + (isReferenceComputedExtraArrayShape(shape) ? 1 : 0)
+                    + (isReferenceComputedExtraIndexShape(shape) ? 1 : 0);
         }
-        if (isIntArrayLoadExtraIndexShape(shape)
-                || shape.endsWith("-extra-array-extra-index")) {
-            method.maxLocals = 5;
-        } else if (isIntArrayLoadExtraArrayShape(shape)
-                || isIntArrayLoadVariableIndexShape(shape)) {
-            method.maxLocals = 4;
+        if (isIntArrayLoadShape(shape)) {
+            method.maxLocals =
+                    (isIntArrayLoadVariableIndexShape(shape) ? 4 : 3)
+                    + (isIntArrayLoadExtraArrayShape(shape) ? 1 : 0)
+                    + (isIntArrayLoadExtraIndexShape(shape) ? 1 : 0);
         }
         if (isWideArrayLoadExtraIndexShape(shape)
                 || (isWideArrayLoadShape(shape)
@@ -31832,22 +32294,26 @@ public class IrCompilerTest {
             method.instructions.add(new VarInsnNode(
                     Opcodes.ALOAD,
                     isIntArrayLoadExtraArrayShape(shape)
-                            || isIntArrayLoadVariableIndexShape(shape)
+                            ? isIntArrayLoadVariableIndexShape(shape)
+                            ? 4 : 3
+                            : isIntArrayLoadVariableIndexShape(shape)
                             ? 3 : 2));
-            if (shape.endsWith("-computed-index")) {
+            if (shape.contains("-computed-index")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(
                         new InsnNode(Opcodes.ICONST_1));
                 method.instructions.add(new InsnNode(Opcodes.IADD));
-            } else if (shape.endsWith("-ineg-index")) {
+            } else if (shape.contains("-ineg-index")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(new InsnNode(Opcodes.INEG));
             } else if (isIntArrayLoadExtraIndexShape(shape)) {
                 method.instructions.add(
-                        new VarInsnNode(Opcodes.ILOAD, 4));
-            } else if (shape.endsWith("-declared-index")) {
+                        new VarInsnNode(Opcodes.ILOAD,
+                                isIntArrayLoadExtraArrayShape(shape)
+                                        ? 5 : 4));
+            } else if (shape.contains("-declared-index")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
             } else {
@@ -32455,26 +32921,31 @@ public class IrCompilerTest {
         } else if (shape.startsWith("reference-computed")) {
             method.instructions.add(new VarInsnNode(
                     Opcodes.ALOAD,
-                    isReferenceComputedVariableIndexShape(shape)
-                            || shape.startsWith(
-                            "reference-computed-extra-array") ? 3 : 2));
-            if ("reference-computed-index".equals(shape)) {
-                method.instructions.add(
-                        new VarInsnNode(Opcodes.ILOAD, 2));
-            } else if ("reference-computed-index-computed".equals(shape)) {
+                    isReferenceComputedExtraArrayShape(shape)
+                            ? isReferenceComputedVariableIndexShape(shape)
+                            ? 4 : 3
+                            : isReferenceComputedVariableIndexShape(shape)
+                            ? 3 : 2));
+            if (shape.contains("-extra-array-computed-index")
+                    || shape.endsWith("-index-computed")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(
                         new InsnNode(Opcodes.ICONST_0));
                 method.instructions.add(new InsnNode(Opcodes.IADD));
-            } else if ("reference-computed-index-ineg".equals(shape)) {
+            } else if (shape.contains("-extra-array-ineg-index")
+                    || shape.endsWith("-index-ineg")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(new InsnNode(Opcodes.INEG));
-            } else if (shape.startsWith(
-                    "reference-computed-extra-index")) {
+            } else if (isReferenceComputedExtraIndexShape(shape)) {
                 method.instructions.add(
-                        new VarInsnNode(Opcodes.ILOAD, 4));
+                        new VarInsnNode(Opcodes.ILOAD,
+                                isReferenceComputedExtraArrayShape(shape)
+                                        ? 5 : 4));
+            } else if (isReferenceComputedVariableIndexShape(shape)) {
+                method.instructions.add(
+                        new VarInsnNode(Opcodes.ILOAD, 2));
             } else {
                 method.instructions.add(
                         new InsnNode(Opcodes.ICONST_0));
@@ -32491,8 +32962,8 @@ public class IrCompilerTest {
 
     private static boolean isReferenceComputedVariableIndexShape(
             String shape) {
-        return shape.startsWith("reference-computed-index")
-                || shape.startsWith("reference-computed-extra-index");
+        return shape.startsWith("reference-computed")
+                && shape.contains("-index");
     }
 
     private MethodNode multipleSuperMain(
@@ -33161,6 +33632,29 @@ public class IrCompilerTest {
                 method, owner, superName, -7, "NEGATIVE");
         appendMultipleSuperReferenceIndexPrint(
                 method, owner, superName, 0, "ZERO");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 9;
+        return method;
+    }
+
+    private MethodNode multipleSuperExtraArrayExtraIndexMain(
+            String[] owners, String[] superNames, String[] shapes) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperReferenceIndexPrint(
+                method, owners[0], superNames[0], 7, "POSITIVE");
+        appendMultipleSuperReferenceIndexPrint(
+                method, owners[0], superNames[0], -7, "NEGATIVE");
+        appendMultipleSuperReferenceIndexPrint(
+                method, owners[0], superNames[0], 0, "ZERO");
+        appendMultipleSuperIntArrayLoadIndexPrint(
+                method, owners[1], superNames[1], 7, 0, shapes[1]);
+        appendMultipleSuperIntArrayLoadIndexPrint(
+                method, owners[1], superNames[1], -7, 1, shapes[1]);
+        appendMultipleSuperIntArrayLoadIndexPrint(
+                method, owners[1], superNames[1], 0, 2, shapes[1]);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
         method.maxStack = 9;
