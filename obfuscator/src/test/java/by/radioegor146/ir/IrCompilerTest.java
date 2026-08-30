@@ -7028,6 +7028,8 @@ public class IrCompilerTest {
                 "new-uninitialized",
                 "new-constructor-argument",
                 "newarray",
+                "anewarray",
+                "multianewarray",
                 "new-mismatched-type")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedNew" + shape.replace("-", ""),
@@ -7041,6 +7043,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7049,8 +7053,8 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
@@ -7058,6 +7062,52 @@ public class IrCompilerTest {
             assertTrue(context.proxyMethod == null, shape);
             assertTrue(obfuscator.getHiddenMethodsPool()
                     .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void unprovenNewChainInputShapesPassJava8JvmVerification()
+            throws Exception {
+        // A raw uninitialized reference is verifier-invalid by definition.
+        // Every other rejected allocation shape remains valid classfile-52
+        // bytecode and is checked here without running the IR transform.
+        for (String shape : Arrays.asList(
+                "new-constructor-argument",
+                "newarray",
+                "anewarray",
+                "multianewarray",
+                "new-mismatched-type")) {
+            String classSuffix = shape.replace("-", "");
+            String constructorDescriptor = newArgChainDescriptor(shape);
+            ClassNode base = multipleSuperReferenceBase(
+                    "example/VerifiedRejectedNew" + classSuffix + "Base",
+                    constructorDescriptor);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedNew" + classSuffix, base.name);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(
+                    threeImmediateReturnsWithNewArg(base.name, shape));
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            Class<?> verified = loader.define(writeClass(owner));
+
+            for (int selector : new int[]{7, -7, 0}) {
+                Object instance = verified.getConstructor(int.class)
+                        .newInstance(selector);
+                Object value = verified.getField("value").get(instance);
+                if ("newarray".equals(shape)) {
+                    assertEquals(1, ((int[]) value).length, shape);
+                } else if ("anewarray".equals(shape)) {
+                    assertEquals(1, ((Object[]) value).length, shape);
+                } else if ("multianewarray".equals(shape)) {
+                    assertEquals(1, ((Object[][]) value).length, shape);
+                    assertEquals(1, ((Object[][]) value)[0].length, shape);
+                } else {
+                    assertTrue(value instanceof StringBuilder, shape);
+                }
+            }
         }
     }
 
@@ -31024,13 +31074,18 @@ public class IrCompilerTest {
     }
 
     private ClassNode multipleSuperReferenceBase(String name) {
+        return multipleSuperReferenceBase(name, "(Ljava/lang/Object;)V");
+    }
+
+    private ClassNode multipleSuperReferenceBase(
+            String name, String constructorDescriptor) {
         ClassNode base = constructorOwner(name, "java/lang/Object");
         base.fields.add(new FieldNode(
                 Opcodes.ACC_PUBLIC, "value",
                 "Ljava/lang/Object;", null, null));
         MethodNode constructor = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
-                "<init>", "(Ljava/lang/Object;)V", null, null);
+                "<init>", constructorDescriptor, null, null);
         constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         constructor.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, "java/lang/Object",
@@ -33822,12 +33877,11 @@ public class IrCompilerTest {
 
     private void appendNewArgChainCall(
             MethodNode method, String superName, String shape) {
-        String chainDescriptor;
+        String chainDescriptor = newArgChainDescriptor(shape);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         if ("new-uninitialized".equals(shape)) {
             method.instructions.add(
                     new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
-            chainDescriptor = "(Ljava/lang/Object;)V";
         } else if ("new-constructor-argument".equals(shape)) {
             method.instructions.add(
                     new TypeInsnNode(Opcodes.NEW, "java/lang/StringBuilder"));
@@ -33836,12 +33890,20 @@ public class IrCompilerTest {
             method.instructions.add(new MethodInsnNode(
                     Opcodes.INVOKESPECIAL, "java/lang/StringBuilder",
                     "<init>", "(I)V", false));
-            chainDescriptor = "(Ljava/lang/StringBuilder;)V";
         } else if ("newarray".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(
                     new IntInsnNode(Opcodes.NEWARRAY, Opcodes.T_INT));
-            chainDescriptor = "([I)V";
+        } else if ("anewarray".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(
+                    new TypeInsnNode(
+                            Opcodes.ANEWARRAY, "java/lang/Object"));
+        } else if ("multianewarray".equals(shape)) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            method.instructions.add(new MultiANewArrayInsnNode(
+                    "[[Ljava/lang/Object;", 2));
         } else {
             String allocated = "new-mismatched-type".equals(shape)
                     ? "java/lang/StringBuilder" : "java/lang/Object";
@@ -33851,12 +33913,27 @@ public class IrCompilerTest {
             method.instructions.add(new MethodInsnNode(
                     Opcodes.INVOKESPECIAL, allocated,
                     "<init>", "()V", false));
-            chainDescriptor = "(Ljava/lang/Object;)V";
         }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", chainDescriptor, false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
+    private String newArgChainDescriptor(String shape) {
+        if ("new-constructor-argument".equals(shape)) {
+            return "(Ljava/lang/StringBuilder;)V";
+        }
+        if ("newarray".equals(shape)) {
+            return "([I)V";
+        }
+        if ("anewarray".equals(shape)) {
+            return "([Ljava/lang/Object;)V";
+        }
+        if ("multianewarray".equals(shape)) {
+            return "([[Ljava/lang/Object;)V";
+        }
+        return "(Ljava/lang/Object;)V";
     }
 
     private MethodNode threeImmediateReturnsWithComputedInput(
