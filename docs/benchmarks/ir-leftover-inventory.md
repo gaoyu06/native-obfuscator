@@ -1,14 +1,16 @@
-# IR leftover inventory on post-#291 master
+# IR leftover inventory on post-#294 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `2fbd89d7f12c486c9bc472700830e8dc42f0f9ec`
-- Measurement commit: `2fbd89d7f12c486c9bc472700830e8dc42f0f9ec`
+- Measured compiler base (merge-base with `origin/master`): `44596132e0debebc422261c50ac2278e889d3400`
+- Measurement commit: `44596132e0debebc422261c50ac2278e889d3400`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This post-#291 remeasurement supersedes #289 on `cdce5a3025c8ffb72af424b28aa18c68ffebdc14`; #286 remains the earlier snapshot at `5a9a0414ccef396e79a0bb32924b25649d146eea`; #284 remains the earlier snapshot at `164fed155f865d5610b4353d9d54667a9cf1c3b0`; #282 remains the earlier snapshot at `c9e4d6e`; #279 remains the earlier post-#278 snapshot at `27414d0`; #276 remains the post-#275 snapshot at `1699fa2d82aadd04547725de8ae573d04d3684f1`; #273 remains the post-#272 snapshot at `e1b07a860c3e50ce2ee48c605af069a37a195388`; #270 remains the post-#269 snapshot at `bca314540a4ded96feb2a670d4fac35651bd70fd`; #264 remains the post-#263 snapshot at `c0304febc41f1c665fb42ce0947f38bf0c29947a`; #207 remains the post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
+- Java 8 remains the only version described as fully supported.
+- #294 admitted isolated six-argument int-family `NEW`; #293 is a fail-closed audit of unproven wide `NEW`.
+- This post-#294 remeasurement supersedes #292 on `2fbd89d7f12c486c9bc472700830e8dc42f0f9ec` (post-#291).
 - Ship-ready: **No**.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
