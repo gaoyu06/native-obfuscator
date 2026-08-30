@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the fail-closed prefix→suffix crossing audit
-[#261](https://github.com/gaoyu06/native-obfuscator/pull/261)
-(parent re-ran 461/461: 454 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `unprovenPostChainSwitchShapesPassJava8JvmVerification`)
-on the post-[#260](https://github.com/gaoyu06/native-obfuscator/pull/260)
-extra-array plus extra-index composition. Active process:
+Last updated after landing wide extra-array plus extra-index
+[#262](https://github.com/gaoyu06/native-obfuscator/pull/262)
+(parent re-ran 465/465: 458 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity`)
+on the post-[#261](https://github.com/gaoyu06/native-obfuscator/pull/261)
+fail-closed prefix→suffix crossing audit. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -350,19 +350,23 @@ legacy。不能当成 JDK 支持矩阵。
   `AALOAD`, `IALOAD`, `BALOAD`, `CALOAD`, and `SALOAD` when both the
   array source and the index are proven prefix extra-local copies.
   Computed stores, overwritten copies, prior array stores, and
-  computed/`INEG` indexes stay rejected. Wide extra-array plus
-  extra-index stays rejected.
+  computed/`INEG` indexes stay rejected.
   [#261](https://github.com/gaoyu06/native-obfuscator/pull/261) keeps
   unproven prefix→suffix jumps and switches fail-closed and adds
   reject-before-mutation plus Java 8 verification for skip-init and
   unproven post-chain switch variants. No new crossing shape is admitted.
+  [#262](https://github.com/gaoyu06/native-obfuscator/pull/262) admits
+  `LALOAD`, `FALOAD`, and `DALOAD` when both the matching wide-array
+  source and the index are proven prefix extra-local copies
+  (`ALOAD 3; ASTORE 4; ILOAD 2; ISTORE 5` on `(II[J|[F|[D)V`).
+  Computed stores, overwritten copies, prior array stores, and
+  computed/`INEG` indexes stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (seventeen-or-more nested int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
-  seventeen-or-more nested double binaries,
-  extra-local `long[]`/`float[]`/`double[]` plus extra-local int index),
+  seventeen-or-more nested double binaries),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -556,6 +560,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | `LALOAD`/`FALOAD`/`DALOAD` `ILOAD` indexes (#259) | 456 tests (`IrCompilerTest` 449 + `CodegenModeTest` 7). Parent re-ran 456/456 including `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-array plus extra-index composition (#260) | 460 tests (`IrCompilerTest` 453 + `CodegenModeTest` 7). Parent re-ran 460/460 including `threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Fail-closed prefix→suffix crossing audit (#261) | 461 tests (`IrCompilerTest` 454 + `CodegenModeTest` 7). Parent re-ran 461/461 including `unprovenPostChainSwitchShapesPassJava8JvmVerification` | Prefix→suffix leftover remains reject |
+| Wide extra-array plus extra-index (#262) | 465 tests (`IrCompilerTest` 458 + `CodegenModeTest` 7). Parent re-ran 465/465 including `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -608,7 +613,6 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  extra-local `long[]`/`float[]`/`double[]` plus extra-local int index,
   extras still unassigned
   on a bridge-taking path).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
@@ -635,6 +639,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   loads is admitted by #260.
   Unproven prefix→suffix crossings stay reject-before-mutation; #261
   strengthens those fail-closed tests.
+  Wide extra-array plus extra-index composition for `LALOAD`, `FALOAD`,
+  and `DALOAD` is admitted by #262.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -651,9 +657,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #261
-  (fail-closed prefix→suffix crossing audit). /
-  落地 #261 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #262
+  (wide extra-array plus extra-index). /
+  落地 #262 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

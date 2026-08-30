@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #261 (fail-closed prefix→suffix crossing audit)
+   `master` after #262 (wide extra-array plus extra-index)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -63,7 +63,6 @@ The goal is complete only when all of the following are true:
    int binaries, seventeen-or-more nested long
    binaries, seventeen-or-more nested float binaries,
    seventeen-or-more nested double binaries,
-   extra-local `long[]`/`float[]`/`double[]` plus extra-local int index,
    or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
