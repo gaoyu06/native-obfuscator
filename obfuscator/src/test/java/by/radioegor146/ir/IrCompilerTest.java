@@ -32926,15 +32926,15 @@ public class IrCompilerTest {
                             ? 4 : 3
                             : isReferenceComputedVariableIndexShape(shape)
                             ? 3 : 2));
-            if (shape.contains("-computed-index")
-                    || shape.contains("-index-computed")) {
+            if (shape.contains("-extra-array-computed-index")
+                    || shape.endsWith("-index-computed")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(
                         new InsnNode(Opcodes.ICONST_0));
                 method.instructions.add(new InsnNode(Opcodes.IADD));
-            } else if (shape.contains("-ineg-index")
-                    || shape.contains("-index-ineg")) {
+            } else if (shape.contains("-extra-array-ineg-index")
+                    || shape.endsWith("-index-ineg")) {
                 method.instructions.add(
                         new VarInsnNode(Opcodes.ILOAD, 2));
                 method.instructions.add(new InsnNode(Opcodes.INEG));
