@@ -2392,11 +2392,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Finds extra array locals whose only overlapping write before the
      * final chain call is one pre-first-call ASTORE directly fed by an ALOAD of
-     * a declared reference-array or {@code int[]} argument. Requiring the
+     * a declared reference-array or supported int-family primitive-array
+     * argument. Requiring the
      * resulting reference state at every chain call proves that the store
      * dominates all selected paths. The declared source local is retained so
-     * each AALOAD or IALOAD proof can independently require that argument to
-     * remain unchanged and enforce the exact source-array type it consumes.
+     * each AALOAD or int-family array-load proof can independently require that
+     * argument to remain unchanged and enforce the exact source-array type it
+     * consumes.
      */
     private static Map<Integer, Integer> provenPrefixArrayCopyLocals(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2429,7 +2431,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             int sourceLocal = ((VarInsnNode) source).var;
             Type declaredArray = declaredArguments.get(sourceLocal);
             if (!isReferenceArray(declaredArray)
-                    && !Type.getType("[I").equals(declaredArray)) {
+                    && !isIntFamilyLoadArray(declaredArray)) {
                 continue;
             }
             candidateStores.put(local, i);
@@ -2489,6 +2491,14 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return false;
         }
         return component.getElementType().getSort() == Type.OBJECT;
+    }
+
+    private static boolean isIntFamilyLoadArray(Type type) {
+        return Type.getType("[I").equals(type)
+                || Type.getType("[B").equals(type)
+                || Type.getType("[Z").equals(type)
+                || Type.getType("[C").equals(type)
+                || Type.getType("[S").equals(type);
     }
 
     private static boolean isArrayStoreOpcode(int opcode) {
