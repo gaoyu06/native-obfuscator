@@ -112,9 +112,10 @@ The constructor split now covers these related prefix shapes:
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
   int-family constant indexes or at one single-instruction declared or
-  proven-prefix-copy `ILOAD` index. The complete array-load tree stays in the
-  retained bytecode prefix, so JVM null, bounds, widening, and reference-array
-  behavior remains JVM-executed.
+  proven-prefix-copy `ILOAD` index, including when both the wide-array source
+  and index use those proven prefix copies. The complete array-load tree stays
+  in the retained bytecode prefix, so JVM null, bounds, widening, and
+  reference-array behavior remains JVM-executed.
 
 ## Current rule
 
@@ -1197,7 +1198,7 @@ Synthetic bytecode unit tests in
   `rejectsUnprovenExtraArrayExtraIndexChainInputsBeforeMutation` keeps
   computed or overwritten copies, prior array stores, wrong sources, and
   computed or negated indexes fail-closed before mutation. Wide array-load
-  extra sources/indexes remain outside this rule.
+  extra sources/indexes are covered separately below.
 - `admitsThreeImmediateReturnsWithWideArrayLoadChainInputs`,
   `rewrittenThreeImmediateWideArrayLoadsPassJvmVerification`, and
   `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` cover
@@ -1226,10 +1227,20 @@ Synthetic bytecode unit tests in
   `[F`, or `[D` source is one dominating prefix extra-local copy of an
   unchanged declared argument. The copy and each load stay in retained JVM
   bytecode, one hidden bridge is shared, rewritten Java 8 classes verify, and
-  native stdout matches plain Java. Computed stores, overwritten copies or
-  source arguments, prior array stores, computed indexes, combined extra-array
-  plus extra-index forms, and mismatched sources remain rejected before
-  mutation.
+  native stdout matches plain Java.
+- `admitsThreeImmediateReturnsWithWideExtraArrayExtraIndexChainInputs`,
+  `rewrittenThreeImmediateWideExtraArrayExtraIndexPassJvmVerification`, and
+  `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity` cover
+  the composition where both the matching wide-array source and its
+  single-instruction index are dominating prefix extra-local copies. The exact
+  retained shape is `ALOAD 3; ASTORE 4; ILOAD 2; ISTORE 5`, followed at each
+  chain call by `ALOAD 4; ILOAD 5; LALOAD|FALOAD|DALOAD` for an
+  `(II[J|[F|[D)V` constructor. Both copies and every array load stay in
+  retained JVM bytecode behind one hidden bridge.
+  `rejectsUnprovenWideExtraArrayExtraIndexChainInputsBeforeMutation` keeps
+  computed stores or indexes, overwritten copies or source arguments, prior
+  array stores, negated indexes, and mismatched sources rejected before
+  constructor or hidden-method mutation.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
