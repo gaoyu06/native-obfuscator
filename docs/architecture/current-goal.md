@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #257 (declared `LALOAD`/`FALOAD`/`DALOAD` leaves)
+   `master` after #258 (extra-local `LALOAD`/`FALOAD`/`DALOAD` sources)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -63,8 +63,8 @@ The goal is complete only when all of the following are true:
    int binaries, seventeen-or-more nested long
    binaries, seventeen-or-more nested float binaries,
    seventeen-or-more nested double binaries,
-   extra-local `long[]`/`float[]`/`double[]` as `LALOAD`/`FALOAD`/`DALOAD`
-   sources, extra-local array plus extra-local int index,
+   `LALOAD`/`FALOAD`/`DALOAD` indexes that are declared or extra-local
+   `ILOAD`, extra-local array plus extra-local int index,
    or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
