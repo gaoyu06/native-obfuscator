@@ -847,9 +847,11 @@ Synthetic bytecode unit tests in
   suffix; the tail is cloned into the IR body and omitted from both wrappers.
 - `rejectsUnsafeMethodEndHandlerBeforeMutation` keeps an extra-work tail
   fail-closed before hidden-method allocation or constructor mutation.
-- `spanningAndChainCoveringTryCatchShapesPassJava8JvmVerification` loads the
-  untouched Java 8 classes for both the cross-suffix and chain-covering table
-  shapes and executes both constructor paths.
+- `spanningAndChainCoveringTryCatchShapesPassJvmVerification` loads the
+  untouched Java 8 cross-suffix class and the legacy-verifier chain-covering
+  class, then executes both constructor paths for each shape. A classfile-52
+  stack-map frame cannot encode the broken-uninitialized-this state produced
+  by an exception edge from the constructor-chain invocation itself.
 - `rejectsCrossSuffixAndChainCoveringMultiSuperTryCatchBeforeMutation` checks
   both a table whose labels span suffixes and a protected range covering a
   chain call. Rejection preserves instruction identity, the table and its

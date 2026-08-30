@@ -2649,7 +2649,7 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void spanningAndChainCoveringTryCatchShapesPassJava8JvmVerification()
+    public void spanningAndChainCoveringTryCatchShapesPassJvmVerification()
             throws Exception {
         for (String shape : Arrays.asList("cross-suffix", "covers-chain")) {
             String classSuffix = shape.replace("-", "");
@@ -2660,7 +2660,8 @@ public class IrCompilerTest {
             ClassNode owner = constructorOwner(
                     "example/VerifiedRejectedMultiCatch" + classSuffix,
                     base.name);
-            owner.version = Opcodes.V1_8;
+            owner.version = "covers-chain".equals(shape)
+                    ? Opcodes.V1_6 : Opcodes.V1_8;
             owner.fields.add(new FieldNode(
                     Opcodes.ACC_PUBLIC, "result", "I", null, null));
             owner.methods.add(invalidMultiSuperTryCatchConstructor(
@@ -30864,15 +30865,15 @@ public class IrCompilerTest {
         LabelNode start = new LabelNode();
         LabelNode end = new LabelNode();
         LabelNode handler = new LabelNode();
-        LabelNode negative = Arrays.stream(method.instructions.toArray())
-                .filter(JumpInsnNode.class::isInstance)
-                .map(JumpInsnNode.class::cast)
-                .findFirst().orElseThrow(AssertionError::new).label;
-        method.instructions.insert(negative, new FrameNode(
-                Opcodes.F_FULL, 2,
-                new Object[]{Opcodes.UNINITIALIZED_THIS, Opcodes.INTEGER},
-                0, new Object[0]));
         if ("cross-suffix".equals(shape)) {
+            LabelNode negative = Arrays.stream(method.instructions.toArray())
+                    .filter(JumpInsnNode.class::isInstance)
+                    .map(JumpInsnNode.class::cast)
+                    .findFirst().orElseThrow(AssertionError::new).label;
+            method.instructions.insert(negative, new FrameNode(
+                    Opcodes.F_FULL, 2,
+                    new Object[]{Opcodes.UNINITIALIZED_THIS, Opcodes.INTEGER},
+                    0, new Object[0]));
             AbstractInsnNode firstSuffixStart = calls.get(0).getNext();
             AbstractInsnNode firstReturn =
                     firstSuffixStart.getNext().getNext().getNext();
@@ -30893,10 +30894,6 @@ public class IrCompilerTest {
             method.instructions.insertBefore(calls.get(0), start);
             method.instructions.insertBefore(firstSuffixStart, end);
             method.instructions.add(handler);
-            method.instructions.add(new FrameNode(
-                    Opcodes.F_FULL, 2,
-                    new Object[]{Opcodes.UNINITIALIZED_THIS, Opcodes.INTEGER},
-                    1, new Object[]{"java/lang/Throwable"}));
             method.instructions.add(new InsnNode(Opcodes.ATHROW));
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
