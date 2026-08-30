@@ -101,10 +101,12 @@ The constructor split now covers these related prefix shapes:
   a prefix extra-local `ALOAD` with one dominating `ASTORE` copy of that
   `int[]` argument, and whose index is an int-family constant; or one
   reference `AALOAD` whose source is an unchanged directly loaded declared
-  array argument, whose index is a proven int-family constant, and whose
-  declared immediate component descriptor exactly matches the call argument
-  descriptor). The complete array-load tree stays in the retained bytecode
-  prefix, so JVM null, bounds, widening, and reference-array behavior remains
+  array argument or its proven prefix extra-local copy, whose index is a
+  proven int-family constant or one single-instruction declared or
+  proven-prefix-copy `ILOAD`, and whose declared immediate component
+  descriptor exactly matches the call argument descriptor). The complete
+  array-load tree stays in the retained bytecode prefix, so JVM null,
+  bounds, widening, and reference-array behavior remains
   JVM-executed.
 
 ## Current rule
@@ -333,10 +335,10 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Unproven extra-local or aliased chain inputs, array loads from computed or
-reassigned sources, non-constant indexes, non-array or opcode-mismatched
-declared locals, prior array-store mutations, unlisted primitive-result array
-loads, and other reference computations such as `NEW` or `GETFIELD`,
-int-family binary expression
+reassigned sources, computed, negated, or unproven extra-local indexes,
+non-array or opcode-mismatched declared locals, prior array-store mutations,
+unlisted primitive-result array loads, and other reference computations such
+as `NEW` or `GETFIELD`, int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
 sixteen levels, float or double expression trees deeper than the sixteen
 admitted binary levels,
@@ -1107,13 +1109,23 @@ Synthetic bytecode unit tests in
   five-level `LADD` and inner-`LDIV` leftovers under the sixteen-level
   budget. The retained prefix executes every operation, one hidden bridge is
   shared, rewritten classes verify, and native stdout matches plain Java.
+- `admitsThreeImmediateReturnsWithDeclaredIndexAaloadChainInputs` and
+  `admitsThreeImmediateReturnsWithExtraLocalIndexAaloadChainInputs` admit a
+  reference `AALOAD` index only when it is one direct declared `ILOAD` or a
+  single `ILOAD` of a proven prefix extra-local copy. The matching rewritten
+  verification and CMake/g++ Java-parity coverage keep the copy and all three
+  `AALOAD`s in the JVM prefix behind one hidden bridge.
+- `rejectsUnprovenReferenceComputedIndexesBeforeMutation` keeps binary
+  computed, `INEG`, computed-store extra-local, and unproven extra-local
+  indexes fail-closed without constructor or hidden-method mutation.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps
   seventeen-or-more
   long binary levels, computed or unproven extra-local int shift counts,
   type-wrong extra-local long shift counts, `LNEG` of a constant, double
   `LNEG`, and computed `LNEG` operands fail-closed without constructor or
   hidden-method mutation. Unproven reference computations stay rejected;
-  the proven declared-array constant-index `AALOAD` is admitted separately.
+  the proven declared-array or extra-local-copy `AALOAD` with a constant or
+  single-instruction `ILOAD` index is admitted separately.
 - `admitsThreeImmediateReturnsWithExtraLocalIntArrayIaloadChainInputs`,
   `rewrittenThreeImmediateExtraLocalIntArrayIaloadSuperReturnsPassJvmVerification`,
   and
