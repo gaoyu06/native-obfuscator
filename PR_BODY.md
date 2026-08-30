@@ -25,13 +25,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Child-only XML:
-
-- `TEST-by.radioegor146.ir.IrCompilerTest.xml`: 466 tests, 0 skipped,
-  0 failures, 0 errors
-- `TEST-by.radioegor146.CodegenModeTest.xml`: 7 tests, 0 skipped,
-  0 failures, 0 errors
-- `IrCompilerTest`: 466 `@Test` annotations = 466 public test methods
+Child XML is not cited here. Parent will re-run the focused suite and report
+JUnit XML. The verification test is
+`ninePathIdDistinctSuffixesPassJvmVerification`.
 
 Ship-ready: **No**
 
@@ -53,12 +49,7 @@ Ship-ready: **No**
 
 ### 验证
 
-上述门禁命令执行成功。仅子代理生成的 XML 结果：
-
-- `TEST-by.radioegor146.ir.IrCompilerTest.xml`：466 个测试，0 跳过，
-  0 失败，0 错误
-- `TEST-by.radioegor146.CodegenModeTest.xml`：7 个测试，0 跳过，
-  0 失败，0 错误
-- `IrCompilerTest`：466 个 `@Test` 注解 = 466 个 public 测试方法
+子代理 XML 此处不再引用。父代理将重跑聚焦套件并报告 JUnit XML。验证测试为
+`ninePathIdDistinctSuffixesPassJvmVerification`。
 
 可发布：**否**
