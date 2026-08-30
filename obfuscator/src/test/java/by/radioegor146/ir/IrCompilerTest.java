@@ -7982,6 +7982,82 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification()
+            throws Exception {
+        // All five rejected extra-array AALOAD shapes are verifier-valid.
+        // The overwritten extra-local deliberately supplies null to AALOAD,
+        // so construction proves verification by reaching the expected NPE.
+        for (String shape : Arrays.asList(
+                "reference-computed-extra-array-computed-store",
+                "reference-computed-extra-array-overwrite",
+                "reference-computed-extra-array-declared-overwrite",
+                "reference-computed-extra-array-store",
+                "reference-computed-extra-array-primitive-result")) {
+            String classSuffix = shape.replace("-", "");
+            String baseDescriptor =
+                    shape.endsWith("-primitive-result")
+                            ? "([I)V" : "(Ljava/lang/Object;)V";
+            ClassNode base = multipleSuperReferenceBase(
+                    "example/VerifiedRejectedExtraLocalArrayAaload"
+                            + classSuffix + "Base",
+                    baseDescriptor);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedExtraLocalArrayAaload"
+                            + classSuffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    base.name, shape));
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            Class<?> verified = loader.define(writeClass(owner));
+
+            for (int selector : new int[]{7, -7, 0}) {
+                int selectedIndex = selector > 0 ? 0 : selector < 0 ? 1 : 2;
+                if (shape.endsWith("-primitive-result")) {
+                    int[][] source = {
+                            {10}, {20}, {30}
+                    };
+                    Object instance = verified.getConstructor(
+                                    int.class, int[][].class)
+                            .newInstance(new Object[]{selector, source});
+                    assertSame(source[selectedIndex],
+                            verified.getField("value").get(instance), shape);
+                    continue;
+                }
+
+                Object[] values = {
+                        "POSITIVE", "NEGATIVE", "ZERO"
+                };
+                Object arrayArgument = shape.endsWith("-computed-store")
+                        ? new Object[][]{values} : values;
+                Class<?> arrayType = shape.endsWith("-computed-store")
+                        ? Object[][].class : Object[].class;
+                if (shape.endsWith("-overwrite")
+                        && !shape.endsWith("-declared-overwrite")) {
+                    InvocationTargetException thrown = assertThrows(
+                            InvocationTargetException.class,
+                            () -> verified.getConstructor(int.class, arrayType)
+                                    .newInstance(
+                                            new Object[]{selector,
+                                                    arrayArgument}),
+                            shape);
+                    assertTrue(thrown.getCause() instanceof NullPointerException,
+                            shape);
+                    continue;
+                }
+
+                Object instance = verified.getConstructor(int.class, arrayType)
+                        .newInstance(new Object[]{selector, arrayArgument});
+                assertSame(values[selectedIndex],
+                        verified.getField("value").get(instance), shape);
+            }
+        }
+    }
+
+    @Test
     public void rejectsUnprovenDoubleComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "double-seventeen-level-dadd",
