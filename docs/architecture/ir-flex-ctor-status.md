@@ -68,11 +68,12 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads; one `LNEG` over a direct declared long-argument load; a tree of at
-  most two `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, `LXOR`,
+  most four `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, `LXOR`,
   `LSHL`, `LSHR`, or `LUSHR` levels for a long argument, whose long leaves are
-  declared long-argument loads, `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or
-  the admitted single-load `LNEG`, and whose shift counts remain proven
-  int-family leaves;
+  declared long-argument loads, proven prefix extra-local copies of declared
+  long-argument loads outside shift and division/remainder operands,
+  `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or the admitted single-load `LNEG`,
+  and whose shift counts remain proven int-family leaves;
   a tree of at most four `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
   a float argument, whose leaves are declared float-argument loads, a prefix
   extra-local `FLOAD` with one dominating `FSTORE` copy of a declared
@@ -191,18 +192,22 @@ One additional family is reduced to that same shared-join form:
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
   value while keeping the count as a non-recursive int-family leaf. A long
-  leaf must be a matching declared-argument `LLOAD`, `LCONST_0`, `LCONST_1`,
-  or `LDC` of `Long`, or one `LNEG` whose sole operand is a matching
-  declared-argument `LLOAD`; an int-family count leaf uses the existing
-  declared-argument `ILOAD` and int-family constant proof. A standalone
-  `LNEG` leaf is admitted under the same operand restriction. This proof has
-  its own explicit four-level binary budget: five-or-more nested long
-  binaries, computed shift counts, extra-local value or count loads, `LNEG`
-  of a constant, double `LNEG`, and `LNEG` of an extra-local or computed value
-  remain rejected. The retained bytecode prefix executes admitted operations,
-  preserving Java long wrapping, negate semantics, bitwise semantics, JVM
-  divide-by-zero and signed-overflow behavior, and mask-63 shift-count behavior
-  without reproducing those semantics in C++.
+  leaf must be a matching declared-argument `LLOAD`, a prefix extra-local
+  `LLOAD` with exactly one dominating overlapping write consisting of an
+  `LSTORE` directly fed by a matching declared-argument `LLOAD`,
+  `LCONST_0`, `LCONST_1`, or `LDC` of `Long`, or one `LNEG` whose sole operand
+  is a matching declared-argument `LLOAD`; an int-family count leaf uses the
+  existing declared-argument `ILOAD` and int-family constant proof. A
+  standalone `LNEG` leaf is admitted under the same declared-load restriction.
+  Prefix extra-local long copies are not admitted as shift values or as
+  `LDIV`/`LREM` operands. This proof has its own explicit four-level binary
+  budget: five-or-more nested long binaries, extra-local int operands,
+  extra-local long shift counts or values, extra-local `LDIV`/`LREM` operands,
+  `LNEG` of a constant, double `LNEG`, and `LNEG` of an extra-local or computed
+  value remain rejected. The retained bytecode prefix executes admitted
+  operations, preserving Java long wrapping, negate semantics, bitwise
+  semantics, JVM divide-by-zero and signed-overflow behavior, and mask-63
+  shift-count behavior without reproducing those semantics in C++.
 - A float call argument may instead contain a tree of at most four `FADD`,
   `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
   declared-argument `FLOAD`, a prefix extra-local `FLOAD` with exactly one
@@ -825,6 +830,18 @@ Synthetic bytecode unit tests in
   three paths, including a wrapping `Long.MAX_VALUE + 1`, through plain Java
   and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithExtraLocalLongChainInputs`,
+  `rewrittenThreeImmediateExtraLocalLongSuperReturnsPassJvmVerification`, and
+  `threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity` admit
+  the former `long-extra-local` leftover: a prefix `LSTORE` copy of a declared
+  `LLOAD` may be used as a long chain-input leaf. The copy and all three
+  `LADD`s remain in the retained bytecode prefix, the rewrite uses one hidden
+  bridge, rewritten classes verify, and the complete CMake/g++ JNI transform
+  matches plain Java. Extra-local int operands, extra-local long shift
+  counts/values, extra-local `LDIV`/`LREM` operands, `LNEG` of an extra-local,
+  and five-or-more nested long binaries remain rejected. This does not
+  complete the production goal or authorize changing the default compiler
+  path.
 - `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
   `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
