@@ -1,11 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory
+Last updated after extra-local int as second and fourth Insets `NEW` args
+[#346](https://github.com/gaoyu06/native-obfuscator/pull/346)
+(parent XML 608; latest leftover inventory remains
 [#345](https://github.com/gaoyu06/native-obfuscator/pull/345)
 on post-[#344](https://github.com/gaoyu06/native-obfuscator/pull/344)
-`39f1758` (ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
-0 leftovers; not coverage-complete; not a JDK support badge).
-Latest compiler parent XML remains #344 (605). Active process:
+`39f1758`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -690,6 +691,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#342 leftover inventory (#343) | Measurement only on `6d7b342`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as second and third Insets `NEW` args (#344) | 605 tests (`IrCompilerTest` 598 + `CodegenModeTest` 7). Parent re-ran 605/605 including `threeImmediateNewExtraLocalFourSecondThirdArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#344 leftover inventory (#345) | Measurement only on `39f1758`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Extra-local int as second and fourth Insets `NEW` args (#346) | 608 tests (`IrCompilerTest` 601 + `CodegenModeTest` 7). Parent re-ran 608/608 including `threeImmediateNewExtraLocalFourSecondFourthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -845,6 +847,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   initializer arguments is admitted by #342 (fixture-only).
   Extra-local proven int-copy as the second and third Insets `NEW`
   initializer arguments is admitted by #344 (fixture-only).
+  Extra-local proven int-copy as the second and fourth Insets `NEW`
+  initializer arguments is admitted by #346 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -922,8 +926,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after leftover inventory remasurement #345. /
-  leftover inventory 重测 #345 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #346
+  (extra-local int-copy as the second and fourth Insets NEW initializer arguments). /
+  落地 #346 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
