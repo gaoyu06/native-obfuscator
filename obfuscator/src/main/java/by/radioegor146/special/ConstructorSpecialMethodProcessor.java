@@ -3022,8 +3022,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one non-recursive int-family leaf: a declared load, one proven
-     * prefix copy of a declared load, a constant, or one INEG over a direct
-     * declared load or its proven prefix copy.
+     * prefix copy of a declared load, a constant, an exact constant-indexed
+     * load from a declared int array, or one INEG over a direct declared load
+     * or its proven prefix copy.
      */
     private static Integer previousProvenIntChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -3044,6 +3045,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        Integer beforeIntArrayLoad = previousProvenIntArrayLoadLeaf(
+                constructor, inputIndex, declaredArguments);
+        if (beforeIntArrayLoad != null) {
+            return beforeIntArrayLoad;
+        }
         if (input.getOpcode() != Opcodes.INEG) {
             return null;
         }
@@ -3062,6 +3068,60 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    /**
+     * Proves the exact retained-prefix int computation
+     * {@code ALOAD declaredIntArray; constant; IALOAD}. The source must be an
+     * unchanged declared {@code int[]} argument, and no earlier array store is
+     * accepted. The load remains JVM bytecode, preserving null and bounds
+     * behavior without reproducing it in native code.
+     */
+    private static Integer previousProvenIntArrayLoadLeaf(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments) {
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != Opcodes.IALOAD) {
+            return null;
+        }
+        int indexIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (indexIndex < 0
+                || !isIntFamilyConstant(
+                constructor.instructions.get(indexIndex))) {
+            return null;
+        }
+        int arrayIndex =
+                previousExecutableIndex(constructor, indexIndex - 1);
+        if (arrayIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode array = constructor.instructions.get(arrayIndex);
+        if (!(array instanceof VarInsnNode)
+                || array.getOpcode() != Opcodes.ALOAD) {
+            return null;
+        }
+        int arrayLocal = ((VarInsnNode) array).var;
+        Type declaredArray = declaredArguments.get(arrayLocal);
+        if (declaredArray == null
+                || !Type.getType("[I").equals(declaredArray)) {
+            return null;
+        }
+        for (int i = 0; i < inputIndex; i++) {
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(i);
+            Type stored = storeType(instruction);
+            if (i < arrayIndex && stored != null
+                    && localRangesOverlap(
+                    ((VarInsnNode) instruction).var, stored,
+                    arrayLocal, declaredArray)) {
+                return null;
+            }
+            if (isArrayStoreOpcode(instruction.getOpcode())) {
+                return null;
+            }
+        }
+        return previousExecutableIndex(constructor, arrayIndex - 1);
     }
 
     private static boolean isProvenIntChainBinary(int opcode) {
