@@ -2327,10 +2327,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves an isolated retained-prefix allocation with either no initializer
-     * argument or exactly one single-instruction proven int-family leaf. The
-     * allocated reference descriptor must exactly match the chain argument
-     * descriptor. Wider or computed initializer inputs fail closed.
+     * Proves an isolated retained-prefix allocation with zero, one, or two
+     * single-instruction proven int-family initializer leaves. The allocated
+     * reference descriptor must exactly match the chain argument descriptor.
+     * Wider or computed initializer inputs fail closed.
      */
     private static Integer previousProvenNewChainInput(
             MethodNode constructor, int inputIndex, Type expected,
@@ -2348,14 +2348,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!"<init>".equals(initializer.name)
                 || !Type.VOID_TYPE.equals(
                 Type.getReturnType(initializer.desc))
-                || initializerArguments.length > 1
+                || initializerArguments.length > 2
                 || initializer.itf) {
             return null;
         }
         int duplicateIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (initializerArguments.length == 1) {
-            if (!isIntFamily(initializerArguments[0])) {
+        for (int i = initializerArguments.length - 1; i >= 0; i--) {
+            if (!isIntFamily(initializerArguments[i])
+                    || duplicateIndex < 0) {
                 return null;
             }
             int beforeSingleArgument =
