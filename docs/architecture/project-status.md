@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing extra-local `LALOAD`/`FALOAD`/`DALOAD` sources
-[#258](https://github.com/gaoyu06/native-obfuscator/pull/258)
-(parent re-ran 453/453: 446 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity`)
-on the post-[#257](https://github.com/gaoyu06/native-obfuscator/pull/257)
-declared wide-array leaves. Active process:
+Last updated after landing `LALOAD`/`FALOAD`/`DALOAD` `ILOAD` indexes
+[#259](https://github.com/gaoyu06/native-obfuscator/pull/259)
+(parent re-ran 456/456: 449 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity`)
+on the post-[#258](https://github.com/gaoyu06/native-obfuscator/pull/258)
+extra-local wide-array sources. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -341,13 +341,17 @@ legacy。不能当成 JDK 支持矩阵。
   declared `[J`, `[F`, or `[D` argument at a constant index. Computed
   extra-local stores, overwritten copies, prior array stores, and
   unproven indexes stay rejected.
+  [#259](https://github.com/gaoyu06/native-obfuscator/pull/259) admits
+  `LALOAD`, `FALOAD`, and `DALOAD` indexes that are one direct declared
+  `ILOAD` or one `ILOAD` of a proven prefix extra-local int copy.
+  Computed, `INEG`, computed-store, and overwritten extra-local indexes
+  stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (seventeen-or-more nested int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  `LALOAD`/`FALOAD`/`DALOAD` declared or extra-local `ILOAD` indexes,
   extra-local array plus extra-local int index),
   and extras still unassigned on a bridge-taking path are still
   rejected.
@@ -539,6 +543,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local `BALOAD`/`CALOAD`/`SALOAD` sources (#256) | 445 tests (`IrCompilerTest` 438 + `CodegenModeTest` 7). Parent re-ran 445/445 including `threeImmediateExtraLocalIntFamilyArrayLoadsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Declared `LALOAD`/`FALOAD`/`DALOAD` leaves (#257) | 449 tests (`IrCompilerTest` 442 + `CodegenModeTest` 7). Parent re-ran 449/449 including `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-local `LALOAD`/`FALOAD`/`DALOAD` sources (#258) | 453 tests (`IrCompilerTest` 446 + `CodegenModeTest` 7). Parent re-ran 453/453 including `threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| `LALOAD`/`FALOAD`/`DALOAD` `ILOAD` indexes (#259) | 456 tests (`IrCompilerTest` 449 + `CodegenModeTest` 7). Parent re-ran 456/456 including `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -591,7 +596,6 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  `LALOAD`/`FALOAD`/`DALOAD` declared or extra-local `ILOAD` indexes,
   extra-local array plus extra-local int index,
   extras still unassigned
   on a bridge-taking path).
@@ -613,6 +617,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Extra-local `BALOAD`/`CALOAD`/`SALOAD` sources are admitted by #256.
   Declared `LALOAD`/`FALOAD`/`DALOAD` leaves are admitted by #257.
   Extra-local `LALOAD`/`FALOAD`/`DALOAD` sources are admitted by #258.
+  `LALOAD`/`FALOAD`/`DALOAD` declared or extra-local `ILOAD` indexes are
+  admitted by #259.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -629,9 +635,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #258
-  (extra-local `LALOAD`/`FALOAD`/`DALOAD` sources). /
-  落地 #258 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #259
+  (`LALOAD`/`FALOAD`/`DALOAD` `ILOAD` indexes). /
+  落地 #259 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
