@@ -1,15 +1,14 @@
-# IR leftover inventory on current master
+# IR leftover inventory on post-#269 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `c0304febc41f1c665fb42ce0947f38bf0c29947a`
-- Measurement commit: `c0304febc41f1c665fb42ce0947f38bf0c29947a`
+- Measured compiler base (merge-base with `origin/master`): `bca314540a4ded96feb2a670d4fac35651bd70fd`
+- Measurement commit: `bca314540a4ded96feb2a670d4fac35651bd70fd`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing the `--codegen` default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This remeasurement supersedes #207, the post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
-- Current master contains the subsequent changes through #263. The joined fixture totals did not change from #207, so this report does not attribute a fixture-leftover change to those landings.
+- This post-#269 remeasurement supersedes #264 on `c0304febc41f1c665fb42ce0947f38bf0c29947a`; #207 remains the earlier post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
@@ -46,12 +45,6 @@ Top-level command:
 python3 docs/measurement/ir-leftover-inventory/measure.py --javac-25 /tmp/temurin25/bin/javac
 ```
 
-Temurin 25 provisioning used the repository-documented archive and checksum:
-
-```bash
-curl -sSfL -o /tmp/jdk25.tar.gz "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_x64_linux_hotspot_25.0.4.1_1.tar.gz" && echo "dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e  /tmp/jdk25.tar.gz" | sha256sum -c && mkdir -p /tmp/temurin25 && tar xzf /tmp/jdk25.tar.gz -C /tmp/temurin25 --strip-components=1 && /tmp/temurin25/bin/javac -version
-```
-
 The helper recorded every expanded per-fixture command in `/tmp/native-obfuscator-ir-leftover-inventory/commands.log`. The key commands were:
 
 ```bash
@@ -78,8 +71,6 @@ No historical fixture branch was fetched. All source trees came from `obfuscator
 
 ClassicTest result from this run: **108/108 IR**, 0 legacy fallback, 0 constructor left in Java, and 0 missing.
 
-The helper reported zero measured leftovers in every corpus. This is neither a complete JVM inventory nor evidence that the production goal is complete.
-
 ## ClassicTest measured leftovers only
 
 | Fixture | Class | Method | Descriptor | Category | Exact first reject/log reason |
@@ -103,6 +94,48 @@ The helper reported zero measured leftovers in every corpus. This is neither a c
 | Fixture | Class | Method | Descriptor | Category | Exact first reject/log reason |
 | --- | --- | --- | --- | --- | --- |
 | _None_ | — | — | — | — | — |
+
+## Code-path leftovers (static source audit)
+
+These are source-visible rejection paths, kept separate from the measured fixture leftovers. A zero measured count does not remove the code path.
+
+| Leftover class | Source path | Static reject behavior |
+| --- | --- | --- |
+| Constructor retained-prefix non-identity `ASTORE 0` | `ConstructorSpecialMethodProcessor` | `Constructor prefix changes local 0 before the bridge` (opcode 58 / `ASTORE`). |
+| Constructor prefix → suffix branch other than an admitted shared-suffix join `GOTO` | `ConstructorSpecialMethodProcessor` | `Constructor prefix branches across the this/super call` (jump/table/lookup-switch target outside retained prefix). |
+| Mixed constructor prefix/suffix try/catch | `ConstructorSpecialMethodProcessor` | `Constructor exception regions may not cross the this/super split`. |
+| Non-diamond multi-super constructor | `ConstructorSpecialMethodProcessor` | `Constructor chain calls do not share one suffix join` or the exactly-one-chain-call control-flow diagnostics. |
+| Conditionally assigned constructor-prefix extra | `ConstructorSpecialMethodProcessor` | `Constructor prefix extra local <n> is not definitely assigned on every path reaching the this/super call`. |
+| Non-static `ConstantDynamic` bootstrap | `DynamicConstantSupport` | `ConstantDynamic bootstrap is not REF_invokeStatic`. |
+| Varargs `ConstantDynamic` bootstrap shape | `DynamicConstantSupport` | `ConstantDynamic bootstrap must take Lookup, String, Class, then one exact parameter per static argument`. |
+| Malformed `ConstantDynamic` | `DynamicConstantSupport` | `Malformed ConstantDynamic descriptor` and related descriptor/type shape checks reject before resolver installation. |
+| Cyclic `ConstantDynamic` | `DynamicConstantSupport` | Rejected before resolver installation; `Cyclic ConstantDynamic bootstrap arguments`. |
+| Legacy subroutine bytecode (`jsr`/`ret`) | `AsmToIr` | `Unsupported instruction for phase-two IR` with opcode 168 (`JSR`) or 169 (`RET`). |
+
+Additional exact constructor-split rejection messages found in `ConstructorSpecialMethodProcessor` are `A constructor IR body must be an instance method returning V`, `Constructor has no direct this/super constructor call`, `Constructor suffix jumps into its bytecode prefix`, and `Constructor switch targets its bytecode prefix`.
+
+Other exact `DynamicConstantSupport` rejection messages found on this checkout remain conservative shape/placement checks:
+
+- `MethodHandle/MethodType LDC is not lowerable by the IR frontend: <cause>`
+- `ConstantDynamic interface companion cannot be placed safely: <cause>`
+- `ConstantDynamic interface companion has no hidden-method pool`
+- `ConstantDynamic interface companion requires a public interface`
+- `ConstantDynamic interface companion is not supported for annotations`
+- `ConstantDynamic interface companion requires class-file version 55`
+- `ConstantDynamic interface resolver installation is incomplete`
+- `ConstantDynamic bootstrap bridge name collides with an existing interface member`
+- `Cyclic ConstantDynamic bootstrap arguments`
+- `Malformed ConstantDynamic descriptor`
+- `ConstantDynamic result is not a scalar or reference`
+- `ConstantDynamic bootstrap is not REF_invokeStatic`
+- `ConstantDynamic bootstrap must take Lookup, String, Class, then one exact parameter per static argument`
+- `ConstantDynamic bootstrap return does not match its constant type`
+- `Primitive Type is not a loadable bootstrap argument`
+- `Unsupported ConstantDynamic bootstrap argument`
+- `ConstantDynamic bootstrap argument does not match parameter <index>`
+- `ConstantDynamic resolver name collides with an existing class member`
+- `Malformed MethodType LDC`
+- `Unsupported MethodHandle LDC`
 
 ## Next increment candidates from measured counts
 
