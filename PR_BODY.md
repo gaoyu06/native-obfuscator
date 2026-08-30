@@ -26,6 +26,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+Parsed JUnit XML: 378 tests, 0 failures, 0 errors, 0 skipped.
+
 Ship-ready: **No**
 
 ## 中文
@@ -53,5 +55,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.ir.IrCompilerTest \
   --tests by.radioegor146.CodegenModeTest
 ```
+
+JUnit XML 解析结果：378 个测试，0 个失败，0 个错误，0 个跳过。
 
 可交付状态（Ship-ready）：**No**
