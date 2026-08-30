@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the post-#263 leftover inventory
-[#264](https://github.com/gaoyu06/native-obfuscator/pull/264)
-(measurement only on `c0304fe`: ClassicTest 108/108, JDK 17/21/25
-82/82, 47/47, 21/21 IR, 0 leftovers)
-on the post-[#263](https://github.com/gaoyu06/native-obfuscator/pull/263)
-fail-closed unassigned-extra audit. Active process:
+Last updated after landing the fail-closed spanning-catch audit
+[#265](https://github.com/gaoyu06/native-obfuscator/pull/265)
+(parent re-ran 467/467: 460 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `spanningAndChainCoveringTryCatchShapesPassJvmVerification`)
+on the post-[#264](https://github.com/gaoyu06/native-obfuscator/pull/264)
+leftover inventory remasurement. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -366,6 +366,11 @@ legacy。不能当成 JDK 支持矩阵。
   verifier-valid distinct-suffix fixture that reads the extra on only
   one of two bridge-taking paths. No new unassigned-extra shape is
   admitted.
+  [#265](https://github.com/gaoyu06/native-obfuscator/pull/265) keeps
+  exception tables that span path-id suffixes or cover a chain call
+  fail-closed, including a Java 8 cross-suffix fixture and a
+  legacy-verifier chain-covering fixture. No new catch-table shape is
+  admitted.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -568,6 +573,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Wide extra-array plus extra-index (#262) | 465 tests (`IrCompilerTest` 458 + `CodegenModeTest` 7). Parent re-ran 465/465 including `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Fail-closed unassigned-extra audit (#263) | 466 tests (`IrCompilerTest` 459 + `CodegenModeTest` 7). Parent re-ran 466/466 including `unassignedExtraUnusedOnOneDistinctSuffixPassesJvmVerification` | Unassigned-extra leftover remains reject |
 | Post-#263 leftover inventory (#264) | Measurement only on `c0304fe`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Fail-closed spanning-catch audit (#265) | 467 tests (`IrCompilerTest` 460 + `CodegenModeTest` 7). Parent re-ran 467/467 including `spanningAndChainCoveringTryCatchShapesPassJvmVerification` | Spanning/covering catch leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -650,6 +656,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   and `DALOAD` is admitted by #262.
   Unassigned extras on a bridge-taking path stay reject-before-mutation;
   #263 strengthens those fail-closed tests.
+  Tables that span suffixes or cover a chain call stay
+  reject-before-mutation; #265 strengthens those fail-closed tests.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#264](https://github.com/gaoyu06/native-obfuscator/pull/264),
   measured on post-#263 `c0304fe`) observed 0 leftovers; that is not
@@ -667,9 +675,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #264
-  (post-#263 leftover inventory). /
-  落地 #264 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #265
+  (fail-closed spanning-catch audit). /
+  落地 #265 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
