@@ -33,6 +33,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Result / 结果: pending / 待执行
+Result / 结果: passed / 通过
+
+- `IrCompilerTest`: 387 tests, 0 skipped, 0 failures, 0 errors
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors
+- Total / 总计: 394 tests, 0 skipped, 0 failures, 0 errors
 
 Ship-ready / 可发布: **No / 否**
