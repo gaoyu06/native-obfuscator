@@ -1,4 +1,3 @@
-<!-- CURSOR_AGENT_PR_BODY_BEGIN -->
 ## English
 
 ### Summary
@@ -16,24 +15,14 @@
 
 No. Skip-super remains fail-closed.
 
-### Verification
+### Rebase
 
-Child-only focused gate:
+Rebased onto `origin/master` `92bed90` (post-#268 isolated no-arg NEW).
+Child XML on the pre-#267 base is stale and is not cited here. Parent will
+re-run the focused suite and report JUnit XML after rebase. The verification
+test is `skipSuperConstructorShapesPassJava8JvmVerification`.
 
-```text
-CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
-  --tests by.radioegor146.ir.IrCompilerTest \
-  --tests by.radioegor146.CodegenModeTest
-```
-
-Child-only JUnit XML:
-
-- `IrCompilerTest`: 465 tests, 0 failures, 0 errors, 0 skipped
-- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped
-- Total: 472 tests, 0 failures, 0 errors, 0 skipped
-- Source count: 465 exact `@Test` lines and 465 `public void` tests
-- New JVM verification:
-  `skipSuperConstructorShapesPassJava8JvmVerification`
+The CLI default remains `legacy`.
 
 Ship-ready: **No**
 
@@ -54,15 +43,12 @@ Ship-ready: **No**
 
 否。skip-super 继续 fail-closed。
 
-### 验证
+### 变基
 
-子代理专属聚焦门禁使用上方命令。子代理专属 JUnit XML：
+已变基到 `origin/master` `92bed90`（#268 无参 NEW 之后）。变基前子代理
+XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告 JUnit XML。
+验证测试为 `skipSuperConstructorShapesPassJava8JvmVerification`。
 
-- `IrCompilerTest`：465，失败/错误/跳过均为 0
-- `CodegenModeTest`：7，失败/错误/跳过均为 0
-- 合计：472，失败/错误/跳过均为 0
-- 源码计数：465 个严格匹配的 `@Test` 行，465 个 `public void` 测试
-- 新增 JVM 验证：`skipSuperConstructorShapesPassJava8JvmVerification`
+命令行默认代码生成模式仍为 `legacy`。
 
 可发布：**否**
-<!-- CURSOR_AGENT_PR_BODY_END -->
