@@ -2283,7 +2283,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Integer beforeNew = previousProvenNewChainInput(
                 constructor, inputIndex, expected, declaredArguments,
-                prefixArrayCopies, prefixIntCopies, prefixLongCopies);
+                prefixArrayCopies, prefixIntCopies, prefixLongCopies,
+                prefixFloatCopies);
         if (beforeNew != null) {
             return beforeNew;
         }
@@ -2328,16 +2329,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves an isolated retained-prefix allocation with zero through six
-     * single-instruction proven int-family or long initializer leaves. The
-     * allocated reference descriptor must exactly match the chain argument
-     * descriptor. Float, double, and computed initializer inputs fail closed.
+     * single-instruction proven int-family, long, or float initializer leaves.
+     * The allocated reference descriptor must exactly match the chain argument
+     * descriptor. Double and computed initializer inputs fail closed.
      */
     private static Integer previousProvenNewChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
             Set<Integer> prefixIntCopies,
-            Set<Integer> prefixLongCopies) {
+            Set<Integer> prefixLongCopies,
+            Set<Integer> prefixFloatCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (!(input instanceof MethodInsnNode)
                 || input.getOpcode() != Opcodes.INVOKESPECIAL) {
@@ -2371,6 +2373,10 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 beforeArgument = previousProvenLongChainLeaf(
                         constructor, duplicateIndex, declaredArguments,
                         prefixArrayCopies, prefixIntCopies, prefixLongCopies);
+            } else if (initializerArguments[i].getSort() == Type.FLOAT) {
+                beforeArgument = previousProvenFloatChainLeaf(
+                        constructor, duplicateIndex, declaredArguments,
+                        prefixArrayCopies, prefixIntCopies, prefixFloatCopies);
             } else {
                 return null;
             }

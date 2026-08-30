@@ -4000,6 +4000,59 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewFloatArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewFloatArgBase",
+                "(Ljava/awt/geom/Point2D$Float;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewFloatArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithWideNewArg(
+                base.name, "new-constructor-float-arguments");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_0));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithNewExtraLocalArgChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperNewExtraLocalArgBase",
@@ -8092,8 +8145,7 @@ public class IrCompilerTest {
 
     @Test
     public void rejectsUnprovenWideNewChainInputsBeforeMutation() {
-        for (String shape : Arrays.asList(
-                "new-constructor-float-arguments",
+        for (String shape : Collections.singletonList(
                 "new-constructor-double-arguments")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedWideNew" + shape.replace("-", ""),
@@ -8132,11 +8184,10 @@ public class IrCompilerTest {
     @Test
     public void unprovenWideNewChainInputShapesPassJava8JvmVerification()
             throws Exception {
-        // Both remaining non-int-family initializer shapes are verifier-valid,
-        // so neither requires the verifier-invalid exclusions used by the
+        // The remaining unsupported double initializer shape is verifier-valid,
+        // so it does not require the verifier-invalid exclusions used by the
         // broader NEW reject audit above.
-        for (String shape : Arrays.asList(
-                "new-constructor-float-arguments",
+        for (String shape : Collections.singletonList(
                 "new-constructor-double-arguments")) {
             String classSuffix = shape.replace("-", "");
             ClassNode base = multipleSuperReferenceBase(
@@ -8160,9 +8211,7 @@ public class IrCompilerTest {
                         .newInstance(selector);
                 Object value = verified.getField("value").get(instance);
                 assertEquals(
-                        shape.contains("float")
-                                ? "java.awt.geom.Point2D$Float"
-                                : "java.awt.geom.Point2D$Double",
+                        "java.awt.geom.Point2D$Double",
                         value.getClass().getName(), shape);
                 assertEquals(1.0,
                         ((java.awt.geom.Point2D) value).getX(), shape);
@@ -10687,6 +10736,57 @@ public class IrCompilerTest {
                 realOpcodes(constructor), Opcodes.DUP));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.LCONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewFloatArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewFloatArgBase",
+                "(Ljava/awt/geom/Point2D$Float;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewFloatArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithWideNewArg(
+                base.name, "new-constructor-float-arguments");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_0));
         assertEquals(6, Collections.frequency(
                 realOpcodes(constructor), Opcodes.INVOKESPECIAL));
         assertEquals(
@@ -18443,7 +18543,8 @@ public class IrCompilerTest {
         Path inputJar = directory.resolve("new-long-arg.jar");
         Path outputDirectory = directory.resolve("output");
         createMultipleSuperThreeWideNewArgReturnsJar(
-                inputJar, ownerName, baseName);
+                inputJar, ownerName, baseName,
+                "new-constructor-long-argument");
 
         ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
                 directory, 120_000,
@@ -18521,6 +18622,107 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native NEW long-argument multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewFloatArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW float-argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW float-argument runtime test");
+
+        String ownerName = "example/NewFloatArgRuntime";
+        String baseName = "example/NewFloatArgRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-new-float-arg-run");
+        Path inputJar = directory.resolve("new-float-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeWideNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-float-arguments");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW float-argument multi-super Java run");
+        assertEquals(
+                "java.awt.geom.Point2D$Float" + System.lineSeparator()
+                        + "java.awt.geom.Point2D$Float"
+                        + System.lineSeparator()
+                        + "java.awt.geom.Point2D$Float"
+                        + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FCONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FCONST_0));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW float-argument CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW float-argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW float-argument native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW float-argument multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -31185,9 +31387,8 @@ public class IrCompilerTest {
     }
 
     private void createMultipleSuperThreeWideNewArgReturnsJar(
-            Path jarPath, String ownerName, String baseName)
+            Path jarPath, String ownerName, String baseName, String shape)
             throws IOException {
-        String shape = "new-constructor-long-argument";
         ClassNode base = multipleSuperReferenceBase(
                 baseName, wideNewArgChainDescriptor(shape));
         base.version = Opcodes.V1_8;
