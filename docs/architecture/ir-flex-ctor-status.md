@@ -1272,6 +1272,16 @@ Synthetic bytecode unit tests in
   computed or overwritten copies, prior array stores, wrong sources, and
   computed or negated indexes fail-closed before mutation. Wide array-load
   extra sources/indexes are covered separately below.
+- `rejectsUnprovenExtraLocalArrayAaloadSourcesBeforeMutation` and
+  `unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification` keep
+  computed-store array sources, overwritten extra-local or declared sources,
+  prior array stores, and primitive-array results fail-closed without
+  constructor or hidden-method mutation. The verification audit loads the
+  untouched classfile-52 owners and executes selectors `7`, `-7`, and `0`,
+  preserving each selected value or the overwritten-copy fixture's intended
+  null-array failure. An `AALOAD` from `[[I` validly produces an `[I`
+  reference, but remains conservative and unadmitted. The admitted
+  extra-array plus extra-index composition is unchanged.
 - `admitsThreeImmediateReturnsWithWideArrayLoadChainInputs`,
   `rewrittenThreeImmediateWideArrayLoadsPassJvmVerification`, and
   `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` cover
