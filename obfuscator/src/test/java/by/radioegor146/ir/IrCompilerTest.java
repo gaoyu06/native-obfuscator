@@ -3418,6 +3418,56 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalFloatChainInputs() {
+        ClassNode base = multipleSuperFloatBase(
+                "example/MultiSuperExtraLocalFloatBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeExtraLocalFloatMultiReturn", base.name);
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "float-extra-local");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(IF)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FADD));
+        assertEquals(3L, realOpcodes(constructor).stream()
+                .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                .count());
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(constructor, Opcodes.FSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FLOAD), 3));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDaddOfProvenChainInputs() {
         ClassNode base = multipleSuperDoubleBase(
                 "example/MultiSuperDoubleBase");
@@ -4873,7 +4923,7 @@ public class IrCompilerTest {
     public void rejectsUnprovenFloatComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "float-five-level-fadd",
-                "float-five-level-fdiv-inner", "float-extra-local",
+                "float-five-level-fdiv-inner",
                 "float-fneg-constant", "float-double-fneg",
                 "float-fneg-extra-local", "float-fneg-computed")) {
             ClassNode owner = constructorOwner(
@@ -6214,6 +6264,70 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;IF)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraLocalFloatSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperFloatBase(
+                        "example/VerifiedExtraLocalFloatMultiReturnBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedExtraLocalFloatMultiReturn", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name, "float-extra-local");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        int[] selectors = {7, -7, 0};
+        float[] values = {11.0f, -22.0f, 0.25f};
+        for (int i = 0; i < selectors.length; i++) {
+            int selector = selectors[i];
+            float value = values[i];
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, float.class)
+                            .newInstance(selector, value));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FADD));
+        assertEquals(3L, realOpcodes(constructor).stream()
+                .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                .count());
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(constructor, Opcodes.FSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FLOAD), 3));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
     }
 
     @Test
@@ -10399,6 +10513,101 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native float three-return multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalFloatSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local float runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local float runtime test");
+
+        String ownerName = "example/ExtraLocalFloatMultiReturnRuntime";
+        String baseName = "example/ExtraLocalFloatMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-float-run");
+        Path inputJar = directory.resolve("extra-local-float.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalFloatReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain extra-local float multi-super Java run");
+        assertEquals(
+                "12.0" + System.lineSeparator()
+                        + "-21.0" + System.lineSeparator()
+                        + "1.25" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FADD));
+        assertEquals(3L, realOpcodes(transformedConstructor).stream()
+                .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                .count());
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(transformedConstructor, Opcodes.FSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.FLOAD), 3));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local float multi-super CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local float multi-super CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local float native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local float multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -18964,6 +19173,35 @@ public class IrCompilerTest {
         owner.version = Opcodes.V1_8;
         owner.methods.add(threeImmediateReturnsWithComputedInput(
                 baseName, "float-binary"));
+        owner.methods.add(multipleSuperThreeFaddReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
+    private void createMultipleSuperThreeExtraLocalFloatReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperFloatBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "float-extra-local"));
         owner.methods.add(multipleSuperThreeFaddReturnsMain(
                 ownerName, baseName));
 

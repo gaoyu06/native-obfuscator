@@ -74,9 +74,10 @@ The constructor split now covers these related prefix shapes:
   the admitted single-load `LNEG`, and whose shift counts remain proven
   int-family leaves;
   a tree of at most four `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
-  a float argument, whose leaves are declared float-argument loads,
-  `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`, or one `FNEG` over a
-  direct declared float-argument load;
+  a float argument, whose leaves are declared float-argument loads, a prefix
+  extra-local `FLOAD` with one dominating `FSTORE` copy of a declared
+  float-argument load, `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`,
+  or one `FNEG` over a direct declared float-argument load;
   a tree of at most four `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` levels for
   a double argument, whose leaves are declared double-argument loads, a prefix
   extra-local `DLOAD` with one dominating `DSTORE` copy of a declared
@@ -204,12 +205,15 @@ One additional family is reduced to that same shared-join form:
   without reproducing those semantics in C++.
 - A float call argument may instead contain a tree of at most four `FADD`,
   `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
-  declared-argument `FLOAD`, `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of
-  `Float`, or one `FNEG` whose sole operand is a matching declared-argument
-  `FLOAD`. This proof has its own four-level binary budget, which `FNEG` does
-  not consume: five-or-more nested float binaries, extra-local float loads,
-  `FNEG` of a constant, double `FNEG`, and `FNEG` of an extra-local or
-  computed value remain rejected, as do computed reference inputs.
+  declared-argument `FLOAD`, a prefix extra-local `FLOAD` with exactly one
+  dominating `FSTORE` directly fed by a matching declared-argument `FLOAD`,
+  `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of `Float`, or one `FNEG` whose
+  sole operand is a matching declared-argument `FLOAD`. This proof has its own
+  four-level binary budget, which `FNEG` does not consume: five-or-more nested
+  float binaries, unproven or computed extra-local stores, `FNEG` of a
+  constant, double `FNEG`, and `FNEG` of an extra-local or computed value
+  remain rejected, as do extra-local int and long operands and computed
+  reference inputs.
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
@@ -222,9 +226,9 @@ One additional family is reduced to that same shared-join form:
   This proof has its own four-level binary budget, which `DNEG` does not
   consume: five-or-more nested double binaries, unproven or computed
   extra-local stores, `DNEG` of a constant, double `DNEG`, and `DNEG` of an
-  extra-local or computed value remain rejected, as do extra-local int, long,
-  and float operands and computed reference inputs. The admitted arithmetic
-  stays in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
+  extra-local or computed value remain rejected, as do extra-local int and
+  long operands and computed reference inputs. The admitted arithmetic stays
+  in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
   signed-zero, negate, and other double semantics without reproducing double
   arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
@@ -830,6 +834,20 @@ Synthetic bytecode unit tests in
 - `threeImmediateFaddSuperReturnsCompileAndRunWithJavaParity` exercises finite
   float inputs through plain Java and the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring exactly matching float stdout.
+- `admitsThreeImmediateReturnsWithExtraLocalFloatChainInputs`,
+  `rewrittenThreeImmediateExtraLocalFloatSuperReturnsPassJvmVerification`,
+  and
+  `threeImmediateExtraLocalFloatSuperReturnsCompileAndRunWithJavaParity`
+  admit the former `float-extra-local` leftover: a prefix `FSTORE` copy of a
+  declared `FLOAD` may be used as a float chain-input leaf. The copy and all
+  three `FADD`s remain in the retained bytecode prefix, the rewrite uses one
+  hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
+  transform matches plain Java.
+- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps float binaries
+  at five-or-more levels and unsafe `FNEG` forms, including `FNEG` of an
+  extra-local, fail-closed without constructor or hidden-method mutation.
+  Extra-local int and long operands remain rejected. This does not authorize
+  changing the default compiler path.
 - `admitsThreeImmediateReturnsWithDaddOfProvenChainInputs` admits leaf-only
   `DLOAD; DCONST_1; DADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -878,9 +896,9 @@ Synthetic bytecode unit tests in
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
   binaries at five-or-more levels, computed extra-local stores, and unsafe
   `DNEG` forms fail-closed without constructor or hidden-method mutation.
-  Extra-local int, long, and float operands and computed reference inputs
-  remain outside this admission increment. This does not authorize changing
-  the default compiler path.
+  Extra-local int and long operands and computed reference inputs remain
+  outside this admission increment. This does not authorize changing the
+  default compiler path.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
