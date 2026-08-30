@@ -2289,13 +2289,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.FLOAT) {
             return previousProvenFloatChainOperand(
                     constructor, inputIndex, declaredArguments,
-                    prefixArrayCopies, prefixFloatCopies,
+                    prefixArrayCopies, prefixIntCopies, prefixFloatCopies,
                     MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS);
         }
         if (expected.getSort() == Type.DOUBLE) {
             return previousProvenDoubleChainOperand(
                     constructor, inputIndex, declaredArguments,
-                    prefixArrayCopies, prefixDoubleCopies,
+                    prefixArrayCopies, prefixIntCopies, prefixDoubleCopies,
                     MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS);
         }
         if (!isIntFamily(expected)) {
@@ -2546,7 +2546,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (!longBinary) {
             return previousProvenLongChainLeaf(
                     constructor, inputIndex, declaredArguments,
-                    prefixArrayCopies, prefixLongCopies);
+                    prefixArrayCopies, prefixIntCopies, prefixLongCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2587,14 +2587,15 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves one non-recursive long leaf: a declared LLOAD, one proven prefix
      * copy of a declared LLOAD, LCONST_0/1, an LDC whose constant is a Long,
-     * one constant-indexed LALOAD from an unchanged declared long array or its
-     * proven prefix extra-local copy, or one LNEG over a direct declared LLOAD
-     * or its proven prefix copy.
+     * one constant- or single-load-indexed LALOAD from an unchanged declared
+     * long array or its proven prefix extra-local copy, or one LNEG over a
+     * direct declared LLOAD or its proven prefix copy.
      */
     private static Integer previousProvenLongChainLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixLongCopies) {
         if (inputIndex < 0) {
             return null;
@@ -2614,7 +2615,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
                 constructor, inputIndex, declaredArguments,
-                prefixArrayCopies, Opcodes.LALOAD, Type.getType("[J"));
+                prefixArrayCopies, prefixIntCopies,
+                Opcodes.LALOAD, Type.getType("[J"));
         if (beforeArrayLoad != null) {
             return beforeArrayLoad;
         }
@@ -2734,6 +2736,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixFloatCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
@@ -2748,7 +2751,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && opcode != Opcodes.FREM) {
             return previousProvenFloatChainLeaf(
                     constructor, inputIndex, declaredArguments,
-                    prefixArrayCopies, prefixFloatCopies);
+                    prefixArrayCopies, prefixIntCopies, prefixFloatCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2756,28 +2759,30 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Integer beforeRight = previousProvenFloatChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, prefixArrayCopies, prefixFloatCopies,
+                declaredArguments, prefixArrayCopies,
+                prefixIntCopies, prefixFloatCopies,
                 remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenFloatChainOperand(
                 constructor, beforeRight, declaredArguments,
-                prefixArrayCopies, prefixFloatCopies,
+                prefixArrayCopies, prefixIntCopies, prefixFloatCopies,
                 remainingBinaryLevels - 1);
     }
 
     /**
      * Proves one float leaf: a declared FLOAD, one proven prefix copy of a
      * declared FLOAD, FCONST_0/1/2, an LDC whose constant is a Float, one
-     * constant-indexed FALOAD from an unchanged declared float array or its
-     * proven prefix extra-local copy, or one FNEG over a direct declared FLOAD
-     * or its proven prefix copy.
+     * constant- or single-load-indexed FALOAD from an unchanged declared float
+     * array or its proven prefix extra-local copy, or one FNEG over a direct
+     * declared FLOAD or its proven prefix copy.
      */
     private static Integer previousProvenFloatChainLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixFloatCopies) {
         if (inputIndex < 0) {
             return null;
@@ -2797,7 +2802,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
                 constructor, inputIndex, declaredArguments,
-                prefixArrayCopies, Opcodes.FALOAD, Type.getType("[F"));
+                prefixArrayCopies, prefixIntCopies,
+                Opcodes.FALOAD, Type.getType("[F"));
         if (beforeArrayLoad != null) {
             return beforeArrayLoad;
         }
@@ -2915,6 +2921,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixDoubleCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
@@ -2929,7 +2936,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && opcode != Opcodes.DREM) {
             return previousProvenDoubleChainLeaf(
                     constructor, inputIndex, declaredArguments,
-                    prefixArrayCopies, prefixDoubleCopies);
+                    prefixArrayCopies, prefixIntCopies, prefixDoubleCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2937,28 +2944,30 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Integer beforeRight = previousProvenDoubleChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, prefixArrayCopies, prefixDoubleCopies,
+                declaredArguments, prefixArrayCopies,
+                prefixIntCopies, prefixDoubleCopies,
                 remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenDoubleChainOperand(
                 constructor, beforeRight, declaredArguments,
-                prefixArrayCopies, prefixDoubleCopies,
+                prefixArrayCopies, prefixIntCopies, prefixDoubleCopies,
                 remainingBinaryLevels - 1);
     }
 
     /**
      * Proves one double leaf: a declared DLOAD, one proven prefix copy of a
      * declared DLOAD, DCONST_0/1, an LDC whose constant is a Double, one
-     * constant-indexed DALOAD from an unchanged declared double array or its
-     * proven prefix extra-local copy, or one DNEG over a direct declared DLOAD
-     * or its proven prefix copy.
+     * constant- or single-load-indexed DALOAD from an unchanged declared
+     * double array or its proven prefix extra-local copy, or one DNEG over a
+     * direct declared DLOAD or its proven prefix copy.
      */
     private static Integer previousProvenDoubleChainLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixDoubleCopies) {
         if (inputIndex < 0) {
             return null;
@@ -2978,7 +2987,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
                 constructor, inputIndex, declaredArguments,
-                prefixArrayCopies, Opcodes.DALOAD, Type.getType("[D"));
+                prefixArrayCopies, prefixIntCopies,
+                Opcodes.DALOAD, Type.getType("[D"));
         if (beforeArrayLoad != null) {
             return beforeArrayLoad;
         }
@@ -3004,17 +3014,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the exact retained-prefix primitive computation
-     * {@code ALOAD array; constant; xALOAD}. The source must be an unchanged,
+     * {@code ALOAD array; index; xALOAD}. The source must be an unchanged,
      * exactly typed declared constructor argument or its proven prefix
-     * extra-local copy. Nonconstant indexes deliberately remain unsupported,
-     * and no preceding array store is accepted. The complete load remains JVM
-     * bytecode, preserving null, bounds, and category-two value behavior
-     * without reproducing it in native code.
+     * extra-local copy. The index must be a constant or one single-instruction
+     * declared/proven-copy ILOAD. No preceding array store is accepted. The
+     * complete load remains JVM bytecode, preserving null, bounds, and
+     * category-two value behavior without reproducing it in native code.
      */
     private static Integer previousProvenDeclaredArrayLoadLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies,
             int loadOpcode, Type requiredArrayType) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (input.getOpcode() != loadOpcode) {
@@ -3022,13 +3033,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int indexIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (indexIndex < 0
-                || !isIntFamilyConstant(
-                constructor.instructions.get(indexIndex))) {
+        if (indexIndex < 0) {
             return null;
         }
-        int arrayIndex =
+        int beforeSingleIndex =
                 previousExecutableIndex(constructor, indexIndex - 1);
+        AbstractInsnNode index = constructor.instructions.get(indexIndex);
+        if (!isIntFamilyConstant(index)) {
+            if (index.getOpcode() != Opcodes.ILOAD) {
+                return null;
+            }
+            Integer beforeIndex = previousProvenIntChainLeaf(
+                    constructor, indexIndex, declaredArguments,
+                    prefixArrayCopies, prefixIntCopies);
+            if (beforeIndex == null
+                    || beforeIndex != beforeSingleIndex) {
+                return null;
+            }
+        }
+        int arrayIndex = beforeSingleIndex;
         if (arrayIndex < 0) {
             return null;
         }
