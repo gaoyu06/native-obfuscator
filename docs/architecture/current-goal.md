@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #265 (fail-closed spanning-catch audit)
+   `master` after #266 (declared-argument `GETFIELD`)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -63,6 +63,8 @@ The goal is complete only when all of the following are true:
    int binaries, seventeen-or-more nested long
    binaries, seventeen-or-more nested float binaries,
    seventeen-or-more nested double binaries,
+   `NEW` and unproven `GETFIELD` inputs (local 0, extra-local or
+   overwritten holders, mismatched field types),
    or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path, still rejected after #263),
