@@ -10,12 +10,14 @@
 - Add admit, JVM verification, native parity, and fail-closed mutation tests.
 - Update only the flexible-constructor status document.
 
-## Verification
+## Rebase
 
-- Required Gradle suites: passed.
-- JUnit XML totals: 470 tests, 0 failures, 0 errors, 0 skipped across
-  2 child XML files (child-only; no parent XML number).
-- Default `--codegen` remains `legacy`.
+Rebased onto `origin/master` `87da519` (post-#265 fail-closed spanning-catch
+audit). Child XML on the pre-#265 base is stale and is not cited here. Parent
+will re-run the focused suite and report JUnit XML after rebase. The runtime
+test is `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`.
+
+Default `--codegen` remains `legacy`.
 
 ## Readiness
 
@@ -33,12 +35,14 @@ Ship-ready: **No**
 - 新增放行、JVM 校验、原生运行一致性以及拒绝前零变更测试。
 - 仅更新灵活构造器状态文档。
 
-## 验证
+## 变基
 
-- 必跑 Gradle 测试：已通过。
-- JUnit XML 汇总：2 个子 XML 文件，共 470 项测试、0 失败、0 错误、
-  0 跳过（仅子测试；不虚构父 XML 数量）。
-- 默认 `--codegen` 仍为 `legacy`。
+已变基到 `origin/master` `87da519`（#265 跨后缀/覆盖链调用 catch 失败关闭
+审计之后）。变基前子代理 XML 已过期，此处不再引用。父代理将在变基后重跑
+聚焦套件并报告 JUnit XML。运行时测试为
+`threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`。
+
+默认 `--codegen` 仍为 `legacy`。
 
 ## 就绪状态
 
