@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #245 (extra-local int long-shift counts)
+   `master` after #246 (prefix extra-local float `FNEG`)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
