@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #240 (five-level nested chain-input trees, budget 8)
+   `master` after #241 (well-formed `jsr`/`ret` inlining)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -68,8 +68,8 @@ The goal is complete only when all of the following are true:
    distinct paths, extras still unassigned on a bridge-taking
    path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
-   malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
-   (required leftover: admit with Java parity, not reject-only). In-tree ClassicTest / JDK fixture
+   malformed, cyclic; stay reject-before-mutation), and malformed
+   `jsr` / `ret` (well-formed subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
    admission (#207 measurement on post-#206 `42e52c0`) observed no
    leftover methods; that is not a complete JVM inventory. #199 remains
    the earlier post-#198 snapshot; #191 remains the earlier post-#190
