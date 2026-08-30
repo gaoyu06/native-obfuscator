@@ -3431,6 +3431,50 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithReferenceComputedChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperReferenceBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeReferenceComputedMultiReturn", base.name);
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "reference-computed");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I[Ljava/lang/Object;)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.AALOAD));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.AALOAD));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithExtraLocalIntChainInputs() {
         ClassNode base = multipleSuperBase(
                 "example/MultiSuperExtraLocalIntBase");
@@ -5365,39 +5409,33 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsNonIntFamilyComputedChainInputsBeforeMutation() {
-        for (String shape : Collections.singletonList(
-                "reference-computed")) {
-            ClassNode owner = constructorOwner(
-                    "example/RejectedComputed"
-                            + shape.replace("-", ""),
-                    "example/MultiSuperBase");
-            MethodNode constructor =
-                    threeImmediateReturnsWithComputedInput(
-                            owner.superName, shape);
-            int instructionCount = constructor.instructions.size();
-            java.util.List<Integer> opcodes = realOpcodes(constructor);
-            NativeObfuscator obfuscator = new NativeObfuscator();
-            MethodContext context =
-                    new MethodContext(
-                            obfuscator, constructor, 0, owner, 0);
+    public void rejectsUnprovenReferenceComputedIndexBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedReferenceComputedIndex",
+                "example/MultiSuperReferenceBase");
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "reference-computed-index");
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(
+                        obfuscator, constructor, 0, owner, 0);
 
-            assertThrows(
-                    UnsupportedIrConstructException.class,
-                    () -> new IrMethodCompiler(
-                            new MethodShellEmitter(obfuscator))
-                            .processMethod(context),
-                    shape);
+        assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
-            assertEquals(instructionCount,
-                    constructor.instructions.size(), shape);
-            assertEquals(opcodes, realOpcodes(constructor), shape);
-            assertTrue(context.proxyMethod == null, shape);
-            assertTrue(obfuscator.getHiddenMethodsPool()
-                    .getClasses().isEmpty(), shape);
-        }
+        assertUnchangedAfterRejectedIr(
+                constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool()
+                .getClasses().isEmpty());
     }
 
     @Test
@@ -6699,6 +6737,61 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(1, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
+    }
+
+    @Test
+    public void rewrittenThreeImmediateReferenceComputedSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedReferenceComputedMultiReturnBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedReferenceComputedMultiReturn", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name, "reference-computed");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(
+                                    int.class, Object[].class)
+                            .newInstance(new Object[]{
+                                    selector, new Object[]{"VALUE"}}));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        InvocationTargetException nullArray = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class, Object[].class)
+                        .newInstance(new Object[]{7, null}));
+        assertTrue(nullArray.getCause() instanceof NullPointerException);
+        InvocationTargetException emptyArray = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class, Object[].class)
+                        .newInstance(new Object[]{7, new Object[0]}));
+        assertTrue(emptyArray.getCause()
+                instanceof ArrayIndexOutOfBoundsException);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.AALOAD));
+        assertEquals(
+                "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
     }
 
     @Test
@@ -11630,6 +11723,97 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local int multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateReferenceComputedSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the reference-computed runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the reference-computed runtime test");
+
+        String ownerName = "example/ReferenceComputedMultiReturnRuntime";
+        String baseName =
+                "example/ReferenceComputedMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-reference-computed-run");
+        Path inputJar = directory.resolve("reference-computed.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeReferenceComputedReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain reference-computed multi-super Java run");
+        assertEquals(
+                "POSITIVE" + System.lineSeparator()
+                        + "NEGATIVE" + System.lineSeparator()
+                        + "ZERO" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.AALOAD));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("reference-computed CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("reference-computed CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Reference-computed native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native reference-computed multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -21195,6 +21379,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeReferenceComputedReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperReferenceBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "reference-computed"));
+        owner.methods.add(multipleSuperThreeReferenceComputedReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeExtraLocalLongReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -23876,6 +24089,29 @@ public class IrCompilerTest {
         return base;
     }
 
+    private ClassNode multipleSuperReferenceBase(String name) {
+        ClassNode base = constructorOwner(name, "java/lang/Object");
+        base.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "value",
+                "Ljava/lang/Object;", null, null));
+        MethodNode constructor = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;)V", null, null);
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        constructor.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, name, "value", "Ljava/lang/Object;"));
+        constructor.instructions.add(new InsnNode(Opcodes.RETURN));
+        constructor.maxLocals = 2;
+        constructor.maxStack = 2;
+        base.methods.add(constructor);
+        return base;
+    }
+
     private ClassNode multipleSuperLongBase(String name) {
         ClassNode base = constructorOwner(name, "java/lang/Object");
         base.fields.add(new FieldNode(
@@ -26245,8 +26481,11 @@ public class IrCompilerTest {
         } else if (shape.startsWith("double-")) {
             constructorDescriptor = "(ID)V";
             callDescriptor = "(D)V";
-        } else if ("reference-computed".equals(shape)) {
-            constructorDescriptor = "(I[Ljava/lang/Object;)V";
+        } else if (shape.startsWith("reference-computed")) {
+            constructorDescriptor =
+                    "reference-computed-index".equals(shape)
+                            ? "(II[Ljava/lang/Object;)V"
+                            : "(I[Ljava/lang/Object;)V";
             callDescriptor = "(Ljava/lang/Object;)V";
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
@@ -26302,7 +26541,8 @@ public class IrCompilerTest {
                 : shape.startsWith("long-")
                 || shape.startsWith("double-")
                 || "float-extra-local".equals(shape)
-                || "float-fneg-extra-local".equals(shape) ? 4 : 3;
+                || "float-fneg-extra-local".equals(shape)
+                || "reference-computed-index".equals(shape) ? 4 : 3;
         method.maxStack = "long-two-sided-ladd".equals(shape)
                 || "double-two-sided-dadd".equals(shape) ? 7 : 5;
         return method;
@@ -26834,9 +27074,14 @@ public class IrCompilerTest {
             if ("double-double-dneg".equals(shape)) {
                 method.instructions.add(new InsnNode(Opcodes.DNEG));
             }
-        } else if ("reference-computed".equals(shape)) {
-            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
-            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        } else if (shape.startsWith("reference-computed")) {
+            method.instructions.add(new VarInsnNode(
+                    Opcodes.ALOAD,
+                    "reference-computed-index".equals(shape) ? 3 : 2));
+            method.instructions.add(
+                    "reference-computed-index".equals(shape)
+                            ? new VarInsnNode(Opcodes.ILOAD, 2)
+                            : new InsnNode(Opcodes.ICONST_0));
             method.instructions.add(new InsnNode(Opcodes.AALOAD));
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
@@ -27465,6 +27710,23 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode multipleSuperThreeReferenceComputedReturnsMain(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperReferencePrint(
+                method, owner, superName, 7, "POSITIVE");
+        appendMultipleSuperReferencePrint(
+                method, owner, superName, -7, "NEGATIVE");
+        appendMultipleSuperReferencePrint(
+                method, owner, superName, 0, "ZERO");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 8;
+        return method;
+    }
+
     private MethodNode multipleSuperThreeExtraLocalLongReturnsMain(
             String owner, String superName) {
         MethodNode method = new MethodNode(
@@ -27808,6 +28070,33 @@ public class IrCompilerTest {
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
                 "println", "(I)V", false));
+    }
+
+    private void appendMultipleSuperReferencePrint(
+            MethodNode method, String owner, String fieldOwner,
+            int selector, String value) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, selector));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.ANEWARRAY, "java/lang/Object"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new LdcInsnNode(value));
+        method.instructions.add(new InsnNode(Opcodes.AASTORE));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                "(I[Ljava/lang/Object;)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, fieldOwner, "value",
+                "Ljava/lang/Object;"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/Object;)V", false));
     }
 
     private MethodNode prefixLocalBranchConstructor() {

@@ -2197,12 +2197,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Restricts bounded multi-call forms to calls whose complete operand
      * sequence is visible locally: a direct receiver ALOAD followed by direct
-     * declared-argument loads, proven prefix copies of declared int-family
-     * loads, one leaf-only LADD over proven long inputs, int-family constants,
-     * one INEG over a direct declared int-family argument load, or an admitted
-     * int binary tree of at most eight levels over those int-family leaves. The
-     * identical-copy and distinct-suffix forms may accept a direct alias load
-     * only when their separate receiver-frame proof succeeds.
+     * declared-argument loads, one AALOAD from an unchanged declared array
+     * argument at a constant index, proven prefix copies of declared
+     * int-family loads, bounded primitive computations, or int-family
+     * constants. The identical-copy and distinct-suffix forms may accept a
+     * direct alias load only when their separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2269,6 +2268,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 input, expected, declaredArguments)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        if (expected.getSort() == Type.OBJECT
+                || expected.getSort() == Type.ARRAY) {
+            return previousProvenReferenceChainInput(
+                    constructor, inputIndex, expected, declaredArguments);
+        }
         if (expected.getSort() == Type.LONG) {
             return previousProvenLongChainOperand(
                     constructor, inputIndex, declaredArguments,
@@ -2294,6 +2298,68 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 constructor, inputIndex, declaredArguments,
                 prefixIntCopies,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
+    }
+
+    /**
+     * Proves the exact retained-prefix reference computation
+     * {@code ALOAD declaredArray; constant; AALOAD}. The array local must still
+     * contain its declared constructor argument, and no earlier array store is
+     * accepted. The load remains JVM bytecode, preserving null, bounds, and
+     * reference-array semantics without reproducing them in native code.
+     */
+    private static Integer previousProvenReferenceChainInput(
+            MethodNode constructor, int inputIndex, Type expected,
+            Map<Integer, Type> declaredArguments) {
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != Opcodes.AALOAD) {
+            return null;
+        }
+        int indexIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (indexIndex < 0
+                || !isIntFamilyConstant(
+                constructor.instructions.get(indexIndex))) {
+            return null;
+        }
+        int arrayIndex =
+                previousExecutableIndex(constructor, indexIndex - 1);
+        if (arrayIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode array = constructor.instructions.get(arrayIndex);
+        if (!(array instanceof VarInsnNode)
+                || array.getOpcode() != Opcodes.ALOAD) {
+            return null;
+        }
+        int arrayLocal = ((VarInsnNode) array).var;
+        Type declaredArray = declaredArguments.get(arrayLocal);
+        if (declaredArray == null || declaredArray.getSort() != Type.ARRAY) {
+            return null;
+        }
+        Type component = Type.getType(
+                declaredArray.getDescriptor().substring(1));
+        if (!sameInvocationCarrier(component, expected)) {
+            return null;
+        }
+        for (int i = 0; i < inputIndex; i++) {
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(i);
+            Type stored = storeType(instruction);
+            if (i < arrayIndex && stored != null
+                    && localRangesOverlap(
+                    ((VarInsnNode) instruction).var, stored,
+                    arrayLocal, declaredArray)) {
+                return null;
+            }
+            if (isArrayStoreOpcode(instruction.getOpcode())) {
+                return null;
+            }
+        }
+        return previousExecutableIndex(constructor, arrayIndex - 1);
+    }
+
+    private static boolean isArrayStoreOpcode(int opcode) {
+        return opcode >= Opcodes.IASTORE && opcode <= Opcodes.SASTORE;
     }
 
     /**
