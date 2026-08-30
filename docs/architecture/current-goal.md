@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #236 (prefix extra-local double chain-input leaves)
+   `master` after #237 (prefix extra-local float chain-input leaves)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -61,7 +61,7 @@ The goal is complete only when all of the following are true:
    suffixes or cover a chain call,
    remaining multi-super shapes such as five-or-more nested
    int binaries, five-or-more nested long
-   binaries, five-or-more nested float binaries, extra-local float operands,
+   binaries, five-or-more nested float binaries,
    five-or-more nested double binaries, extra-local int and long operands, reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
