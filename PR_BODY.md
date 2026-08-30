@@ -28,7 +28,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML totals will be recorded after the required verification run.
+Child-produced JUnit XML totals:
+
+- `IrCompilerTest`: 356 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 363 tests, 0 failures, 0 errors, 0 skipped.
 
 Ship-ready: **No**
 
@@ -59,7 +63,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-所需验证运行结束后将记录 JUnit XML 汇总。
+子代理生成的 JUnit XML 汇总：
+
+- `IrCompilerTest`：356 项测试，0 项失败，0 项错误，0 项跳过。
+- `CodegenModeTest`：7 项测试，0 项失败，0 项错误，0 项跳过。
+- 合计：363 项测试，0 项失败，0 项错误，0 项跳过。
 
 可发布：**否**
 <!-- CURSOR_AGENT_PR_BODY_END -->
