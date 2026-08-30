@@ -23,8 +23,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-The child XML result is reported in the handoff and discarded. The parent
-re-runs the focused gate.
+Result: **PASS**. Child XML reports 616 `IrCompilerTest` tests and 7
+`CodegenModeTest` tests (623 total), with zero failures, errors, or skips. The
+child XML is discarded; the parent re-runs the focused gate.
 
 Ship-ready: **No**
 
@@ -50,6 +51,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-子任务 XML 结果会在交接信息中报告后丢弃；父任务会重新运行聚焦门禁。
+结果：**通过**。子任务 XML 显示 `IrCompilerTest` 616 项、
+`CodegenModeTest` 7 项（共 623 项），失败、错误和跳过均为零。子任务 XML
+会被丢弃；父任务会重新运行聚焦门禁。
 
 可交付状态：**否**
