@@ -3884,7 +3884,7 @@ public class IrCompilerTest {
         MethodNode nativeBody =
                 ConstructorSpecialMethodProcessor.createNativeBody(
                         owner, constructor);
-        assertEquals("(I)V", nativeBody.desc);
+        assertEquals("(II)V", nativeBody.desc);
         assertEquals(Collections.singletonList(Opcodes.RETURN),
                 realOpcodes(nativeBody));
         assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
