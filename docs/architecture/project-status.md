@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix extra-local float chain-input leaves
-[#237](https://github.com/gaoyu06/native-obfuscator/pull/237)
-(parent re-ran 363/363: 356 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalFloatSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#236](https://github.com/gaoyu06/native-obfuscator/pull/236)
-extra-local double leaf. Active process:
+Last updated after landing prefix extra-local long chain-input leaves
+[#238](https://github.com/gaoyu06/native-obfuscator/pull/238)
+(parent re-ran 366/366: 359 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#237](https://github.com/gaoyu06/native-obfuscator/pull/237)
+extra-local float leaf. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -259,12 +259,16 @@ legacy。不能当成 JDK 支持矩阵。
   [#237](https://github.com/gaoyu06/native-obfuscator/pull/237) admits
   a prefix extra-local copy of a declared float `FLOAD` as a float
   chain-input leaf.
+  [#238](https://github.com/gaoyu06/native-obfuscator/pull/238) admits
+  a prefix extra-local copy of a declared long `LLOAD` as a long
+  chain-input leaf.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (five-or-more nested int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries,
-  five-or-more nested double binaries, extra-local int and long operands,
+  five-or-more nested double binaries, extra-local int operands,
+  extra-local long shift count/value and `LDIV`/`LREM` operands,
   reference computed inputs),
   and extras still unassigned on a bridge-taking path are still
   rejected.
@@ -435,6 +439,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Four-level nested double chain inputs (#235) | 357 tests (`IrCompilerTest` 350 + `CodegenModeTest` 7). Parent re-ran 357/357 including `fourLevelNestedDoubleChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local double chain-input leaves (#236) | 360 tests (`IrCompilerTest` 353 + `CodegenModeTest` 7). Parent re-ran 360/360 including `threeImmediateExtraLocalDoubleSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local float chain-input leaves (#237) | 363 tests (`IrCompilerTest` 356 + `CodegenModeTest` 7). Parent re-ran 363/363 including `threeImmediateExtraLocalFloatSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Prefix extra-local long chain-input leaves (#238) | 366 tests (`IrCompilerTest` 359 + `CodegenModeTest` 7). Parent re-ran 366/366 including `threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -487,7 +492,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, five-or-more nested long
   binaries, five-or-more nested float binaries,
   five-or-more nested double binaries, extra-local
-  int and long operands, extras still unassigned
+  int operands, extra-local long shift count/value and
+  `LDIV`/`LREM` operands, extras still unassigned
   on a bridge-taking path) and
   `jsr` / `ret` (reject-before-mutation is acceptable for obsolete
   subroutines). Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
@@ -506,9 +512,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #237 (prefix
-  extra-local float chain-input leaves). /
-  落地 #237 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #238 (prefix
+  extra-local long chain-input leaves). /
+  落地 #238 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
