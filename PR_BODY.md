@@ -20,6 +20,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+Local XML:
+
+- `obfuscator/build/test-results/test/TEST-by.radioegor146.ir.IrCompilerTest.xml`:
+  504 tests, 0 skipped, 0 failures, 0 errors
+- `obfuscator/build/test-results/test/TEST-by.radioegor146.CodegenModeTest.xml`:
+  7 tests, 0 skipped, 0 failures, 0 errors
+
+The parent reruns the gate; child pre-rebase totals are discarded.
+
 Admitted: **No**
 
 Ship-ready: **No**
@@ -43,6 +52,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.ir.IrCompilerTest \
   --tests by.radioegor146.CodegenModeTest
 ```
+
+本地 XML：
+
+- `obfuscator/build/test-results/test/TEST-by.radioegor146.ir.IrCompilerTest.xml`：
+  504 个测试，0 skipped，0 failures，0 errors
+- `obfuscator/build/test-results/test/TEST-by.radioegor146.CodegenModeTest.xml`：
+  7 个测试，0 skipped，0 failures，0 errors
+
+父任务会重新执行该门禁；子任务在 rebase 前的统计将被丢弃。
 
 Admitted（放行）: **No**
 
