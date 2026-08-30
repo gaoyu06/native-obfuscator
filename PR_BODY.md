@@ -9,7 +9,17 @@
 
 ### Tests
 
-The required focused Gradle gate and JUnit XML totals will be recorded after the pre-test commit.
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+JUnit XML under `obfuscator/build/test-results/test/`:
+
+- `IrCompilerTest`: 486 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 493 tests, 0 failures, 0 errors, 0 skipped.
 
 ### Readiness
 
@@ -26,7 +36,17 @@ Ship-ready: **No**
 
 ### 测试
 
-预测试提交完成后，将运行要求的 Gradle 聚焦门禁并记录 JUnit XML 汇总。
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+`obfuscator/build/test-results/test/` 下的 JUnit XML 汇总：
+
+- `IrCompilerTest`：486 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：493 个测试，0 个失败，0 个错误，0 个跳过。
 
 ### 就绪状态
 
