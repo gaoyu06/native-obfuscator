@@ -1404,6 +1404,11 @@ Synthetic bytecode unit tests in
   Seventeen-level fixtures remain rejected before constructor or hidden-method
   mutation, proving that the sixteen-level family budgets stay bounded and
   fail closed.
+- `seventeenLevelNestedBinariesPassJava8JvmVerification` loads the untouched
+  classfile-52 `IADD`, `LADD`, `FADD`, and `DADD` fixtures and executes their
+  ordinary positive, negative, and zero construction paths. This confirms
+  that the bounded rejection is conservative for verifier-valid bytecode; it
+  does not admit seventeen-level trees or change the default compiler path.
 - `admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs` applies the
   same leaf-only proof to one `ISUB` path, one `IMUL` path, and one direct-load
   path; it retains both arithmetic opcodes, all three calls, two shared-join
