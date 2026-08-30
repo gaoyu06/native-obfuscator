@@ -21,19 +21,10 @@ admission.
 
 ### Verification
 
-Child-only focused gate:
-
-```text
-CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
-  --tests by.radioegor146.ir.IrCompilerTest \
-  --tests by.radioegor146.CodegenModeTest
-```
-
-- `IrCompilerTest`: 460 tests, 0 failures, 0 errors, 0 skipped.
-- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Child-only total: 467 tests, 0 failures, 0 errors, 0 skipped.
-
-The parent will re-run the full suite and report its authoritative totals.
+Rebased onto `origin/master` `ca9e93a` (post-#264 leftover inventory).
+Child XML on the pre-#264 base is stale and is not cited here. Parent will
+re-run the focused suite and report JUnit XML after rebase. The verification
+test is `spanningAndChainCoveringTryCatchShapesPassJvmVerification`.
 
 Ship-ready: **No**
 
@@ -58,18 +49,8 @@ broken-uninitialized-this 状态。因此，覆盖链调用的样例继续保护
 
 ### 验证
 
-子任务聚焦测试：
-
-```text
-CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
-  --tests by.radioegor146.ir.IrCompilerTest \
-  --tests by.radioegor146.CodegenModeTest
-```
-
-- `IrCompilerTest`：460，失败 0，错误 0，跳过 0。
-- `CodegenModeTest`：7，失败 0，错误 0，跳过 0。
-- 子任务合计：467，失败 0，错误 0，跳过 0。
-
-父任务将重新运行完整测试套件，并报告其权威汇总。
+已变基到 `origin/master` `ca9e93a`（#264 遗留清单重测之后）。变基前子代理
+XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告 JUnit XML。
+验证测试为 `spanningAndChainCoveringTryCatchShapesPassJvmVerification`。
 
 可发布：**否**
