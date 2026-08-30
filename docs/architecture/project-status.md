@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix extra-local double `DNEG`
-[#247](https://github.com/gaoyu06/native-obfuscator/pull/247)
-(parent re-ran 406/406: 399 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalDoubleDnegSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#246](https://github.com/gaoyu06/native-obfuscator/pull/246)
-extra-local float `FNEG` admission. Active process:
+Last updated after landing prefix extra-local int `INEG`
+[#248](https://github.com/gaoyu06/native-obfuscator/pull/248)
+(parent re-ran 410/410: 403 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#247](https://github.com/gaoyu06/native-obfuscator/pull/247)
+extra-local double `DNEG` admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -292,6 +292,9 @@ legacy。不能当成 JDK 支持矩阵。
   [#247](https://github.com/gaoyu06/native-obfuscator/pull/247) admits
   one `DNEG` over a proven prefix extra-local double copy. Constant,
   double, and computed `DNEG` stay rejected.
+  [#248](https://github.com/gaoyu06/native-obfuscator/pull/248) admits
+  one `INEG` over a proven prefix extra-local int copy. Constant,
+  double, and computed `INEG` stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -477,6 +480,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local int long-shift counts (#245) | 400 tests (`IrCompilerTest` 393 + `CodegenModeTest` 7). Parent re-ran 400/400 including `threeImmediateExtraLocalLongShiftCountSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local float `FNEG` (#246) | 403 tests (`IrCompilerTest` 396 + `CodegenModeTest` 7). Parent re-ran 403/403 including `threeImmediateExtraLocalFloatFnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local double `DNEG` (#247) | 406 tests (`IrCompilerTest` 399 + `CodegenModeTest` 7). Parent re-ran 406/406 including `threeImmediateExtraLocalDoubleDnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Prefix extra-local int `INEG` (#248) | 410 tests (`IrCompilerTest` 403 + `CodegenModeTest` 7). Parent re-ran 410/410 including `threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -538,6 +542,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   admitted by #244. Extra-local int long-shift counts are admitted
   by #245. Extra-local float `FNEG` is admitted by #246.
   Extra-local double `DNEG` is admitted by #247.
+  Extra-local int `INEG` is admitted by #248.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -554,9 +559,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #247
-  (prefix extra-local double `DNEG`). /
-  落地 #247 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #248
+  (prefix extra-local int `INEG`). /
+  落地 #248 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
