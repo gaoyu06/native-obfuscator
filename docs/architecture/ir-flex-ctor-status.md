@@ -68,18 +68,18 @@ The constructor split now covers these related prefix shapes:
   suffix-copy proof, where every call additionally consumes the original
   receiver plus locally proven arguments (matching direct declared-argument
   loads; one `LNEG` over a direct declared long-argument load; a tree of at
-  most four `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, `LXOR`,
+  most eight `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, `LXOR`,
   `LSHL`, `LSHR`, or `LUSHR` levels for a long argument, whose long leaves are
   declared long-argument loads, proven prefix extra-local copies of declared
   long-argument loads outside shift and division/remainder operands,
   `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or the admitted single-load `LNEG`,
   and whose shift counts remain proven int-family leaves;
-  a tree of at most four `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
+  a tree of at most eight `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
   a float argument, whose leaves are declared float-argument loads, a prefix
   extra-local `FLOAD` with one dominating `FSTORE` copy of a declared
   float-argument load, `FCONST_0`, `FCONST_1`, `FCONST_2`, `LDC` of `Float`,
   or one `FNEG` over a direct declared float-argument load;
-  a tree of at most four `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` levels for
+  a tree of at most eight `DADD`, `DSUB`, `DMUL`, `DDIV`, or `DREM` levels for
   a double argument, whose leaves are declared double-argument loads, a prefix
   extra-local `DLOAD` with one dominating `DSTORE` copy of a declared
   double-argument load, `DCONST_0`, `DCONST_1`, `LDC` of `Double`, or one
@@ -87,7 +87,7 @@ The constructor split now covers these related prefix shapes:
   a prefix extra-local `ILOAD` with one dominating `ISTORE` copy of a declared
   int-family argument load; int-family constants; or one `INEG` over a direct
   declared int-family argument load,
-  plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
+  plus a tree of at most eight `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs).
 
@@ -180,7 +180,7 @@ One additional family is reduced to that same shared-join form:
   dominating overlapping write consisting of an `ISTORE` directly fed by a
   declared int-family argument `ILOAD`; or exactly one `INEG` over a direct
   `ILOAD` of a declared int-family constructor argument. An int-family
-  argument may also have at most four
+  argument may also have at most eight
   levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
   `IUSHR`, `IDIV`, or `IREM`. The operand proof recursively consumes one
   explicit depth budget per binary level, and the leaves remain direct loads,
@@ -188,13 +188,13 @@ One additional family is reduced to that same shared-join form:
   extra-local int copies may be used by every admitted int binary, including
   `IDIV`, `IREM`, and shifts; unlike prefix long copies, they have no
   operator-specific exclusion. This admits `IDIV`/`IREM` as inner or outer
-  nodes, including nesting with each other, while a fifth binary level is
+  nodes, including nesting with each other, while a ninth binary level is
   rejected. `INEG` remains restricted to a direct declared argument `ILOAD`.
   Shift-count masking is not reproduced by this proof: every admitted shift
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
-- A long call argument may instead have at most four levels of `LADD`, `LSUB`,
+- A long call argument may instead have at most eight levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
   value while keeping the count as a non-recursive int-family leaf. A long
@@ -206,21 +206,21 @@ One additional family is reduced to that same shared-join form:
   existing declared-argument `ILOAD` and int-family constant proof. A
   standalone `LNEG` leaf is admitted under the same declared-load restriction.
   Prefix extra-local long copies are not admitted as shift values or as
-  `LDIV`/`LREM` operands. This proof has its own explicit four-level binary
-  budget: five-or-more nested long binaries, extra-local int shift counts,
+  `LDIV`/`LREM` operands. This proof has its own explicit eight-level binary
+  budget: nine-or-more nested long binaries, extra-local int shift counts,
   extra-local long shift counts or values, extra-local `LDIV`/`LREM` operands,
   `LNEG` of a constant, double `LNEG`, and `LNEG` of an extra-local or computed
   value remain rejected. The retained bytecode prefix executes admitted
   operations, preserving Java long wrapping, negate semantics, bitwise
   semantics, JVM divide-by-zero and signed-overflow behavior, and mask-63
   shift-count behavior without reproducing those semantics in C++.
-- A float call argument may instead contain a tree of at most four `FADD`,
+- A float call argument may instead contain a tree of at most eight `FADD`,
   `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
   declared-argument `FLOAD`, a prefix extra-local `FLOAD` with exactly one
   dominating `FSTORE` directly fed by a matching declared-argument `FLOAD`,
   `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of `Float`, or one `FNEG` whose
   sole operand is a matching declared-argument `FLOAD`. This proof has its own
-  four-level binary budget, which `FNEG` does not consume: five-or-more nested
+  eight-level binary budget, which `FNEG` does not consume: nine-or-more nested
   float binaries, unproven or computed extra-local stores, `FNEG` of a
   constant, double `FNEG`, and `FNEG` of an extra-local or computed value
   remain rejected, as do extra-local int and long operands and computed
@@ -228,14 +228,14 @@ One additional family is reduced to that same shared-join form:
   The admitted arithmetic stays in the retained bytecode prefix, preserving
   Java evaluation order, rounding, signed-zero, infinity, and NaN behavior
   without reproducing float arithmetic in C++.
-- A double call argument may instead contain a tree of at most four `DADD`,
+- A double call argument may instead contain a tree of at most eight `DADD`,
   `DSUB`, `DMUL`, `DDIV`, or `DREM` levels. A double leaf must be a matching
   declared-argument `DLOAD`, a prefix extra-local `DLOAD` with exactly one
   dominating `DSTORE` directly fed by a matching declared-argument `DLOAD`,
   `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or one `DNEG` whose sole
   operand is a matching declared-argument `DLOAD`.
-  This proof has its own four-level binary budget, which `DNEG` does not
-  consume: five-or-more nested double binaries, unproven or computed
+  This proof has its own eight-level binary budget, which `DNEG` does not
+  consume: nine-or-more nested double binaries, unproven or computed
   extra-local stores, `DNEG` of a constant, double `DNEG`, and `DNEG` of an
   extra-local or computed value remain rejected, as do extra-local int and
   long operands and computed reference inputs. The admitted arithmetic stays
@@ -310,8 +310,8 @@ normalizing the suffixes to one copied join:
   receiver slot, or category-2 parameter slot.
 
 Unproven extra-local or aliased chain inputs, int-family binary expression
-trees deeper than four levels, long binary expression trees deeper than four
-levels, double expression trees deeper than the four admitted binary levels,
+trees deeper than eight levels, long binary expression trees deeper than eight
+levels, double expression trees deeper than the eight admitted binary levels,
 other unlisted long or double operations,
 standalone non-int-family constants, `IINC`, fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
@@ -854,8 +854,9 @@ Synthetic bytecode unit tests in
   bridge, rewritten classes verify, and the complete CMake/g++ JNI transform
   matches plain Java. Extra-local int shift counts, extra-local long shift
   counts/values, extra-local `LDIV`/`LREM` operands, `LNEG` of an extra-local,
-  and five-or-more nested long binaries remain rejected. This does not complete
-  the production goal or authorize changing the default compiler path.
+  and nine-or-more nested long binaries remain rejected. This does not
+  complete the production goal or authorize changing the default compiler
+  path.
 - `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
   `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -875,7 +876,7 @@ Synthetic bytecode unit tests in
   hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
   transform matches plain Java.
 - `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps float binaries
-  at five-or-more levels and unsafe `FNEG` forms, including `FNEG` of an
+  at nine-or-more levels and unsafe `FNEG` forms, including `FNEG` of an
   extra-local, fail-closed without constructor or hidden-method mutation.
   Cross-carrier extra-local int and long operands remain rejected by the float
   proof. This does not authorize changing the default compiler path.
@@ -925,7 +926,7 @@ Synthetic bytecode unit tests in
   hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
   transform matches plain Java.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
-  binaries at five-or-more levels, computed extra-local stores, and unsafe
+  binaries at nine-or-more levels, computed extra-local stores, and unsafe
   `DNEG` forms fail-closed without constructor or hidden-method mutation.
   Cross-carrier extra-local int and long operands and computed reference inputs
   remain outside the double proof. This does not authorize changing the default
@@ -1022,7 +1023,13 @@ Synthetic bytecode unit tests in
   remains an int-family leaf. The retained prefix executes every operation,
   all paths share one hidden bridge, rewritten Java 8 classes verify, and the
   complete CMake/g++ JNI transform matches plain Java.
-- `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps five-or-more
+- `admitsFiveLevelNestedLongChainInputs`,
+  `rewrittenFiveLevelNestedLongChainInputsPassJvmVerification`, and
+  `fiveLevelNestedLongChainInputsCompileAndRunWithJavaParity` cover the former
+  five-level `LADD` and inner-`LDIV` leftovers under the new eight-level
+  budget. The retained prefix executes every operation, one hidden bridge is
+  shared, rewritten classes verify, and native stdout matches plain Java.
+- `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nine-or-more
   long binary levels (including an inner `LDIV`), extra-local long operands,
   extra-local long-shift value and int-count operands, extra-local
   `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
@@ -1057,6 +1064,12 @@ Synthetic bytecode unit tests in
   executes every double operation, all paths share one hidden bridge, rewritten
   Java 8 classes verify, and the complete CMake/g++ JNI transform matches plain
   Java.
+- `admitsFiveLevelNestedDoubleChainInputs`,
+  `rewrittenFiveLevelNestedDoubleChainInputsPassJvmVerification`, and
+  `fiveLevelNestedDoubleChainInputsCompileAndRunWithJavaParity` cover
+  five-level `DADD` plus inner and outer `DDIV` positions. The retained prefix
+  executes every operation, one hidden bridge is shared, rewritten classes
+  verify, and native stdout matches plain Java.
 - `admitsThreeLevelNestedFloatChainInputs`,
   `rewrittenThreeLevelNestedFloatChainInputsPassJvmVerification`, and
   `threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
@@ -1071,7 +1084,13 @@ Synthetic bytecode unit tests in
   executes every float operation, all paths share one hidden bridge, rewritten
   Java 8 classes verify, and the complete CMake/g++ JNI transform matches plain
   Java.
-- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps five-or-more
+- `admitsFiveLevelNestedFloatChainInputs`,
+  `rewrittenFiveLevelNestedFloatChainInputsPassJvmVerification`, and
+  `fiveLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover
+  five-level `FADD` and inner `FDIV`. The retained prefix executes every
+  operation, one hidden bridge is shared, rewritten classes verify, and native
+  stdout matches plain Java.
+- `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps nine-or-more
   nested float binaries, extra-local float operands, and unsafe `FNEG` forms
   fail-closed without constructor or hidden-method mutation.
 - `admitsThreeImmediateReturnsWithIdivAndIremOfProvenChainInputs` checks
@@ -1107,6 +1126,15 @@ Synthetic bytecode unit tests in
 - `fourLevelNestedChainInputsCompileAndRunWithJavaParity` executes all three
   admitted four-level shapes through plain Java and the complete CMake/g++ JNI
   transform under `java -Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsFiveLevelNestedIntFamilyChainInputs`,
+  `rewrittenFiveLevelNestedChainInputsPassJvmVerification`, and
+  `fiveLevelNestedChainInputsCompileAndRunWithJavaParity` cover the former
+  five-level `IADD` and inner-`IDIV` leftovers. The retained prefix executes
+  every operation, one hidden bridge is shared, rewritten classes verify, and
+  native stdout matches plain Java.
+- Nine-level `IADD`, `LADD`, `FADD`, and `DADD` fixtures remain rejected
+  before constructor or hidden-method mutation, proving that the eight-level
+  family budgets stay bounded and fail closed.
 - `admitsThreeImmediateReturnsWithIsubAndImulOfProvenChainInputs` applies the
   same leaf-only proof to one `ISUB` path, one `IMUL` path, and one direct-load
   path; it retains both arithmetic opcodes, all three calls, two shared-join
@@ -1234,7 +1262,7 @@ Synthetic bytecode unit tests in
   assignments at non-boundary labels and verifies rejection before mutation.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
-  five-level nested binary input (including a tree with inner `IDIV`),
+  nine-level nested binary input,
   extra-local `IDIV`/`IREM` operands, an inner `IDIV` tree containing an
   extra-local or static-invoke operand, a rewritten `ASTORE 0` receiver, a
   standalone-`GOTO` suffix, a zero-call return, and skip-super paths before
@@ -1254,9 +1282,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 344 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 356 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 351 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 363 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

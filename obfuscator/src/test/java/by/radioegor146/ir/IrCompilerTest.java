@@ -94,6 +94,9 @@ public class IrCompilerTest {
             "four-level-iadd", "four-level-idiv-inner",
             "four-level-idiv-outer"
     };
+    private static final String[] FIVE_LEVEL_CHAIN_INPUT_SHAPES = {
+            "five-level-iadd", "five-level-idiv-inner"
+    };
     private static final String[] LONG_BITWISE_CHAIN_INPUT_SHAPES = {
             "long-land", "long-lor", "long-lxor"
     };
@@ -121,6 +124,10 @@ public class IrCompilerTest {
             "double-four-level-dadd", "double-four-level-ddiv-inner",
             "double-four-level-ddiv-outer"
     };
+    private static final String[] FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES = {
+            "double-five-level-dadd", "double-five-level-ddiv-inner",
+            "double-five-level-ddiv-outer"
+    };
     private static final String[] TWO_LEVEL_FLOAT_CHAIN_INPUT_SHAPES = {
             "float-nested-fadd", "float-nested-fdiv",
             "float-fdiv-inner", "float-two-sided-fadd"
@@ -132,6 +139,9 @@ public class IrCompilerTest {
     private static final String[] FOUR_LEVEL_FLOAT_CHAIN_INPUT_SHAPES = {
             "float-four-level-fadd", "float-four-level-fdiv-inner",
             "float-four-level-fdiv-outer"
+    };
+    private static final String[] FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES = {
+            "float-five-level-fadd", "float-five-level-fdiv-inner"
     };
     private static final String[] TWO_LEVEL_LONG_CHAIN_INPUT_SHAPES = {
             "long-nested-ladd", "long-nested-ldiv",
@@ -145,6 +155,9 @@ public class IrCompilerTest {
     private static final String[] FOUR_LEVEL_LONG_CHAIN_INPUT_SHAPES = {
             "long-four-level-ladd", "long-four-level-ldiv-inner",
             "long-four-level-ldiv-outer", "long-four-level-lshl"
+    };
+    private static final String[] FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES = {
+            "long-five-level-ladd", "long-five-level-ldiv-inner"
     };
 
     private final AsmToIr frontend = new AsmToIr();
@@ -4366,6 +4379,55 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsFiveLevelNestedDoubleChainInputs() {
+        for (String shape : FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/FiveLevelDouble"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperDoubleBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(ID)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            long binaryCount = realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isDoubleChainBinaryOpcode)
+                    .count();
+            assertEquals(expectedDoubleChainBinaryOpcodeCount(shape),
+                    binaryCount, shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;ID)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void admitsThreeLevelNestedFloatChainInputs() {
         for (String shape : THREE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
             ClassNode owner = constructorOwner(
@@ -4464,6 +4526,55 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsFiveLevelNestedFloatChainInputs() {
+        for (String shape : FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/FiveLevelFloat"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperFloatBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IF)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            long binaryCount = realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                    .count();
+            assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                    binaryCount, shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IF)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void admitsThreeLevelNestedLongChainInputs() {
         for (String shape : THREE_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
             ClassNode owner = constructorOwner(
@@ -4517,6 +4628,55 @@ public class IrCompilerTest {
         for (String shape : FOUR_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
             ClassNode owner = constructorOwner(
                     "example/FourLevelLong"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperLongBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IJ)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            long binaryCount = realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isLongChainBinaryOpcode)
+                    .count();
+            assertEquals(expectedLongChainBinaryOpcodeCount(shape),
+                    binaryCount, shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
+    public void admitsFiveLevelNestedLongChainInputs() {
+        for (String shape : FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/FiveLevelLong"
                             + shape.replace("-", ""),
                     "example/MultiSuperLongBase");
             MethodNode constructor =
@@ -4892,6 +5052,55 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsFiveLevelNestedIntFamilyChainInputs() {
+        for (String shape : FIVE_LEVEL_CHAIN_INPUT_SHAPES) {
+            ClassNode owner = constructorOwner(
+                    "example/FiveLevel"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    threeImmediateReturnsConstructorWithShape(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(I)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            long binaryCount = realOpcodes(constructor).stream()
+                    .filter(opcode -> opcode == Opcodes.IADD
+                            || opcode == Opcodes.IDIV)
+                    .count();
+            assertEquals(5L, binaryCount, shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void admitsFormerExtraLocalIntChainInputLeftovers() {
         for (String shape : Arrays.asList(
                 "extra-local", "iadd-extra-local",
@@ -4941,7 +5150,7 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnboundedThreeImmediateReturnShapesBeforeMutation() {
         for (String shape : Arrays.asList(
-                "five-level-iadd", "five-level-idiv-inner",
+                "nine-level-iadd",
                 "four-level-static-invoke",
                 "idiv-inner-static-invoke",
                 "astore-zero", "post-call", "skip-super")) {
@@ -5016,9 +5225,7 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenDoubleComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
-                "double-five-level-dadd",
-                "double-five-level-ddiv-inner",
-                "double-five-level-ddiv-outer",
+                "double-nine-level-dadd",
                 "double-dneg-constant", "double-double-dneg",
                 "double-dneg-extra-local", "double-dneg-computed")) {
             ClassNode base = multipleSuperDoubleBase(
@@ -5059,8 +5266,7 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenFloatComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
-                "float-five-level-fadd",
-                "float-five-level-fdiv-inner",
+                "float-nine-level-fadd",
                 "float-fneg-constant", "float-double-fneg",
                 "float-fneg-extra-local", "float-fneg-computed")) {
             ClassNode owner = constructorOwner(
@@ -5098,7 +5304,7 @@ public class IrCompilerTest {
     @Test
     public void rejectsUnprovenLongComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
-                "long-five-level-ladd", "long-five-level-ldiv-inner",
+                "long-nine-level-ladd",
                 "long-lshl-extra-count", "long-lshl-extra-value",
                 "long-ldiv-extra-local", "long-lrem-extra-local",
                 "long-lneg-constant", "long-double-lneg",
@@ -7641,6 +7847,74 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rewrittenFiveLevelNestedDoubleChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES) {
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperDoubleBase(
+                            "example/VerifiedFiveLevelDoubleBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedFiveLevelDouble" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            double[] values = {11.0, -22.0, 0.25};
+            for (int i = 0; i < selectors.length; i++) {
+                int selector = selectors[i];
+                double value = values[i];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, double.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(expectedDoubleChainBinaryOpcodeCount(shape),
+                    realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isDoubleChainBinaryOpcode)
+                    .count(), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;ID)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void rewrittenThreeLevelNestedFloatChainInputsPassJvmVerification()
             throws Exception {
         for (String shape : THREE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
@@ -7719,6 +7993,74 @@ public class IrCompilerTest {
             base.version = Opcodes.V1_8;
             ClassNode owner = constructorOwner(
                     "example/VerifiedFourLevelFloat" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            float[] values = {11.0f, -22.0f, 0.25f};
+            for (int i = 0; i < selectors.length; i++) {
+                int selector = selectors[i];
+                float value = values[i];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, float.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                    realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                    .count(), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IF)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
+    public void rewrittenFiveLevelNestedFloatChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperFloatBase(
+                            "example/VerifiedFiveLevelFloatBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedFiveLevelFloat" + suffix,
                     base.name);
             owner.version = Opcodes.V1_8;
             MethodNode constructor =
@@ -7886,6 +8228,68 @@ public class IrCompilerTest {
                     realOpcodes(constructor).stream()
                     .filter(IrCompilerTest::isLongChainBinaryOpcode)
                     .count(), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+        }
+    }
+
+    @Test
+    public void rewrittenFiveLevelNestedLongChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
+            String suffix = shape.replace("-", "");
+            ClassNode base =
+                    multipleSuperLongBase(
+                            "example/VerifiedFiveLevelLongBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedFiveLevelLong" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            long[] values = {11L, -22L, Long.MIN_VALUE};
+            for (int i = 0; i < selectors.length; i++) {
+                int selector = selectors[i];
+                long value = values[i];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, long.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(expectedLongChainBinaryOpcodeCount(shape),
+                    realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isLongChainBinaryOpcode)
+                    .count(), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
             assertEquals(
                     "(Ljava/lang/Object;IJ)V",
                     context.proxyMethod.getMethodNode().desc, shape);
@@ -8093,6 +8497,60 @@ public class IrCompilerTest {
                     shape);
             assertEquals(3, directChainCallCount(constructor, owner), shape);
             assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+        }
+    }
+
+    @Test
+    public void rewrittenFiveLevelNestedChainInputsPassJvmVerification()
+            throws Exception {
+        for (String shape : FIVE_LEVEL_CHAIN_INPUT_SHAPES) {
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedFiveLevelBase"
+                            + shape.replace("-", ""));
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedFiveLevel"
+                            + shape.replace("-", ""), base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsConstructorWithShape(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(11),
+                    shape);
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError,
+                    shape);
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(5L, realOpcodes(constructor).stream()
+                    .filter(opcode -> opcode == Opcodes.IADD
+                            || opcode == Opcodes.IDIV)
+                    .count(), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I)V",
+                    context.proxyMethod.getMethodNode().desc, shape);
         }
     }
 
@@ -12806,6 +13264,107 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void fiveLevelNestedDoubleChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the five-level double runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the five-level double runtime test");
+
+        String mainName = "example/FiveLevelDoubleInputRuntime";
+        String baseName = "example/FiveLevelDoubleInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-five-level-double-input-run");
+        Path inputJar = directory.resolve("five-level-double-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createFiveLevelNestedDoubleChainInputsJar(
+                inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain five-level double chain-input Java run");
+        assertEquals(
+                "16.0" + System.lineSeparator()
+                        + "9.5" + System.lineSeparator()
+                        + "7.5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        fiveLevelDoubleRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(expectedDoubleChainBinaryOpcodeCount(shape),
+                        realOpcodes(transformedConstructor).stream()
+                        .filter(IrCompilerTest::isDoubleChainBinaryOpcode)
+                        .count(), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("five-level double chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("five-level double chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Five-level double chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native five-level double chain-input Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
     public void threeLevelNestedFloatChainInputsCompileAndRunWithJavaParity()
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
@@ -13004,6 +13563,106 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native four-level float chain-input Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void fiveLevelNestedFloatChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the five-level float runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the five-level float runtime test");
+
+        String mainName = "example/FiveLevelFloatInputRuntime";
+        String baseName = "example/FiveLevelFloatInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-five-level-float-input-run");
+        Path inputJar = directory.resolve("five-level-float-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createFiveLevelNestedFloatChainInputsJar(
+                inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain five-level float chain-input Java run");
+        assertEquals(
+                "16.0" + System.lineSeparator()
+                        + "9.5" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        fiveLevelFloatRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(expectedFloatChainBinaryOpcodeCount(shape),
+                        realOpcodes(transformedConstructor).stream()
+                        .filter(IrCompilerTest::isFloatChainBinaryOpcode)
+                        .count(), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("five-level float chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("five-level float chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Five-level float chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native five-level float chain-input Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -13208,6 +13867,106 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native four-level long chain-input Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void fiveLevelNestedLongChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the five-level long runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the five-level long runtime test");
+
+        String mainName = "example/FiveLevelLongInputRuntime";
+        String baseName = "example/FiveLevelLongInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-five-level-long-input-run");
+        Path inputJar = directory.resolve("five-level-long-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createFiveLevelNestedLongChainInputsJar(
+                inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain five-level long chain-input Java run");
+        assertEquals(
+                "16" + System.lineSeparator()
+                        + "15" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        fiveLevelLongRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(expectedLongChainBinaryOpcodeCount(shape),
+                        realOpcodes(transformedConstructor).stream()
+                        .filter(IrCompilerTest::isLongChainBinaryOpcode)
+                        .count(), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("five-level long chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("five-level long chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Five-level long chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native five-level long chain-input Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -13491,6 +14250,104 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native four-level chain-input Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void fiveLevelNestedChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the five-level input runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the five-level input runtime test");
+
+        String mainName = "example/FiveLevelInputRuntime";
+        String baseName = "example/FiveLevelInputRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-five-level-input-run");
+        Path inputJar = directory.resolve("five-level-input.jar");
+        Path outputDirectory = directory.resolve("output");
+        createFiveLevelChainInputsJar(inputJar, mainName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain five-level chain-input Java run");
+        assertEquals(
+                "26" + System.lineSeparator()
+                        + "15" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        mainName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (String shape : FIVE_LEVEL_CHAIN_INPUT_SHAPES) {
+                String ownerName =
+                        fiveLevelRuntimeOwnerName(mainName, shape);
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shape);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shape);
+                assertEquals(5L, realOpcodes(transformedConstructor).stream()
+                        .filter(opcode -> opcode == Opcodes.IADD
+                                || opcode == Opcodes.IDIV)
+                        .count(), shape);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO),
+                        shape);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN),
+                        shape);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("five-level chain-input CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("five-level chain-input CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Five-level chain-input native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native five-level chain-input Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -18262,6 +19119,9 @@ public class IrCompilerTest {
     }
 
     private static long expectedLongChainBinaryOpcodeCount(String shape) {
+        if (shape.startsWith("long-five-level-")) {
+            return 15L;
+        }
         if (shape.startsWith("long-four-level-")) {
             return 12L;
         }
@@ -18278,6 +19138,9 @@ public class IrCompilerTest {
     }
 
     private static long expectedFloatChainBinaryOpcodeCount(String shape) {
+        if (shape.startsWith("float-five-level-")) {
+            return 15L;
+        }
         if (shape.startsWith("float-four-level-")) {
             return 12L;
         }
@@ -18294,6 +19157,9 @@ public class IrCompilerTest {
     }
 
     private static long expectedDoubleChainBinaryOpcodeCount(String shape) {
+        if (shape.startsWith("double-five-level-")) {
+            return 15L;
+        }
         if (shape.startsWith("double-four-level-")) {
             return 12L;
         }
@@ -20493,6 +21359,67 @@ public class IrCompilerTest {
         return mainName + "$" + shape.replace("-", "");
     }
 
+    private void createFiveLevelNestedDoubleChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperDoubleBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = FIVE_LEVEL_DOUBLE_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    fiveLevelDoubleRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperDoublePrint(
+                    entry, owner.name, baseName, 7, 11.0);
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 6;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String fiveLevelDoubleRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
     private void createThreeLevelNestedFloatChainInputsJar(
             Path jarPath, String mainName, String baseName)
             throws IOException {
@@ -20611,6 +21538,67 @@ public class IrCompilerTest {
     }
 
     private String fourLevelFloatRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
+    private void createFiveLevelNestedFloatChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperFloatBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = FIVE_LEVEL_FLOAT_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    fiveLevelFloatRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperFloatPrint(
+                    entry, owner.name, baseName, 7, 11.0f);
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 5;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String fiveLevelFloatRuntimeOwnerName(
             String mainName, String shape) {
         return mainName + "$" + shape.replace("-", "");
     }
@@ -20737,6 +21725,67 @@ public class IrCompilerTest {
         return mainName + "$" + shape.replace("-", "");
     }
 
+    private void createFiveLevelNestedLongChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperLongBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = FIVE_LEVEL_LONG_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    fiveLevelLongRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperLongPrint(
+                    entry, owner.name, baseName, 7, 11L);
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 6;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String fiveLevelLongRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
     private void createNestedIdivIremChainInputsJar(
             Path jarPath, String mainName, String baseName)
             throws IOException {
@@ -20855,6 +21904,67 @@ public class IrCompilerTest {
     }
 
     private String fourLevelRuntimeOwnerName(
+            String mainName, String shape) {
+        return mainName + "$" + shape.replace("-", "");
+    }
+
+    private void createFiveLevelChainInputsJar(
+            Path jarPath, String mainName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode[] owners =
+                new ClassNode[FIVE_LEVEL_CHAIN_INPUT_SHAPES.length];
+
+        ClassNode main = new ClassNode(Opcodes.ASM9);
+        main.version = Opcodes.V1_8;
+        main.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        main.name = mainName;
+        main.superName = "java/lang/Object";
+        MethodNode entry = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (int i = 0;
+             i < FIVE_LEVEL_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = FIVE_LEVEL_CHAIN_INPUT_SHAPES[i];
+            ClassNode owner = constructorOwner(
+                    fiveLevelRuntimeOwnerName(mainName, shape),
+                    baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsConstructorWithShape(
+                    baseName, shape));
+            owners[i] = owner;
+            appendMultipleSuperPrint(
+                    entry, owner.name, 11, baseName, "magnitude");
+        }
+        entry.instructions.add(new InsnNode(Opcodes.RETURN));
+        entry.maxLocals = 1;
+        entry.maxStack = 4;
+        main.methods.add(entry);
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, main.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
+            output.putNextEntry(new JarEntry(main.name + ".class"));
+            output.write(writeClass(main));
+            output.closeEntry();
+        }
+    }
+
+    private String fiveLevelRuntimeOwnerName(
             String mainName, String shape) {
         return mainName + "$" + shape.replace("-", "");
     }
@@ -24013,6 +25123,7 @@ public class IrCompilerTest {
                 && !"three-level-iadd".equals(shape)
                 && !"four-level-iadd".equals(shape)
                 && !"five-level-iadd".equals(shape)
+                && !"nine-level-iadd".equals(shape)
                 && !"nested-idiv".equals(shape)
                 && !"nested-irem".equals(shape)
                 && !"idiv-inner".equals(shape)
@@ -24147,6 +25258,11 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.IADD));
             method.instructions.add(new InsnNode(Opcodes.ICONST_5));
             method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("nine-level-iadd".equals(shape)) {
+            for (int level = 0; level < 9; level++) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+                method.instructions.add(new InsnNode(Opcodes.IADD));
+            }
         } else if ("nested-idiv".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
@@ -24418,6 +25534,12 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.LADD));
             method.instructions.add(new InsnNode(Opcodes.LCONST_1));
             method.instructions.add(new InsnNode(Opcodes.LADD));
+        } else if ("long-nine-level-ladd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
+            for (int level = 0; level < 9; level++) {
+                method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+                method.instructions.add(new InsnNode(Opcodes.LADD));
+            }
         } else if ("long-nested-ldiv".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.LCONST_1));
@@ -24671,6 +25793,12 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.FADD));
             method.instructions.add(new InsnNode(Opcodes.FCONST_1));
             method.instructions.add(new InsnNode(Opcodes.FADD));
+        } else if ("float-nine-level-fadd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+            for (int level = 0; level < 9; level++) {
+                method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+                method.instructions.add(new InsnNode(Opcodes.FADD));
+            }
         } else if ("float-five-level-fdiv-inner".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.FCONST_2));
@@ -24817,6 +25945,12 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.DADD));
             method.instructions.add(new InsnNode(Opcodes.DCONST_1));
             method.instructions.add(new InsnNode(Opcodes.DADD));
+        } else if ("double-nine-level-dadd".equals(shape)) {
+            method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
+            for (int level = 0; level < 9; level++) {
+                method.instructions.add(new InsnNode(Opcodes.DCONST_1));
+                method.instructions.add(new InsnNode(Opcodes.DADD));
+            }
         } else if ("double-five-level-ddiv-inner".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.DLOAD, 2));
             method.instructions.add(new LdcInsnNode(Double.valueOf(2.0)));

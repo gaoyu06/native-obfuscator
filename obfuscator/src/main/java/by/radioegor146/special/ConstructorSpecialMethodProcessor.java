@@ -44,10 +44,10 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
-    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 4;
-    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 4;
-    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 4;
-    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 4;
+    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 8;
+    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 8;
+    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 8;
+    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 8;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
     private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
@@ -2200,7 +2200,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * declared-argument loads, proven prefix copies of declared int-family
      * loads, one leaf-only LADD over proven long inputs, int-family constants,
      * one INEG over a direct declared int-family argument load, or an admitted
-     * int binary tree of at most four levels over those int-family leaves. The
+     * int binary tree of at most eight levels over those int-family leaves. The
      * identical-copy and distinct-suffix forms may accept a direct alias load
      * only when their separate receiver-frame proof succeeds.
      */
@@ -2300,8 +2300,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Proves a long operand with a bounded number of binary levels. Long shifts
      * consume an int-family count leaf after their recursively proven long
      * value; the other admitted binaries recursively prove both long operands.
-     * Every binary descent consumes one level from the separate four-level
-     * long budget, so five-or-more nested long binaries remain rejected.
+     * Every binary descent consumes one level from the separate eight-level
+     * long budget, so nine-or-more nested long binaries remain rejected.
      */
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
@@ -2495,8 +2495,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a float operand with at most four FADD, FSUB, FMUL, FDIV, or FREM
-     * levels. The separate four-level budget keeps five-or-more nested float
+     * Proves a float operand with at most eight FADD, FSUB, FMUL, FDIV, or FREM
+     * levels. The separate eight-level budget keeps nine-or-more nested float
      * binaries fail-closed; an admitted FNEG leaf does not consume that binary
      * budget.
      */
@@ -2662,8 +2662,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves a double operand with at most four DADD, DSUB, DMUL, DDIV, or
-     * DREM levels. Five-or-more nested binary levels remain rejected.
+     * Proves a double operand with at most eight DADD, DSUB, DMUL, DDIV, or
+     * DREM levels. Nine-or-more nested binary levels remain rejected.
      */
     private static Integer previousProvenDoubleChainOperand(
             MethodNode constructor, int inputIndex,
