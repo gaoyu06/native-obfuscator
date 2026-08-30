@@ -113,10 +113,10 @@ The constructor split now covers these related prefix shapes:
   object argument or one dominating prefix extra-local `ALOAD`/`ASTORE` copy
   of that argument, `owner` is exactly the declared source class, and `desc`
   has the same JVM invocation carrier as the call argument; one isolated
-  `NEW owner; DUP; {0..5 args}; INVOKESPECIAL owner.<init>({0..5 X})V` leaf
+  `NEW owner; DUP; {0..6 args}; INVOKESPECIAL owner.<init>({0..6 X})V` leaf
   whose allocated reference descriptor exactly matches the call argument
-  descriptor, where every `X` is int-family and every `arg` is one
-  single-instruction proven int-family leaf; plus `LALOAD`,
+  descriptor, where every `X` is int-family or long and every `arg` is one
+  single-instruction proven leaf of the matching family; plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
   int-family constant indexes or at one single-instruction declared or
@@ -259,16 +259,19 @@ One additional family is reduced to that same shared-join form:
   `NEW owner; DUP; arg1; arg2; arg3; arg4;
   INVOKESPECIAL owner.<init>(X1X2X3X4)V`, or
   `NEW owner; DUP; arg1; arg2; arg3; arg4; arg5;
-  INVOKESPECIAL owner.<init>(X1X2X3X4X5)V`. Every
-  initializer parameter must be an int-family carrier and each corresponding
-  argument must be exactly one executable instruction accepted by the existing
-  int-family leaf proof: a constant, a declared-argument `ILOAD`, or a proven
-  prefix-copy `ILOAD`. The constructor owner must exactly match the allocated
-  class and the allocated reference descriptor must exactly match the call
-  parameter. The complete sequence stays in the retained JVM prefix. Missing
-  `DUP`, six or more initializer arguments, computed initializer inputs
-  (including `INEG`), unproven inputs, type mismatches, and every
-  array-allocation opcode remain rejected.
+  INVOKESPECIAL owner.<init>(X1X2X3X4X5)V`, or
+  `NEW owner; DUP; arg1; arg2; arg3; arg4; arg5; arg6;
+  INVOKESPECIAL owner.<init>(X1X2X3X4X5X6)V`. Every initializer parameter
+  must be an int-family or long carrier, and each corresponding argument must
+  be exactly one executable instruction accepted by the matching leaf proof:
+  an int-family or long constant, a matching declared-argument load, or a
+  proven prefix-copy load. The constructor owner must exactly match the
+  allocated class and the allocated reference descriptor must exactly match
+  the call parameter. The complete sequence stays in the retained JVM prefix.
+  Missing `DUP`, seven or more initializer arguments, computed initializer
+  inputs (including `INEG` and `LNEG`), float or double initializer
+  arguments, unproven inputs, type mismatches, and every array-allocation
+  opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
@@ -1593,6 +1596,16 @@ Synthetic bytecode unit tests in
   one hidden bridge and singular `MethodContext.proxyMethod`, and selectors
   `7`, `-7`, and `0` preserve plain-Java/CMake/g++ JNI parity under
   `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewLongArgChainInputs`,
+  `rewrittenThreeImmediateNewLongArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewLongArgChainInputsCompileAndRunWithJavaParity` admit the
+  isolated
+  `NEW Date; DUP; LCONST_1; INVOKESPECIAL Date.<init>(J)V` form. The allocation,
+  duplicate, long constant, and initializer call stay in each retained JVM
+  prefix; the native body contains neither that `NEW` nor its `INVOKESPECIAL`.
+  The rewrite keeps one hidden bridge and singular `MethodContext.proxyMethod`,
+  while classfile-52 selectors `7`, `-7`, and `0` preserve verification and
+  plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
 - `admitsThreeImmediateReturnsWithNewTwoArgChainInputs`,
   `rewrittenThreeImmediateNewTwoArgChainInputsPassJvmVerification`, and
   `threeImmediateNewTwoArgChainInputsCompileAndRunWithJavaParity` extend the
@@ -1690,14 +1703,13 @@ Synthetic bytecode unit tests in
   admissions. The raw uninitialized-reference and missing-`DUP` fixtures
   remain rejected but are inherently not verifier-valid.
 - `rejectsUnprovenWideNewChainInputsBeforeMutation` keeps isolated `NEW`
-  initializer arguments with long, float, or double carriers fail-closed.
+  initializer arguments with float or double carriers fail-closed.
   Every constructor instruction object, generated buffer, hidden-method
   inventory, and the singular `MethodContext.proxyMethod` remain unchanged.
 - `unprovenWideNewChainInputShapesPassJava8JvmVerification` loads untouched
-  classfile-52 `Date(J)`, `Point2D.Float(FF)`, and `Point2D.Double(DD)`
-  fixtures and constructs all three ordinary paths. These are verifier-valid
-  conservative rejects, not admissions; isolated zero-through-six
-  int-family initializer-argument forms are admitted.
+  classfile-52 `Point2D.Float(FF)` and `Point2D.Double(DD)` fixtures and
+  constructs all three ordinary paths. These are verifier-valid conservative
+  rejects, not admissions.
 - `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` loads the
   untouched classfile-52 constructor with `ICONST_0; POP` after its first
   chain call and constructs selectors `7`, `-7`, and `0`. This extra post-call
