@@ -49,7 +49,11 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML results will be recorded after the required gate.
+JUnit XML results from `obfuscator/build/test-results/test/`:
+
+- `IrCompilerTest`: 482 tests, 0 skipped, 0 failures, 0 errors.
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors.
+- Total: 489 tests, 0 skipped, 0 failures, 0 errors.
 
 Defaults remain `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`.
 
@@ -89,7 +93,12 @@ CMake/g++ JNI 的输出一致性。准入样例使用 classfile 52、
 `GETSTATIC` 参数初始化器。缺少 `DUP` 的形状仍在变换前被拒绝，但因为
 其字节码本身无法通过校验，所以不进入 JVM 加载测试。
 
-子任务将在执行上述必需门禁后记录 JUnit XML 结果。
+子任务已执行上述必需门禁。`obfuscator/build/test-results/test/` 中的
+JUnit XML 结果：
+
+- `IrCompilerTest`：482 个测试，0 跳过，0 失败，0 错误。
+- `CodegenModeTest`：7 个测试，0 跳过，0 失败，0 错误。
+- 总计：489 个测试，0 跳过，0 失败，0 错误。
 
 默认值仍为 `--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。
 
