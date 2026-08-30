@@ -2276,6 +2276,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 input, expected, declaredArguments)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        Integer beforeNew = previousProvenNewChainInput(
+                constructor, inputIndex, expected);
+        if (beforeNew != null) {
+            return beforeNew;
+        }
         Integer beforeGetfield = previousProvenGetfieldChainInput(
                 constructor, inputIndex, expected, declaredArguments);
         if (beforeGetfield != null) {
@@ -2312,6 +2317,52 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 constructor, inputIndex, declaredArguments,
                 prefixArrayCopies, prefixIntCopies,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
+    }
+
+    /**
+     * Proves the isolated retained-prefix allocation
+     * {@code NEW owner; DUP; INVOKESPECIAL owner.<init>()V}. Requiring the
+     * exact adjacent no-argument constructor call prevents an uninitialized
+     * reference or a wider allocation expression from becoming a chain
+     * input. The allocated reference descriptor must exactly match the chain
+     * argument descriptor.
+     */
+    private static Integer previousProvenNewChainInput(
+            MethodNode constructor, int inputIndex, Type expected) {
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (!(input instanceof MethodInsnNode)
+                || input.getOpcode() != Opcodes.INVOKESPECIAL) {
+            return null;
+        }
+        MethodInsnNode initializer = (MethodInsnNode) input;
+        if (!"<init>".equals(initializer.name)
+                || !"()V".equals(initializer.desc)
+                || initializer.itf) {
+            return null;
+        }
+        int duplicateIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (duplicateIndex < 0
+                || constructor.instructions.get(duplicateIndex).getOpcode()
+                != Opcodes.DUP) {
+            return null;
+        }
+        int allocationIndex =
+                previousExecutableIndex(constructor, duplicateIndex - 1);
+        if (allocationIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode allocation =
+                constructor.instructions.get(allocationIndex);
+        if (!(allocation instanceof TypeInsnNode)
+                || allocation.getOpcode() != Opcodes.NEW
+                || !initializer.owner.equals(
+                ((TypeInsnNode) allocation).desc)
+                || !sameInvocationCarrier(
+                Type.getObjectType(initializer.owner), expected)) {
+            return null;
+        }
+        return previousExecutableIndex(constructor, allocationIndex - 1);
     }
 
     /**
