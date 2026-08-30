@@ -4174,6 +4174,66 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewExtraLocalFloatBothArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewExtraLocalFloatBothArgBase",
+                "(Ljava/awt/geom/Point2D$Float;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewExtraLocalFloatBothArgMultiReturn",
+                base.name);
+        MethodNode constructor = threeImmediateReturnsWithWideNewArg(
+                base.name,
+                "new-constructor-extra-local-float-both-arguments");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(IF)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(4, constructor.maxLocals);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FSTORE), 3));
+        assertEquals(6, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FLOAD), 3));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_1));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_0));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithNewExtraLocalDoubleSecondArgChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperNewExtraLocalDoubleSecondArgBase",
@@ -11233,6 +11293,63 @@ public class IrCompilerTest {
         assertEquals(3, Collections.frequency(
                 variableIndexes(constructor, Opcodes.FLOAD), 3));
         assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_1));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(constructor), Opcodes.FCONST_0));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;IF)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewExtraLocalFloatBothArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewExtraLocalFloatBothArgBase",
+                "(Ljava/awt/geom/Point2D$Float;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewExtraLocalFloatBothArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithWideNewArg(
+                base.name,
+                "new-constructor-extra-local-float-both-arguments");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, float.class)
+                            .newInstance(selector, 8.0f));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(4, constructor.maxLocals);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FSTORE), 3));
+        assertEquals(6, Collections.frequency(
+                variableIndexes(constructor, Opcodes.FLOAD), 3));
+        assertEquals(0, Collections.frequency(
                 realOpcodes(constructor), Opcodes.FCONST_1));
         assertEquals(0, Collections.frequency(
                 realOpcodes(constructor), Opcodes.FCONST_0));
@@ -19685,6 +19802,122 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native NEW extra-local float second-argument "
+                        + "multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewExtraLocalFloatBothArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW extra-local float "
+                        + "both-argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW extra-local float "
+                        + "both-argument runtime test");
+
+        String ownerName =
+                "example/NewExtraLocalFloatBothArgRuntime";
+        String baseName =
+                "example/NewExtraLocalFloatBothArgRuntimeBase";
+        Path directory = Files.createTempDirectory(
+                "ir-new-extra-local-float-both-arg-run");
+        Path inputJar =
+                directory.resolve("new-extra-local-float-both-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeWideNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-extra-local-float-both-arguments");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW extra-local float both-argument "
+                        + "multi-super Java run");
+        assertEquals(
+                "java.awt.geom.Point2D$Float" + System.lineSeparator()
+                        + "java.awt.geom.Point2D$Float"
+                        + System.lineSeparator()
+                        + "java.awt.geom.Point2D$Float"
+                        + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(4, transformedConstructor.maxLocals);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(
+                        transformedConstructor, Opcodes.FSTORE), 3));
+        assertEquals(6, Collections.frequency(
+                variableIndexes(
+                        transformedConstructor, Opcodes.FLOAD), 3));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FCONST_1));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.FCONST_0));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW extra-local float both-argument "
+                        + "CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW extra-local float both-argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW extra-local float both-argument native "
+                                    + "library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW extra-local float both-argument "
                         + "multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
@@ -39258,6 +39491,9 @@ public class IrCompilerTest {
         boolean extraLocalFloatSecondArgument =
                 "new-constructor-extra-local-float-second-argument"
                         .equals(shape);
+        boolean extraLocalFloatBothArguments =
+                "new-constructor-extra-local-float-both-arguments"
+                        .equals(shape);
         boolean extraLocalDoubleArguments =
                 "new-constructor-extra-local-double-arguments".equals(shape);
         boolean extraLocalDoubleSecondArgument =
@@ -39267,7 +39503,8 @@ public class IrCompilerTest {
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", extraLocalLongArgument ? "(IJ)V"
                         : extraLocalFloatArguments
-                        || extraLocalFloatSecondArgument ? "(IF)V"
+                        || extraLocalFloatSecondArgument
+                        || extraLocalFloatBothArguments ? "(IF)V"
                         : extraLocalDoubleArguments
                         || extraLocalDoubleSecondArgument ? "(ID)V" : "(I)V",
                 null, null);
@@ -39277,7 +39514,8 @@ public class IrCompilerTest {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
         } else if (extraLocalFloatArguments
-                || extraLocalFloatSecondArgument) {
+                || extraLocalFloatSecondArgument
+                || extraLocalFloatBothArguments) {
             method.instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.FSTORE, 3));
         } else if (extraLocalDoubleArguments
@@ -39296,7 +39534,8 @@ public class IrCompilerTest {
         appendWideNewArgChainCall(method, superName, shape);
         method.maxLocals = extraLocalLongArgument ? 6
                 : extraLocalFloatArguments
-                || extraLocalFloatSecondArgument ? 4
+                || extraLocalFloatSecondArgument
+                || extraLocalFloatBothArguments ? 4
                 : extraLocalDoubleArguments
                 || extraLocalDoubleSecondArgument ? 6 : 2;
         method.maxStack = 7;
@@ -39317,6 +39556,8 @@ public class IrCompilerTest {
                 || "new-constructor-extra-local-float-arguments"
                 .equals(shape)
                 || "new-constructor-extra-local-float-second-argument"
+                .equals(shape)
+                || "new-constructor-extra-local-float-both-arguments"
                 .equals(shape)) {
             allocated = "java/awt/geom/Point2D$Float";
             initializerDescriptor = "(FF)V";
@@ -39350,6 +39591,13 @@ public class IrCompilerTest {
                     "new-constructor-extra-local-float-second-argument"
                             .equals(shape)) {
                 method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+                method.instructions.add(
+                        new VarInsnNode(Opcodes.FLOAD, 3));
+            } else if (
+                    "new-constructor-extra-local-float-both-arguments"
+                            .equals(shape)) {
+                method.instructions.add(
+                        new VarInsnNode(Opcodes.FLOAD, 3));
                 method.instructions.add(
                         new VarInsnNode(Opcodes.FLOAD, 3));
             } else {
@@ -39392,6 +39640,8 @@ public class IrCompilerTest {
                 || "new-constructor-extra-local-float-arguments"
                 .equals(shape)
                 || "new-constructor-extra-local-float-second-argument"
+                .equals(shape)
+                || "new-constructor-extra-local-float-both-arguments"
                 .equals(shape)) {
             return "(Ljava/awt/geom/Point2D$Float;)V";
         }
@@ -41189,6 +41439,8 @@ public class IrCompilerTest {
                 .equals(shape)
                 || "new-constructor-extra-local-float-second-argument"
                 .equals(shape)
+                || "new-constructor-extra-local-float-both-arguments"
+                .equals(shape)
                 || "new-constructor-extra-local-double-arguments"
                 .equals(shape)
                 || "new-constructor-extra-local-double-second-argument"
@@ -41215,6 +41467,9 @@ public class IrCompilerTest {
         boolean extraLocalFloatSecondArgument =
                 "new-constructor-extra-local-float-second-argument"
                         .equals(shape);
+        boolean extraLocalFloatBothArguments =
+                "new-constructor-extra-local-float-both-arguments"
+                        .equals(shape);
         boolean extraLocalDoubleArguments =
                 "new-constructor-extra-local-double-arguments".equals(shape);
         boolean extraLocalDoubleSecondArgument =
@@ -41226,7 +41481,8 @@ public class IrCompilerTest {
         } else if (extraLocalLongArgument) {
             method.instructions.add(new LdcInsnNode(8L));
         } else if (extraLocalFloatArguments
-                || extraLocalFloatSecondArgument) {
+                || extraLocalFloatSecondArgument
+                || extraLocalFloatBothArguments) {
             method.instructions.add(new LdcInsnNode(8.0f));
         } else if (extraLocalDoubleArguments
                 || extraLocalDoubleSecondArgument) {
@@ -41237,7 +41493,8 @@ public class IrCompilerTest {
                 extraLocalIntArgument ? "(II)V"
                         : extraLocalLongArgument ? "(IJ)V"
                         : extraLocalFloatArguments
-                        || extraLocalFloatSecondArgument ? "(IF)V"
+                        || extraLocalFloatSecondArgument
+                        || extraLocalFloatBothArguments ? "(IF)V"
                         : extraLocalDoubleArguments
                         || extraLocalDoubleSecondArgument ? "(ID)V" : "(I)V",
                 false));
