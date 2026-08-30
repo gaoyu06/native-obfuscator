@@ -7627,6 +7627,93 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsNinePathIdDistinctSuffixesBeforeMutation() {
+        ClassNode owner = constructorOwner(
+                "example/RejectedNinePathSuffixes",
+                "example/MultiSuperBase");
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor = ninePathIdDistinctSuffixConstructor(
+                owner.name, owner.superName);
+        AbstractInsnNode[] originalInstructions =
+                constructor.instructions.toArray();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        String generatedSource = context.output.toString();
+        String nativeDeclarations = context.nativeMethods.toString();
+        HiddenMethodsPool.HiddenMethod proxyMethod = context.proxyMethod;
+
+        assertEquals(9, directChainCallCount(constructor, owner));
+        assertEquals(9, Collections.frequency(
+                realOpcodes(constructor), Opcodes.PUTFIELD));
+        assertTrue(constructor.tryCatchBlocks.isEmpty());
+        for (AbstractInsnNode instruction : originalInstructions) {
+            if (!(instruction instanceof MethodInsnNode)
+                    || instruction.getOpcode() != Opcodes.INVOKESPECIAL
+                    || !"<init>".equals(
+                    ((MethodInsnNode) instruction).name)
+                    || !owner.superName.equals(
+                    ((MethodInsnNode) instruction).owner)) {
+                continue;
+            }
+            assertEquals(Opcodes.ILOAD,
+                    instruction.getPrevious().getOpcode());
+            assertEquals(2, ((VarInsnNode)
+                    instruction.getPrevious()).var);
+            assertEquals(Opcodes.ALOAD,
+                    instruction.getPrevious().getPrevious().getOpcode());
+            assertEquals(0, ((VarInsnNode)
+                    instruction.getPrevious().getPrevious()).var);
+        }
+
+        assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertTrue(Arrays.equals(
+                originalInstructions, constructor.instructions.toArray()));
+        assertEquals(generatedSource, context.output.toString());
+        assertEquals(nativeDeclarations, context.nativeMethods.toString());
+        assertSame(proxyMethod, context.proxyMethod);
+        assertTrue(obfuscator.getHiddenMethodsPool()
+                .getClasses().isEmpty());
+    }
+
+    @Test
+    public void ninePathIdDistinctSuffixesPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase("example/VerifiedNinePathSuffixesBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNinePathSuffixes", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(ninePathIdDistinctSuffixConstructor(
+                owner.name, base.name));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        Class<?> verified = loader.define(writeClass(owner));
+
+        for (int selector = 0; selector < 9; selector++) {
+            int declaredArgument = 100 + selector;
+            Object instance = verified.getConstructor(
+                            int.class, int.class)
+                    .newInstance(selector, declaredArgument);
+            assertEquals(declaredArgument,
+                    verified.getField("magnitude").getInt(instance));
+            assertEquals(selector,
+                    verified.getField("result").getInt(instance));
+        }
+    }
+
+    @Test
     public void rejectsUnassignedExtraOnDistinctSuffixBridgePathBeforeMutation() {
         ClassNode owner = constructorOwner(
                 "example/RejectedUnassignedTwoSuffixExtra",
@@ -32212,6 +32299,36 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.POP));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 2;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode ninePathIdDistinctSuffixConstructor(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(II)V", null, null);
+        LabelNode[] paths = new LabelNode[9];
+        for (int i = 0; i < paths.length; i++) {
+            paths[i] = new LabelNode();
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new TableSwitchInsnNode(
+                0, 7, paths[8], Arrays.copyOf(paths, 8)));
+        for (int i = 0; i < paths.length; i++) {
+            method.instructions.add(paths[i]);
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESPECIAL, superName,
+                    "<init>", "(I)V", false));
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, i));
+            method.instructions.add(new FieldInsnNode(
+                    Opcodes.PUTFIELD, owner, "result", "I"));
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+        }
+        method.maxLocals = 3;
         method.maxStack = 2;
         return method;
     }
