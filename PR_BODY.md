@@ -17,6 +17,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
+XML totals: 431 tests, 0 skipped, 0 failures, 0 errors
+(`IrCompilerTest`: 424; `CodegenModeTest`: 7).
+
 Ship-ready: **No**
 
 ## 中文
@@ -37,5 +40,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.ir.IrCompilerTest \
   --tests by.radioegor146.CodegenModeTest
 ```
+
+XML 汇总：431 项测试，0 跳过，0 失败，0 错误
+（`IrCompilerTest`：424；`CodegenModeTest`：7）。
 
 可发布：**否**
