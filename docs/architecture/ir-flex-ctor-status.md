@@ -108,14 +108,19 @@ The constructor split now covers these related prefix shapes:
   proven int-family constant or one single-instruction declared or
   proven-prefix-copy `ILOAD` (including both copies together), and whose
   declared immediate component
-  descriptor exactly matches the call argument descriptor); plus `LALOAD`,
+  descriptor exactly matches the call argument descriptor); one isolated
+  `ALOAD n; GETFIELD owner.name:desc` leaf where `n` is an unchanged declared
+  object argument, `owner` is exactly that declared class, and `desc` has the
+  same JVM invocation carrier as the call argument; plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
   int-family constant indexes or at one single-instruction declared or
   proven-prefix-copy `ILOAD` index, including when both the wide-array source
   and index use those proven prefix copies. The complete array-load tree stays
   in the retained bytecode prefix, so JVM null, bounds, widening, and
-  reference-array behavior remains JVM-executed.
+  reference-array behavior remains JVM-executed. The admitted field read and
+  its receiver load also stay in the retained prefix, preserving JVM null and
+  field-access behavior.
 
 ## Current rule
 
@@ -229,6 +234,14 @@ One additional family is reduced to that same shared-join form:
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
+- A call argument of any JVM carrier may instead be one isolated
+  `ALOAD n; GETFIELD owner.name:desc` leaf. Local `n` must be a declared object
+  constructor argument other than local 0, the declared class must exactly
+  equal `owner`, no overlapping store to `n` may precede the field read, and
+  `desc` must have the same invocation carrier as the call parameter.
+  Extra-local, overwritten, computed, or `this` receivers remain rejected.
+  The receiver load and field read stay in the retained bytecode prefix, so
+  JVM null checks and field-access semantics are unchanged.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
@@ -362,13 +375,15 @@ normalizing the suffixes to one copied join:
 Unproven extra-local or aliased chain inputs, array loads from computed or
 reassigned sources, computed, negated, or unproven extra-local indexes,
 non-array or opcode-mismatched declared locals, prior array-store mutations,
-unlisted primitive-result array loads, and other reference computations such
-as `NEW` or `GETFIELD`, int-family binary expression
+unlisted primitive-result array loads, `GETFIELD` on local 0, an extra local,
+a computed object, an overwritten declared argument, an owner-incompatible
+declared argument, or with a mismatched field carrier, and other reference
+computations such as `NEW`, int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
 sixteen levels, float or double expression trees deeper than the sixteen
 admitted binary levels,
 other unlisted long or double operations,
-standalone non-int-family constants, `IINC`, fields, method calls, stack
+standalone non-int-family constants, `IINC`, other fields, method calls, stack
 duplication, computed or rewritten receivers, or any other unlisted input
 remain rejected.
 Distinct joins, other conditional or switch forms,
