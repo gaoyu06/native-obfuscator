@@ -75,7 +75,9 @@ The constructor split now covers these related prefix shapes:
   long-argument loads (including shift values and division/remainder operands),
   `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or the admitted direct/proven-copy
   `LNEG`,
-  and whose shift counts remain proven int-family leaves;
+  and whose shift counts remain proven single-instruction int-family
+  leaves (declared `ILOAD`, int-family constant, or proven prefix
+  extra-local copy);
   a tree of at most eight `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
   a float argument, whose leaves are declared float-argument loads, a prefix
   extra-local `FLOAD` with one dominating `FSTORE` copy of a declared
@@ -210,15 +212,17 @@ One additional family is reduced to that same shared-join form:
   `LSTORE` directly fed by a matching declared-argument `LLOAD`,
   `LCONST_0`, `LCONST_1`, or `LDC` of `Long`, or one `LNEG` whose sole operand
   is a matching declared-argument `LLOAD` or the same proven prefix extra-local
-  copy; an int-family count leaf uses the existing declared-argument `ILOAD`
-  and int-family constant proof. A standalone `LNEG` leaf is admitted under
-  the same declared-or-proven-copy restriction.
+  copy; an int-family count leaf uses the existing single-instruction int leaf
+  proof: a declared-argument `ILOAD`, int-family constant, or proven prefix
+  extra-local copy. A standalone `LNEG` leaf is admitted under the same
+  declared-or-proven-copy restriction.
   Prefix extra-local long copies may be used as shift values and as either
-  `LDIV`/`LREM` operand. This proof has its own explicit eight-level binary
-  budget: nine-or-more nested long binaries, extra-local int shift counts,
-  extra-local long shift counts, `LNEG` of a constant, double `LNEG`, and
-  `LNEG` of an unproven extra-local or computed value remain rejected. The retained
-  bytecode prefix executes admitted
+  `LDIV`/`LREM` operand, while proven prefix extra-local int copies may be used
+  as shift counts. This proof has its own explicit eight-level binary
+  budget: nine-or-more nested long binaries, computed or unproven int shift
+  counts, extra-local long shift counts, `LNEG` of a constant, double `LNEG`,
+  and `LNEG` of an unproven extra-local or computed value remain rejected. The
+  retained bytecode prefix executes admitted
   operations, preserving Java long wrapping, negate semantics, bitwise
   semantics, JVM divide-by-zero and signed-overflow behavior, and mask-63
   shift-count behavior without reproducing those semantics in C++.
@@ -863,9 +867,9 @@ Synthetic bytecode unit tests in
   `LLOAD` may be used as a long chain-input leaf. The copy and all three
   `LADD`s remain in the retained bytecode prefix, the rewrite uses one hidden
   bridge, rewritten classes verify, and the complete CMake/g++ JNI transform
-  matches plain Java. Extra-local int shift counts, extra-local long shift
-  counts, unproven `LNEG` inputs, and nine-or-more nested long binaries remain
-  rejected. This does not
+  matches plain Java. Type-wrong extra-local long shift counts, unproven
+  `LNEG` inputs, and nine-or-more nested long binaries remain rejected. This
+  does not
   complete the production goal or authorize changing the default compiler
   path.
 - `admitsThreeImmediateReturnsWithExtraLocalLongShiftValueAndDivRemChainInputs`
@@ -875,6 +879,15 @@ Synthetic bytecode unit tests in
   division/remainder families through the complete CMake/g++ JNI transform
   under `-Xverify:all -Xcheck:jni`, requiring Java parity while keeping the
   long operations in the retained bytecode prefix behind one hidden bridge.
+- `admitsThreeImmediateReturnsWithExtraLocalLongShiftCountChainInputs`,
+  `rewrittenThreeImmediateExtraLocalLongShiftCountSuperReturnsPassJvmVerification`,
+  and
+  `threeImmediateExtraLocalLongShiftCountSuperReturnsCompileAndRunWithJavaParity`
+  admit a proven prefix extra-local int copy as the count for `LSHL`, `LSHR`,
+  and `LUSHR`. The copy and all shifts remain in retained JVM bytecode, all
+  paths share one hidden bridge, rewritten classes verify, and the complete
+  CMake/g++ JNI transform matches Java without reproducing mask-63 semantics
+  in C++.
 - `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
   `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -1055,11 +1068,11 @@ Synthetic bytecode unit tests in
   budget. The retained prefix executes every operation, one hidden bridge is
   shared, rewritten classes verify, and native stdout matches plain Java.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nine-or-more
-  long binary levels, extra-local int shift counts, extra-local long shift
-  counts, `LNEG` of a constant, double `LNEG`, and computed `LNEG` operands
-  fail-closed without constructor or hidden-method mutation.
-  The remaining non-int-family negative continues to reject
-  computed reference input through `AALOAD`.
+  long binary levels, computed or unproven extra-local int shift counts,
+  type-wrong extra-local long shift counts, `LNEG` of a constant, double
+  `LNEG`, and computed `LNEG` operands fail-closed without constructor or
+  hidden-method mutation. Unproven reference computations stay rejected;
+  the proven declared-array constant-index `AALOAD` is admitted separately.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
