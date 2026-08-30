@@ -18,9 +18,9 @@ No. Skip-super remains fail-closed.
 ### Rebase
 
 Rebased onto `origin/master` `92bed90` (post-#268 isolated no-arg NEW).
-Child XML on the pre-#267 base is stale and is not cited here. Parent will
-re-run the focused suite and report JUnit XML after rebase. The verification
-test is `skipSuperConstructorShapesPassJava8JvmVerification`.
+Parent-verified JUnit XML after rebase: `IrCompilerTest` 471/471 and
+`CodegenModeTest` 7/7, with zero failures, errors, or skips (total 478). The
+verification test is `skipSuperConstructorShapesPassJava8JvmVerification`.
 
 The CLI default remains `legacy`.
 
@@ -45,9 +45,10 @@ Ship-ready: **No**
 
 ### 变基
 
-已变基到 `origin/master` `92bed90`（#268 无参 NEW 之后）。变基前子代理
-XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告 JUnit XML。
-验证测试为 `skipSuperConstructorShapesPassJava8JvmVerification`。
+已变基到 `origin/master` `92bed90`（#268 无参 NEW 之后）。父代理变基后
+聚焦 JUnit XML：`IrCompilerTest` 471/471、`CodegenModeTest` 7/7，失败、错误
+和跳过均为 0（合计 478）。验证测试为
+`skipSuperConstructorShapesPassJava8JvmVerification`。
 
 命令行默认代码生成模式仍为 `legacy`。
 
