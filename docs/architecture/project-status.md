@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after extra-local float `NEW` initializer
-[#308](https://github.com/gaoyu06/native-obfuscator/pull/308)
-(parent XML 542; latest leftover inventory remains
+Last updated after extra-local double `NEW` initializer
+[#309](https://github.com/gaoyu06/native-obfuscator/pull/309)
+(parent XML 545; latest leftover inventory remains
 [#306](https://github.com/gaoyu06/native-obfuscator/pull/306)
 on post-[#304](https://github.com/gaoyu06/native-obfuscator/pull/304)
 `580ec94`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -654,6 +654,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#304 leftover inventory (#306) | Measurement only on `580ec94`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local long `NEW` initializer (#307) | 539 tests (`IrCompilerTest` 532 + `CodegenModeTest` 7). Parent re-ran 539/539 including `threeImmediateNewExtraLocalLongArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-local float `NEW` initializer (#308) | 542 tests (`IrCompilerTest` 535 + `CodegenModeTest` 7). Parent re-ran 542/542 including `threeImmediateNewExtraLocalFloatArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Extra-local double `NEW` initializer (#309) | 545 tests (`IrCompilerTest` 538 + `CodegenModeTest` 7). Parent re-ran 545/545 including `threeImmediateNewExtraLocalDoubleArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -769,6 +770,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Extra-local proven long-copy `NEW` initializer arguments are admitted
   by #307 (fixture-only). Extra-local proven float-copy `NEW`
   initializer arguments are admitted by #308 (fixture-only).
+  Extra-local proven double-copy `NEW` initializer arguments are admitted
+  by #309 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -830,9 +833,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #308
-  (extra-local float-copy as a NEW initializer). /
-  落地 #308 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #309
+  (extra-local double-copy as a NEW initializer). /
+  落地 #309 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
