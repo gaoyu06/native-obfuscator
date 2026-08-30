@@ -113,7 +113,7 @@ The constructor split now covers these related prefix shapes:
   object argument or one dominating prefix extra-local `ALOAD`/`ASTORE` copy
   of that argument, `owner` is exactly the declared source class, and `desc`
   has the same JVM invocation carrier as the call argument; one isolated
-  `NEW owner; DUP; {0..3 args}; INVOKESPECIAL owner.<init>({0..3 X})V` leaf
+  `NEW owner; DUP; {0..5 args}; INVOKESPECIAL owner.<init>({0..5 X})V` leaf
   whose allocated reference descriptor exactly matches the call argument
   descriptor, where every `X` is int-family and every `arg` is one
   single-instruction proven int-family leaf; plus `LALOAD`,
@@ -257,14 +257,16 @@ One additional family is reduced to that same shared-join form:
   `NEW owner; DUP; arg1; arg2; arg3;
   INVOKESPECIAL owner.<init>(X1X2X3)V`, or
   `NEW owner; DUP; arg1; arg2; arg3; arg4;
-  INVOKESPECIAL owner.<init>(X1X2X3X4)V`. Every
+  INVOKESPECIAL owner.<init>(X1X2X3X4)V`, or
+  `NEW owner; DUP; arg1; arg2; arg3; arg4; arg5;
+  INVOKESPECIAL owner.<init>(X1X2X3X4X5)V`. Every
   initializer parameter must be an int-family carrier and each corresponding
   argument must be exactly one executable instruction accepted by the existing
   int-family leaf proof: a constant, a declared-argument `ILOAD`, or a proven
   prefix-copy `ILOAD`. The constructor owner must exactly match the allocated
   class and the allocated reference descriptor must exactly match the call
   parameter. The complete sequence stays in the retained JVM prefix. Missing
-  `DUP`, five or more initializer arguments, computed initializer inputs
+  `DUP`, six or more initializer arguments, computed initializer inputs
   (including `INEG`), unproven inputs, type mismatches, and every
   array-allocation opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
@@ -1620,16 +1622,27 @@ Synthetic bytecode unit tests in
   paths `7`, `-7`, and `0` preserve JVM verification and
   plain-Java/CMake/g++ JNI parity while retaining all four `Insets` field
   values under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewFiveArgChainInputs`,
+  `rewrittenThreeImmediateNewFiveArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewFiveArgChainInputsCompileAndRunWithJavaParity` extend the
+  isolated leaf to
+  `NEW GregorianCalendar; DUP; ICONST_1; ICONST_2; ICONST_3; ICONST_4;
+  ICONST_5; INVOKESPECIAL GregorianCalendar.<init>(IIIII)V`. All eight
+  instructions stay in each retained JVM prefix, the native body contains
+  neither that `NEW` nor its `INVOKESPECIAL`, and the rewrite keeps one hidden
+  bridge and singular `MethodContext.proxyMethod`. Rewritten classfile-52
+  bytecode and selector paths `7`, `-7`, and `0` preserve JVM verification
+  and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
 - `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
   allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs, a
-  five-int-argument `GregorianCalendar` initializer, `NEWARRAY`, `ANEWARRAY`,
+  six-int-argument `GregorianCalendar` initializer, `NEWARRAY`, `ANEWARRAY`,
   `MULTIANEWARRAY`,
   and a descriptor-mismatched allocation while preserving every constructor
   instruction object, generated buffer, hidden-method inventory, and the
   singular `MethodContext.proxyMethod`.
 - `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
   classfile-52 computed-argument, `GETSTATIC`-argument,
-  five-int-argument `GregorianCalendar`, exact-type-conservative mismatch, and
+  six-int-argument `GregorianCalendar`, exact-type-conservative mismatch, and
   all three array-allocation fixtures, then constructs all three ordinary
   paths. These remain conservative rejects rather than admissions. The raw
   uninitialized-reference and missing-`DUP` fixtures remain rejected but are
@@ -1663,9 +1676,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 496 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 500 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 503 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 507 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
