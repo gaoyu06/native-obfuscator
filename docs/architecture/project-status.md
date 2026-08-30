@@ -1,11 +1,9 @@
 # Project status on master / master 现状
 
-Last updated after fail-closed unproven extra-array `AALOAD`
-[#288](https://github.com/gaoyu06/native-obfuscator/pull/288)
-(parent XML 504/504 on the rebased child branch). Latest leftover inventory
-remains [#286](https://github.com/gaoyu06/native-obfuscator/pull/286)
-(measurement only on post-[#285](https://github.com/gaoyu06/native-obfuscator/pull/285)
-`5a9a041`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+Last updated after leftover inventory remasurement
+[#289](https://github.com/gaoyu06/native-obfuscator/pull/289)
+(measurement only on post-[#288](https://github.com/gaoyu06/native-obfuscator/pull/288)
+`cdce5a3`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
 0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
@@ -634,6 +632,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#285 leftover inventory (#286) | Measurement only on `5a9a041`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Isolated four-arg `NEW` chain inputs (#287) | 503 tests (`IrCompilerTest` 496 + `CodegenModeTest` 7). Parent re-ran 503/503 including `threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Fail-closed unproven extra-array `AALOAD` audit (#288) | 504 tests (`IrCompilerTest` 497 + `CodegenModeTest` 7). Parent re-ran 504/504 including `unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification` | Unproven extra-array `AALOAD` leftover remains reject |
+| Post-#288 leftover inventory (#289) | Measurement only on `cdce5a3`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -689,6 +688,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   extras still unassigned
   on a bridge-taking path,
   unproven `NEW` and `GETFIELD` inputs,
+  unproven extra-array `AALOAD` inputs,
   more than eight distinct paths,
   skip-super constructors,
   post-call extra work and three-immediate `astore-zero`).
@@ -755,9 +755,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#286](https://github.com/gaoyu06/native-obfuscator/pull/286),
-  measured on post-#285 `5a9a041`) observed 0 leftovers; that is not
-  coverage-complete. #284 remains the earlier post-#283 snapshot.
+  ([#289](https://github.com/gaoyu06/native-obfuscator/pull/289),
+  measured on post-#288 `cdce5a3`) observed 0 leftovers; that is not
+  coverage-complete. #286 remains the earlier post-#285 snapshot.
+  #284 remains the earlier post-#283 snapshot.
   #282 remains the earlier post-#281 snapshot.
   #279 remains the earlier post-#278 snapshot.
   #276 remains the earlier post-#275 snapshot.
@@ -778,9 +779,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #288
-  (fail-closed unproven extra-array `AALOAD` leftover). /
-  落地 #288 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #289
+  (leftover inventory remasurement on post-#288 master). /
+  落地 #289 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
