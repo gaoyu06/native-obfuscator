@@ -3490,6 +3490,7 @@ public class IrCompilerTest {
                 .count());
     }
 
+    @Test
     public void admitsThreeImmediateReturnsWithIntArrayIaloadChainInputs() {
         ClassNode base = multipleSuperBase(
                 "example/MultiSuperIntArrayIaloadBase");
@@ -5977,6 +5978,7 @@ public class IrCompilerTest {
                 .getClasses().isEmpty());
     }
 
+    @Test
     public void rejectsUnprovenIntArrayIaloadChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "int-iaload-computed-index",
@@ -7412,6 +7414,7 @@ public class IrCompilerTest {
                 context.proxyMethod.getMethodNode().desc);
     }
 
+    @Test
     public void rewrittenThreeImmediateIntArrayIaloadSuperReturnsPassJvmVerification()
             throws Exception {
         ClassNode base = multipleSuperBase(
@@ -13165,6 +13168,7 @@ public class IrCompilerTest {
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
+    @Test
     public void threeImmediateIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity()
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
