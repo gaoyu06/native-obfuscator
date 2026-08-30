@@ -1124,6 +1124,16 @@ Synthetic bytecode unit tests in
   Java 8 classes verify, and native stdout matches plain Java. Computed stores,
   overwritten copies or source arguments, prior array stores, non-`int[]`
   sources, and computed indexes remain rejected before mutation.
+- `admitsThreeImmediateReturnsWithIntFamilyArrayLoadChainInputs`,
+  `rewrittenThreeImmediateIntFamilyArrayLoadsPassJvmVerification`, and
+  `threeImmediateIntFamilyArrayLoadsCompileAndRunWithJavaParity` cover
+  constant-index `BALOAD`, `CALOAD`, and `SALOAD` leaves from unchanged
+  declared `[B`/`[Z`, `[C`, and `[S` arguments. Each load stays in
+  retained JVM bytecode so sign/zero extension, null, and bounds stay
+  JVM-executed, one hidden bridge is shared, rewritten Java 8 classes
+  verify, and native stdout matches plain Java. Computed indexes,
+  extra-local indexes, extra-local array sources, and opcode/type
+  mismatches remain rejected before mutation.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
