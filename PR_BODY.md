@@ -21,11 +21,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Local JUnit XML:
+Parent JUnit XML under `obfuscator/build/test-results/test/`:
 
-- `IrCompilerTest`: 494 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 497 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 501 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 504 tests, 0 failures, 0 errors, 0 skipped.
+
+Cite `unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification`. Child totals are discarded.
 
 - Admitted: **No** (leftover remains reject)
 - Ship-ready: **No**
@@ -53,11 +55,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本地 JUnit XML：
+父级 `obfuscator/build/test-results/test/` JUnit XML 汇总：
 
-- `IrCompilerTest`：494 tests，0 failures，0 errors，0 skipped。
-- `CodegenModeTest`：7 tests，0 failures，0 errors，0 skipped。
-- 合计：501 tests，0 failures，0 errors，0 skipped。
+- `IrCompilerTest`：497 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：504 个测试，0 个失败，0 个错误，0 个跳过。
+
+引用 `unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification`。子代理汇总作废。
 
 - Admitted: **No**（leftover 继续拒绝）
 - Ship-ready: **No**
