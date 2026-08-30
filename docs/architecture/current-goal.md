@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #238 (prefix extra-local long chain-input leaves)
+   `master` after #239 (prefix extra-local int chain-input leaves)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -62,14 +62,14 @@ The goal is complete only when all of the following are true:
    remaining multi-super shapes such as five-or-more nested
    int binaries, five-or-more nested long
    binaries, five-or-more nested float binaries,
-   five-or-more nested double binaries, extra-local int operands,
+   five-or-more nested double binaries,
    extra-local long shift count/value and `LDIV`/`LREM` operands, reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and `jsr` / `ret`
-   (obsolete; reject is fine). In-tree ClassicTest / JDK fixture
+   (required leftover: admit with Java parity, not reject-only). In-tree ClassicTest / JDK fixture
    admission (#207 measurement on post-#206 `42e52c0`) observed no
    leftover methods; that is not a complete JVM inventory. #199 remains
    the earlier post-#198 snapshot; #191 remains the earlier post-#190
