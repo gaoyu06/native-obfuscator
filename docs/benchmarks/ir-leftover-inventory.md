@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#294 master
+# IR leftover inventory on post-#296 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `44596132e0debebc422261c50ac2278e889d3400`
-- Measurement commit: `44596132e0debebc422261c50ac2278e889d3400`
+- Measured compiler base (merge-base with `origin/master`): `ee8f987ee6a212fb257a1527e764ddbf0cd4aa09`
+- Measurement commit: `ee8f987ee6a212fb257a1527e764ddbf0cd4aa09`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
 - Java 8 remains the only version described as fully supported.
-- #294 admitted isolated six-argument int-family `NEW`; #293 is a fail-closed audit of unproven wide `NEW`.
-- This post-#294 remeasurement supersedes #292 on `2fbd89d7f12c486c9bc472700830e8dc42f0f9ec` (post-#291).
+- #296 admitted extra-local int-copy as a two-argument `NEW`; #294 admitted isolated six-argument int-family `NEW`; #293 is a fail-closed audit of unproven wide `NEW`.
+- This post-#296 remeasurement supersedes #295 on `44596132e0debebc422261c50ac2278e889d3400` (post-#294).
 - Ship-ready: **No**.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
