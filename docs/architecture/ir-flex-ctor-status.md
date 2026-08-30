@@ -1642,6 +1642,20 @@ Synthetic bytecode unit tests in
   Rewritten classfile-52 bytecode and selector paths `7`, `-7`, and `0`
   preserve JVM verification and plain-Java/CMake/g++ JNI parity under
   `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewExtraLocalFourArgChainInputs`,
+  `rewrittenThreeImmediateNewExtraLocalFourArgChainInputsPassJvmVerification`,
+  and
+  `threeImmediateNewExtraLocalFourArgChainInputsCompileAndRunWithJavaParity`
+  compose the four-argument leaf with the same proven prefix extra-local int
+  copy: `NEW Insets; DUP; ILOAD 3; ICONST_2; ICONST_3; ICONST_4;
+  INVOKESPECIAL Insets.<init>(IIII)V`. The prefix `ILOAD 2; ISTORE 3`,
+  complete allocations, and initializer calls stay in retained JVM bytecode;
+  the native body contains only `RETURN`, and the rewrite keeps one hidden
+  bridge and singular `MethodContext.proxyMethod`. The existing per-argument
+  int-family proof admits this composition without a processor change.
+  Rewritten classfile-52 bytecode and selector paths `7`, `-7`, and `0`
+  preserve JVM verification and plain-Java/CMake/g++ JNI parity under
+  `-Xverify:all -Xcheck:jni`.
 - `admitsThreeImmediateReturnsWithNewThreeArgChainInputs`,
   `rewrittenThreeImmediateNewThreeArgChainInputsPassJvmVerification`, and
   `threeImmediateNewThreeArgChainInputsCompileAndRunWithJavaParity` extend the
@@ -1749,10 +1763,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-This increment adds three extra-local three-argument `NEW` composition tests
-on top of the landed extra-local two-argument and isolated three-argument
-coverage. Child-local JUnit XML reports 513 `IrCompilerTest` tests and 7
-`CodegenModeTest` tests (520 total), all passing. These are not parent totals;
+This increment adds three extra-local four-argument `NEW` composition tests
+on top of the landed extra-local three-argument and isolated four-argument
+coverage. Child-local JUnit XML reports 516 `IrCompilerTest` tests and 7
+`CodegenModeTest` tests (523 total), all passing. These are not parent totals;
 the parent re-runs the focused gate after integration.
 
 This focused suite includes the existing constructor branch/parameter-store,
