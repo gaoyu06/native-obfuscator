@@ -1,10 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory remasurement
-[#273](https://github.com/gaoyu06/native-obfuscator/pull/273)
-(measurement only on post-[#272](https://github.com/gaoyu06/native-obfuscator/pull/272)
-`e1b07a8`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
-0 leftovers; not coverage-complete; not a JDK support badge). Active process:
+Last updated after landing the fail-closed unproven `NEW` audit
+[#274](https://github.com/gaoyu06/native-obfuscator/pull/274)
+(parent re-ran 483/483: 476 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `unprovenNewChainInputShapesPassJava8JvmVerification`)
+on the post-[#273](https://github.com/gaoyu06/native-obfuscator/pull/273)
+leftover inventory remasurement. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -385,9 +386,12 @@ legacy。不能当成 JDK 支持矩阵。
   [#268](https://github.com/gaoyu06/native-obfuscator/pull/268) admits
   `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` as a reference
   chain-input leaf when the allocated type exactly matches the call
-  argument. Uninitialized `NEW`, `NEW` with initializer arguments,
-  mismatched allocation types, and array-allocation opcodes stay
-  rejected.
+  argument.
+  [#274](https://github.com/gaoyu06/native-obfuscator/pull/274) keeps
+  uninitialized `NEW`, `NEW` with initializer arguments, mismatched
+  allocation types, and `NEWARRAY`/`ANEWARRAY`/`MULTIANEWARRAY`
+  fail-closed, including verifier-valid Java 8 fixtures for the
+  loadable shapes. No new allocation form is admitted.
   [#269](https://github.com/gaoyu06/native-obfuscator/pull/269) keeps
   skip-super constructor paths fail-closed, including verifier-valid
   Java 8 fixtures whose ordinary paths construct normally while their
@@ -611,6 +615,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Fail-closed seventeen-level audit (#271) | 479 tests (`IrCompilerTest` 472 + `CodegenModeTest` 7). Parent re-ran 479/479 including `seventeenLevelNestedBinariesPassJava8JvmVerification` | Seventeen-level leftover remains reject |
 | Extra-local `GETFIELD` holders (#272) | 482 tests (`IrCompilerTest` 475 + `CodegenModeTest` 7). Parent re-ran 482/482 including `threeImmediateGetfieldExtraLocalHolderCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#272 leftover inventory (#273) | Measurement only on `e1b07a8`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Fail-closed unproven-`NEW` audit (#274) | 483 tests (`IrCompilerTest` 476 + `CodegenModeTest` 7). Parent re-ran 483/483 including `unprovenNewChainInputShapesPassJava8JvmVerification` | Unproven `NEW` leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -701,7 +706,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Declared-argument `GETFIELD` chain inputs are admitted by #266.
   Extra-local proven object-copy `GETFIELD` holders are admitted by #272.
   Isolated no-arg `NEW` chain inputs are admitted by #268.
-  Unproven `NEW` and `GETFIELD` forms stay reject-before-mutation.
+  Unproven `NEW` forms stay reject-before-mutation; #274
+  strengthens those fail-closed tests. Do not admit `NEW` with
+  initializer arguments or array-allocation opcodes.
+  Unproven `GETFIELD` forms stay reject-before-mutation.
   More than eight path-id suffixes stay reject-before-mutation; #267
   strengthens those fail-closed tests. The eight-path cap is unchanged.
   Skip-super constructors stay reject-before-mutation; #269
@@ -728,9 +736,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #273
-  (leftover inventory remasurement on post-#272 master). /
-  落地 #273 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #274
+  (fail-closed unproven `NEW` audit). /
+  落地 #274 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
