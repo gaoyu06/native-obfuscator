@@ -2348,24 +2348,20 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return previousProvenLongChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, countIndex - 1),
-                    declaredArguments, java.util.Collections.emptySet(),
+                    declaredArguments, prefixLongCopies,
                     remainingBinaryLevels - 1);
         }
-        Set<Integer> nestedPrefixLongCopies =
-                opcode == Opcodes.LDIV || opcode == Opcodes.LREM
-                        ? java.util.Collections.emptySet()
-                        : prefixLongCopies;
         Integer beforeRight = previousProvenLongChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, nestedPrefixLongCopies,
+                declaredArguments, prefixLongCopies,
                 remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenLongChainOperand(
                 constructor, beforeRight, declaredArguments,
-                nestedPrefixLongCopies,
+                prefixLongCopies,
                 remainingBinaryLevels - 1);
     }
 

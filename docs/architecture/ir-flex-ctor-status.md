@@ -71,7 +71,7 @@ The constructor split now covers these related prefix shapes:
   most eight `LADD`, `LSUB`, `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, `LXOR`,
   `LSHL`, `LSHR`, or `LUSHR` levels for a long argument, whose long leaves are
   declared long-argument loads, proven prefix extra-local copies of declared
-  long-argument loads outside shift and division/remainder operands,
+  long-argument loads (including shift values and division/remainder operands),
   `LCONST_0`, `LCONST_1`, `LDC` of `Long`, or the admitted single-load `LNEG`,
   and whose shift counts remain proven int-family leaves;
   a tree of at most eight `FADD`, `FSUB`, `FMUL`, `FDIV`, or `FREM` levels for
@@ -205,12 +205,12 @@ One additional family is reduced to that same shared-join form:
   is a matching declared-argument `LLOAD`; an int-family count leaf uses the
   existing declared-argument `ILOAD` and int-family constant proof. A
   standalone `LNEG` leaf is admitted under the same declared-load restriction.
-  Prefix extra-local long copies are not admitted as shift values or as
-  `LDIV`/`LREM` operands. This proof has its own explicit eight-level binary
+  Prefix extra-local long copies may be used as shift values and as either
+  `LDIV`/`LREM` operand. This proof has its own explicit eight-level binary
   budget: nine-or-more nested long binaries, extra-local int shift counts,
-  extra-local long shift counts or values, extra-local `LDIV`/`LREM` operands,
-  `LNEG` of a constant, double `LNEG`, and `LNEG` of an extra-local or computed
-  value remain rejected. The retained bytecode prefix executes admitted
+  extra-local long shift counts, `LNEG` of a constant, double `LNEG`, and
+  `LNEG` of an extra-local or computed value remain rejected. The retained
+  bytecode prefix executes admitted
   operations, preserving Java long wrapping, negate semantics, bitwise
   semantics, JVM divide-by-zero and signed-overflow behavior, and mask-63
   shift-count behavior without reproducing those semantics in C++.
@@ -853,10 +853,17 @@ Synthetic bytecode unit tests in
   `LADD`s remain in the retained bytecode prefix, the rewrite uses one hidden
   bridge, rewritten classes verify, and the complete CMake/g++ JNI transform
   matches plain Java. Extra-local int shift counts, extra-local long shift
-  counts/values, extra-local `LDIV`/`LREM` operands, `LNEG` of an extra-local,
-  and nine-or-more nested long binaries remain rejected. This does not
+  counts, `LNEG` of an extra-local, and nine-or-more nested long binaries
+  remain rejected. This does not
   complete the production goal or authorize changing the default compiler
   path.
+- `admitsThreeImmediateReturnsWithExtraLocalLongShiftValueAndDivRemChainInputs`
+  and the matching rewritten-verification test admit a proven prefix
+  extra-local long copy as the value of `LSHL` and as the dividend of `LDIV`
+  or `LREM`. The two dedicated runtime tests exercise the shift-value and
+  division/remainder families through the complete CMake/g++ JNI transform
+  under `-Xverify:all -Xcheck:jni`, requiring Java parity while keeping the
+  long operations in the retained bytecode prefix behind one hidden bridge.
 - `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
   `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -1030,11 +1037,10 @@ Synthetic bytecode unit tests in
   budget. The retained prefix executes every operation, one hidden bridge is
   shared, rewritten classes verify, and native stdout matches plain Java.
 - `rejectsUnprovenLongComputedChainInputsBeforeMutation` keeps nine-or-more
-  long binary levels (including an inner `LDIV`), extra-local long operands,
-  extra-local long-shift value and int-count operands, extra-local
-  `LDIV`/`LREM` operands, `LNEG` of a constant, double `LNEG`, and extra-local
-  or computed `LNEG` operands fail-closed without constructor or hidden-method
-  mutation. The remaining non-int-family negative continues to reject
+  long binary levels, extra-local int shift counts, extra-local long shift
+  counts, `LNEG` of a constant, double `LNEG`, and extra-local or computed
+  `LNEG` operands fail-closed without constructor or hidden-method mutation.
+  The remaining non-int-family negative continues to reject
   computed reference input through `AALOAD`.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and

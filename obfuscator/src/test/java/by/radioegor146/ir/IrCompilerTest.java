@@ -106,6 +106,10 @@ public class IrCompilerTest {
     private static final String[] LONG_DIV_REM_CHAIN_INPUT_SHAPES = {
             "long-ldiv", "long-lrem"
     };
+    private static final String[] EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES = {
+            "long-lshl-extra-value", "long-ldiv-extra-local",
+            "long-lrem-extra-local"
+    };
     private static final String[] FLOAT_DIV_REM_CHAIN_INPUT_SHAPES = {
             "float-fdiv", "float-frem"
     };
@@ -3560,6 +3564,65 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalLongShiftValueAndDivRemChainInputs() {
+        int[] opcodes = {Opcodes.LSHL, Opcodes.LDIV, Opcodes.LREM};
+        for (int i = 0; i < EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES[i];
+            ClassNode base = multipleSuperLongBase(
+                    "example/MultiSuperExtraLocalLongComputedBase"
+                            + shape.replace("-", ""));
+            ClassNode owner = constructorOwner(
+                    "example/ThreeExtraLocalLongComputedMultiReturn"
+                            + shape.replace("-", ""),
+                    base.name);
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(IJ)V", nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
+            assertEquals(3L, realOpcodes(constructor).stream()
+                    .filter(IrCompilerTest::isLongChainBinaryOpcode)
+                    .count(), shape);
+            assertEquals(Collections.singletonList(4),
+                    variableIndexes(constructor, Opcodes.LSTORE), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.LLOAD), 4), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithFaddOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeFloatComputedMultiReturn",
@@ -5373,8 +5436,7 @@ public class IrCompilerTest {
     public void rejectsUnprovenLongComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "long-nine-level-ladd",
-                "long-lshl-extra-count", "long-lshl-extra-value",
-                "long-ldiv-extra-local", "long-lrem-extra-local",
+                "long-lshl-extra-count",
                 "long-lneg-constant", "long-double-lneg",
                 "long-lneg-extra-local", "long-lneg-computed")) {
             ClassNode owner = constructorOwner(
@@ -6754,6 +6816,78 @@ public class IrCompilerTest {
                 .filter(method ->
                         method == context.proxyMethod.getMethodNode())
                 .count());
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraLocalLongShiftValueAndDivRemSuperReturnsPassJvmVerification()
+            throws Exception {
+        int[] opcodes = {Opcodes.LSHL, Opcodes.LDIV, Opcodes.LREM};
+        for (int i = 0; i < EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES.length; i++) {
+            String shape = EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES[i];
+            String suffix = shape.replace("-", "");
+            ClassNode base = multipleSuperLongBase(
+                    "example/VerifiedExtraLocalLongComputedBase" + suffix);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedExtraLocalLongComputed" + suffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            int[] selectors = {7, -7, 0};
+            long[] values = {11L, -22L, Long.MIN_VALUE};
+            for (int j = 0; j < selectors.length; j++) {
+                int selector = selectors[j];
+                long value = values[j];
+                InvocationTargetException error = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(int.class, long.class)
+                                .newInstance(selector, value),
+                        shape);
+                assertTrue(
+                        error.getCause() instanceof UnsatisfiedLinkError,
+                        shape);
+            }
+            assertEquals(3, directChainCallCount(constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), opcodes[i]), shape);
+            assertEquals(Collections.singletonList(4),
+                    variableIndexes(constructor, Opcodes.LSTORE), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.LLOAD), 4), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;IJ)V",
+                    context.proxyMethod.getMethodNode().desc,
+                    shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
     }
 
     @Test
@@ -11482,6 +11616,210 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local long multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalLongShiftValueSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local long shift runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local long shift runtime test");
+
+        String ownerName =
+                "example/ExtraLocalLongShiftValueMultiReturnRuntime";
+        String baseName =
+                "example/ExtraLocalLongShiftValueMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-long-shift-run");
+        Path inputJar = directory.resolve("extra-local-long-shift.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalLongShiftValueReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local long shift multi-super Java run");
+        assertEquals(
+                "22" + System.lineSeparator()
+                        + "-44" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.LSHL));
+        assertEquals(Collections.singletonList(4),
+                variableIndexes(transformedConstructor, Opcodes.LSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.LLOAD), 4));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local long shift CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local long shift CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local long shift native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local long shift multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalLongDivRemSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local long div/rem runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local long div/rem runtime test");
+
+        String ownerName =
+                "example/ExtraLocalLongDivRemMultiReturnRuntime";
+        String baseName =
+                "example/ExtraLocalLongDivRemMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-long-div-rem-run");
+        Path inputJar = directory.resolve("extra-local-long-div-rem.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalLongDivRemReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local long div/rem multi-super Java run");
+        assertEquals(
+                "11" + System.lineSeparator()
+                        + "-22" + System.lineSeparator()
+                        + Long.MIN_VALUE + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + "0" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        String[] transformedNames = {ownerName, ownerName + "$Lrem"};
+        int[] opcodes = {Opcodes.LDIV, Opcodes.LREM};
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int i = 0; i < transformedNames.length; i++) {
+                String transformedName = transformedNames[i];
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(transformedName + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed));
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor));
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor), opcodes[i]));
+                assertEquals(Collections.singletonList(4),
+                        variableIndexes(
+                                transformedConstructor, Opcodes.LSTORE));
+                assertEquals(3, Collections.frequency(
+                        variableIndexes(
+                                transformedConstructor, Opcodes.LLOAD), 4));
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.GOTO));
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor), Opcodes.RETURN));
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList("cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local long div/rem CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local long div/rem CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local long div/rem native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local long div/rem multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -20679,6 +21017,71 @@ public class IrCompilerTest {
             output.putNextEntry(new JarEntry(owner.name + ".class"));
             output.write(writeClass(owner));
             output.closeEntry();
+        }
+    }
+
+    private void createMultipleSuperThreeExtraLocalLongShiftValueReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperLongBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES[0]));
+        owner.methods.add(multipleSuperThreeExtraLocalLongReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
+    private void createMultipleSuperThreeExtraLocalLongDivRemReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperLongBase(baseName);
+        base.version = Opcodes.V1_8;
+        String[] ownerNames = {ownerName, ownerName + "$Lrem"};
+        ClassNode[] owners = new ClassNode[ownerNames.length];
+        for (int i = 0; i < ownerNames.length; i++) {
+            ClassNode owner = constructorOwner(ownerNames[i], baseName);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithComputedInput(
+                    baseName, EXTRA_LOCAL_LONG_CHAIN_INPUT_SHAPES[i + 1]));
+            owners[i] = owner;
+        }
+        owners[0].methods.add(multipleSuperThreeLongDivRemReturnsMain(
+                ownerNames[0], ownerNames[1], baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, ownerName.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            for (ClassNode owner : owners) {
+                output.putNextEntry(new JarEntry(owner.name + ".class"));
+                output.write(writeClass(owner));
+                output.closeEntry();
+            }
         }
     }
 
