@@ -1545,8 +1545,16 @@ Synthetic bytecode unit tests in
   three copies remain in retained JVM bytecode, the rewrite uses one hidden
   bridge, rewritten classes verify, and the CMake/g++ JNI transform matches
   plain Java. `rejectsUnprovenNewChainInputsBeforeMutation` covers an
-  uninitialized allocation, a constructor argument, `NEWARRAY`, and a
-  descriptor-mismatched allocation.
+  uninitialized allocation, a constructor argument, `NEWARRAY`, `ANEWARRAY`,
+  `MULTIANEWARRAY`, and a descriptor-mismatched allocation while preserving
+  every constructor instruction object, generated buffer, hidden-method
+  inventory, and the singular `MethodContext.proxyMethod`.
+- `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
+  classfile-52 argument-taking allocation, exact-type-conservative mismatch,
+  and all three array-allocation fixtures, then constructs all three ordinary
+  paths. These remain conservative rejects rather than admissions. The raw
+  uninitialized-reference fixture remains rejected but is inherently not
+  verifier-valid.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
   seventeen-level nested binary input,
