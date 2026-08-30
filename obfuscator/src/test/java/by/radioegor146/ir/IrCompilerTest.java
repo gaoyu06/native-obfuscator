@@ -3829,6 +3829,74 @@ public class IrCompilerTest {
         }
     }
 
+    @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalWideArrayLoadChainInputs() {
+        String[] shapes = {
+                "long-laload-extra-array",
+                "float-faload-extra-array",
+                "double-daload-extra-array"
+        };
+        String[] arrayDescriptors = {"[J", "[F", "[D"};
+        int[] loadOpcodes = {
+                Opcodes.LALOAD, Opcodes.FALOAD, Opcodes.DALOAD
+        };
+        for (int i = 0; i < shapes.length; i++) {
+            String shape = shapes[i];
+            ClassNode base = wideArrayLoadBase(
+                    shape,
+                    "example/MultiSuperExtraLocalWideArrayLoadBase" + i);
+            ClassNode owner = constructorOwner(
+                    "example/ThreeExtraLocalWideArrayLoadMultiReturn" + i,
+                    base.name);
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+
+            MethodNode nativeBody =
+                    ConstructorSpecialMethodProcessor.createNativeBody(
+                            owner, constructor);
+            assertEquals("(I" + arrayDescriptors[i] + ")V",
+                    nativeBody.desc, shape);
+            assertEquals(Collections.singletonList(Opcodes.RETURN),
+                    realOpcodes(nativeBody), shape);
+            assertFalse(realOpcodes(nativeBody).contains(loadOpcodes[i]),
+                    shape);
+            assertFalse(realOpcodes(nativeBody).contains(Opcodes.ASTORE),
+                    shape);
+            frontend.build(owner.name, nativeBody);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            assertEquals(3, directChainCallCount(
+                    constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), loadOpcodes[i]), shape);
+            assertEquals(Collections.singletonList(3),
+                    variableIndexes(constructor, Opcodes.ASTORE), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.ALOAD), 3), shape);
+            assertEquals(2, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.GOTO), shape);
+            assertEquals(1, Collections.frequency(
+                    realOpcodes(constructor), Opcodes.RETURN), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I" + arrayDescriptors[i] + ")V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+            assertEquals(1, obfuscator.getHiddenMethodsPool()
+                    .getClasses().stream()
+                    .flatMap(hidden -> hidden.methods.stream())
+                    .filter(method ->
+                            method == context.proxyMethod.getMethodNode())
+                    .count(), shape);
+        }
+    }
+
 
     @Test
     public void admitsThreeImmediateReturnsWithIntFamilyArrayLoadChainInputs() {
@@ -6547,12 +6615,67 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsUnprovenExtraLocalWideArrayLoadsBeforeMutation() {
+        String[] baseShapes = {
+                "long-laload", "float-faload", "double-daload"
+        };
+        String[] rejectedSuffixes = {
+                "-extra-array-computed-store",
+                "-extra-array-overwrite",
+                "-extra-array-declared-overwrite",
+                "-extra-array-store",
+                "-extra-array-computed-index",
+                "-extra-array-extra-index",
+                "-extra-array-wrong-source"
+        };
+        int fixture = 0;
+        for (String baseShape : baseShapes) {
+            for (String rejectedSuffix : rejectedSuffixes) {
+                String shape = baseShape + rejectedSuffix;
+                ClassNode base = wideArrayLoadBase(
+                        shape,
+                        "example/RejectedExtraLocalWideArrayLoadBase"
+                                + fixture);
+                ClassNode owner = constructorOwner(
+                        "example/RejectedExtraLocalWideArrayLoad" + fixture,
+                        base.name);
+                MethodNode constructor =
+                        threeImmediateReturnsWithComputedInput(
+                                owner.superName, shape);
+                int instructionCount = constructor.instructions.size();
+                java.util.List<Integer> opcodes = realOpcodes(constructor);
+                NativeObfuscator obfuscator = new NativeObfuscator();
+                MethodContext context =
+                        new MethodContext(
+                                obfuscator, constructor, 0, owner, 0);
+
+                assertThrows(
+                        UnsupportedIrConstructException.class,
+                        () -> new IrMethodCompiler(
+                                new MethodShellEmitter(obfuscator))
+                                .processMethod(context),
+                        shape);
+
+                assertUnchangedAfterRejectedIr(
+                        constructor, context, obfuscator);
+                assertEquals(instructionCount,
+                        constructor.instructions.size(), shape);
+                assertEquals(opcodes, realOpcodes(constructor), shape);
+                assertTrue(context.proxyMethod == null, shape);
+                assertTrue(obfuscator.getHiddenMethodsPool()
+                        .getClasses().isEmpty(), shape);
+                fixture++;
+            }
+        }
+    }
+
+    @Test
     public void rejectsUnprovenWideArrayLoadChainInputsBeforeMutation() {
         String[] baseShapes = {
                 "long-laload", "float-faload", "double-daload"
         };
         String[] rejectedSuffixes = {
-                "-extra-array", "-computed-index", "-extra-index",
+                "-computed-index", "-extra-index",
                 "-wrong-array", "-overwrite", "-store",
                 "-seventeen-level"
         };
@@ -8461,6 +8584,101 @@ public class IrCompilerTest {
                     variableIndexes(constructor, Opcodes.ALOAD), 3), shape);
             assertEquals(
                     "(Ljava/lang/Object;I" + arrayDescriptors[i] + ")V",
+                    context.proxyMethod.getMethodNode().desc, shape);
+        }
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraLocalWideArrayLoadsPassJvmVerification()
+            throws Exception {
+        String[] shapes = {
+                "long-laload-extra-array",
+                "float-faload-extra-array",
+                "double-daload-extra-array"
+        };
+        Class<?>[] arrayClasses = {
+                long[].class, float[].class, double[].class
+        };
+        Object[] sampleArrays = {
+                new long[]{11L, -22L, Long.MIN_VALUE},
+                new float[]{11.5f, -22.25f, 0.125f},
+                new double[]{11.5, -22.25, 0.125}
+        };
+        Object[] shortArrays = {
+                new long[2], new float[2], new double[2]
+        };
+        int[] loadOpcodes = {
+                Opcodes.LALOAD, Opcodes.FALOAD, Opcodes.DALOAD
+        };
+        for (int i = 0; i < shapes.length; i++) {
+            String shape = shapes[i];
+            Class<?> arrayClass = arrayClasses[i];
+            Object sampleArray = sampleArrays[i];
+            Object shortArray = shortArrays[i];
+            ClassNode base = wideArrayLoadBase(
+                    shape,
+                    "example/VerifiedExtraLocalWideArrayLoadBase" + i);
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedExtraLocalWideArrayLoad" + i,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            base.name, shape);
+            owner.methods.add(constructor);
+
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                    .processMethod(context);
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            for (ClassNode hidden :
+                    obfuscator.getHiddenMethodsPool().getClasses()) {
+                loader.define(writeClass(hidden));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+            for (int selector : new int[]{7, -7, 0}) {
+                InvocationTargetException bridge = assertThrows(
+                        InvocationTargetException.class,
+                        () -> verified.getConstructor(
+                                        int.class, arrayClass)
+                                .newInstance(new Object[]{
+                                        selector, sampleArray}),
+                        shape);
+                assertTrue(bridge.getCause()
+                        instanceof UnsatisfiedLinkError, shape);
+            }
+            InvocationTargetException nullArray = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, arrayClass)
+                            .newInstance(new Object[]{7, null}),
+                    shape);
+            assertTrue(nullArray.getCause()
+                    instanceof NullPointerException, shape);
+            InvocationTargetException bounds = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, arrayClass)
+                            .newInstance(new Object[]{0, shortArray}),
+                    shape);
+            assertTrue(bounds.getCause()
+                    instanceof ArrayIndexOutOfBoundsException, shape);
+            assertEquals(3, directChainCallCount(
+                    constructor, owner), shape);
+            assertEquals(1, hiddenBridgeCallCount(constructor), shape);
+            assertEquals(3, Collections.frequency(
+                    realOpcodes(constructor), loadOpcodes[i]), shape);
+            assertEquals(Collections.singletonList(3),
+                    variableIndexes(constructor, Opcodes.ASTORE), shape);
+            assertEquals(3, Collections.frequency(
+                    variableIndexes(constructor, Opcodes.ALOAD), 3), shape);
+            assertEquals(
+                    "(Ljava/lang/Object;I"
+                            + wideArrayLoadDescriptor(shape) + ")V",
                     context.proxyMethod.getMethodNode().desc, shape);
         }
     }
@@ -14919,6 +15137,138 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local int-family array-load Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local wide array-load "
+                        + "runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local wide array-load "
+                        + "runtime test");
+
+        String[] ownerNames = {
+                "example/ExtraLocalLongLaloadMultiReturnRuntime",
+                "example/ExtraLocalFloatFaloadMultiReturnRuntime",
+                "example/ExtraLocalDoubleDaloadMultiReturnRuntime"
+        };
+        String[] baseNames = {
+                "example/ExtraLocalLongLaloadMultiReturnRuntimeBase",
+                "example/ExtraLocalFloatFaloadMultiReturnRuntimeBase",
+                "example/ExtraLocalDoubleDaloadMultiReturnRuntimeBase"
+        };
+        String[] shapes = {
+                "long-laload-extra-array",
+                "float-faload-extra-array",
+                "double-daload-extra-array"
+        };
+        int[] loadOpcodes = {
+                Opcodes.LALOAD, Opcodes.FALOAD, Opcodes.DALOAD
+        };
+        Path directory = Files.createTempDirectory(
+                "ir-extra-local-wide-array-load-run");
+        Path inputJar =
+                directory.resolve("extra-local-wide-array-load.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperWideArrayLoadsJar(
+                inputJar, ownerNames, baseNames, shapes);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local wide array-load multi-super Java run");
+        assertEquals(
+                "11" + System.lineSeparator()
+                        + "-22" + System.lineSeparator()
+                        + Long.MIN_VALUE + System.lineSeparator()
+                        + "11.5" + System.lineSeparator()
+                        + "-22.25" + System.lineSeparator()
+                        + "0.125" + System.lineSeparator()
+                        + "11.5" + System.lineSeparator()
+                        + "-22.25" + System.lineSeparator()
+                        + "0.125" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerNames[0] + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            for (int i = 0; i < ownerNames.length; i++) {
+                ClassNode transformed = new ClassNode(Opcodes.ASM9);
+                new org.objectweb.asm.ClassReader(jar.getInputStream(
+                        jar.getJarEntry(ownerNames[i] + ".class")))
+                        .accept(transformed, 0);
+                MethodNode transformedConstructor =
+                        transformed.methods.stream()
+                                .filter(method ->
+                                        "<init>".equals(method.name))
+                                .findFirst()
+                                .orElseThrow(AssertionError::new);
+                assertEquals(3, directChainCallCount(
+                        transformedConstructor, transformed), shapes[i]);
+                assertEquals(1, hiddenBridgeCallCount(
+                        transformedConstructor), shapes[i]);
+                assertEquals(3, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        loadOpcodes[i]), shapes[i]);
+                assertEquals(Collections.singletonList(3),
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ASTORE),
+                        shapes[i]);
+                assertEquals(3, Collections.frequency(
+                        variableIndexes(
+                                transformedConstructor, Opcodes.ALOAD),
+                        3), shapes[i]);
+                assertEquals(2, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        Opcodes.GOTO), shapes[i]);
+                assertEquals(1, Collections.frequency(
+                        realOpcodes(transformedConstructor),
+                        Opcodes.RETURN), shapes[i]);
+            }
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local wide array-load CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local wide array-load CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local wide array-load native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local wide array-load multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -30701,13 +31051,19 @@ public class IrCompilerTest {
 
     private String wideArrayLoadDescriptor(String shape) {
         if (shape.startsWith("long-laload")) {
-            return shape.contains("-wrong-array") ? "[I" : "[J";
+            return shape.contains("-wrong-array")
+                    || shape.contains("-extra-array-wrong-source")
+                    ? "[I" : "[J";
         }
         if (shape.startsWith("float-faload")) {
-            return shape.contains("-wrong-array") ? "[J" : "[F";
+            return shape.contains("-wrong-array")
+                    || shape.contains("-extra-array-wrong-source")
+                    ? "[J" : "[F";
         }
         if (shape.startsWith("double-daload")) {
-            return shape.contains("-wrong-array") ? "[F" : "[D";
+            return shape.contains("-wrong-array")
+                    || shape.contains("-extra-array-wrong-source")
+                    ? "[F" : "[D";
         }
         throw new IllegalArgumentException(
                 "Not a wide array-load shape " + shape);
@@ -30862,8 +31218,10 @@ public class IrCompilerTest {
             constructorDescriptor = "(I)V";
             callDescriptor = "(I)V";
         } else if (isWideArrayLoadShape(shape)) {
-            constructorDescriptor =
-                    "(I" + wideArrayLoadDescriptor(shape) + ")V";
+            constructorDescriptor = shape.contains(
+                    "-extra-array-computed-store")
+                    ? "(I[" + wideArrayLoadDescriptor(shape) + ")V"
+                    : "(I" + wideArrayLoadDescriptor(shape) + ")V";
             callDescriptor =
                     "(" + wideArrayLoadValueDescriptor(shape) + ")V";
         } else if (shape.startsWith("long-")) {
@@ -30971,7 +31329,29 @@ public class IrCompilerTest {
         } else if (isWideArrayLoadShape(shape)
                 && shape.contains("-extra-array")) {
             method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+            if (shape.contains("-extra-array-computed-store")) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+                method.instructions.add(new InsnNode(Opcodes.AALOAD));
+            }
             method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+            if (shape.contains("-extra-array-overwrite")) {
+                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+            } else if (shape.contains(
+                    "-extra-array-declared-overwrite")) {
+                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+            } else if (shape.contains("-extra-array-store")) {
+                method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+                appendWideArrayZero(method, shape);
+                method.instructions.add(new InsnNode(
+                        wideArrayStoreOpcode(shape)));
+            } else if (shape.contains(
+                    "-extra-array-extra-index")) {
+                method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+                method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 4));
+            }
         } else if (isWideArrayLoadShape(shape)
                 && shape.contains("-extra-index")) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -31077,6 +31457,10 @@ public class IrCompilerTest {
             method.maxLocals = 4;
         }
         if (isWideArrayLoadShape(shape)
+                && shape.contains("-extra-array")
+                && shape.contains("-extra-index")) {
+            method.maxLocals = 5;
+        } else if (isWideArrayLoadShape(shape)
                 && (shape.contains("-extra-array")
                 || shape.contains("-extra-index"))) {
             method.maxLocals = 4;
@@ -31129,7 +31513,8 @@ public class IrCompilerTest {
                 method.instructions.add(new InsnNode(Opcodes.IADD));
             } else if (shape.contains("-extra-index")) {
                 method.instructions.add(new VarInsnNode(
-                        Opcodes.ILOAD, 3));
+                        Opcodes.ILOAD,
+                        shape.contains("-extra-array") ? 4 : 3));
             } else {
                 method.instructions.add(new InsnNode(
                         Opcodes.ICONST_0 + chainIndex));
