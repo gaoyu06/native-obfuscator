@@ -25,7 +25,14 @@ The default `--codegen` mode remains `legacy`.
 
 ## Validation
 
-Focused Gradle/XML results will be recorded after the required pre-test commit.
+The focused Gradle gate passed. JUnit XML records:
+
+- `IrCompilerTest`: 446 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 453 tests, 0 failures, 0 errors, 0 skipped.
+
+The passing runtime test is
+`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity`.
 
 Ship-ready: **No**
 
@@ -55,6 +62,13 @@ Ship-ready: **No**
 
 ## 验证
 
-按要求先提交再测试；之后将记录聚焦 Gradle/XML 结果。
+聚焦 Gradle 测试已通过。JUnit XML 记录：
+
+- `IrCompilerTest`：446 个测试，0 失败，0 错误，0 跳过。
+- `CodegenModeTest`：7 个测试，0 失败，0 错误，0 跳过。
+- 合计：453 个测试，0 失败，0 错误，0 跳过。
+
+通过的运行时测试为
+`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity`。
 
 可发布：**否（No）**
