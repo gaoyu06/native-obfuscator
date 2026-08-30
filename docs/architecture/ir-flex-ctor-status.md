@@ -1538,6 +1538,17 @@ Synthetic bytecode unit tests in
   stored exception.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
+- `rejectsUnprovenGetfieldChainInputsBeforeMutation` keeps direct or
+  extra-local uses of local 0, overwritten source or extra-local holders,
+  computed holders, mismatched field carriers, and `GETSTATIC` rejected. Every
+  constructor instruction object, generated buffer, hidden-method inventory,
+  and the singular `MethodContext.proxyMethod` remain unchanged.
+- `unprovenGetfieldChainInputShapesPassJava8JvmVerification` loads the
+  untouched classfile-52 overwritten-holder, computed-holder, and `GETSTATIC`
+  fixtures and constructs all three ordinary paths. These remain conservative
+  rejects rather than admissions. Direct and extra-local reads from
+  uninitialized `this`, plus the field-carrier mismatch, remain rejected but
+  are inherently not verifier-valid.
 - `admitsThreeImmediateReturnsWithNewArgChainInputs`,
   `rewrittenThreeImmediateNewArgChainInputsPassJvmVerification`, and
   `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity` admit only the
@@ -1577,9 +1588,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 471 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 480 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 478 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 487 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
