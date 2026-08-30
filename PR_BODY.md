@@ -13,9 +13,9 @@
 ## Rebase
 
 Rebased onto `origin/master` `87da519` (post-#265 fail-closed spanning-catch
-audit). Child XML on the pre-#265 base is stale and is not cited here. Parent
-will re-run the focused suite and report JUnit XML after rebase. The runtime
-test is `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`.
+audit). Parent-verified JUnit XML after rebase: `IrCompilerTest` 464/464 and
+`CodegenModeTest` 7/7, with zero failures, errors, or skips (total 471). The
+runtime test is `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`.
 
 Default `--codegen` remains `legacy`.
 
@@ -38,8 +38,8 @@ Ship-ready: **No**
 ## 变基
 
 已变基到 `origin/master` `87da519`（#265 跨后缀/覆盖链调用 catch 失败关闭
-审计之后）。变基前子代理 XML 已过期，此处不再引用。父代理将在变基后重跑
-聚焦套件并报告 JUnit XML。运行时测试为
+审计之后）。父代理变基后聚焦 JUnit XML：`IrCompilerTest` 464/464、
+`CodegenModeTest` 7/7，失败、错误和跳过均为 0（合计 471）。运行时测试为
 `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`。
 
 默认 `--codegen` 仍为 `legacy`。
