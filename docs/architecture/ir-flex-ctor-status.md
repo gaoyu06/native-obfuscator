@@ -1651,6 +1651,15 @@ Synthetic bytecode unit tests in
   paths. These remain conservative rejects rather than admissions. The raw
   uninitialized-reference and missing-`DUP` fixtures remain rejected but are
   inherently not verifier-valid.
+- `rejectsUnprovenWideNewChainInputsBeforeMutation` keeps isolated `NEW`
+  initializer arguments with long, float, or double carriers fail-closed.
+  Every constructor instruction object, generated buffer, hidden-method
+  inventory, and the singular `MethodContext.proxyMethod` remain unchanged.
+- `unprovenWideNewChainInputShapesPassJava8JvmVerification` loads untouched
+  classfile-52 `Date(J)`, `Point2D.Float(FF)`, and `Point2D.Double(DD)`
+  fixtures and constructs all three ordinary paths. These are verifier-valid
+  conservative rejects, not admissions; only the existing zero-through-five
+  int-family initializer-argument forms are admitted.
 - `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` loads the
   untouched classfile-52 constructor with `ICONST_0; POP` after its first
   chain call and constructs selectors `7`, `-7`, and `0`. This extra post-call
@@ -1690,9 +1699,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-This increment adds two fail-closed constructor `jsr`/`ret` tests on top of
-the #290 five-arg suite (`IrCompilerTest` 500 + `CodegenModeTest` 7). Parent
-re-runs the focused gate; child pre-rebase totals are discarded.
+This increment adds two fail-closed non-int-family `NEW` initializer tests on
+top of the #291 constructor `jsr`/`ret` audit. Parent re-runs the focused gate;
+child pre-rebase totals are discarded.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
