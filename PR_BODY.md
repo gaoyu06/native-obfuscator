@@ -25,7 +25,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Parent JUnit XML under `obfuscator/build/test-results/test/` is pending on this rebased branch. Child pre-rebase totals are discarded.
+Parent JUnit XML under `obfuscator/build/test-results/test/`:
+
+- `IrCompilerTest`: 493 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 500 tests, 0 failures, 0 errors, 0 skipped.
+
+Cite `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`. Child pre-rebase totals are discarded.
 
 ### Readiness
 
@@ -60,7 +66,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本变基分支上的父级 `obfuscator/build/test-results/test/` JUnit XML 待跑。子代理变基前的汇总作废。
+父级 `obfuscator/build/test-results/test/` JUnit XML 汇总：
+
+- `IrCompilerTest`：493 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：500 个测试，0 个失败，0 个错误，0 个跳过。
+
+引用 `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`。子代理变基前的汇总作废。
 
 ### 就绪状态
 
