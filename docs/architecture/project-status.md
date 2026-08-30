@@ -1,14 +1,10 @@
 # Project status on master / master 现状
 
-Last updated after isolated two-arg `NEW`
-[#281](https://github.com/gaoyu06/native-obfuscator/pull/281)
-(parent XML 494/494 including
-`threeImmediateNewTwoArgChainInputsCompileAndRunWithJavaParity`;
-three-or-more initializer arguments and other unproven `NEW` forms
-remain reject;
-[#279](https://github.com/gaoyu06/native-obfuscator/pull/279)
-remains the latest leftover inventory remasurement on post-#278
-`27414d0`). Active process:
+Last updated after leftover inventory remasurement
+[#282](https://github.com/gaoyu06/native-obfuscator/pull/282)
+(measurement only on post-[#281](https://github.com/gaoyu06/native-obfuscator/pull/281)
+`c9e4d6e`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -629,6 +625,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#278 leftover inventory (#279) | Measurement only on `27414d0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed post-call audit (#280) | 491 tests (`IrCompilerTest` 484 + `CodegenModeTest` 7). Parent re-ran 491/491 including `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` | Post-call leftover remains reject |
 | Isolated two-arg `NEW` chain inputs (#281) | 494 tests (`IrCompilerTest` 487 + `CodegenModeTest` 7). Parent re-ran 494/494 including `threeImmediateNewTwoArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-#281 leftover inventory (#282) | Measurement only on `c9e4d6e`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -740,9 +737,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#279](https://github.com/gaoyu06/native-obfuscator/pull/279),
-  measured on post-#278 `27414d0`) observed 0 leftovers; that is not
-  coverage-complete. #276 remains the earlier post-#275 snapshot.
+  ([#282](https://github.com/gaoyu06/native-obfuscator/pull/282),
+  measured on post-#281 `c9e4d6e`) observed 0 leftovers; that is not
+  coverage-complete. #279 remains the earlier post-#278 snapshot.
+  #276 remains the earlier post-#275 snapshot.
   #273 remains the earlier post-#272 snapshot.
   #270 remains the earlier post-#269 snapshot.
   #264 remains the earlier post-#263 snapshot.
@@ -760,9 +758,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #281
-  (isolated two-arg `NEW`). /
-  落地 #281 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #282
+  (leftover inventory remasurement on post-#281 master). /
+  落地 #282 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
