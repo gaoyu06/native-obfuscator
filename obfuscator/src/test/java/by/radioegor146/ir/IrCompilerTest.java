@@ -7020,6 +7020,40 @@ public class IrCompilerTest {
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.output.toString().isEmpty(), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification()
+            throws Exception {
+        // Overwriting uninitialized this with ACONST_NULL; ASTORE 0 is
+        // inherently verifier-invalid, so that shape remains covered only by
+        // reject-before-mutation checks. The post-call extra-work shape is
+        // valid classfile-52 bytecode and is checked without the IR transform.
+        ClassNode base =
+                multipleSuperBase("example/VerifiedRejectedPostCallBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedRejectedPostCall", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsConstructorWithShape(
+                base.name, "post-call"));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        Class<?> verified = loader.define(writeClass(owner));
+
+        for (int selector : new int[]{7, -7, 0}) {
+            Object instance = verified.getConstructor(int.class)
+                    .newInstance(selector);
+            int expectedMagnitude = selector == 0 ? 0 : 7;
+            assertEquals(expectedMagnitude,
+                    verified.getField("magnitude").getInt(instance),
+                    "post-call selector " + selector);
         }
     }
 
