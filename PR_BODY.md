@@ -13,7 +13,9 @@
 ### Validation
 
 - Annotation invariant: 622 `@Test` annotations = 622 public test methods.
-- Focused child gate: pending. The parent will rerun the focused gate and discard child XML.
+- Focused child gate passed: `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`.
+- Child XML: 629 tests total (622 `IrCompilerTest` + 7 `CodegenModeTest`), with 0 failures, 0 errors, and 0 skipped tests.
+- The parent will rerun the focused gate and discard this child XML.
 
 ### Release status
 
@@ -33,7 +35,9 @@
 ### 验证
 
 - 注解不变量：622 个 `@Test` 注解 = 622 个 public 测试方法。
-- 子代理聚焦门禁：待运行。父代理会重新运行聚焦门禁，并丢弃子代理 XML。
+- 子代理聚焦门禁已通过：`CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`。
+- 子代理 XML：共 629 个测试（622 个 `IrCompilerTest` + 7 个 `CodegenModeTest`），0 个失败、0 个错误、0 个跳过。
+- 父代理会重新运行聚焦门禁，并丢弃本次子代理 XML。
 
 ### 发布状态
 
