@@ -6,6 +6,7 @@ import by.radioegor146.interpreter.InterpreterMethodProcessor;
 import by.radioegor146.ir.IrMethodCompiler;
 import by.radioegor146.ir.UnsupportedIrConstructException;
 import by.radioegor146.ir.emit.MethodShellEmitter;
+import by.radioegor146.ir.frontend.JsrRetInliner;
 import by.radioegor146.source.CMakeFilesBuilder;
 import by.radioegor146.source.ClassSourceBuilder;
 import by.radioegor146.source.MainSourceBuilder;
@@ -346,11 +347,31 @@ public class NativeObfuscator {
 
                     logger.info("Preprocessing {}", rawClassNode.name);
 
-                    rawClassNode.methods.stream()
+                    List<MethodNode> methodsToPreprocess =
+                            rawClassNode.methods.stream()
                             .filter(method -> MethodProcessor.shouldProcess(
                                     method, selectedCodegen))
                             .filter(methodNode -> classMethodFilter.shouldProcess(rawClassNode, methodNode))
-                            .forEach(methodNode -> PreprocessorRunner.preprocess(rawClassNode, methodNode, platform));
+                            .collect(Collectors.toList());
+                    if (selectedCodegen == CodegenMode.IR) {
+                        List<MethodNode> preparedMethods =
+                                new ArrayList<>(methodsToPreprocess.size());
+                        for (MethodNode method : methodsToPreprocess) {
+                            preparedMethods.add(
+                                    JsrRetInliner.prepareForIr(
+                                            rawClassNode, method));
+                        }
+                        for (int i = 0; i < methodsToPreprocess.size(); i++) {
+                            MethodNode prepared = preparedMethods.get(i);
+                            if (prepared != methodsToPreprocess.get(i)) {
+                                JsrRetInliner.installCode(
+                                        methodsToPreprocess.get(i), prepared);
+                            }
+                        }
+                    }
+                    methodsToPreprocess.forEach(methodNode ->
+                            PreprocessorRunner.preprocess(
+                                    rawClassNode, methodNode, platform));
 
                     ClassWriter preprocessorClassWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
                     rawClassNode.accept(preprocessorClassWriter);
@@ -407,8 +428,11 @@ public class NativeObfuscator {
                                                         + "leaving constructor bytecode unchanged",
                                                 classNode.name, method.name, method.desc,
                                                 ex.getMessage());
-                                        classNode.methods.set(i, readOriginalMethod(
-                                                src, method.name, method.desc));
+                                        MethodNode original = readOriginalMethod(
+                                                src, method.name, method.desc);
+                                        classNode.methods.set(i,
+                                                JsrRetInliner.prepareForIr(
+                                                        classNode, original));
                                         continue;
                                     }
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
