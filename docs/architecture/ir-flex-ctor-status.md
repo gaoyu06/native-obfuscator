@@ -1583,16 +1583,23 @@ Synthetic bytecode unit tests in
   then constructs all three ordinary paths. These remain conservative rejects
   rather than admissions. The raw uninitialized-reference and missing-`DUP`
   fixtures remain rejected but are inherently not verifier-valid.
+- `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` loads the
+  untouched classfile-52 constructor with `ICONST_0; POP` after its first
+  chain call and constructs selectors `7`, `-7`, and `0`. This extra post-call
+  work remains a conservative reject. The `ACONST_NULL; ASTORE 0` fixture also
+  remains rejected before mutation, but cannot participate in a successful
+  JVM load because it overwrites uninitialized `this`; this is distinct from
+  the admitted identity-preserving `ALOAD 0; DUP; ASTORE 0` form.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
   seventeen-level nested binary input,
   extra-local `IDIV`/`IREM` operands, an inner `IDIV` tree containing an
-  extra-local or static-invoke operand, a rewritten `ASTORE 0` receiver, a
-  standalone-`GOTO` suffix, a zero-call return, and skip-super paths before
-  mutation. Other multi-call negatives still cover mixed or spanning
-  try/catch tables, a table covering a chain call, and a path that executes two
-  chain calls. Existing prefix-to-suffix, suffix-to-prefix, and conditionally
-  assigned extra-local negatives remain.
+  extra-local or static-invoke operand, a rewritten `ASTORE 0` receiver,
+  post-call extra work, a standalone-`GOTO` suffix, a zero-call return, and
+  skip-super paths before mutation. Other multi-call negatives still cover
+  mixed or spanning try/catch tables, a table covering a chain call, and a
+  path that executes two chain calls. Existing prefix-to-suffix,
+  suffix-to-prefix, and conditionally assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
 
 The focused gate was executed with:
