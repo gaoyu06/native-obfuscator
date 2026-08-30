@@ -14,7 +14,9 @@ Ship-ready: **No**
 ### Tests
 
 - Added focused admission, rewritten JVM-verification, and CMake/g++ JNI Java-parity coverage for all three long shifts.
-- Required Gradle verification: pending.
+- Required Gradle verification passed:
+  - `IrCompilerTest`: 387 tests, 0 skipped, 0 failures, 0 errors.
+  - `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors.
 
 ### Scope
 
@@ -33,7 +35,9 @@ Ship-ready: **No**
 ### 测试
 
 - 已为三种 long 位移增加准入、重写后 JVM 验证、CMake/g++ JNI Java 一致性测试。
-- 必需的 Gradle 验证：待运行。
+- 必需的 Gradle 验证已通过：
+  - `IrCompilerTest`：387 项，0 跳过，0 失败，0 错误。
+  - `CodegenModeTest`：7 项，0 跳过，0 失败，0 错误。
 
 ### 范围
 
