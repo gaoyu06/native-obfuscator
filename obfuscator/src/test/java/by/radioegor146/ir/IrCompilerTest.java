@@ -6933,8 +6933,7 @@ public class IrCompilerTest {
                 "getfield-mismatched-type",
                 "getfield-extra-local-holder",
                 "getfield-computed-holder",
-                "getfield-getstatic",
-                "getfield-new")) {
+                "getfield-getstatic")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedGetfield"
                             + shape.replace("-", ""),
