@@ -1,15 +1,15 @@
-# IR leftover inventory on post-#320 master
+# IR leftover inventory on post-#322 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `73c279e6ac8fa16d9ab64bcf491ec18de01c6b92`
-- Measurement commit: `73c279e6ac8fa16d9ab64bcf491ec18de01c6b92`
+- Measured compiler base (merge-base with `origin/master`): `ae1b8da1dbabb30585d52f84be3d5355735787eb`
+- Measurement commit: `ae1b8da1dbabb30585d52f84be3d5355735787eb`
 - This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-#320 leftover-docs tree after an extra-local `int` was admitted as the third argument of a three-argument `NEW`.
-- This post-#320 remeasurement supersedes #318 on `b35fa0b1d219e2204c1c0316dfe4720a3970a6a2` (post-#317). #315 remains the earlier post-#314 snapshot; #310 remains the earlier post-#309 snapshot.
+- This is the post-#322 leftover-docs tree after extra-local `int` values were admitted as all three `Color` `NEW` arguments.
+- This post-#322 remeasurement supersedes #321 on `73c279e6ac8fa16d9ab64bcf491ec18de01c6b92` (post-#320). #318 remains the earlier post-#317 snapshot; #315 remains the earlier post-#314 snapshot.
 - Ship-ready: **No**.
 - Admitted: **No** (measurement only).
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
