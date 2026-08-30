@@ -1,14 +1,14 @@
-# IR leftover inventory on post-#269 master
+# IR leftover inventory on post-#272 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `bca314540a4ded96feb2a670d4fac35651bd70fd`
-- Measurement commit: `bca314540a4ded96feb2a670d4fac35651bd70fd`
+- Measured compiler base (merge-base with `origin/master`): `e1b07a860c3e50ce2ee48c605af069a37a195388`
+- Measurement commit: `e1b07a860c3e50ce2ee48c605af069a37a195388`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing the `--codegen` default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This post-#269 remeasurement supersedes #264 on `c0304febc41f1c665fb42ce0947f38bf0c29947a`; #207 remains the earlier post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
+- This post-#272 remeasurement supersedes #270 on `bca314540a4ded96feb2a670d4fac35651bd70fd`; #264 remains the earlier post-#263 snapshot at `c0304febc41f1c665fb42ce0947f38bf0c29947a`; #207 remains the earlier post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
