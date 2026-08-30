@@ -2213,6 +2213,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArguments.put(declaredLocal, argument);
             declaredLocal += argument.getSize();
         }
+        Set<Integer> prefixFloatCopies =
+                provenPrefixFloatCopyLocals(
+                        constructor, callIndexes, declaredArguments);
         Set<Integer> prefixDoubleCopies =
                 provenPrefixDoubleCopyLocals(
                         constructor, callIndexes, declaredArguments);
@@ -2226,7 +2229,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             for (int i = callArguments.length - 1; i >= 0; i--) {
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
-                        declaredArguments, prefixDoubleCopies);
+                        declaredArguments, prefixFloatCopies,
+                        prefixDoubleCopies);
                 if (previousInput == null) {
                     return false;
                 }
@@ -2247,6 +2251,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixFloatCopies,
             Set<Integer> prefixDoubleCopies) {
         if (inputIndex < 0) {
             return null;
@@ -2264,6 +2269,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.FLOAT) {
             return previousProvenFloatChainOperand(
                     constructor, inputIndex, declaredArguments,
+                    prefixFloatCopies,
                     MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS);
         }
         if (expected.getSort() == Type.DOUBLE) {
@@ -2392,6 +2398,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenFloatChainOperand(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixFloatCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
             return null;
@@ -2404,7 +2411,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && opcode != Opcodes.FDIV
                 && opcode != Opcodes.FREM) {
             return previousProvenFloatChainLeaf(
-                    constructor, inputIndex, declaredArguments);
+                    constructor, inputIndex, declaredArguments,
+                    prefixFloatCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2412,22 +2420,26 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         Integer beforeRight = previousProvenFloatChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, remainingBinaryLevels - 1);
+                declaredArguments, prefixFloatCopies,
+                remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenFloatChainOperand(
                 constructor, beforeRight, declaredArguments,
+                prefixFloatCopies,
                 remainingBinaryLevels - 1);
     }
 
     /**
-     * Proves one float leaf: a declared FLOAD, FCONST_0/1/2, or an LDC whose
-     * constant is a Float, or one FNEG over a direct declared FLOAD.
+     * Proves one float leaf: a declared FLOAD, one proven prefix copy of a
+     * declared FLOAD, FCONST_0/1/2, an LDC whose constant is a Float, or one
+     * FNEG over a direct declared FLOAD.
      */
     private static Integer previousProvenFloatChainLeaf(
             MethodNode constructor, int inputIndex,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixFloatCopies) {
         if (inputIndex < 0) {
             return null;
         }
@@ -2435,6 +2447,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (isDirectDeclaredArgumentLoad(
                 input, Type.FLOAT_TYPE, declaredArguments)
                 || isFloatConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (input.getOpcode() == Opcodes.FLOAD
+                && !isDirectDeclaredArgumentLoad(
+                input, Type.FLOAT_TYPE, declaredArguments)
+                && prefixFloatCopies.contains(
+                ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         if (input.getOpcode() != Opcodes.FNEG) {
@@ -2449,6 +2468,82 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    /**
+     * Finds extra float locals whose only write before the final chain call is
+     * one pre-first-call FSTORE directly fed by a declared FLOAD. Requiring the
+     * resulting float state at every chain call proves that the store
+     * dominates all selected paths. The scan deliberately stops at the final
+     * chain call; suffix extra-local forwarding is a separate proof.
+     */
+    private static Set<Integer> provenPrefixFloatCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Set<Integer> proven = new HashSet<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.FSTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal
+                    || sourceIndex < 0
+                    || !isDirectDeclaredArgumentLoad(
+                    constructor.instructions.get(sourceIndex),
+                    Type.FLOAT_TYPE, declaredArguments)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.FLOAT_TYPE)
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.FLOAT_TYPE)) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_FLOAT) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.add(local);
+            }
+        }
+        return proven;
     }
 
     private static boolean isFloatConstant(AbstractInsnNode input) {
