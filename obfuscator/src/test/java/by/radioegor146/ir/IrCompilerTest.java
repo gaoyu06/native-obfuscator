@@ -3526,6 +3526,53 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalIntInegChainInputs() {
+        ClassNode base = multipleSuperBase(
+                "example/MultiSuperExtraLocalIntInegBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeExtraLocalIntInegMultiReturn", base.name);
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "int-ineg-extra-local");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INEG));
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(constructor, Opcodes.ISTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ILOAD), 2));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithLaddOfProvenChainInputs() {
         ClassNode owner = constructorOwner(
                 "example/ThreeLongComputedMultiReturn",
@@ -5569,6 +5616,43 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsUnprovenIntNegatedChainInputsBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "int-ineg-constant", "int-double-ineg",
+                "int-ineg-computed")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedIntNegated"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
     public void rejectsUnprovenReferenceComputedIndexBeforeMutation() {
         ClassNode owner = constructorOwner(
                 "example/RejectedReferenceComputedIndex",
@@ -6995,6 +7079,65 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.IADD));
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(constructor, Opcodes.ISTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ILOAD), 2));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraLocalIntInegSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperBase(
+                        "example/VerifiedExtraLocalIntInegMultiReturnBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedExtraLocalIntInegMultiReturn", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name, "int-ineg-extra-local");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector :
+                new int[]{7, -7, 0, Integer.MIN_VALUE}) {
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INEG));
         assertEquals(Collections.singletonList(2),
                 variableIndexes(constructor, Opcodes.ISTORE));
         assertEquals(3, Collections.frequency(
@@ -12084,6 +12227,102 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local int multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local int negate runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local int negate runtime test");
+
+        String ownerName = "example/ExtraLocalIntInegMultiReturnRuntime";
+        String baseName =
+                "example/ExtraLocalIntInegMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-int-ineg-run");
+        Path inputJar = directory.resolve("extra-local-int-ineg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalIntInegReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local int negate multi-super Java run");
+        assertEquals(
+                "-11" + System.lineSeparator()
+                        + "22" + System.lineSeparator()
+                        + "0" + System.lineSeparator()
+                        + Integer.MIN_VALUE + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INEG));
+        assertEquals(Collections.singletonList(2),
+                variableIndexes(transformedConstructor, Opcodes.ISTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.ILOAD), 2));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local int negate CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local int negate CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local int negate native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local int negate multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -22058,6 +22297,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeExtraLocalIntInegReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "int-ineg-extra-local"));
+        owner.methods.add(multipleSuperThreeInegReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeReferenceComputedReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -27215,7 +27483,11 @@ public class IrCompilerTest {
             String superName, String shape) {
         String constructorDescriptor;
         String callDescriptor;
-        if ("int-extra-local".equals(shape)) {
+        if ("int-extra-local".equals(shape)
+                || "int-ineg-constant".equals(shape)
+                || "int-double-ineg".equals(shape)
+                || "int-ineg-extra-local".equals(shape)
+                || "int-ineg-computed".equals(shape)) {
             constructorDescriptor = "(I)V";
             callDescriptor = "(I)V";
         } else if (shape.startsWith("long-")) {
@@ -27242,7 +27514,8 @@ public class IrCompilerTest {
                 "<init>", constructorDescriptor, null, null);
         LabelNode negative = new LabelNode();
         LabelNode zero = new LabelNode();
-        if ("int-extra-local".equals(shape)) {
+        if ("int-extra-local".equals(shape)
+                || "int-ineg-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
             method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
         } else if ("long-extra-local".equals(shape)
@@ -27312,6 +27585,25 @@ public class IrCompilerTest {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(new InsnNode(Opcodes.IADD));
+        } else if ("int-ineg-constant".equals(shape)
+                || "int-double-ineg".equals(shape)
+                || "int-ineg-extra-local".equals(shape)
+                || "int-ineg-computed".equals(shape)) {
+            if ("int-ineg-constant".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+            } else {
+                method.instructions.add(new VarInsnNode(
+                        Opcodes.ILOAD,
+                        "int-ineg-extra-local".equals(shape) ? 2 : 1));
+                if ("int-ineg-computed".equals(shape)) {
+                    method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+                    method.instructions.add(new InsnNode(Opcodes.IADD));
+                }
+            }
+            method.instructions.add(new InsnNode(Opcodes.INEG));
+            if ("int-double-ineg".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.INEG));
+            }
         } else if ("long-binary".equals(shape)
                 || "long-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(
@@ -28480,6 +28772,26 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode multipleSuperThreeInegReturnsMain(
+            String owner, String superName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperPrint(
+                method, owner, 11, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, -22, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, 0, superName, "magnitude");
+        appendMultipleSuperPrint(
+                method, owner, Integer.MIN_VALUE,
+                superName, "magnitude");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 4;
+        return method;
+    }
+
     private MethodNode multipleSuperThreeReferenceComputedReturnsMain(
             String owner, String superName) {
         MethodNode method = new MethodNode(
@@ -28832,7 +29144,11 @@ public class IrCompilerTest {
                 "out", "Ljava/io/PrintStream;"));
         method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
         method.instructions.add(new InsnNode(Opcodes.DUP));
-        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        } else {
+            method.instructions.add(new LdcInsnNode(value));
+        }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, owner, "<init>", "(I)V", false));
         method.instructions.add(new FieldInsnNode(

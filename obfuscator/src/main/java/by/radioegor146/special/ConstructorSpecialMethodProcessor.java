@@ -3023,7 +3023,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves one non-recursive int-family leaf: a declared load, one proven
      * prefix copy of a declared load, a constant, or one INEG over a direct
-     * declared load.
+     * declared load or its proven prefix copy.
      */
     private static Integer previousProvenIntChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -3049,10 +3049,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int operandIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (operandIndex < 0
-                || !isDirectDeclaredIntArgumentLoad(
-                constructor.instructions.get(operandIndex),
-                declaredArguments)) {
+        if (operandIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode operand =
+                constructor.instructions.get(operandIndex);
+        if (!isDirectDeclaredIntArgumentLoad(
+                operand, declaredArguments)
+                && (operand.getOpcode() != Opcodes.ILOAD
+                || !prefixIntCopies.contains(
+                ((VarInsnNode) operand).var))) {
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
