@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #250 (sixteen-level binary budget)
+   `master` after #251 (extra-local array `AALOAD` sources)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -63,7 +63,8 @@ The goal is complete only when all of the following are true:
    int binaries, seventeen-or-more nested long
    binaries, seventeen-or-more nested float binaries,
    seventeen-or-more nested double binaries,
-   extra-local array `AALOAD` sources, other `*ALOAD` families,
+   extra-local `IALOAD` arrays, extra-local int as `AALOAD`/`IALOAD`
+   index, other `*ALOAD` families,
    or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
