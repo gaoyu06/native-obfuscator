@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing isolated no-arg `NEW` chain inputs
-[#268](https://github.com/gaoyu06/native-obfuscator/pull/268)
-(parent re-ran 477/477: 470 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity`)
-on the post-[#267](https://github.com/gaoyu06/native-obfuscator/pull/267)
-fail-closed nine-path audit. Active process:
+Last updated after landing the fail-closed skip-super audit
+[#269](https://github.com/gaoyu06/native-obfuscator/pull/269)
+(parent re-ran 478/478: 471 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `skipSuperConstructorShapesPassJava8JvmVerification`)
+on the post-[#268](https://github.com/gaoyu06/native-obfuscator/pull/268)
+isolated no-arg `NEW` landing. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -386,6 +386,11 @@ legacy。不能当成 JDK 支持矩阵。
   argument. Uninitialized `NEW`, `NEW` with initializer arguments,
   mismatched allocation types, and array-allocation opcodes stay
   rejected.
+  [#269](https://github.com/gaoyu06/native-obfuscator/pull/269) keeps
+  skip-super constructor paths fail-closed, including verifier-valid
+  Java 8 fixtures whose ordinary paths construct normally while their
+  legal pre-super exceptional paths throw without a chain call. No new
+  skip-super shape is admitted.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -394,7 +399,8 @@ legacy。不能当成 JDK 支持矩阵。
   seventeen-or-more nested double binaries,
   unproven `NEW` and `GETFIELD` inputs,
   more than eight distinct paths),
-  and extras still unassigned on a bridge-taking path are still
+  extras still unassigned on a bridge-taking path,
+  and skip-super constructors are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
   E2E.
@@ -594,6 +600,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Declared-argument `GETFIELD` chain inputs (#266) | 471 tests (`IrCompilerTest` 464 + `CodegenModeTest` 7). Parent re-ran 471/471 including `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Fail-closed nine-path audit (#267) | 473 tests (`IrCompilerTest` 466 + `CodegenModeTest` 7). Parent re-ran 473/473 including `ninePathIdDistinctSuffixesPassJvmVerification` | Nine-path leftover remains reject |
 | Isolated no-arg `NEW` chain inputs (#268) | 477 tests (`IrCompilerTest` 470 + `CodegenModeTest` 7). Parent re-ran 477/477 including `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Fail-closed skip-super audit (#269) | 478 tests (`IrCompilerTest` 471 + `CodegenModeTest` 7). Parent re-ran 478/478 including `skipSuperConstructorShapesPassJava8JvmVerification` | Skip-super leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -649,7 +656,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   extras still unassigned
   on a bridge-taking path,
   unproven `NEW` and `GETFIELD` inputs,
-  more than eight distinct paths).
+  more than eight distinct paths,
+  skip-super constructors).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
   subroutines are admitted by #241. Extra-local long shift values and
   `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
@@ -685,6 +693,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Unproven `NEW` and `GETFIELD` forms stay reject-before-mutation.
   More than eight path-id suffixes stay reject-before-mutation; #267
   strengthens those fail-closed tests. The eight-path cap is unchanged.
+  Skip-super constructors stay reject-before-mutation; #269
+  strengthens those fail-closed tests. Do not admit skip-super.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#264](https://github.com/gaoyu06/native-obfuscator/pull/264),
   measured on post-#263 `c0304fe`) observed 0 leftovers; that is not
@@ -702,9 +712,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #268
-  (isolated no-arg `NEW`). /
-  落地 #268 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #269
+  (fail-closed skip-super audit). /
+  落地 #269 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #268 (isolated no-arg `NEW`)
+   `master` after #269 (fail-closed skip-super audit)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -68,7 +68,8 @@ The goal is complete only when all of the following are true:
    overwritten holders, mismatched field types),
    or more than eight
    distinct paths, still rejected after #267, extras still unassigned on a bridge-taking
-   path, still rejected after #263),
+   path, still rejected after #263,
+   skip-super constructors, still rejected after #269),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
    `jsr` / `ret` (well-formed subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
