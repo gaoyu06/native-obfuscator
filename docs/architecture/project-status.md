@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing the fail-closed unproven `NEW` audit
-[#274](https://github.com/gaoyu06/native-obfuscator/pull/274)
-(parent re-ran 483/483: 476 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `unprovenNewChainInputShapesPassJava8JvmVerification`)
-on the post-[#273](https://github.com/gaoyu06/native-obfuscator/pull/273)
-leftover inventory remasurement. Active process:
+Last updated after landing primitive extra-local `GETFIELD` holders
+[#275](https://github.com/gaoyu06/native-obfuscator/pull/275)
+(parent re-ran 486/486: 479 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateGetfieldExtraLocalPrimitiveHoldersCompileAndRunWithJavaParity`)
+on the post-[#274](https://github.com/gaoyu06/native-obfuscator/pull/274)
+fail-closed unproven `NEW` audit. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -377,9 +377,12 @@ legacy。不能当成 JDK 支持矩阵。
   carrier matches the chain argument.
   [#272](https://github.com/gaoyu06/native-obfuscator/pull/272) also
   admits that leaf when `n` is a proven prefix extra-local copy of such
-  a declared object argument. `GETFIELD` on local 0, copies of `this`,
-  overwritten extra or source holders, computed holders, and mismatched
-  field types stay rejected.
+  a declared object argument.
+  [#275](https://github.com/gaoyu06/native-obfuscator/pull/275) covers
+  the same extra-local holder for primitive field carriers `I`, `J`,
+  `F`, and `D`. `GETFIELD` on local 0, copies of `this`, overwritten
+  extra or source holders, computed holders, and mismatched field types
+  stay rejected.
   [#267](https://github.com/gaoyu06/native-obfuscator/pull/267) keeps
   nine or more path-id distinct suffixes fail-closed
   (`MAX_DISTINCT_SUFFIXES` remains 8). No new path-count is admitted.
@@ -616,6 +619,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local `GETFIELD` holders (#272) | 482 tests (`IrCompilerTest` 475 + `CodegenModeTest` 7). Parent re-ran 482/482 including `threeImmediateGetfieldExtraLocalHolderCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#272 leftover inventory (#273) | Measurement only on `e1b07a8`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed unproven-`NEW` audit (#274) | 483 tests (`IrCompilerTest` 476 + `CodegenModeTest` 7). Parent re-ran 483/483 including `unprovenNewChainInputShapesPassJava8JvmVerification` | Unproven `NEW` leftover remains reject |
+| Primitive extra-local `GETFIELD` holders (#275) | 486 tests (`IrCompilerTest` 479 + `CodegenModeTest` 7). Parent re-ran 486/486 including `threeImmediateGetfieldExtraLocalPrimitiveHoldersCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -705,6 +709,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   reject-before-mutation; #265 strengthens those fail-closed tests.
   Declared-argument `GETFIELD` chain inputs are admitted by #266.
   Extra-local proven object-copy `GETFIELD` holders are admitted by #272.
+  Primitive-carrier extra-local `GETFIELD` holders are admitted by #275.
   Isolated no-arg `NEW` chain inputs are admitted by #268.
   Unproven `NEW` forms stay reject-before-mutation; #274
   strengthens those fail-closed tests. Do not admit `NEW` with
@@ -736,9 +741,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #274
-  (fail-closed unproven `NEW` audit). /
-  落地 #274 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #275
+  (primitive extra-local `GETFIELD`). /
+  落地 #275 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
