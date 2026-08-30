@@ -2580,7 +2580,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one non-recursive long leaf: a declared LLOAD, one proven prefix
-     * copy of a declared LLOAD, LCONST_0/1, an LDC whose constant is a Long, or
+     * copy of a declared LLOAD, LCONST_0/1, an LDC whose constant is a Long,
+     * one constant-indexed LALOAD from an unchanged declared long array, or
      * one LNEG over a direct declared LLOAD or its proven prefix copy.
      */
     private static Integer previousProvenLongChainLeaf(
@@ -2602,6 +2603,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && prefixLongCopies.contains(
                 ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
+                constructor, inputIndex, declaredArguments,
+                Opcodes.LALOAD, Type.getType("[J"));
+        if (beforeArrayLoad != null) {
+            return beforeArrayLoad;
         }
         if (input.getOpcode() != Opcodes.LNEG) {
             return null;
@@ -2753,7 +2760,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one float leaf: a declared FLOAD, one proven prefix copy of a
-     * declared FLOAD, FCONST_0/1/2, an LDC whose constant is a Float, or one
+     * declared FLOAD, FCONST_0/1/2, an LDC whose constant is a Float, one
+     * constant-indexed FALOAD from an unchanged declared float array, or one
      * FNEG over a direct declared FLOAD or its proven prefix copy.
      */
     private static Integer previousProvenFloatChainLeaf(
@@ -2775,6 +2783,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 && prefixFloatCopies.contains(
                 ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
+                constructor, inputIndex, declaredArguments,
+                Opcodes.FALOAD, Type.getType("[F"));
+        if (beforeArrayLoad != null) {
+            return beforeArrayLoad;
         }
         if (input.getOpcode() != Opcodes.FNEG) {
             return null;
@@ -2924,7 +2938,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves one double leaf: a declared DLOAD, one proven prefix copy of a
-     * declared DLOAD, DCONST_0/1, an LDC whose constant is a Double, or one
+     * declared DLOAD, DCONST_0/1, an LDC whose constant is a Double, one
+     * constant-indexed DALOAD from an unchanged declared double array, or one
      * DNEG over a direct declared DLOAD or its proven prefix copy.
      */
     private static Integer previousProvenDoubleChainLeaf(
@@ -2947,6 +2962,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        Integer beforeArrayLoad = previousProvenDeclaredArrayLoadLeaf(
+                constructor, inputIndex, declaredArguments,
+                Opcodes.DALOAD, Type.getType("[D"));
+        if (beforeArrayLoad != null) {
+            return beforeArrayLoad;
+        }
         if (input.getOpcode() != Opcodes.DNEG) {
             return null;
         }
@@ -2965,6 +2986,63 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    /**
+     * Proves the exact retained-prefix primitive computation
+     * {@code ALOAD declaredArray; constant; xALOAD}. Only a direct load of the
+     * exactly typed declared constructor argument is accepted: extra-local
+     * array copies and nonconstant indexes deliberately remain unsupported.
+     * The declared array must be unchanged and no preceding array store is
+     * accepted. The complete load remains JVM bytecode, preserving null,
+     * bounds, and category-two value behavior without reproducing it in native
+     * code.
+     */
+    private static Integer previousProvenDeclaredArrayLoadLeaf(
+            MethodNode constructor, int inputIndex,
+            Map<Integer, Type> declaredArguments,
+            int loadOpcode, Type requiredArrayType) {
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (input.getOpcode() != loadOpcode) {
+            return null;
+        }
+        int indexIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (indexIndex < 0
+                || !isIntFamilyConstant(
+                constructor.instructions.get(indexIndex))) {
+            return null;
+        }
+        int arrayIndex =
+                previousExecutableIndex(constructor, indexIndex - 1);
+        if (arrayIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode array = constructor.instructions.get(arrayIndex);
+        if (!(array instanceof VarInsnNode)
+                || array.getOpcode() != Opcodes.ALOAD) {
+            return null;
+        }
+        int arrayLocal = ((VarInsnNode) array).var;
+        Type declaredArray = declaredArguments.get(arrayLocal);
+        if (!requiredArrayType.equals(declaredArray)) {
+            return null;
+        }
+        for (int i = 0; i < inputIndex; i++) {
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(i);
+            Type stored = storeType(instruction);
+            if (i < arrayIndex && stored != null
+                    && localRangesOverlap(
+                    ((VarInsnNode) instruction).var, stored,
+                    arrayLocal, declaredArray)) {
+                return null;
+            }
+            if (isArrayStoreOpcode(instruction.getOpcode())) {
+                return null;
+            }
+        }
+        return previousExecutableIndex(constructor, arrayIndex - 1);
     }
 
     /**

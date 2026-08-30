@@ -105,9 +105,11 @@ The constructor split now covers these related prefix shapes:
   array argument or its proven prefix extra-local copy, whose index is a
   proven int-family constant or one single-instruction declared or
   proven-prefix-copy `ILOAD`, and whose declared immediate component
-  descriptor exactly matches the call argument descriptor). The complete
-  array-load tree stays in the retained bytecode prefix, so JVM null,
-  bounds, widening, and reference-array behavior remains
+  descriptor exactly matches the call argument descriptor); plus `LALOAD`,
+  `FALOAD`, and `DALOAD` leaves from unchanged directly loaded declared
+  `[J`, `[F`, and `[D` arguments at int-family constant indexes. The
+  complete array-load tree stays in the retained bytecode prefix, so JVM
+  null, bounds, widening, and reference-array behavior remains
   JVM-executed.
 
 ## Current rule
@@ -223,9 +225,11 @@ One additional family is reduced to that same shared-join form:
   leaf must be a matching declared-argument `LLOAD`, a prefix extra-local
   `LLOAD` with exactly one dominating overlapping write consisting of an
   `LSTORE` directly fed by a matching declared-argument `LLOAD`,
-  `LCONST_0`, `LCONST_1`, or `LDC` of `Long`, or one `LNEG` whose sole operand
-  is a matching declared-argument `LLOAD` or the same proven prefix extra-local
-  copy; an int-family count leaf uses the existing single-instruction int leaf
+  `LCONST_0`, `LCONST_1`, or `LDC` of `Long`, one `LALOAD` from an unchanged
+  directly loaded declared `[J` argument at an int-family constant index, or
+  one `LNEG` whose sole operand is a matching declared-argument `LLOAD` or the
+  same proven prefix extra-local copy; an int-family count leaf uses the
+  existing single-instruction int leaf
   proof: a declared-argument `ILOAD`, int-family constant, or proven prefix
   extra-local copy. A standalone `LNEG` leaf is admitted under the same
   declared-or-proven-copy restriction.
@@ -243,9 +247,11 @@ One additional family is reduced to that same shared-join form:
   `FSUB`, `FMUL`, `FDIV`, or `FREM` levels. A float leaf must be a matching
   declared-argument `FLOAD`, a prefix extra-local `FLOAD` with exactly one
   dominating `FSTORE` directly fed by a matching declared-argument `FLOAD`,
-  `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of `Float`, or one `FNEG` whose
-  sole operand is a matching declared-argument `FLOAD` or its proven prefix
-  extra-local copy. This proof has its own sixteen-level binary budget, which
+  `FCONST_0`, `FCONST_1`, `FCONST_2`, or `LDC` of `Float`, one `FALOAD` from
+  an unchanged directly loaded declared `[F` argument at an int-family
+  constant index, or one `FNEG` whose sole operand is a matching
+  declared-argument `FLOAD` or its proven prefix extra-local copy. This proof
+  has its own sixteen-level binary budget, which
   `FNEG` does not consume: seventeen-or-more nested float binaries, unproven or
   computed extra-local stores, `FNEG` of a constant, double `FNEG`, and `FNEG`
   of an unproven extra-local or computed value remain rejected, as do
@@ -257,9 +263,10 @@ One additional family is reduced to that same shared-join form:
   `DSUB`, `DMUL`, `DDIV`, or `DREM` levels. A double leaf must be a matching
   declared-argument `DLOAD`, a prefix extra-local `DLOAD` with exactly one
   dominating `DSTORE` directly fed by a matching declared-argument `DLOAD`,
-  `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or one `DNEG` whose sole
-  operand is a matching declared-argument `DLOAD` or its proven prefix
-  extra-local copy.
+  `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, one `DALOAD` from an unchanged
+  directly loaded declared `[D` argument at an int-family constant index, or
+  one `DNEG` whose sole operand is a matching declared-argument `DLOAD` or its
+  proven prefix extra-local copy.
   This proof has its own sixteen-level binary budget, which `DNEG` does not
   consume: seventeen-or-more nested double binaries, unproven or computed
   extra-local stores, `DNEG` of a constant, double `DNEG`, and `DNEG` of an
@@ -1155,6 +1162,17 @@ Synthetic bytecode unit tests in
   preserving JVM null, bounds, and primitive widening behavior. Binary or
   negated indexes and computed or overwritten extra-local copies remain
   rejected before constructor or hidden-method mutation.
+- `admitsThreeImmediateReturnsWithWideArrayLoadChainInputs`,
+  `rewrittenThreeImmediateWideArrayLoadsPassJvmVerification`, and
+  `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` cover
+  constant-index `LALOAD`, `FALOAD`, and `DALOAD` leaves from unchanged direct
+  declared `[J`, `[F`, and `[D` arguments, including leaves under the existing
+  sixteen-level binary budget. The complete loads stay in retained JVM
+  bytecode so null, bounds, and category-two behavior remain JVM-executed.
+  `rejectsUnprovenWideArrayLoadChainInputsBeforeMutation` keeps computed or
+  extra-local indexes, extra-local array sources, opcode/type mismatches,
+  overwritten arrays, prior array stores, and seventeen-level trees rejected
+  before constructor or hidden-method mutation.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
