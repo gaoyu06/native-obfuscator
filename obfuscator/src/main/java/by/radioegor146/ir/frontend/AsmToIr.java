@@ -55,6 +55,7 @@ public final class AsmToIr {
 
     public IrMethod build(String owner, String dynamicConstantResolverOwner,
                           MethodNode method) {
+        method = JsrRetInliner.inline(method);
         method = lowerPrimitiveClassConstants(method);
         method = DynamicConstantSupport.lower(
                 owner, dynamicConstantResolverOwner, method);

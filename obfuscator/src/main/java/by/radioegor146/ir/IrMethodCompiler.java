@@ -11,6 +11,7 @@ import by.radioegor146.ir.emit.IrCppEmitter;
 import by.radioegor146.ir.emit.MethodShellEmitter;
 import by.radioegor146.ir.frontend.AsmToIr;
 import by.radioegor146.ir.frontend.DynamicConstantSupport;
+import by.radioegor146.ir.frontend.JsrRetInliner;
 import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.MethodNode;
@@ -48,15 +49,17 @@ public final class IrMethodCompiler {
     }
 
     public void processMethod(MethodContext context, IrLoweringMode loweringMode) {
-        MethodNode bytecodeBody = context.method;
+        MethodNode workingMethod =
+                JsrRetInliner.prepareForIr(context.clazz, context.method);
+        MethodNode bytecodeBody = workingMethod;
         if ("<init>".equals(context.method.name)) {
             // Validate the split before the general frontend so path-sensitive
             // prefix-local diagnostics are reported before any C++ or bridge
             // state is created. The emitted helper starts immediately after the
             // mandatory this/super call retained in bytecode.
             bytecodeBody = ConstructorSpecialMethodProcessor.createNativeBody(
-                    context.clazz, context.method);
-            frontend.build(context.clazz.name, context.method);
+                    context.clazz, workingMethod);
+            frontend.build(context.clazz.name, workingMethod);
         }
         String dynamicConstantResolverOwner =
                 DynamicConstantSupport.validateResolverInstallation(
@@ -76,6 +79,10 @@ public final class IrMethodCompiler {
                 context.clazz, bytecodeBody,
                 context.obfuscator.getHiddenMethodsPool());
 
+        if ("<init>".equals(context.method.name)
+                && workingMethod != context.method) {
+            JsrRetInliner.installCode(context.method, workingMethod);
+        }
         if (method.isSynchronizedMethod()) {
             // The IR body owns the method monitor explicitly. Clear the JVM
             // access flag only after frontend and lowering validation succeed.

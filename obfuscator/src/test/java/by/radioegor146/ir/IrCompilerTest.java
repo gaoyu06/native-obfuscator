@@ -204,6 +204,74 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsJsrRetSubroutineThroughIr() {
+        MethodNode method = jsrRetSubroutineMethod("once", false);
+        IrMethod ir = frontend.build("example/JsrRet", method);
+
+        assertTrue(ir.toString().contains(" = iadd "));
+        assertTrue(ir.toString().contains("return "));
+        assertTrue(realOpcodes(method).contains(Opcodes.JSR));
+        assertTrue(realOpcodes(method).contains(Opcodes.RET));
+    }
+
+    @Test
+    public void admitsTwiceCalledJsrRetSubroutineThroughIr() {
+        IrMethod ir = frontend.build(
+                "example/JsrRet", jsrRetSubroutineMethod("twice", true));
+
+        assertEquals(2, countOccurrences(ir.toString(), " = iadd "));
+        assertTrue(ir.toString().contains("return "));
+    }
+
+    @Test
+    public void admitsConstructorPrefixJsrRetWithOneHiddenBridge() {
+        ClassNode owner = constructorOwner(
+                "example/JsrRetConstructor", "java/lang/Object");
+        owner.version = Opcodes.V1_6;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        MethodNode constructor = constructorWithPrefixJsrRet(owner.name);
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertFalse(realOpcodes(constructor).contains(Opcodes.JSR));
+        assertFalse(realOpcodes(constructor).contains(Opcodes.RET));
+        assertEquals(1, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertTrue(context.proxyMethod != null);
+        assertEquals("(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rejectsMalformedJsrRetBeforeMutation() {
+        MethodNode method = malformedRetMethod();
+        AbstractInsnNode[] originalInstructions =
+                method.instructions.toArray();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, method, 0, owner(), 0);
+
+        UnsupportedIrConstructException error = assertThrows(
+                UnsupportedIrConstructException.class,
+                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
+
+        assertTrue(error.getMessage().contains(
+                "Malformed JSR/RET subroutine cannot be inlined"));
+        assertTrue(Arrays.equals(
+                originalInstructions, method.instructions.toArray()));
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+    }
+
+    @Test
     public void emitsWrappingSubtractAndMultiply() {
         String cpp = emitter.emitBody(frontend.build("example/Math", subMulMethod()));
 
@@ -5576,7 +5644,9 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
+        assertTrue(error.getMessage().contains(
+                "Malformed JSR/RET subroutine cannot be inlined"));
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
@@ -8893,6 +8963,86 @@ public class IrCompilerTest {
         prefixExtraLocalCompilesAndRunsWithJavaParity(
                 "ir-gapped-prefix-extra-run",
                 "example/FlexCtorGappedExtraLocal", true);
+    }
+
+    @Test
+    public void jsrRetSubroutineCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the JSR/RET runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the JSR/RET runtime test");
+
+        String ownerName = "example/JsrRetRuntime";
+        Path directory = Files.createTempDirectory("ir-jsr-ret-run");
+        Path inputJar = directory.resolve("jsr-ret.jar");
+        Path outputDirectory = directory.resolve("output");
+        createJsrRetJar(inputJar, ownerName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain JSR/RET Java run");
+        assertEquals(
+                "42" + System.lineSeparator()
+                        + "43" + System.lineSeparator()
+                        + "41" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        for (MethodNode method : transformed.methods) {
+            assertFalse(realOpcodes(method).contains(Opcodes.JSR));
+            assertFalse(realOpcodes(method).contains(Opcodes.RET));
+        }
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("JSR/RET CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("JSR/RET CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "JSR/RET native library was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check("native JSR/RET Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
     @Test
@@ -16537,7 +16687,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -16552,7 +16702,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17035,7 +17185,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -17248,7 +17398,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -17513,7 +17663,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17609,7 +17759,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17782,7 +17932,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -18196,7 +18346,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -22171,6 +22321,67 @@ public class IrCompilerTest {
         }
     }
 
+    private void createJsrRetJar(Path jarPath, String ownerName)
+            throws IOException {
+        ClassNode owner = constructorOwner(ownerName, "java/lang/Object");
+        owner.version = Opcodes.V1_6;
+        owner.access |= Opcodes.ACC_SUPER;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(constructorWithPrefixJsrRet(ownerName));
+        owner.methods.add(jsrRetSubroutineMethod("once", false));
+        owner.methods.add(jsrRetSubroutineMethod("twice", true));
+        owner.methods.add(jsrRetMain(ownerName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            ClassWriter writer = new ClassWriter(0);
+            owner.accept(writer);
+            output.write(writer.toByteArray());
+            output.closeEntry();
+        }
+    }
+
+    private MethodNode jsrRetMain(String ownerName) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        for (String name : Arrays.asList("once", "twice")) {
+            method.instructions.add(new FieldInsnNode(
+                    Opcodes.GETSTATIC, "java/lang/System", "out",
+                    "Ljava/io/PrintStream;"));
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, ownerName, name, "(I)I", false));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                    "println", "(I)V", false));
+        }
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System", "out",
+                "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, ownerName));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, ownerName, "<init>", "()V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, ownerName, "result", "I"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(I)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 3;
+        return method;
+    }
+
     private Path javaExecutable() {
         return Paths.get(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")
@@ -22732,18 +22943,11 @@ public class IrCompilerTest {
                 "dynamic", descriptor, bootstrap));
     }
 
-    // INVOKEDYNAMIC and the proven ConstantDynamic shapes are admitted by the
-    // IR frontend. Legacy JSR/RET subroutines remain deliberately unsupported
-    // and provide the reject-before-mutation sentinel.
+    // INVOKEDYNAMIC, proven ConstantDynamic shapes, and well-formed JSR/RET
+    // subroutines are admitted. A standalone RET remains a fail-closed
+    // reject-before-mutation sentinel.
     private void appendStillUnsupportedConstruct(MethodNode method) {
-        LabelNode subroutine = new LabelNode();
-        LabelNode continuation = new LabelNode();
-        method.instructions.add(new JumpInsnNode(Opcodes.JSR, subroutine));
-        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, continuation));
-        method.instructions.add(subroutine);
-        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
         method.instructions.add(new VarInsnNode(Opcodes.RET, 0));
-        method.instructions.add(continuation);
     }
 
     private MethodNode stringLdcMethod() {
@@ -29456,8 +29660,8 @@ public class IrCompilerTest {
     }
 
     private MethodNode unsupportedWideOperationMethod() {
-        // Monitors, INVOKEDYNAMIC, and proven ConstantDynamic shapes are now
-        // admitted. Legacy subroutines remain outside the IR subset.
+        // Monitors, INVOKEDYNAMIC, proven ConstantDynamic shapes, and valid
+        // legacy subroutines are admitted.
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "unsupportedWide", "()V", null, null);
         appendStillUnsupportedConstruct(method);
@@ -29813,6 +30017,65 @@ public class IrCompilerTest {
             return "win32";
         }
         return os;
+    }
+
+    private MethodNode jsrRetSubroutineMethod(
+            String name, boolean callTwice) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                name, "(I)I", null, null);
+        LabelNode subroutine = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.JSR, subroutine));
+        if (callTwice) {
+            method.instructions.add(new JumpInsnNode(
+                    Opcodes.JSR, subroutine));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(subroutine);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new IincInsnNode(1, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+        method.maxLocals = 3;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constructorWithPrefixJsrRet(String ownerName) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        LabelNode subroutine = new LabelNode();
+        method.instructions.add(new JumpInsnNode(Opcodes.JSR, subroutine));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, ownerName, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(subroutine);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode malformedRetMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "malformedRet", "()V", null, null);
+        method.instructions.add(new VarInsnNode(Opcodes.RET, 0));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 0;
+        return method;
     }
 
     private MethodNode addMethod() {
