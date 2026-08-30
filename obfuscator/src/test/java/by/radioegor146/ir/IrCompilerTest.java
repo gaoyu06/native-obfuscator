@@ -30870,10 +30870,8 @@ public class IrCompilerTest {
             method.instructions.insertBefore(
                     secondSuffixStart, new InsnNode(Opcodes.POP));
         } else if ("covers-chain".equals(shape)) {
-            AbstractInsnNode firstReceiver =
-                    calls.get(0).getPrevious().getPrevious();
             AbstractInsnNode firstSuffixStart = calls.get(0).getNext();
-            method.instructions.insertBefore(firstReceiver, start);
+            method.instructions.insertBefore(calls.get(0), start);
             method.instructions.insertBefore(firstSuffixStart, end);
             method.instructions.add(handler);
             method.instructions.add(new InsnNode(Opcodes.ATHROW));
