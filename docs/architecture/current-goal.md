@@ -53,7 +53,8 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #241 (well-formed `jsr`/`ret` inlining)
+   `master` after #242 (prefix extra-local long shift values and
+   `LDIV`/`LREM` operands)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -63,7 +64,7 @@ The goal is complete only when all of the following are true:
    int binaries, nine-or-more nested long
    binaries, nine-or-more nested float binaries,
    nine-or-more nested double binaries,
-   extra-local long shift count/value and `LDIV`/`LREM` operands, reference computed
+   extra-local long shift counts, reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
