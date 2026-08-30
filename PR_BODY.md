@@ -23,7 +23,11 @@
 
 ### Verification
 
-- Required Gradle suites will be recorded after the pre-test commit.
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest` passed.
+- Observed XML: `IrCompilerTest` 445 tests and `CodegenModeTest` 7 tests;
+  0 skipped, 0 failures, and 0 errors in both suites.
 - Runtime coverage:
   `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity`.
 
@@ -51,7 +55,11 @@ Ship-ready: **No**
 
 ### 验证
 
-- 必需的 Gradle 测试套件结果将在测试前提交之后记录。
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest` 已通过。
+- XML 实测结果：`IrCompilerTest` 445 项，`CodegenModeTest` 7 项；
+  两个套件均为 0 跳过、0 失败、0 错误。
 - 运行时覆盖：
   `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity`。
 
