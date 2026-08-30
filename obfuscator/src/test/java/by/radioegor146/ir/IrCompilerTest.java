@@ -16687,7 +16687,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -16702,7 +16702,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17185,7 +17185,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -17398,7 +17398,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
@@ -17663,7 +17663,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17759,7 +17759,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -17932,7 +17932,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -18346,7 +18346,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.JSR, error.getOpcode());
+        assertEquals(-1, error.getOpcode());
         assertEquals(0, method.access & Opcodes.ACC_NATIVE);
         assertEquals("", context.output.toString());
         assertEquals("", context.nativeMethods.toString());
