@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing `AALOAD` declared or extra-local `ILOAD` indexes
-[#254](https://github.com/gaoyu06/native-obfuscator/pull/254)
-(parent re-ran 438/438: 431 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalIndexAaloadSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#253](https://github.com/gaoyu06/native-obfuscator/pull/253)
-declared-array `BALOAD`/`CALOAD`/`SALOAD` admission. Active process:
+Last updated after landing `IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` `ILOAD` indexes
+[#255](https://github.com/gaoyu06/native-obfuscator/pull/255)
+(parent re-ran 441/441: 434 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateIntArrayLoadIndexesCompileAndRunWithJavaParity`)
+on the post-[#254](https://github.com/gaoyu06/native-obfuscator/pull/254)
+`AALOAD` `ILOAD` index admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -322,13 +322,16 @@ legacy。不能当成 JDK 支持矩阵。
   `AALOAD` indexes that are one direct declared `ILOAD` or one `ILOAD` of
   a proven prefix extra-local int copy. Computed, `INEG`, computed-store,
   and unproven extra-local indexes stay rejected.
+  [#255](https://github.com/gaoyu06/native-obfuscator/pull/255) admits
+  `IALOAD`, `BALOAD`, `CALOAD`, and `SALOAD` indexes that are one direct
+  declared `ILOAD` or one `ILOAD` of a proven prefix extra-local int copy.
+  Computed and `INEG` indexes stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (seventeen-or-more nested int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  extra-local int as `IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` index,
   extra-local `byte[]`/`char[]`/`short[]`
   sources, `LALOAD`/`FALOAD`/`DALOAD`),
   and extras still unassigned on a bridge-taking path are still
@@ -517,6 +520,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local `int[]` `IALOAD` sources (#252) | 430 tests (`IrCompilerTest` 423 + `CodegenModeTest` 7). Parent re-ran 430/430 including `threeImmediateExtraLocalIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Declared-array `BALOAD`/`CALOAD`/`SALOAD` leaves (#253) | 434 tests (`IrCompilerTest` 427 + `CodegenModeTest` 7). Parent re-ran 434/434 including `threeImmediateIntFamilyArrayLoadsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | `AALOAD` declared or extra-local `ILOAD` indexes (#254) | 438 tests (`IrCompilerTest` 431 + `CodegenModeTest` 7). Parent re-ran 438/438 including `threeImmediateExtraLocalIndexAaloadSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| `IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` `ILOAD` indexes (#255) | 441 tests (`IrCompilerTest` 434 + `CodegenModeTest` 7). Parent re-ran 441/441 including `threeImmediateIntArrayLoadIndexesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -569,7 +573,6 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  extra-local int as `IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` index,
   extra-local `byte[]`/`char[]`/`short[]`
   sources, `LALOAD`/`FALOAD`/`DALOAD`,
   extras still unassigned
@@ -588,6 +591,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Extra-local `int[]` `IALOAD` sources are admitted by #252.
   Declared-array `BALOAD`/`CALOAD`/`SALOAD` leaves are admitted by #253.
   `AALOAD` declared or extra-local `ILOAD` indexes are admitted by #254.
+  `IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` `ILOAD` indexes are admitted by #255.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -604,9 +608,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #254
-  (`AALOAD` declared or extra-local `ILOAD` indexes). /
-  落地 #254 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #255
+  (`IALOAD`/`BALOAD`/`CALOAD`/`SALOAD` `ILOAD` indexes). /
+  落地 #255 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
