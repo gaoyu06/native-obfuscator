@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after isolated float `NEW` initializer
-[#303](https://github.com/gaoyu06/native-obfuscator/pull/303)
-(parent XML 532; latest leftover inventory remains
+Last updated after extra-local six-arg `NEW` initializer
+[#304](https://github.com/gaoyu06/native-obfuscator/pull/304)
+(parent XML 535; latest leftover inventory remains
 [#301](https://github.com/gaoyu06/native-obfuscator/pull/301)
 on post-[#299](https://github.com/gaoyu06/native-obfuscator/pull/299)
 `d070653`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -649,6 +649,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#299 leftover inventory (#301) | Measurement only on `d070653`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local five-arg `NEW` initializer (#302) | 529 tests (`IrCompilerTest` 522 + `CodegenModeTest` 7). Parent re-ran 529/529 including `threeImmediateNewExtraLocalFiveArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Isolated float `NEW` chain inputs (#303) | 532 tests (`IrCompilerTest` 525 + `CodegenModeTest` 7). Parent re-ran 532/532 including `threeImmediateNewFloatArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Extra-local six-arg `NEW` initializer (#304) | 535 tests (`IrCompilerTest` 528 + `CodegenModeTest` 7). Parent re-ran 535/535 including `threeImmediateNewExtraLocalSixArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -755,7 +756,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   #298 (fixture-only).   Extra-local proven int-copy as a four-arg
   `NEW` initializer is admitted by #300 (fixture-only). Extra-local
   proven int-copy as a five-arg `NEW` initializer is admitted by
-  #302 (fixture-only).
+  #302 (fixture-only). Extra-local proven int-copy as a six-arg
+  `NEW` initializer is admitted by #304 (fixture-only).
   Isolated four-arg int-family `NEW` chain inputs are admitted by #287.
   Isolated five-arg int-family `NEW` chain inputs are admitted by #290.
   Isolated six-arg int-family `NEW` chain inputs are admitted by #294.
@@ -820,9 +822,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #303
-  (isolated float NEW initializer). /
-  落地 #303 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #304
+  (extra-local int-copy as a six-arg NEW initializer). /
+  落地 #304 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #303 (isolated float NEW)
+   `master` after #304 (extra-local six-arg NEW)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
