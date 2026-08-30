@@ -3631,7 +3631,7 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.GETFIELD));
-        assertEquals(3, Collections.frequency(
+        assertEquals(4, Collections.frequency(
                 variableIndexes(constructor, Opcodes.ALOAD), 2));
         assertEquals(2, Collections.frequency(
                 realOpcodes(constructor), Opcodes.GOTO));
@@ -8809,7 +8809,7 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.GETFIELD));
-        assertEquals(3, Collections.frequency(
+        assertEquals(4, Collections.frequency(
                 variableIndexes(constructor, Opcodes.ALOAD), 2));
         assertEquals(
                 "(Ljava/lang/Object;IL" + holderName + ";)V",
@@ -15513,7 +15513,7 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(transformedConstructor), Opcodes.GETFIELD));
-        assertEquals(3, Collections.frequency(
+        assertEquals(4, Collections.frequency(
                 variableIndexes(
                         transformedConstructor, Opcodes.ALOAD), 2));
         assertEquals(2, Collections.frequency(
