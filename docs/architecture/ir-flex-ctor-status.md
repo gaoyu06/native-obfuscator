@@ -95,15 +95,17 @@ The constructor split now covers these related prefix shapes:
   declared int-family argument load or the same proven prefix extra-local copy,
   plus a tree of at most sixteen `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
-  of those already-proven int-family inputs; one `IALOAD` whose source is an
-  unchanged declared `int[]` argument or a prefix extra-local `ALOAD` with one
-  dominating `ASTORE` copy of that argument, and whose index is an int-family
-  constant; or one reference `AALOAD` whose
-  source is an unchanged directly loaded declared array argument, whose index
-  is a proven int-family constant, and whose declared immediate component
-  descriptor exactly matches the call argument descriptor). The complete
-  array-load tree stays in the retained bytecode prefix, so JVM null, bounds,
-  and reference-array behavior remains JVM-executed.
+  of those already-proven int-family inputs; one `IALOAD`, `BALOAD`,
+  `CALOAD`, or `SALOAD` whose source is an unchanged declared array argument
+  of the matching type (`[I`, `[B`/`[Z`, `[C`, or `[S`) or, for `IALOAD`,
+  a prefix extra-local `ALOAD` with one dominating `ASTORE` copy of that
+  `int[]` argument, and whose index is an int-family constant; or one
+  reference `AALOAD` whose source is an unchanged directly loaded declared
+  array argument, whose index is a proven int-family constant, and whose
+  declared immediate component descriptor exactly matches the call argument
+  descriptor). The complete array-load tree stays in the retained bytecode
+  prefix, so JVM null, bounds, widening, and reference-array behavior remains
+  JVM-executed.
 
 ## Current rule
 
@@ -330,10 +332,11 @@ normalizing the suffixes to one copied join:
   parameters and packed extras. It therefore does not reuse a live extra slot,
   receiver slot, or category-2 parameter slot.
 
-Unproven extra-local or aliased chain inputs, reference array loads from
-computed or reassigned sources, non-constant indexes, non-array declared
-locals, prior array-store mutations, primitive-result array loads, and other
-reference computations such as `NEW` or `GETFIELD`, int-family binary expression
+Unproven extra-local or aliased chain inputs, array loads from computed or
+reassigned sources, non-constant indexes, non-array or opcode-mismatched
+declared locals, prior array-store mutations, unlisted primitive-result array
+loads, and other reference computations such as `NEW` or `GETFIELD`,
+int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
 sixteen levels, float or double expression trees deeper than the sixteen
 admitted binary levels,
