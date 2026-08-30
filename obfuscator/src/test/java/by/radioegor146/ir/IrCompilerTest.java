@@ -908,7 +908,7 @@ public class IrCompilerTest {
         MethodNode nativeBody =
                 ConstructorSpecialMethodProcessor.createNativeBody(
                         owner, constructor);
-        assertEquals("(II)V", nativeBody.desc);
+        assertEquals("(I)V", nativeBody.desc);
         assertEquals(1, nativeBody.tryCatchBlocks.size());
         assertEquals(Arrays.asList(
                         Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
