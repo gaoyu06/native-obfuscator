@@ -29303,6 +29303,11 @@ public class IrCompilerTest {
                 || shape.startsWith("int-saload");
     }
 
+    private boolean isIntArrayLoadExtraArrayShape(String shape) {
+        return isIntArrayLoadShape(shape)
+                && shape.contains("-extra-array");
+    }
+
     private String intArrayLoadDescriptor(String shape) {
         if (shape.startsWith("int-iaload")
                 || "int-baload-wrong-array".equals(shape)) {
@@ -29405,8 +29410,7 @@ public class IrCompilerTest {
                 || "int-ineg-extra-local".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
             method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
-        } else if (isIntArrayLoadShape(shape)
-                && shape.endsWith("-extra-array")) {
+        } else if (isIntArrayLoadExtraArrayShape(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
             if ("int-iaload-extra-array-computed-store".equals(shape)) {
                 method.instructions.add(new InsnNode(Opcodes.ICONST_0));
@@ -29509,9 +29513,9 @@ public class IrCompilerTest {
                 || "reference-computed-index".equals(shape)
                 || shape.startsWith(
                         "reference-computed-extra-array") ? 4 : 3;
-        if (isIntArrayLoadShape(shape)
-                && (shape.endsWith("-extra-array")
-                || shape.endsWith("-extra-index"))) {
+        if (isIntArrayLoadExtraArrayShape(shape)
+                || isIntArrayLoadShape(shape)
+                && shape.endsWith("-extra-index")) {
             method.maxLocals = 4;
         }
         method.maxStack = "long-two-sided-ladd".equals(shape)
@@ -29526,7 +29530,7 @@ public class IrCompilerTest {
         if (isIntArrayLoadShape(shape)) {
             method.instructions.add(new VarInsnNode(
                     Opcodes.ALOAD,
-                    shape.endsWith("-extra-array") ? 3 : 2));
+                    isIntArrayLoadExtraArrayShape(shape) ? 3 : 2));
             if (shape.endsWith("-computed-index")
                     || shape.endsWith("-extra-index")) {
                 method.instructions.add(new VarInsnNode(
