@@ -1797,15 +1797,28 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsPrefixBranchTargetingSuffixLabel() {
+    public void rejectsPrefixBranchTargetingSuffixLabelBeforeMutation() {
         ClassNode owner = constructorOwner("example/Skip", "java/lang/Object");
+        MethodNode constructor = prefixBranchTargetingSuffixConstructor();
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
-                () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                        owner, prefixBranchTargetingSuffixConstructor()));
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
         assertEquals(Opcodes.IFNE, error.getOpcode());
         assertTrue(error.getMessage().contains(
                 "Constructor prefix branches across the this/super call"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -1819,36 +1832,62 @@ public class IrCompilerTest {
             for (int variant = 0; variant < 3; variant++) {
                 MethodNode constructor = postChainSwitchConstructor(
                         owner.name, owner.superName, lookup);
-                if (variant == 0) {
-                    addComputedPostChainSwitchKey(constructor);
-                } else if (variant == 1) {
-                    addWorkBeforePostChainSwitchReturn(constructor);
-                } else {
-                    addPostChainSwitchExceptionTable(constructor);
-                }
+                makePostChainSwitchUnproven(constructor, variant);
+                int instructionCount = constructor.instructions.size();
+                java.util.List<Integer> opcodes = realOpcodes(constructor);
+                java.util.List<TryCatchBlockNode> tryCatches =
+                        new java.util.ArrayList<>(constructor.tryCatchBlocks);
+                NativeObfuscator obfuscator = new NativeObfuscator();
+                MethodContext context =
+                        new MethodContext(
+                                obfuscator, constructor, 0, owner, 0);
 
                 UnsupportedIrConstructException error = assertThrows(
                         UnsupportedIrConstructException.class,
-                        () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                                owner, constructor),
+                        () -> new IrMethodCompiler(
+                                new MethodShellEmitter(obfuscator))
+                                .processMethod(context),
                         kind + " variant " + variant);
                 assertTrue(error.getMessage().contains(
                                 "Constructor chain calls do not share one suffix join"),
+                        kind + " variant " + variant);
+                assertUnchangedAfterRejectedIr(
+                        constructor, context, obfuscator);
+                assertEquals(instructionCount,
+                        constructor.instructions.size(),
+                        kind + " variant " + variant);
+                assertEquals(opcodes, realOpcodes(constructor),
+                        kind + " variant " + variant);
+                assertEquals(tryCatches, constructor.tryCatchBlocks,
+                        kind + " variant " + variant);
+                assertTrue(context.proxyMethod == null,
+                        kind + " variant " + variant);
+                assertTrue(obfuscator.getHiddenMethodsPool()
+                                .getClasses().isEmpty(),
                         kind + " variant " + variant);
             }
         }
     }
 
     @Test
-    public void rejectsSwitchPathThatSkipsEveryChainCall() {
+    public void rejectsSwitchPathThatSkipsEveryChainCallBeforeMutation() {
         for (boolean lookup : new boolean[]{false, true}) {
             String kind = lookup ? "lookup" : "table";
             ClassNode owner = constructorOwner(
                     "example/SkipChainSwitch" + kind, "java/lang/Object");
+            MethodNode constructor = switchSkippingChainConstructor(lookup);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
             UnsupportedIrConstructException error = assertThrows(
                     UnsupportedIrConstructException.class,
-                    () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                            owner, switchSkippingChainConstructor(lookup)),
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
                     kind);
             assertEquals(
                     lookup ? Opcodes.LOOKUPSWITCH : Opcodes.TABLESWITCH,
@@ -1856,6 +1895,13 @@ public class IrCompilerTest {
             assertTrue(error.getMessage().contains(
                     "Constructor prefix branches across the this/super call"),
                     kind);
+            assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), kind);
+            assertEquals(opcodes, realOpcodes(constructor), kind);
+            assertTrue(context.proxyMethod == null, kind);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), kind);
         }
     }
 
@@ -2165,17 +2211,30 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsMultipleSuperPathThatSkipsEveryChainCall() {
+    public void rejectsMultipleSuperPathThatSkipsEveryChainCallBeforeMutation() {
         ClassNode owner = constructorOwner(
                 "example/MultiSkip", "example/MultiSuperBase");
+        MethodNode constructor = multipleSuperDiamondWithSkipPath(
+                owner.name, owner.superName);
+        int instructionCount = constructor.instructions.size();
+        java.util.List<Integer> opcodes = realOpcodes(constructor);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
-                () -> ConstructorSpecialMethodProcessor.createNativeBody(
-                        owner, multipleSuperDiamondWithSkipPath(
-                                owner.name, owner.superName)));
+                () -> new IrMethodCompiler(
+                        new MethodShellEmitter(obfuscator))
+                        .processMethod(context));
         assertEquals(Opcodes.IFEQ, error.getOpcode());
         assertTrue(error.getMessage().contains(
                 "Constructor prefix branches across the this/super call"));
+        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertEquals(instructionCount, constructor.instructions.size());
+        assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(context.proxyMethod == null);
+        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -7825,6 +7884,60 @@ public class IrCompilerTest {
                     kind + " second call");
             assertEquals(2, directChainCallCount(constructor, owner), kind);
             assertEquals(1, hiddenBridgeCallCount(constructor), kind);
+        }
+    }
+
+    @Test
+    public void unprovenPostChainSwitchShapesPassJava8JvmVerification()
+            throws Exception {
+        for (boolean lookup : new boolean[]{false, true}) {
+            String kind = lookup ? "Lookup" : "Table";
+            for (int variant = 0; variant < 3; variant++) {
+                String suffix = kind + variant;
+                ClassNode base = multipleSuperBase(
+                        "example/VerifiedRejectedPostChain"
+                                + suffix + "Base");
+                base.version = Opcodes.V1_8;
+                ClassNode owner = constructorOwner(
+                        "example/VerifiedRejectedPostChain" + suffix,
+                        base.name);
+                owner.version = Opcodes.V1_8;
+                owner.fields.add(new FieldNode(
+                        Opcodes.ACC_PUBLIC, "result", "I", null, null));
+                MethodNode constructor = postChainSwitchConstructor(
+                        owner.name, base.name, lookup);
+                makePostChainSwitchUnproven(constructor, variant);
+                owner.methods.add(constructor);
+
+                ByteArrayClassLoader loader = new ByteArrayClassLoader();
+                loader.define(writeClass(base));
+                Class<?> verified = loader.define(writeClass(owner));
+
+                Object prefixReturn = verified.getConstructor(
+                                int.class, int.class)
+                        .newInstance(7, 99);
+                assertEquals(0,
+                        verified.getField("result").getInt(prefixReturn),
+                        suffix + " prefix return");
+
+                int suffixKey = lookup ? 7 : 0;
+                if (variant == 0) {
+                    suffixKey--;
+                }
+                Object firstCallSuffix = verified.getConstructor(
+                                int.class, int.class)
+                        .newInstance(7, suffixKey);
+                assertEquals(41,
+                        verified.getField("result").getInt(firstCallSuffix),
+                        suffix + " first-call suffix");
+
+                Object secondCallSuffix = verified.getConstructor(
+                                int.class, int.class)
+                        .newInstance(-5, 99);
+                assertEquals(41,
+                        verified.getField("result").getInt(secondCallSuffix),
+                        suffix + " second-call suffix");
+            }
         }
     }
 
@@ -29616,6 +29729,20 @@ public class IrCompilerTest {
         method.maxLocals = 3;
         method.maxStack = 2;
         return method;
+    }
+
+    private void makePostChainSwitchUnproven(
+            MethodNode constructor, int variant) {
+        if (variant == 0) {
+            addComputedPostChainSwitchKey(constructor);
+        } else if (variant == 1) {
+            addWorkBeforePostChainSwitchReturn(constructor);
+        } else if (variant == 2) {
+            addPostChainSwitchExceptionTable(constructor);
+        } else {
+            throw new IllegalArgumentException(
+                    "Unknown post-chain switch variant " + variant);
+        }
     }
 
     private void addComputedPostChainSwitchKey(MethodNode constructor) {
