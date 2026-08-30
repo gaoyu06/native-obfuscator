@@ -26,7 +26,14 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML totals will be recorded after the gate.
+Child-only JUnit XML:
+
+- `IrCompilerTest`: 465 tests, 0 failures, 0 errors, 0 skipped
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped
+- Total: 472 tests, 0 failures, 0 errors, 0 skipped
+- Source count: 465 exact `@Test` lines and 465 `public void` tests
+- New JVM verification:
+  `skipSuperConstructorShapesPassJava8JvmVerification`
 
 Ship-ready: **No**
 
@@ -49,7 +56,13 @@ Ship-ready: **No**
 
 ### 验证
 
-子代理专属聚焦门禁使用上方命令。门禁完成后记录 JUnit XML 汇总。
+子代理专属聚焦门禁使用上方命令。子代理专属 JUnit XML：
+
+- `IrCompilerTest`：465，失败/错误/跳过均为 0
+- `CodegenModeTest`：7，失败/错误/跳过均为 0
+- 合计：472，失败/错误/跳过均为 0
+- 源码计数：465 个严格匹配的 `@Test` 行，465 个 `public void` 测试
+- 新增 JVM 验证：`skipSuperConstructorShapesPassJava8JvmVerification`
 
 可发布：**否**
 <!-- CURSOR_AGENT_PR_BODY_END -->
