@@ -95,7 +95,10 @@ The constructor split now covers these related prefix shapes:
   declared int-family argument load or the same proven prefix extra-local copy,
   plus a tree of at most sixteen `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
-  of those already-proven int-family inputs; or one reference `AALOAD` whose
+  of those already-proven int-family inputs; one `IALOAD` whose source is an
+  unchanged declared `int[]` argument or a prefix extra-local `ALOAD` with one
+  dominating `ASTORE` copy of that argument, and whose index is an int-family
+  constant; or one reference `AALOAD` whose
   source is an unchanged directly loaded declared array argument, whose index
   is a proven int-family constant, and whose declared immediate component
   descriptor exactly matches the call argument descriptor). The complete
@@ -1108,6 +1111,16 @@ Synthetic bytecode unit tests in
   `LNEG`, and computed `LNEG` operands fail-closed without constructor or
   hidden-method mutation. Unproven reference computations stay rejected;
   the proven declared-array constant-index `AALOAD` is admitted separately.
+- `admitsThreeImmediateReturnsWithExtraLocalIntArrayIaloadChainInputs`,
+  `rewrittenThreeImmediateExtraLocalIntArrayIaloadSuperReturnsPassJvmVerification`,
+  and
+  `threeImmediateExtraLocalIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity`
+  cover constant-index `IALOAD` leaves whose `int[]` source is one dominating
+  prefix extra-local copy of an unchanged declared argument. The copy and each
+  `IALOAD` stay in retained JVM bytecode, one hidden bridge is shared, rewritten
+  Java 8 classes verify, and native stdout matches plain Java. Computed stores,
+  overwritten copies or source arguments, prior array stores, non-`int[]`
+  sources, and computed indexes remain rejected before mutation.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
