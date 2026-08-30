@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing retained-prefix `AALOAD` chain inputs
-[#244](https://github.com/gaoyu06/native-obfuscator/pull/244)
-(parent re-ran 397/397: 390 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateReferenceComputedSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#243](https://github.com/gaoyu06/native-obfuscator/pull/243)
-extra-local long `LNEG` admission. Active process:
+Last updated after landing extra-local int long-shift counts
+[#245](https://github.com/gaoyu06/native-obfuscator/pull/245)
+(parent re-ran 400/400: 393 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateExtraLocalLongShiftCountSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#244](https://github.com/gaoyu06/native-obfuscator/pull/244)
+retained-prefix `AALOAD` admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -274,7 +274,7 @@ legacy。不能当成 JDK 支持矩阵。
   prefix subroutine. Malformed subroutines stay reject-before-mutation.
   [#242](https://github.com/gaoyu06/native-obfuscator/pull/242) admits
   proven prefix extra-local long copies as long-shift values and as
-  `LDIV`/`LREM` operands. Extra-local long shift counts stay rejected.
+  `LDIV`/`LREM` operands.
   [#243](https://github.com/gaoyu06/native-obfuscator/pull/243) admits
   one `LNEG` over a proven prefix extra-local long copy. Constant,
   double, and computed `LNEG` stay rejected.
@@ -282,13 +282,16 @@ legacy。不能当成 JDK 支持矩阵。
   `ALOAD` of an unchanged declared array argument, a constant index,
   and `AALOAD` as a constructor chain-input. Unproven indexes and
   other reference computations stay rejected.
+  [#245](https://github.com/gaoyu06/native-obfuscator/pull/245) admits
+  a proven prefix extra-local int copy as the count of `LSHL`,
+  `LSHR`, and `LUSHR`. Computed, negated, and type-wrong extra-local
+  long counts stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (nine-or-more nested int binaries, nine-or-more nested long
   binaries, nine-or-more nested float binaries,
-  nine-or-more nested double binaries,
-  extra-local long shift counts),
+  nine-or-more nested double binaries),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -465,6 +468,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Prefix extra-local long shift values and `LDIV`/`LREM` (#242) | 391 tests (`IrCompilerTest` 384 + `CodegenModeTest` 7). Parent re-ran 391/391 including `threeImmediateExtraLocalLongShiftValueSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local long `LNEG` (#243) | 394 tests (`IrCompilerTest` 387 + `CodegenModeTest` 7). Parent re-ran 394/394 including `threeImmediateExtraLocalLongLnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Retained-prefix `AALOAD` chain inputs (#244) | 397 tests (`IrCompilerTest` 390 + `CodegenModeTest` 7). Parent re-ran 397/397 including `threeImmediateReferenceComputedSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Extra-local int long-shift counts (#245) | 400 tests (`IrCompilerTest` 393 + `CodegenModeTest` 7). Parent re-ran 400/400 including `threeImmediateExtraLocalLongShiftCountSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -517,13 +521,14 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   int binaries, nine-or-more nested long
   binaries, nine-or-more nested float binaries,
   nine-or-more nested double binaries,
-  extra-local long shift counts, extras still unassigned
+  extras still unassigned
   on a bridge-taking path).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
   subroutines are admitted by #241. Extra-local long shift values and
   `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
   is admitted by #243. Retained-prefix `AALOAD` chain inputs are
-  admitted by #244.
+  admitted by #244. Extra-local int long-shift counts are admitted
+  by #245.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -540,9 +545,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #244
-  (retained-prefix `AALOAD` chain inputs). /
-  落地 #244 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #245
+  (extra-local int long-shift counts). /
+  落地 #245 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
