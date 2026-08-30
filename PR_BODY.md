@@ -19,7 +19,13 @@
 
 ## Verification
 
-- Pending final scoped Gradle verification and JUnit XML totals.
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest`
+- JUnit XML: `IrCompilerTest` 446 tests and `CodegenModeTest` 7 tests; total
+  453 tests, 0 failures, 0 errors, 0 skipped.
+- `threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity()`
+  passed, including CMake/g++ JNI generation and plain-Java stdout parity.
 
 ## Release status
 
@@ -45,7 +51,13 @@ Ship-ready: No.
 
 ## 验证
 
-- 最终限定 Gradle 验证及 JUnit XML 汇总待完成。
+- 已通过 `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest`。
+- JUnit XML：`IrCompilerTest` 446 项，`CodegenModeTest` 7 项；共 453 项，
+  0 失败、0 错误、0 跳过。
+- `threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity()`
+  已通过，包括 CMake/g++ JNI 生成及与普通 Java 标准输出的一致性。
 
 ## 发布状态
 
