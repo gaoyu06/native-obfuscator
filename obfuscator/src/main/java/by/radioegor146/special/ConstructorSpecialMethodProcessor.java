@@ -2198,11 +2198,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Restricts bounded multi-call forms to calls whose complete operand
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, one AALOAD from an unchanged declared array
-     * argument or its proven prefix extra-local copy at a constant index,
-     * proven prefix copies of declared primitive loads, bounded primitive
-     * computations, or int-family constants. The identical-copy and
-     * distinct-suffix forms may accept a direct alias load only when their
-     * separate receiver-frame proof succeeds.
+     * argument or its proven prefix extra-local copy at a constant or
+     * single-load proven int index, proven prefix copies of declared primitive
+     * loads, bounded primitive computations, or int-family constants. The
+     * identical-copy and distinct-suffix forms may accept a direct alias load
+     * only when their separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2278,7 +2278,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || expected.getSort() == Type.ARRAY) {
             return previousProvenReferenceChainInput(
                     constructor, inputIndex, expected, declaredArguments,
-                    prefixArrayCopies);
+                    prefixArrayCopies, prefixIntCopies);
         }
         if (expected.getSort() == Type.LONG) {
             return previousProvenLongChainOperand(
@@ -2309,30 +2309,41 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the exact retained-prefix reference computation
-     * {@code ALOAD array; constant; AALOAD}. The loaded array must be either an
-     * unchanged declared constructor argument or its proven prefix extra-local
-     * copy. The declared source local must remain unchanged, and no earlier
-     * array store is accepted. The load remains JVM bytecode, preserving null,
-     * bounds, and reference-array semantics without reproducing them in native
-     * code.
+     * {@code ALOAD array; index; AALOAD}. The index must be a constant or one
+     * single-instruction declared/proven-copy ILOAD. The loaded array must be
+     * either an unchanged declared constructor argument or its proven prefix
+     * extra-local copy. The declared source local must remain unchanged, and
+     * no earlier array store is accepted. The load remains JVM bytecode,
+     * preserving null, bounds, and reference-array semantics without
+     * reproducing them in native code.
      */
     private static Integer previousProvenReferenceChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
-            Map<Integer, Integer> prefixArrayCopies) {
+            Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (input.getOpcode() != Opcodes.AALOAD) {
             return null;
         }
         int indexIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (indexIndex < 0
-                || !isIntFamilyConstant(
-                constructor.instructions.get(indexIndex))) {
+        if (indexIndex < 0) {
             return null;
         }
-        int arrayIndex =
+        int beforeSingleIndex =
                 previousExecutableIndex(constructor, indexIndex - 1);
+        if (!isIntFamilyConstant(
+                constructor.instructions.get(indexIndex))) {
+            Integer beforeIndex = previousProvenIntChainLeaf(
+                    constructor, indexIndex, declaredArguments,
+                    prefixArrayCopies, prefixIntCopies);
+            if (beforeIndex == null
+                    || beforeIndex != beforeSingleIndex) {
+                return null;
+            }
+        }
+        int arrayIndex = beforeSingleIndex;
         if (arrayIndex < 0) {
             return null;
         }
