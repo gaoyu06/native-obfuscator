@@ -1,10 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after fail-closed post-call audit
-[#280](https://github.com/gaoyu06/native-obfuscator/pull/280)
-(parent XML 491/491 including
-`unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification`;
-`post-call` extra work and three-immediate `astore-zero` remain reject;
+Last updated after isolated two-arg `NEW`
+[#281](https://github.com/gaoyu06/native-obfuscator/pull/281)
+(parent XML 494/494 including
+`threeImmediateNewTwoArgChainInputsCompileAndRunWithJavaParity`;
+three-or-more initializer arguments and other unproven `NEW` forms
+remain reject;
 [#279](https://github.com/gaoyu06/native-obfuscator/pull/279)
 remains the latest leftover inventory remasurement on post-#278
 `27414d0`). Active process:
@@ -627,6 +628,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated one-arg `NEW` chain inputs (#278) | 490 tests (`IrCompilerTest` 483 + `CodegenModeTest` 7). Parent re-ran 490/490 including `threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#278 leftover inventory (#279) | Measurement only on `27414d0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed post-call audit (#280) | 491 tests (`IrCompilerTest` 484 + `CodegenModeTest` 7). Parent re-ran 491/491 including `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` | Post-call leftover remains reject |
+| Isolated two-arg `NEW` chain inputs (#281) | 494 tests (`IrCompilerTest` 487 + `CodegenModeTest` 7). Parent re-ran 494/494 including `threeImmediateNewTwoArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -720,9 +722,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Primitive-carrier extra-local `GETFIELD` holders are admitted by #275.
   Isolated no-arg `NEW` chain inputs are admitted by #268.
   Isolated one-arg int-family `NEW` chain inputs are admitted by #278.
+  Isolated two-arg int-family `NEW` chain inputs are admitted by #281.
   Unproven `NEW` forms stay reject-before-mutation; #274
   strengthens those fail-closed tests. Do not admit `NEW` with
-  two or more initializer arguments or array-allocation opcodes.
+  three or more initializer arguments or array-allocation opcodes.
   Unproven `GETFIELD` forms stay reject-before-mutation; #277
   strengthens those fail-closed tests.
   More than eight path-id suffixes stay reject-before-mutation; #267
@@ -757,9 +760,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #280
-  (fail-closed post-call audit). /
-  落地 #280 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #281
+  (isolated two-arg `NEW`). /
+  落地 #281 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
