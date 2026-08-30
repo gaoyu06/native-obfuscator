@@ -1805,6 +1805,8 @@ public class IrCompilerTest {
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context =
                 new MethodContext(obfuscator, constructor, 0, owner, 0);
+        RejectedIrState originalState =
+                rejectedIrState(constructor, context, obfuscator);
 
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
@@ -1814,11 +1816,10 @@ public class IrCompilerTest {
         assertEquals(Opcodes.IFNE, error.getOpcode());
         assertTrue(error.getMessage().contains(
                 "Constructor prefix branches across the this/super call"));
-        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertRejectedIrStateUnchanged(
+                originalState, constructor, context, obfuscator, "branch");
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
-        assertTrue(context.proxyMethod == null);
-        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -1882,6 +1883,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             UnsupportedIrConstructException error = assertThrows(
                     UnsupportedIrConstructException.class,
@@ -1895,13 +1898,11 @@ public class IrCompilerTest {
             assertTrue(error.getMessage().contains(
                     "Constructor prefix branches across the this/super call"),
                     kind);
-            assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, kind);
             assertEquals(instructionCount,
                     constructor.instructions.size(), kind);
             assertEquals(opcodes, realOpcodes(constructor), kind);
-            assertTrue(context.proxyMethod == null, kind);
-            assertTrue(obfuscator.getHiddenMethodsPool()
-                    .getClasses().isEmpty(), kind);
         }
     }
 
@@ -2221,6 +2222,8 @@ public class IrCompilerTest {
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context =
                 new MethodContext(obfuscator, constructor, 0, owner, 0);
+        RejectedIrState originalState =
+                rejectedIrState(constructor, context, obfuscator);
 
         UnsupportedIrConstructException error = assertThrows(
                 UnsupportedIrConstructException.class,
@@ -2230,11 +2233,10 @@ public class IrCompilerTest {
         assertEquals(Opcodes.IFEQ, error.getOpcode());
         assertTrue(error.getMessage().contains(
                 "Constructor prefix branches across the this/super call"));
-        assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
+        assertRejectedIrStateUnchanged(
+                originalState, constructor, context, obfuscator, "diamond");
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
-        assertTrue(context.proxyMethod == null);
-        assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
 
     @Test
@@ -6829,6 +6831,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -6837,14 +6841,11 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
-            assertTrue(context.proxyMethod == null, shape);
-            assertTrue(obfuscator.getHiddenMethodsPool()
-                    .getClasses().isEmpty(), shape);
         }
     }
 
@@ -7540,6 +7541,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7548,14 +7551,11 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
-            assertTrue(context.proxyMethod == null, shape);
-            assertTrue(obfuscator.getHiddenMethodsPool()
-                    .getClasses().isEmpty(), shape);
         }
     }
 
@@ -7678,7 +7678,7 @@ public class IrCompilerTest {
 
     @Test
     public void rejectsUnprovenTwoDifferentSuffixShapesBeforeMutation() {
-        for (String shape : Collections.singletonList("branch")) {
+        for (String shape : Arrays.asList("branch", "skip-super")) {
             ClassNode owner = constructorOwner(
                     "example/RejectedTwoSuffix"
                             + shape.replace("-", ""),
@@ -7694,6 +7694,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7702,12 +7704,11 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
-            assertTrue(context.proxyMethod == null, shape);
         }
     }
 
@@ -8418,6 +8419,84 @@ public class IrCompilerTest {
                         verified.getField("result").getInt(secondCallSuffix),
                         suffix + " second-call suffix");
             }
+        }
+    }
+
+    @Test
+    public void skipSuperConstructorShapesPassJava8JvmVerification()
+            throws Exception {
+        for (String shape : Arrays.asList(
+                "branch", "table-switch", "lookup-switch", "diamond",
+                "three-immediate", "three-suffix", "two-suffix")) {
+            String classSuffix = shape.replace("-", "");
+            ClassNode base = null;
+            ClassNode owner;
+            MethodNode constructor;
+            int[] normalInputs;
+            int skipInput;
+
+            if ("branch".equals(shape)) {
+                owner = constructorOwner(
+                        "example/VerifiedSkipSuper" + classSuffix,
+                        "java/lang/Object");
+                constructor = prefixBranchTargetingSuffixConstructor();
+                normalInputs = new int[]{0};
+                skipInput = 1;
+            } else if ("table-switch".equals(shape)
+                    || "lookup-switch".equals(shape)) {
+                owner = constructorOwner(
+                        "example/VerifiedSkipSuper" + classSuffix,
+                        "java/lang/Object");
+                constructor = switchSkippingChainConstructor(
+                        "lookup-switch".equals(shape));
+                normalInputs = new int[]{7};
+                skipInput = 0;
+            } else {
+                base = multipleSuperBase(
+                        "example/VerifiedSkipSuper" + classSuffix + "Base");
+                base.version = Opcodes.V1_8;
+                owner = constructorOwner(
+                        "example/VerifiedSkipSuper" + classSuffix, base.name);
+                if ("diamond".equals(shape)) {
+                    owner.fields.add(new FieldNode(
+                            Opcodes.ACC_PUBLIC, "original", "I", null, null));
+                    constructor = multipleSuperDiamondWithSkipPath(
+                            owner.name, base.name);
+                    normalInputs = new int[]{7, -7};
+                    skipInput = 0;
+                } else if ("three-immediate".equals(shape)) {
+                    constructor = threeImmediateReturnsConstructorWithShape(
+                            base.name, "skip-super");
+                    normalInputs = new int[]{7, -7, 0};
+                    skipInput = 99;
+                } else if ("three-suffix".equals(shape)) {
+                    constructor =
+                            rejectedThreeNonemptySuffixCopiesConstructor(
+                                    base.name, "skip-super");
+                    normalInputs = new int[]{7, -7, 0};
+                    skipInput = 99;
+                } else {
+                    owner.fields.add(new FieldNode(
+                            Opcodes.ACC_PUBLIC, "result", "I", null, null));
+                    constructor = rejectedTwoDifferentSuffixConstructor(
+                            owner.name, base.name, "skip-super");
+                    normalInputs = new int[]{7, -7};
+                    skipInput = 99;
+                }
+            }
+
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(constructor);
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            if (base != null) {
+                loader.define(writeClass(base));
+            }
+            Class<?> verified = loader.define(writeClass(owner));
+
+            for (int input : normalInputs) {
+                verified.getConstructor(int.class).newInstance(input);
+            }
+            assertSkipSuperThrows(verified, skipInput, shape);
         }
     }
 
@@ -29694,6 +29773,80 @@ public class IrCompilerTest {
         assertEquals(0, obfuscator.getCachedMethods().size());
     }
 
+    private RejectedIrState rejectedIrState(
+            MethodNode method, MethodContext context,
+            NativeObfuscator obfuscator) {
+        return new RejectedIrState(
+                method.instructions.toArray(),
+                context.output.toString(),
+                context.nativeMethods.toString(),
+                obfuscator.getHiddenMethodsPool().getClasses()
+                        .toArray(new ClassNode[0]),
+                context.proxyMethod);
+    }
+
+    private void assertRejectedIrStateUnchanged(
+            RejectedIrState original, MethodNode method,
+            MethodContext context, NativeObfuscator obfuscator,
+            String message) {
+        assertUnchangedAfterRejectedIr(method, context, obfuscator);
+        assertTrue(Arrays.equals(
+                original.instructions, method.instructions.toArray()), message);
+        assertEquals(original.generatedSource,
+                context.output.toString(), message);
+        assertEquals(original.nativeDeclarations,
+                context.nativeMethods.toString(), message);
+        assertTrue(Arrays.equals(
+                original.hiddenClasses,
+                obfuscator.getHiddenMethodsPool().getClasses().toArray()),
+                message);
+        assertSame(original.proxyMethod, context.proxyMethod, message);
+    }
+
+    private void assertSkipSuperThrows(
+            Class<?> verified, int input, String shape) {
+        InvocationTargetException error = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class).newInstance(input),
+                shape);
+        assertTrue(error.getCause() instanceof IllegalStateException, shape);
+        assertEquals("skip-super", error.getCause().getMessage(), shape);
+    }
+
+    private void appendSkipSuperThrow(MethodNode method, LabelNode target) {
+        method.instructions.add(target);
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.NEW, "java/lang/IllegalStateException"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode("skip-super"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException",
+                "<init>", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.maxStack = Math.max(method.maxStack, 3);
+    }
+
+    private static final class RejectedIrState {
+        private final AbstractInsnNode[] instructions;
+        private final String generatedSource;
+        private final String nativeDeclarations;
+        private final ClassNode[] hiddenClasses;
+        private final HiddenMethodsPool.HiddenMethod proxyMethod;
+
+        private RejectedIrState(
+                AbstractInsnNode[] instructions,
+                String generatedSource,
+                String nativeDeclarations,
+                ClassNode[] hiddenClasses,
+                HiddenMethodsPool.HiddenMethod proxyMethod) {
+            this.instructions = instructions;
+            this.generatedSource = generatedSource;
+            this.nativeDeclarations = nativeDeclarations;
+            this.hiddenClasses = hiddenClasses;
+            this.proxyMethod = proxyMethod;
+        }
+    }
+
     private long distinctHiddenBridgeCount(MethodNode method) {
         return Arrays.stream(method.instructions.toArray())
                 .filter(MethodInsnNode.class::isInstance)
@@ -30915,24 +31068,24 @@ public class IrCompilerTest {
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", "(I)V", null, null);
         LabelNode chainCall = new LabelNode();
-        LabelNode suffix = new LabelNode();
+        LabelNode skipSuper = new LabelNode();
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         if (lookup) {
             method.instructions.add(new LookupSwitchInsnNode(
-                    chainCall, new int[]{0}, new LabelNode[]{suffix}));
+                    chainCall, new int[]{0}, new LabelNode[]{skipSuper}));
         } else {
             method.instructions.add(new TableSwitchInsnNode(
-                    0, 0, chainCall, suffix));
+                    0, 0, chainCall, skipSuper));
         }
         method.instructions.add(chainCall);
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESPECIAL, "java/lang/Object",
                 "<init>", "()V", false));
-        method.instructions.add(suffix);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+        appendSkipSuperThrow(method, skipSuper);
         method.maxLocals = 2;
-        method.maxStack = 1;
+        method.maxStack = 3;
         return method;
     }
 
@@ -31261,17 +31414,14 @@ public class IrCompilerTest {
             String owner, String superName) {
         MethodNode method =
                 multipleSuperDiamondConstructor(owner, superName);
-        JumpInsnNode admittedGoto = Arrays.stream(
-                        method.instructions.toArray())
-                .filter(JumpInsnNode.class::isInstance)
-                .map(JumpInsnNode.class::cast)
-                .filter(jump -> jump.getOpcode() == Opcodes.GOTO)
-                .findFirst().orElseThrow(AssertionError::new);
+        LabelNode skipSuper = new LabelNode();
         InsnList prefix = new InsnList();
         prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
         prefix.add(new JumpInsnNode(
-                Opcodes.IFEQ, admittedGoto.label));
+                Opcodes.IFEQ, skipSuper));
         method.instructions.insert(prefix);
+        appendSkipSuperThrow(method, skipSuper);
+        method.maxStack = 3;
         return method;
     }
 
@@ -32140,6 +32290,15 @@ public class IrCompilerTest {
             method.instructions.insertBefore(
                     firstReturn, new JumpInsnNode(Opcodes.GOTO, target));
             method.instructions.insertBefore(firstReturn, target);
+        } else if ("skip-super".equals(shape)) {
+            LabelNode skipSuper = new LabelNode();
+            InsnList prefix = new InsnList();
+            prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            prefix.add(new IntInsnNode(Opcodes.BIPUSH, 99));
+            prefix.add(new JumpInsnNode(
+                    Opcodes.IF_ICMPEQ, skipSuper));
+            method.instructions.insert(prefix);
+            appendSkipSuperThrow(method, skipSuper);
         } else if ("exception-table".equals(shape)) {
             LabelNode start = new LabelNode();
             LabelNode end = new LabelNode();
@@ -32633,15 +32792,14 @@ public class IrCompilerTest {
                     firstReturn, new JumpInsnNode(Opcodes.GOTO, target));
             method.instructions.insertBefore(firstReturn, target);
         } else if ("skip-super".equals(shape)) {
-            LabelNode continueToCalls = new LabelNode();
+            LabelNode skipSuper = new LabelNode();
             InsnList prefix = new InsnList();
             prefix.add(new VarInsnNode(Opcodes.ILOAD, 1));
             prefix.add(new IntInsnNode(Opcodes.BIPUSH, 99));
             prefix.add(new JumpInsnNode(
-                    Opcodes.IF_ICMPNE, continueToCalls));
-            prefix.add(new InsnNode(Opcodes.RETURN));
-            prefix.add(continueToCalls);
+                    Opcodes.IF_ICMPEQ, skipSuper));
             method.instructions.insert(prefix);
+            appendSkipSuperThrow(method, skipSuper);
         } else if ("exception-table".equals(shape)) {
             LabelNode start = new LabelNode();
             LabelNode end = new LabelNode();
@@ -32682,6 +32840,8 @@ public class IrCompilerTest {
                 "<init>", "(I)V", null, null);
         LabelNode negative = new LabelNode();
         LabelNode zero = new LabelNode();
+        LabelNode skipSuper =
+                "skip-super".equals(shape) ? new LabelNode() : null;
         boolean extraLocalOperand = "extra-local".equals(shape)
                 || "iadd-extra-local".equals(shape)
                 || "isub-extra-local".equals(shape)
@@ -32704,13 +32864,10 @@ public class IrCompilerTest {
             method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
             method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 0));
         } else if ("skip-super".equals(shape)) {
-            LabelNode continueToCalls = new LabelNode();
             method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
             method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 99));
             method.instructions.add(new JumpInsnNode(
-                    Opcodes.IF_ICMPNE, continueToCalls));
-            method.instructions.add(new InsnNode(Opcodes.RETURN));
-            method.instructions.add(continueToCalls);
+                    Opcodes.IF_ICMPEQ, skipSuper));
         } else if ("exception-table".equals(shape)) {
             LabelNode start = new LabelNode();
             LabelNode end = new LabelNode();
@@ -33018,6 +33175,9 @@ public class IrCompilerTest {
                 Opcodes.INVOKESPECIAL, superName,
                 "<init>", "(I)V", false));
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+        if (skipSuper != null) {
+            appendSkipSuperThrow(method, skipSuper);
+        }
         method.maxLocals = extraLocalOperand ? 3 : 2;
         method.maxStack = "three-level-iadd".equals(shape) ? 5 : 3;
         return method;
@@ -36271,16 +36431,16 @@ public class IrCompilerTest {
     private MethodNode prefixBranchTargetingSuffixConstructor() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
                 "<init>", "(I)V", null, null);
-        LabelNode suffix = new LabelNode();
+        LabelNode skipSuper = new LabelNode();
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
-        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, suffix));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNE, skipSuper));
         method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
                 "java/lang/Object", "<init>", "()V", false));
-        method.instructions.add(suffix);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
+        appendSkipSuperThrow(method, skipSuper);
         method.maxLocals = 2;
-        method.maxStack = 1;
+        method.maxStack = 3;
         return method;
     }
 
