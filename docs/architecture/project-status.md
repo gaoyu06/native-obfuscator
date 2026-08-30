@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after extra-local int as the second two-arg `NEW` initializer
-[#316](https://github.com/gaoyu06/native-obfuscator/pull/316)
-(parent XML 560; latest leftover inventory remains
+Last updated after extra-local int as both two-arg `NEW` initializer args
+[#317](https://github.com/gaoyu06/native-obfuscator/pull/317)
+(parent XML 563; latest leftover inventory remains
 [#315](https://github.com/gaoyu06/native-obfuscator/pull/315)
 on post-[#314](https://github.com/gaoyu06/native-obfuscator/pull/314)
 `434c489`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -662,6 +662,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local double as both `NEW` initializer args (#314) | 557 tests (`IrCompilerTest` 550 + `CodegenModeTest` 7). Parent re-ran 557/557 including `threeImmediateNewExtraLocalDoubleBothArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#314 leftover inventory (#315) | Measurement only on `434c489`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as second two-arg `NEW` initializer (#316) | 560 tests (`IrCompilerTest` 553 + `CodegenModeTest` 7). Parent re-ran 560/560 including `threeImmediateNewExtraLocalTwoSecondArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Extra-local int as both two-arg `NEW` initializer args (#317) | 563 tests (`IrCompilerTest` 556 + `CodegenModeTest` 7). Parent re-ran 563/563 including `threeImmediateNewExtraLocalTwoBothArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -787,6 +788,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   `NEW` initializer arguments is admitted by #314 (fixture-only).
   Extra-local proven int-copy as the second two-arg `NEW`
   initializer argument is admitted by #316 (fixture-only).
+  Extra-local proven int-copy as both two-arg `NEW`
+  initializer arguments is admitted by #317 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -850,9 +853,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #316
-  (extra-local int-copy as the second two-arg NEW initializer). /
-  落地 #316 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #317
+  (extra-local int-copy as both two-arg NEW initializer arguments). /
+  落地 #317 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
