@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#360 leftover-docs tree
+# IR leftover inventory on post-#362 leftover-docs tree
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `7feb4c09ea91085b68f3e9e7b44a1ce9d0d29aa0`
-- Measurement commit: `7feb4c09ea91085b68f3e9e7b44a1ce9d0d29aa0`
+- Measured compiler base (merge-base with `origin/master`): `3de4bc270858080516e550a1abd29032c45a9eba`
+- Measurement commit: `3de4bc270858080516e550a1abd29032c45a9eba`
 - This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/JNI E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-[#360](https://github.com/gaoyu06/native-obfuscator/pull/360) leftover-docs tree after an extra-local `int` was admitted as the third five-argument `GregorianCalendar` `NEW` argument.
-- This post-#360 remeasurement supersedes [#359](https://github.com/gaoyu06/native-obfuscator/pull/359) on `49b2e8ca1edfa3990e202f81f1a15ddafb5f0920` (post-#358). [#357](https://github.com/gaoyu06/native-obfuscator/pull/357) on `6efe7343c6da981484de3164010a5de2e94fdb69` remains the earlier post-#356 snapshot; [#355](https://github.com/gaoyu06/native-obfuscator/pull/355) on `b8478ccfd82ee5b5834573dea8295cf010659bb9` remains the earlier post-#354 snapshot; [#353](https://github.com/gaoyu06/native-obfuscator/pull/353) remains the earlier post-#352 snapshot; [#351](https://github.com/gaoyu06/native-obfuscator/pull/351) remains the earlier post-#350 snapshot; [#349](https://github.com/gaoyu06/native-obfuscator/pull/349) remains the earlier post-#348 snapshot.
-- Latest compiler parent XML remains **[#360](https://github.com/gaoyu06/native-obfuscator/pull/360) (629)** (`IrCompilerTest` 622 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the post-[#362](https://github.com/gaoyu06/native-obfuscator/pull/362) leftover-docs tree after an extra-local `int` was admitted as the fourth five-argument `GregorianCalendar` `NEW` argument.
+- This post-#362 remeasurement supersedes [#361](https://github.com/gaoyu06/native-obfuscator/pull/361) on `7feb4c09ea91085b68f3e9e7b44a1ce9d0d29aa0` (post-#360). [#359](https://github.com/gaoyu06/native-obfuscator/pull/359) on `49b2e8ca1edfa3990e202f81f1a15ddafb5f0920` remains the earlier post-#358 snapshot; [#357](https://github.com/gaoyu06/native-obfuscator/pull/357) on `6efe7343c6da981484de3164010a5de2e94fdb69` remains the earlier post-#356 snapshot; [#355](https://github.com/gaoyu06/native-obfuscator/pull/355) on `b8478ccfd82ee5b5834573dea8295cf010659bb9` remains the earlier post-#354 snapshot; [#353](https://github.com/gaoyu06/native-obfuscator/pull/353) remains the earlier post-#352 snapshot; [#351](https://github.com/gaoyu06/native-obfuscator/pull/351) remains the earlier post-#350 snapshot; [#349](https://github.com/gaoyu06/native-obfuscator/pull/349) remains the earlier post-#348 snapshot.
+- Latest compiler parent XML remains **[#362](https://github.com/gaoyu06/native-obfuscator/pull/362) (632)** (`IrCompilerTest` 625 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Admitted: **No** (measurement only).
