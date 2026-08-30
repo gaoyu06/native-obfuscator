@@ -2199,11 +2199,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, one AALOAD from an unchanged declared array
      * argument or its proven prefix extra-local copy at a constant or
-     * single-load proven int index, one GETFIELD on an unchanged directly
-     * loaded declared object argument, proven prefix copies of declared
-     * primitive loads, bounded primitive computations, or int-family
-     * constants. The identical-copy and distinct-suffix forms may accept a
-     * direct alias load only when their separate receiver-frame proof
+     * single-load proven int index, one GETFIELD on an unchanged declared
+     * object argument or its proven prefix extra-local copy, proven prefix
+     * copies of declared primitive loads, bounded primitive computations, or
+     * int-family constants. The identical-copy and distinct-suffix forms may
+     * accept a direct alias load only when their separate receiver-frame proof
      * succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
@@ -2217,6 +2217,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Map<Integer, Integer> prefixArrayCopies =
                 provenPrefixArrayCopyLocals(
+                        constructor, callIndexes, declaredArguments);
+        Map<Integer, Integer> prefixObjectCopies =
+                provenPrefixObjectCopyLocals(
                         constructor, callIndexes, declaredArguments);
         Set<Integer> prefixIntCopies =
                 provenPrefixIntCopyLocals(
@@ -2241,6 +2244,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
                         declaredArguments, prefixArrayCopies,
+                        prefixObjectCopies,
                         prefixIntCopies, prefixLongCopies, prefixFloatCopies,
                         prefixDoubleCopies);
                 if (previousInput == null) {
@@ -2264,6 +2268,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies,
+            Map<Integer, Integer> prefixObjectCopies,
             Set<Integer> prefixIntCopies,
             Set<Integer> prefixLongCopies,
             Set<Integer> prefixFloatCopies,
@@ -2282,7 +2287,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return beforeNew;
         }
         Integer beforeGetfield = previousProvenGetfieldChainInput(
-                constructor, inputIndex, expected, declaredArguments);
+                constructor, inputIndex, expected, declaredArguments,
+                prefixObjectCopies);
         if (beforeGetfield != null) {
             return beforeGetfield;
         }
@@ -2367,16 +2373,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the isolated retained-prefix field read
-     * {@code ALOAD declaredArgument; GETFIELD}. The receiver must be an
-     * unchanged declared object argument whose exact declared class owns the
-     * field. Exact ownership deliberately avoids guessing about class
-     * hierarchies that are unavailable to this local proof. The field and its
-     * receiver load remain JVM bytecode, preserving JVM null checks and field
-     * access semantics.
+     * {@code ALOAD receiver; GETFIELD}. The receiver must be an unchanged
+     * declared object argument or its proven prefix extra-local copy, and that
+     * declared argument's exact class must own the field. Exact ownership
+     * deliberately avoids guessing about class hierarchies that are
+     * unavailable to this local proof. The field and its receiver load remain
+     * JVM bytecode, preserving JVM null checks and field access semantics.
      */
     private static Integer previousProvenGetfieldChainInput(
             MethodNode constructor, int inputIndex, Type expected,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Map<Integer, Integer> prefixObjectCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (!(input instanceof FieldInsnNode)
                 || input.getOpcode() != Opcodes.GETFIELD) {
@@ -2395,8 +2402,18 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         int receiverLocal = ((VarInsnNode) receiver).var;
-        Type declaredReceiver = declaredArguments.get(receiverLocal);
+        int declaredSourceLocal = receiverLocal;
+        Type declaredReceiver = declaredArguments.get(declaredSourceLocal);
+        if (declaredReceiver == null) {
+            Integer copiedFrom = prefixObjectCopies.get(receiverLocal);
+            if (copiedFrom == null) {
+                return null;
+            }
+            declaredSourceLocal = copiedFrom;
+            declaredReceiver = declaredArguments.get(declaredSourceLocal);
+        }
         if (receiverLocal == 0
+                || declaredSourceLocal == 0
                 || declaredReceiver == null
                 || declaredReceiver.getSort() != Type.OBJECT
                 || !declaredReceiver.getInternalName().equals(field.owner)) {
@@ -2415,14 +2432,37 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             AbstractInsnNode instruction =
                     constructor.instructions.get(i);
             Type stored = storeType(instruction);
-            if (stored != null
-                    && localRangesOverlap(
-                    ((VarInsnNode) instruction).var, stored,
-                    receiverLocal, declaredReceiver)
-                    || instruction instanceof IincInsnNode
+            if (stored != null) {
+                int storedLocal = ((VarInsnNode) instruction).var;
+                if (localRangesOverlap(
+                        storedLocal, stored,
+                        declaredSourceLocal, declaredReceiver)) {
+                    return null;
+                }
+                if (receiverLocal != declaredSourceLocal
+                        && localRangesOverlap(
+                        storedLocal, stored, receiverLocal,
+                        Type.getType(Object.class))) {
+                    int copySourceIndex =
+                            previousExecutableIndex(constructor, i - 1);
+                    if (instruction.getOpcode() != Opcodes.ASTORE
+                            || storedLocal != receiverLocal
+                            || copySourceIndex < 0
+                            || constructor.instructions.get(copySourceIndex)
+                            .getOpcode() != Opcodes.ALOAD
+                            || ((VarInsnNode) constructor.instructions.get(
+                            copySourceIndex)).var != declaredSourceLocal) {
+                        return null;
+                    }
+                }
+            } else if (instruction instanceof IincInsnNode
+                    && (localRangesOverlap(
+                    ((IincInsnNode) instruction).var, Type.INT_TYPE,
+                    declaredSourceLocal, declaredReceiver)
+                    || receiverLocal != declaredSourceLocal
                     && localRangesOverlap(
                     ((IincInsnNode) instruction).var, Type.INT_TYPE,
-                    receiverLocal, declaredReceiver)) {
+                    receiverLocal, Type.getType(Object.class)))) {
                 return null;
             }
         }
@@ -2554,6 +2594,94 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             if (!isReferenceArray(declaredArray)
                     && !isIntFamilyLoadArray(declaredArray)
                     && !isWideLoadArray(declaredArray)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+            candidateSources.put(local, sourceLocal);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.getType(Object.class))
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.getType(Object.class))) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_REFERENCE) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.put(local, candidateSources.get(local));
+            }
+        }
+        return proven;
+    }
+
+    /**
+     * Finds extra object locals whose only overlapping write before the final
+     * chain call is one pre-first-call ASTORE directly fed by an ALOAD of a
+     * declared object argument other than local 0. Requiring reference state
+     * at every chain call proves that the store dominates every selected path.
+     * The declared source local is retained so each GETFIELD proof can require
+     * that source to remain unchanged and enforce its exact owner class.
+     */
+    private static Map<Integer, Integer> provenPrefixObjectCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Map<Integer, Integer> proven = new HashMap<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        Map<Integer, Integer> candidateSources = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.ASTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal || sourceIndex < 0) {
+                continue;
+            }
+            AbstractInsnNode source =
+                    constructor.instructions.get(sourceIndex);
+            if (!(source instanceof VarInsnNode)
+                    || source.getOpcode() != Opcodes.ALOAD) {
+                continue;
+            }
+            int sourceLocal = ((VarInsnNode) source).var;
+            Type declaredObject = declaredArguments.get(sourceLocal);
+            if (sourceLocal == 0
+                    || declaredObject == null
+                    || declaredObject.getSort() != Type.OBJECT) {
                 continue;
             }
             candidateStores.put(local, i);
