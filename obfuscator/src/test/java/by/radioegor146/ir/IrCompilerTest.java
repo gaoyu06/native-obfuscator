@@ -3100,6 +3100,8 @@ public class IrCompilerTest {
         MethodNode constructor =
                 identicalSuffixCopiesWithPrefixExtraConstructor(
                         owner.name, owner.superName, true);
+        AbstractInsnNode[] originalInstructions =
+                constructor.instructions.toArray();
         int instructionCount = constructor.instructions.size();
         java.util.List<Integer> opcodes = realOpcodes(constructor);
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -3114,6 +3116,8 @@ public class IrCompilerTest {
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(Arrays.equals(
+                originalInstructions, constructor.instructions.toArray()));
         assertTrue(context.proxyMethod == null);
         assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
     }
@@ -7491,6 +7495,8 @@ public class IrCompilerTest {
         MethodNode constructor =
                 twoDistinctSuffixesWithUnassignedBridgeExtraConstructor(
                         owner.name, owner.superName);
+        AbstractInsnNode[] originalInstructions =
+                constructor.instructions.toArray();
         int instructionCount = constructor.instructions.size();
         java.util.List<Integer> opcodes = realOpcodes(constructor);
         NativeObfuscator obfuscator = new NativeObfuscator();
@@ -7508,8 +7514,37 @@ public class IrCompilerTest {
         assertUnchangedAfterRejectedIr(constructor, context, obfuscator);
         assertEquals(instructionCount, constructor.instructions.size());
         assertEquals(opcodes, realOpcodes(constructor));
+        assertTrue(Arrays.equals(
+                originalInstructions, constructor.instructions.toArray()));
         assertTrue(context.proxyMethod == null);
         assertTrue(obfuscator.getHiddenMethodsPool().getClasses().isEmpty());
+    }
+
+    @Test
+    public void unassignedExtraUnusedOnOneDistinctSuffixPassesJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperBase(
+                "example/VerifiedUnusedUnassignedExtraBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedUnusedUnassignedExtra", base.name);
+        owner.version = Opcodes.V1_8;
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "result", "I", null, null));
+        owner.methods.add(
+                twoDistinctSuffixesWithUnassignedBridgeExtraConstructor(
+                        owner.name, base.name));
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        Class<?> verified = loader.define(writeClass(owner));
+
+        Object assignedPath =
+                verified.getConstructor(int.class).newInstance(7);
+        assertEquals(0, verified.getField("result").getInt(assignedPath));
+        Object unassignedPath =
+                verified.getConstructor(int.class).newInstance(-7);
+        assertEquals(1, verified.getField("result").getInt(unassignedPath));
     }
 
     @Test
@@ -31321,12 +31356,10 @@ public class IrCompilerTest {
         assigned.add(new VarInsnNode(Opcodes.ISTORE, 2));
         method.instructions.insertBefore(
                 calls.get(0).getPrevious().getPrevious(), assigned);
-        for (MethodInsnNode call : calls) {
-            InsnList read = new InsnList();
-            read.add(new VarInsnNode(Opcodes.ILOAD, 2));
-            read.add(new InsnNode(Opcodes.POP));
-            method.instructions.insert(call, read);
-        }
+        InsnList read = new InsnList();
+        read.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        read.add(new InsnNode(Opcodes.POP));
+        method.instructions.insert(calls.get(0), read);
         method.maxLocals = 3;
         method.maxStack = 3;
         return method;
