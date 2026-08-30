@@ -34580,8 +34580,8 @@ public class IrCompilerTest {
             }
             if ("new-constructor-getstatic-argument".equals(shape)) {
                 method.instructions.add(new FieldInsnNode(
-                        Opcodes.GETSTATIC, "java/lang/Integer",
-                        "MAX_VALUE", "I"));
+                        Opcodes.GETSTATIC, "java/lang/Byte",
+                        "MAX_VALUE", "B"));
             } else {
                 method.instructions.add(new InsnNode(
                         "new-constructor-computed-argument".equals(shape)
