@@ -36,8 +36,13 @@
 
 - Test annotation invariant / 测试注解不变量:
   `625 @Test = 625 public void`.
-- The focused Gradle gate will be run before handoff; child XML totals will
-  be recorded here after that run. The parent will rerun the focused gate and
-  discard the child XML.
-- 交付前将运行聚焦的 Gradle 门禁；运行后会在此记录子代理 XML 总数。
-  父代理会重新运行该门禁，并丢弃子代理 XML。
+- Focused child gate:
+  `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
+  — passed.
+- Child XML: `632` tests, `0` skipped, `0` failures, `0` errors
+  (`IrCompilerTest`: `625`; `CodegenModeTest`: `7`).
+- The parent will rerun the focused gate and discard this child XML.
+- 子代理聚焦门禁已通过。子代理 XML 共 `632` 个测试，`0` 跳过、
+  `0` 失败、`0` 错误（`IrCompilerTest`：`625`；
+  `CodegenModeTest`：`7`）。
+- 父代理会重新运行聚焦门禁，并丢弃此次子代理 XML。
