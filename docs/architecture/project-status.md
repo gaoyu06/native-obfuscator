@@ -1,10 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory remasurement
-[#270](https://github.com/gaoyu06/native-obfuscator/pull/270)
-(measurement only on post-[#269](https://github.com/gaoyu06/native-obfuscator/pull/269)
-`bca3145`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
-0 leftovers; not coverage-complete; not a JDK support badge). Active process:
+Last updated after landing the fail-closed seventeen-level audit
+[#271](https://github.com/gaoyu06/native-obfuscator/pull/271)
+(parent re-ran 479/479: 472 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `seventeenLevelNestedBinariesPassJava8JvmVerification`)
+on the post-[#270](https://github.com/gaoyu06/native-obfuscator/pull/270)
+leftover inventory remasurement. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -390,6 +391,10 @@ legacy。不能当成 JDK 支持矩阵。
   Java 8 fixtures whose ordinary paths construct normally while their
   legal pre-super exceptional paths throw without a chain call. No new
   skip-super shape is admitted.
+  [#271](https://github.com/gaoyu06/native-obfuscator/pull/271) keeps
+  seventeen-or-more nested int/long/float/double chain-input binaries
+  fail-closed. All four family budgets remain 16. No new nested depth
+  is admitted.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -601,6 +606,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Isolated no-arg `NEW` chain inputs (#268) | 477 tests (`IrCompilerTest` 470 + `CodegenModeTest` 7). Parent re-ran 477/477 including `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Fail-closed skip-super audit (#269) | 478 tests (`IrCompilerTest` 471 + `CodegenModeTest` 7). Parent re-ran 478/478 including `skipSuperConstructorShapesPassJava8JvmVerification` | Skip-super leftover remains reject |
 | Post-#269 leftover inventory (#270) | Measurement only on `bca3145`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Fail-closed seventeen-level audit (#271) | 479 tests (`IrCompilerTest` 472 + `CodegenModeTest` 7). Parent re-ran 479/479 including `seventeenLevelNestedBinariesPassJava8JvmVerification` | Seventeen-level leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -695,6 +701,9 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The eight-path cap is unchanged.
   Skip-super constructors stay reject-before-mutation; #269
   strengthens those fail-closed tests. Do not admit skip-super.
+  Seventeen-or-more nested binaries stay reject-before-mutation; #271
+  strengthens those fail-closed tests. The sixteen-level family budgets
+  are unchanged. Do not admit unbounded depth.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#270](https://github.com/gaoyu06/native-obfuscator/pull/270),
   measured on post-#269 `bca3145`) observed 0 leftovers; that is not
@@ -713,9 +722,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #270
-  (leftover inventory remasurement on post-#269 master). /
-  落地 #270 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #271
+  (fail-closed seventeen-level audit). /
+  落地 #271 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
