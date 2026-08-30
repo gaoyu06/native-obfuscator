@@ -1,0 +1,81 @@
+## English
+
+### Summary
+
+- Admit the isolated one-argument allocation shape `NEW StringBuilder; DUP; ILOAD extra; INVOKESPECIAL StringBuilder.<init>(I)V` when the extra local is a proven dominating prefix copy of an unchanged declared int source argument.
+- The constructor takes a dedicated source argument (`(II)V`): local 1 remains the three-immediate selector, local 2 is the copied int, and the prefix stores it to extra local 3 before `NEW`.
+- Keep the complete allocation and initializer sequence in retained JVM bytecode. The native body contains neither that `NEW` nor its initializer call, and the rewrite uses one hidden bridge through the singular `MethodContext.proxyMethod`.
+- This is fixture-only: `previousProvenNewChainInput` already composes `previousProvenIntChainLeaf(..., prefixIntCopies)`, so no processor change was necessary.
+- Add fail-closed coverage for an overwritten extra local, an `INEG`-computed extra local, a proven copy paired with a second unproven initializer argument, and a copy of local 0 (the last shape is reject-before-mutation but cannot be JVM-loaded).
+- Rebased onto `origin/master` after leftover-docs #284. Keep all defaults unchanged. The initializer arity cap stays at three (from #283). This does not admit skip-super control flow, four-or-more initializer arguments, array allocation, or computed/`GETSTATIC`/`INEG` initializer inputs.
+
+### Tests
+
+Added:
+
+- `admitsThreeImmediateReturnsWithNewExtraLocalArgChainInputs`
+- `rewrittenThreeImmediateNewExtraLocalArgChainInputsPassJvmVerification`
+- `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`
+
+Gate:
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+Parent JUnit XML under `obfuscator/build/test-results/test/`:
+
+- `IrCompilerTest`: 493 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 500 tests, 0 failures, 0 errors, 0 skipped.
+
+Cite `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`. Child pre-rebase totals are discarded.
+
+### Readiness
+
+Admitted: **Yes**
+
+Ship-ready: **No**
+
+## 中文
+
+### 摘要
+
+- 当额外局部变量是未修改的已声明 int 源参数在支配前缀中的已证明副本时，接纳隔离的单参数分配形态：`NEW StringBuilder; DUP; ILOAD extra; INVOKESPECIAL StringBuilder.<init>(I)V`。
+- 构造器使用独立的源参数（`(II)V`）：local 1 仍是三路立即选择器，local 2 是被复制的 int，前缀在 `NEW` 之前将其存入额外局部变量 3。
+- 完整的分配和初始化序列保留在 JVM 字节码前缀中。native 方法体既不包含该 `NEW`，也不包含其初始化调用；改写通过唯一的 `MethodContext.proxyMethod` 使用一个隐藏桥接方法。
+- 本次仅增加夹具：`previousProvenNewChainInput` 已经组合调用 `previousProvenIntChainLeaf(..., prefixIntCopies)`，因此无需修改处理器。
+- 增加保守拒绝覆盖：被覆盖的额外局部变量、由 `INEG` 计算后写入的额外局部变量、已证明副本与第二个未证明初始化参数的组合，以及 local 0 的副本（后者在改写前拒绝，但不能被 JVM 加载）。
+- 已变基到 leftover-docs #284 之后的 `origin/master`。所有默认值保持不变，初始化参数数量上限仍为三个（来自 #283）。本次不接纳 skip-super 控制流、四个及以上初始化参数、数组分配或计算型/`GETSTATIC`/`INEG` 初始化输入。
+
+### 测试
+
+新增：
+
+- `admitsThreeImmediateReturnsWithNewExtraLocalArgChainInputs`
+- `rewrittenThreeImmediateNewExtraLocalArgChainInputsPassJvmVerification`
+- `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`
+
+门禁命令：
+
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+父级 `obfuscator/build/test-results/test/` JUnit XML 汇总：
+
+- `IrCompilerTest`：493 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：500 个测试，0 个失败，0 个错误，0 个跳过。
+
+引用 `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity`。子代理变基前的汇总作废。
+
+### 就绪状态
+
+已接纳：**是**
+
+可发布：**否**
