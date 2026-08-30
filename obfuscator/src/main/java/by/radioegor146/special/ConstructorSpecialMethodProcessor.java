@@ -3201,18 +3201,24 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the exact retained-prefix int computation
-     * {@code ALOAD intArray; constant; IALOAD}. The source must be an unchanged
-     * declared {@code int[]} argument or its proven prefix extra-local copy,
+     * {@code ALOAD array; constant; xALOAD}, where {@code xALOAD} is
+     * {@code IALOAD}, {@code BALOAD}, {@code CALOAD}, or {@code SALOAD} and
+     * the array type exactly matches that opcode. The source must be an
+     * unchanged declared argument or its proven prefix extra-local copy,
      * and no earlier array store is accepted. The load remains JVM bytecode,
-     * preserving null and bounds behavior without reproducing it in native
-     * code.
+     * preserving null, bounds, and primitive widening behavior without
+     * reproducing it in native code.
      */
     private static Integer previousProvenIntArrayLoadLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
             Map<Integer, Integer> prefixArrayCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
-        if (input.getOpcode() != Opcodes.IALOAD) {
+        int loadOpcode = input.getOpcode();
+        if (loadOpcode != Opcodes.IALOAD
+                && loadOpcode != Opcodes.BALOAD
+                && loadOpcode != Opcodes.CALOAD
+                && loadOpcode != Opcodes.SALOAD) {
             return null;
         }
         int indexIndex =
@@ -3243,7 +3249,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArrayLocal = copiedFrom;
             declaredArray = declaredArguments.get(declaredArrayLocal);
         }
-        if (!Type.getType("[I").equals(declaredArray)) {
+        if (declaredArray == null
+                || !matchesIntArrayLoadType(
+                loadOpcode, declaredArray)) {
             return null;
         }
         for (int i = 0; i < inputIndex; i++) {
@@ -3261,6 +3269,22 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return previousExecutableIndex(constructor, arrayIndex - 1);
+    }
+
+    private static boolean matchesIntArrayLoadType(
+            int loadOpcode, Type declaredArray) {
+        if (loadOpcode == Opcodes.IALOAD) {
+            return Type.getType("[I").equals(declaredArray);
+        }
+        if (loadOpcode == Opcodes.BALOAD) {
+            return Type.getType("[B").equals(declaredArray)
+                    || Type.getType("[Z").equals(declaredArray);
+        }
+        if (loadOpcode == Opcodes.CALOAD) {
+            return Type.getType("[C").equals(declaredArray);
+        }
+        return loadOpcode == Opcodes.SALOAD
+                && Type.getType("[S").equals(declaredArray);
     }
 
     private static boolean isProvenIntChainBinary(int opcode) {
