@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#364 leftover-docs tree
+# IR leftover inventory on post-#366 leftover-docs tree
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `de6d4d6fe8d0738332726d2fd7be1e825d60a6ec`
-- Measurement commit: `de6d4d6fe8d0738332726d2fd7be1e825d60a6ec`
+- Measured compiler base (merge-base with `origin/master`): `45e6a5159ab93de810c59f02efc5bab3288a4354`
+- Measurement commit: `45e6a5159ab93de810c59f02efc5bab3288a4354`
 - This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/JNI E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-[#364](https://github.com/gaoyu06/native-obfuscator/pull/364) leftover-docs tree after an extra-local `int` was admitted as the fifth five-argument `GregorianCalendar` `NEW` argument.
-- This post-#364 remeasurement supersedes [#363](https://github.com/gaoyu06/native-obfuscator/pull/363) on `3de4bc270858080516e550a1abd29032c45a9eba` (post-#362). [#361](https://github.com/gaoyu06/native-obfuscator/pull/361) on `7feb4c09ea91085b68f3e9e7b44a1ce9d0d29aa0` remains the earlier post-#360 snapshot; [#359](https://github.com/gaoyu06/native-obfuscator/pull/359) on `49b2e8ca1edfa3990e202f81f1a15ddafb5f0920` remains the earlier post-#358 snapshot; [#357](https://github.com/gaoyu06/native-obfuscator/pull/357) on `6efe7343c6da981484de3164010a5de2e94fdb69` remains the earlier post-#356 snapshot; [#355](https://github.com/gaoyu06/native-obfuscator/pull/355) on `b8478ccfd82ee5b5834573dea8295cf010659bb9` remains the earlier post-#354 snapshot; [#353](https://github.com/gaoyu06/native-obfuscator/pull/353) remains the earlier post-#352 snapshot; [#351](https://github.com/gaoyu06/native-obfuscator/pull/351) remains the earlier post-#350 snapshot; [#349](https://github.com/gaoyu06/native-obfuscator/pull/349) remains the earlier post-#348 snapshot.
-- Latest compiler parent XML remains **[#364](https://github.com/gaoyu06/native-obfuscator/pull/364) (635)** (`IrCompilerTest` 628 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the post-[#366](https://github.com/gaoyu06/native-obfuscator/pull/366) leftover-docs tree after an extra-local `int` was admitted as **all five** five-argument `GregorianCalendar` `NEW` arguments.
+- This post-#366 remeasurement supersedes [#365](https://github.com/gaoyu06/native-obfuscator/pull/365) on `de6d4d6fe8d0738332726d2fd7be1e825d60a6ec` (post-#364). [#363](https://github.com/gaoyu06/native-obfuscator/pull/363) on `3de4bc270858080516e550a1abd29032c45a9eba` remains the earlier post-#362 snapshot; [#361](https://github.com/gaoyu06/native-obfuscator/pull/361) on `7feb4c09ea91085b68f3e9e7b44a1ce9d0d29aa0` remains the earlier post-#360 snapshot; [#359](https://github.com/gaoyu06/native-obfuscator/pull/359) on `49b2e8ca1edfa3990e202f81f1a15ddafb5f0920` remains the earlier post-#358 snapshot; [#357](https://github.com/gaoyu06/native-obfuscator/pull/357) on `6efe7343c6da981484de3164010a5de2e94fdb69` remains the earlier post-#356 snapshot; [#355](https://github.com/gaoyu06/native-obfuscator/pull/355) on `b8478ccfd82ee5b5834573dea8295cf010659bb9` remains the earlier post-#354 snapshot; [#353](https://github.com/gaoyu06/native-obfuscator/pull/353) remains the earlier post-#352 snapshot; [#351](https://github.com/gaoyu06/native-obfuscator/pull/351) remains the earlier post-#350 snapshot; [#349](https://github.com/gaoyu06/native-obfuscator/pull/349) remains the earlier post-#348 snapshot.
+- Latest compiler parent XML remains **[#366](https://github.com/gaoyu06/native-obfuscator/pull/366) (638)** (`IrCompilerTest` 631 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Admitted: **No** (measurement only).
