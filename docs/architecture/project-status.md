@@ -1,9 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after fail-closed unproven wide NEW audit
-[#293](https://github.com/gaoyu06/native-obfuscator/pull/293)
-(parent XML 511; long/float/double `NEW` initializer arguments remain
-reject; latest leftover inventory remains
+Last updated after isolated six-arg `NEW` chain inputs
+[#294](https://github.com/gaoyu06/native-obfuscator/pull/294)
+(parent XML 514; seven-or-more `NEW` initializer arguments remain reject;
+long/float/double `NEW` initializer arguments remain reject after
+[#293](https://github.com/gaoyu06/native-obfuscator/pull/293);
+latest leftover inventory remains
 [#292](https://github.com/gaoyu06/native-obfuscator/pull/292)
 on post-[#291](https://github.com/gaoyu06/native-obfuscator/pull/291)
 `2fbd89d`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -640,6 +642,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Fail-closed constructor `jsr`/`ret` catch audit (#291) | 509 tests (`IrCompilerTest` 502 + `CodegenModeTest` 7). Parent re-ran 509/509 including `unprovenConstructorJsrRetShapesPassJava8JvmVerification` | Constructor `jsr`/`ret` with exception tables remains reject |
 | Post-#291 leftover inventory (#292) | Measurement only on `2fbd89d`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed unproven wide NEW audit (#293) | 511 tests (`IrCompilerTest` 504 + `CodegenModeTest` 7). Parent re-ran 511/511 including `unprovenWideNewChainInputShapesPassJava8JvmVerification` | Long/float/double NEW initializer leftover remains reject |
+| Isolated six-arg `NEW` chain inputs (#294) | 514 tests (`IrCompilerTest` 507 + `CodegenModeTest` 7). Parent re-ran 514/514 including `threeImmediateNewSixArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -743,13 +746,14 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   by #285 (fixture-only).
   Isolated four-arg int-family `NEW` chain inputs are admitted by #287.
   Isolated five-arg int-family `NEW` chain inputs are admitted by #290.
+  Isolated six-arg int-family `NEW` chain inputs are admitted by #294.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
   strengthens those fail-closed tests. Do not admit computed/`INEG`
   extra-array stores, overwritten extras, prior array stores, or a
   primitive array presented as a reference `AALOAD` result.
   Unproven `NEW` forms stay reject-before-mutation; #274
   strengthens those fail-closed tests. Do not admit `NEW` with
-  six or more initializer arguments, array-allocation opcodes,
+  seven or more initializer arguments, array-allocation opcodes,
   extra-local of `this`, or overwritten / computed extras as
   initializer arguments. Long/float/double `NEW` initializer
   arguments stay reject-before-mutation; #293 strengthens those
@@ -797,9 +801,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #293
-  (fail-closed unproven wide NEW initializer audit). /
-  落地 #293 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #294
+  (isolated six-arg int-family NEW initializer). /
+  落地 #294 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
