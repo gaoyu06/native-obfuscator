@@ -1,10 +1,13 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory remasurement
+Last updated after fail-closed post-call audit
+[#280](https://github.com/gaoyu06/native-obfuscator/pull/280)
+(parent XML 491/491 including
+`unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification`;
+`post-call` extra work and three-immediate `astore-zero` remain reject;
 [#279](https://github.com/gaoyu06/native-obfuscator/pull/279)
-(measurement only on post-[#278](https://github.com/gaoyu06/native-obfuscator/pull/278)
-`27414d0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
-0 leftovers; not coverage-complete; not a JDK support badge). Active process:
+remains the latest leftover inventory remasurement on post-#278
+`27414d0`). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -623,6 +626,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Fail-closed unproven-`GETFIELD` audit (#277) | 487 tests (`IrCompilerTest` 480 + `CodegenModeTest` 7). Parent re-ran 487/487 including `unprovenGetfieldChainInputShapesPassJava8JvmVerification` | Unproven `GETFIELD` leftover remains reject |
 | Isolated one-arg `NEW` chain inputs (#278) | 490 tests (`IrCompilerTest` 483 + `CodegenModeTest` 7). Parent re-ran 490/490 including `threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#278 leftover inventory (#279) | Measurement only on `27414d0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Fail-closed post-call audit (#280) | 491 tests (`IrCompilerTest` 484 + `CodegenModeTest` 7). Parent re-ran 491/491 including `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` | Post-call leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -679,7 +683,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   on a bridge-taking path,
   unproven `NEW` and `GETFIELD` inputs,
   more than eight distinct paths,
-  skip-super constructors).
+  skip-super constructors,
+  post-call extra work and three-immediate `astore-zero`).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
   subroutines are admitted by #241. Extra-local long shift values and
   `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
@@ -724,6 +729,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The eight-path cap is unchanged.
   Skip-super constructors stay reject-before-mutation; #269
   strengthens those fail-closed tests. Do not admit skip-super.
+  Extra work after a chain call (`post-call`) and three-immediate
+  `astore-zero` stay reject-before-mutation; #280 strengthens those
+  fail-closed tests. Do not admit post-call extra work. Identity
+  `ASTORE 0` remains the existing admit.
   Seventeen-or-more nested binaries stay reject-before-mutation; #271
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
@@ -748,9 +757,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #279
-  (leftover inventory remasurement on post-#278 master). /
-  落地 #279 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #280
+  (fail-closed post-call audit). /
+  落地 #280 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
