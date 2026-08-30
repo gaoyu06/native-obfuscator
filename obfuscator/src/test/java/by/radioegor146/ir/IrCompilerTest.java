@@ -3821,6 +3821,57 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewOneArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewOneArgBase",
+                "(Ljava/lang/StringBuilder;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewOneArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-argument");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDeclaredIndexAaloadChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperDeclaredIndexAaloadBase");
@@ -7164,7 +7215,10 @@ public class IrCompilerTest {
     public void rejectsUnprovenNewChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "new-uninitialized",
-                "new-constructor-argument",
+                "new-constructor-missing-dup",
+                "new-constructor-two-arguments",
+                "new-constructor-computed-argument",
+                "new-constructor-getstatic-argument",
                 "newarray",
                 "anewarray",
                 "multianewarray",
@@ -7207,10 +7261,14 @@ public class IrCompilerTest {
     public void unprovenNewChainInputShapesPassJava8JvmVerification()
             throws Exception {
         // A raw uninitialized reference is verifier-invalid by definition.
-        // Every other rejected allocation shape remains valid classfile-52
-        // bytecode and is checked here without running the IR transform.
+        // Missing DUP is also verifier-invalid because no initialized
+        // reference remains for the chain call. Every other rejected
+        // allocation shape remains valid classfile-52 bytecode and is checked
+        // here without running the IR transform.
         for (String shape : Arrays.asList(
-                "new-constructor-argument",
+                "new-constructor-two-arguments",
+                "new-constructor-computed-argument",
+                "new-constructor-getstatic-argument",
                 "newarray",
                 "anewarray",
                 "multianewarray",
@@ -7242,6 +7300,9 @@ public class IrCompilerTest {
                 } else if ("multianewarray".equals(shape)) {
                     assertEquals(1, ((Object[][]) value).length, shape);
                     assertEquals(1, ((Object[][]) value)[0].length, shape);
+                } else if ("new-constructor-two-arguments".equals(shape)) {
+                    assertEquals("java.awt.Point",
+                            value.getClass().getName(), shape);
                 } else {
                     assertTrue(value instanceof StringBuilder, shape);
                 }
@@ -9590,6 +9651,55 @@ public class IrCompilerTest {
                 realOpcodes(constructor), Opcodes.NEW));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewOneArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewOneArgBase",
+                "(Ljava/lang/StringBuilder;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewOneArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-argument");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
         assertEquals(6, Collections.frequency(
                 realOpcodes(constructor), Opcodes.INVOKESPECIAL));
         assertEquals(
@@ -16648,6 +16758,103 @@ public class IrCompilerTest {
                         "-Djava.library.path=" + outputDirectory,
                         "-jar", outputJar.toString()));
         nativeResult.check("native NEW argument multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW one-argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW one-argument runtime test");
+
+        String ownerName = "example/NewOneArgRuntime";
+        String baseName = "example/NewOneArgRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-new-one-arg-run");
+        Path inputJar = directory.resolve("new-one-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-argument");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW one-argument multi-super Java run");
+        assertEquals(
+                "java.lang.StringBuilder" + System.lineSeparator()
+                        + "java.lang.StringBuilder" + System.lineSeparator()
+                        + "java.lang.StringBuilder" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW one-argument CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW one-argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW one-argument native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW one-argument multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -28231,12 +28438,20 @@ public class IrCompilerTest {
     private void createMultipleSuperThreeNewArgReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
-        ClassNode base = multipleSuperReferenceBase(baseName);
+        createMultipleSuperThreeNewArgReturnsJar(
+                jarPath, ownerName, baseName, "new-noarg");
+    }
+
+    private void createMultipleSuperThreeNewArgReturnsJar(
+            Path jarPath, String ownerName, String baseName, String shape)
+            throws IOException {
+        ClassNode base = multipleSuperReferenceBase(
+                baseName, newArgChainDescriptor(shape));
         base.version = Opcodes.V1_8;
         ClassNode owner = constructorOwner(ownerName, baseName);
         owner.version = Opcodes.V1_8;
         owner.methods.add(threeImmediateReturnsWithNewArg(
-                baseName, "new-noarg"));
+                baseName, shape));
         owner.methods.add(multipleSuperThreeNewArgReturnsMain(
                 ownerName, baseName));
 
@@ -34341,7 +34556,8 @@ public class IrCompilerTest {
         method.instructions.add(zero);
         appendNewArgChainCall(method, superName, shape);
         method.maxLocals = 2;
-        method.maxStack = 4;
+        method.maxStack =
+                "new-constructor-two-arguments".equals(shape) ? 5 : 4;
         return method;
     }
 
@@ -34352,14 +34568,34 @@ public class IrCompilerTest {
         if ("new-uninitialized".equals(shape)) {
             method.instructions.add(
                     new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
-        } else if ("new-constructor-argument".equals(shape)) {
+        } else if (shape.startsWith("new-constructor-")) {
+            boolean twoArguments =
+                    "new-constructor-two-arguments".equals(shape);
+            String allocated = twoArguments
+                    ? "java/awt/Point" : "java/lang/StringBuilder";
             method.instructions.add(
-                    new TypeInsnNode(Opcodes.NEW, "java/lang/StringBuilder"));
-            method.instructions.add(new InsnNode(Opcodes.DUP));
-            method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+                    new TypeInsnNode(Opcodes.NEW, allocated));
+            if (!"new-constructor-missing-dup".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.DUP));
+            }
+            if ("new-constructor-getstatic-argument".equals(shape)) {
+                method.instructions.add(new FieldInsnNode(
+                        Opcodes.GETSTATIC, "java/lang/Byte",
+                        "MAX_VALUE", "B"));
+            } else {
+                method.instructions.add(new InsnNode(
+                        "new-constructor-computed-argument".equals(shape)
+                                ? Opcodes.ICONST_M1 : Opcodes.ICONST_1));
+            }
+            if ("new-constructor-computed-argument".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.INEG));
+            }
+            if (twoArguments) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+            }
             method.instructions.add(new MethodInsnNode(
-                    Opcodes.INVOKESPECIAL, "java/lang/StringBuilder",
-                    "<init>", "(I)V", false));
+                    Opcodes.INVOKESPECIAL, allocated, "<init>",
+                    twoArguments ? "(II)V" : "(I)V", false));
         } else if ("newarray".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(
@@ -34391,7 +34627,10 @@ public class IrCompilerTest {
     }
 
     private String newArgChainDescriptor(String shape) {
-        if ("new-constructor-argument".equals(shape)) {
+        if ("new-constructor-two-arguments".equals(shape)) {
+            return "(Ljava/awt/Point;)V";
+        }
+        if (shape.startsWith("new-constructor-")) {
             return "(Ljava/lang/StringBuilder;)V";
         }
         if ("newarray".equals(shape)) {
