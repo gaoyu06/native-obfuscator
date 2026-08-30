@@ -3872,6 +3872,62 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewExtraLocalArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewExtraLocalArgBase",
+                "(Ljava/lang/StringBuilder;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewExtraLocalArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-extra-local-argument");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, constructor.maxLocals);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ILOAD), 2));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ISTORE), 2));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithNewTwoArgChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperNewTwoArgBase",
@@ -7358,6 +7414,10 @@ public class IrCompilerTest {
         for (String shape : Arrays.asList(
                 "new-uninitialized",
                 "new-constructor-missing-dup",
+                "new-constructor-extra-local-argument-overwritten",
+                "new-constructor-extra-local-argument-computed",
+                "new-constructor-extra-local-argument-second-unproven",
+                "new-constructor-extra-local-this-argument",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
                 "new-constructor-four-arguments",
@@ -7404,10 +7464,14 @@ public class IrCompilerTest {
             throws Exception {
         // A raw uninitialized reference is verifier-invalid by definition.
         // Missing DUP is also verifier-invalid because no initialized
-        // reference remains for the chain call. Every other rejected
+        // reference remains for the chain call. Copying uninitialized local 0
+        // as an initializer is verifier-invalid too. Every other rejected
         // allocation shape remains valid classfile-52 bytecode and is checked
         // here without running the IR transform.
         for (String shape : Arrays.asList(
+                "new-constructor-extra-local-argument-overwritten",
+                "new-constructor-extra-local-argument-computed",
+                "new-constructor-extra-local-argument-second-unproven",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
                 "new-constructor-four-arguments",
@@ -7444,6 +7508,9 @@ public class IrCompilerTest {
                     assertEquals(1, ((Object[][]) value)[0].length, shape);
                 } else if ("new-constructor-four-arguments".equals(shape)) {
                     assertTrue(value instanceof java.awt.Insets, shape);
+                } else if (shape.endsWith("-second-unproven")) {
+                    assertEquals("java.awt.Point",
+                            value.getClass().getName(), shape);
                 } else {
                     assertTrue(value instanceof StringBuilder, shape);
                 }
@@ -9840,6 +9907,60 @@ public class IrCompilerTest {
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.DUP));
         assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewExtraLocalArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewExtraLocalArgBase",
+                "(Ljava/lang/StringBuilder;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewExtraLocalArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-extra-local-argument");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, constructor.maxLocals);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ILOAD), 2));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ISTORE), 2));
+        assertEquals(0, Collections.frequency(
                 realOpcodes(constructor), Opcodes.ICONST_1));
         assertEquals(6, Collections.frequency(
                 realOpcodes(constructor), Opcodes.INVOKESPECIAL));
@@ -17100,6 +17221,108 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native NEW one-argument multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW extra-local runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW extra-local runtime test");
+
+        String ownerName = "example/NewExtraLocalArgRuntime";
+        String baseName = "example/NewExtraLocalArgRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-new-extra-local-arg-run");
+        Path inputJar = directory.resolve("new-extra-local-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-extra-local-argument");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW extra-local multi-super Java run");
+        assertEquals(
+                "java.lang.StringBuilder" + System.lineSeparator()
+                        + "java.lang.StringBuilder" + System.lineSeparator()
+                        + "java.lang.StringBuilder" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, transformedConstructor.maxLocals);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.ILOAD), 2));
+        assertEquals(1, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.ISTORE), 2));
+        assertEquals(0, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_1));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW extra-local CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW extra-local CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW extra-local native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW extra-local multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -34991,6 +35214,24 @@ public class IrCompilerTest {
                 "<init>", "(I)V", null, null);
         LabelNode negative = new LabelNode();
         LabelNode zero = new LabelNode();
+        boolean extraLocalIntArgument =
+                shape.startsWith("new-constructor-extra-local-argument");
+        boolean extraLocalThisArgument =
+                "new-constructor-extra-local-this-argument".equals(shape);
+        if (extraLocalIntArgument) {
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            if (shape.endsWith("-computed")) {
+                method.instructions.add(new InsnNode(Opcodes.INEG));
+            }
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+            if (shape.endsWith("-overwritten")) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+                method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+            }
+        } else if (extraLocalThisArgument) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+        }
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
@@ -35000,7 +35241,8 @@ public class IrCompilerTest {
         appendNewArgChainCall(method, superName, shape);
         method.instructions.add(zero);
         appendNewArgChainCall(method, superName, shape);
-        method.maxLocals = 2;
+        method.maxLocals =
+                extraLocalIntArgument || extraLocalThisArgument ? 3 : 2;
         if (shape.startsWith("new-constructor-")) {
             method.maxStack = 3 + newConstructorArgumentCount(shape);
         } else {
@@ -35017,9 +35259,13 @@ public class IrCompilerTest {
             method.instructions.add(
                     new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
         } else if (shape.startsWith("new-constructor-")) {
+            boolean extraLocalThisArgument =
+                    "new-constructor-extra-local-this-argument".equals(shape);
             int argumentCount = newConstructorArgumentCount(shape);
             String allocated;
-            if (argumentCount == 4) {
+            if (extraLocalThisArgument) {
+                allocated = "java/util/concurrent/atomic/AtomicReference";
+            } else if (argumentCount == 4) {
                 allocated = "java/awt/Insets";
             } else if (argumentCount == 3) {
                 allocated = "java/awt/Color";
@@ -35037,6 +35283,13 @@ public class IrCompilerTest {
                 method.instructions.add(new FieldInsnNode(
                         Opcodes.GETSTATIC, "java/lang/Byte",
                         "MAX_VALUE", "B"));
+            } else if (extraLocalThisArgument) {
+                method.instructions.add(
+                        new VarInsnNode(Opcodes.ALOAD, 2));
+            } else if (shape.startsWith(
+                    "new-constructor-extra-local-argument")) {
+                method.instructions.add(
+                        new VarInsnNode(Opcodes.ILOAD, 2));
             } else {
                 method.instructions.add(new InsnNode(
                         "new-constructor-computed-argument".equals(shape)
@@ -35046,7 +35299,13 @@ public class IrCompilerTest {
                 method.instructions.add(new InsnNode(Opcodes.INEG));
             }
             if (argumentCount >= 2) {
-                method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+                if (shape.endsWith("-second-unproven")) {
+                    method.instructions.add(new FieldInsnNode(
+                            Opcodes.GETSTATIC, "java/lang/Byte",
+                            "MAX_VALUE", "B"));
+                } else {
+                    method.instructions.add(new InsnNode(Opcodes.ICONST_2));
+                }
             }
             if (argumentCount >= 3) {
                 method.instructions.add(new InsnNode(Opcodes.ICONST_3));
@@ -35060,7 +35319,10 @@ public class IrCompilerTest {
                     ? "(II)V" : "(I)V";
             method.instructions.add(new MethodInsnNode(
                     Opcodes.INVOKESPECIAL, allocated, "<init>",
-                    initializerDescriptor, false));
+                    extraLocalThisArgument
+                            ? "(Ljava/lang/Object;)V"
+                            : initializerDescriptor,
+                    false));
         } else if ("newarray".equals(shape)) {
             method.instructions.add(new InsnNode(Opcodes.ICONST_1));
             method.instructions.add(
@@ -35098,8 +35360,12 @@ public class IrCompilerTest {
         if ("new-constructor-three-arguments".equals(shape)) {
             return "(Ljava/awt/Color;)V";
         }
-        if ("new-constructor-two-arguments".equals(shape)) {
+        if ("new-constructor-two-arguments".equals(shape)
+                || shape.endsWith("-second-unproven")) {
             return "(Ljava/awt/Point;)V";
+        }
+        if ("new-constructor-extra-local-this-argument".equals(shape)) {
+            return "(Ljava/util/concurrent/atomic/AtomicReference;)V";
         }
         if (shape.startsWith("new-constructor-")) {
             return "(Ljava/lang/StringBuilder;)V";
@@ -35123,7 +35389,8 @@ public class IrCompilerTest {
         if ("new-constructor-three-arguments".equals(shape)) {
             return 3;
         }
-        if ("new-constructor-two-arguments".equals(shape)) {
+        if ("new-constructor-two-arguments".equals(shape)
+                || shape.endsWith("-second-unproven")) {
             return 2;
         }
         return 1;
