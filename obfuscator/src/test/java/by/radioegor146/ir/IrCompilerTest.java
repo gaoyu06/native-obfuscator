@@ -2600,6 +2600,8 @@ public class IrCompilerTest {
             MethodNode constructor =
                     invalidMultiSuperTryCatchConstructor(
                             owner.name, owner.superName, shape);
+            AbstractInsnNode[] originalInstructions =
+                    constructor.instructions.toArray();
             int instructionCount = constructor.instructions.size();
             java.util.List<Integer> opcodes = realOpcodes(constructor);
             TryCatchBlockNode original = constructor.tryCatchBlocks.get(0);
@@ -2610,6 +2612,11 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            String generatedSource = context.output.toString();
+            String nativeDeclarations = context.nativeMethods.toString();
+            ClassNode[] hiddenClasses = obfuscator.getHiddenMethodsPool()
+                    .getClasses().toArray(new ClassNode[0]);
+            HiddenMethodsPool.HiddenMethod proxyMethod = context.proxyMethod;
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -2623,14 +2630,54 @@ public class IrCompilerTest {
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(Arrays.equals(
+                    originalInstructions, constructor.instructions.toArray()),
+                    shape);
             assertEquals(1, constructor.tryCatchBlocks.size(), shape);
             assertSame(original, constructor.tryCatchBlocks.get(0), shape);
             assertSame(start, original.start, shape);
             assertSame(end, original.end, shape);
             assertSame(handler, original.handler, shape);
-            assertTrue(context.proxyMethod == null, shape);
-            assertTrue(obfuscator.getHiddenMethodsPool()
-                    .getClasses().isEmpty(), shape);
+            assertEquals(generatedSource, context.output.toString(), shape);
+            assertEquals(nativeDeclarations,
+                    context.nativeMethods.toString(), shape);
+            assertTrue(Arrays.equals(hiddenClasses,
+                    obfuscator.getHiddenMethodsPool()
+                            .getClasses().toArray()), shape);
+            assertSame(proxyMethod, context.proxyMethod, shape);
+        }
+    }
+
+    @Test
+    public void spanningAndChainCoveringTryCatchShapesPassJava8JvmVerification()
+            throws Exception {
+        for (String shape : Arrays.asList("cross-suffix", "covers-chain")) {
+            String classSuffix = shape.replace("-", "");
+            ClassNode base = multipleSuperBase(
+                    "example/VerifiedRejectedMultiCatch"
+                            + classSuffix + "Base");
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedMultiCatch" + classSuffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            owner.methods.add(invalidMultiSuperTryCatchConstructor(
+                    owner.name, base.name, shape));
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            Class<?> verified = loader.define(writeClass(owner));
+
+            Object firstPath =
+                    verified.getConstructor(int.class).newInstance(7);
+            assertEquals(0, verified.getField("result").getInt(firstPath),
+                    shape + " first path");
+            Object secondPath =
+                    verified.getConstructor(int.class).newInstance(-7);
+            assertEquals(1, verified.getField("result").getInt(secondPath),
+                    shape + " second path");
         }
     }
 
@@ -30817,7 +30864,11 @@ public class IrCompilerTest {
             AbstractInsnNode secondSuffixStart = calls.get(1).getNext();
             method.instructions.insertBefore(firstSuffixStart, start);
             method.instructions.insertBefore(firstReturn, end);
+            method.instructions.insertBefore(
+                    secondSuffixStart, new InsnNode(Opcodes.ACONST_NULL));
             method.instructions.insertBefore(secondSuffixStart, handler);
+            method.instructions.insertBefore(
+                    secondSuffixStart, new InsnNode(Opcodes.POP));
         } else if ("covers-chain".equals(shape)) {
             AbstractInsnNode firstReceiver =
                     calls.get(0).getPrevious().getPrevious();
