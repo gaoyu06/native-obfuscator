@@ -7074,6 +7074,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7082,8 +7084,8 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
@@ -7091,6 +7093,70 @@ public class IrCompilerTest {
             assertTrue(context.proxyMethod == null, shape);
             assertTrue(obfuscator.getHiddenMethodsPool()
                     .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void unprovenGetfieldChainInputShapesPassJava8JvmVerification()
+            throws Exception {
+        // GETFIELD on uninitialized this (directly or through an extra local)
+        // and passing an int field to an Object parameter are inherently
+        // verifier-invalid. Every other rejected GETFIELD shape remains valid
+        // classfile-52 bytecode and is checked without running the IR transform.
+        for (String shape : Arrays.asList(
+                "getfield-overwritten-holder",
+                "getfield-overwritten-extra-local-holder",
+                "getfield-computed-holder",
+                "getfield-getstatic")) {
+            String classSuffix = shape.replace("-", "");
+            String holderName =
+                    "example/VerifiedRejectedGetfield" + classSuffix + "Holder";
+            ClassNode holder = getfieldArgHolder(holderName);
+            holder.version = Opcodes.V1_8;
+            ClassNode base = multipleSuperReferenceBase(
+                    "example/VerifiedRejectedGetfield" + classSuffix + "Base");
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedGetfield" + classSuffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithGetfieldArg(
+                    owner.name, base.name, holderName, shape));
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            Class<?> holderClass = loader.define(writeClass(holder));
+            Class<?> verified = loader.define(writeClass(owner));
+            Object directHolder = holderClass.getConstructor(Object.class)
+                    .newInstance("DIRECT");
+            Object replacementHolder =
+                    holderClass.getConstructor(Object.class)
+                            .newInstance("REPLACEMENT");
+            Object computedHolder = holderClass.getConstructor(Object.class)
+                    .newInstance("COMPUTED");
+            holderClass.getField("nested")
+                    .set(directHolder, computedHolder);
+            holderClass.getField("staticValue").set(null, "STATIC");
+
+            for (int selector : new int[]{7, -7, 0}) {
+                Object instance;
+                if (shape.contains("overwritten")) {
+                    instance = verified.getConstructor(
+                                    int.class, holderClass, holderClass)
+                            .newInstance(
+                                    selector, directHolder, replacementHolder);
+                } else {
+                    instance = verified.getConstructor(int.class, holderClass)
+                            .newInstance(selector, directHolder);
+                }
+                String expected = shape.contains("overwritten")
+                        ? "REPLACEMENT"
+                        : shape.contains("computed")
+                        ? "COMPUTED"
+                        : "STATIC";
+                assertEquals(expected,
+                        verified.getField("value").get(instance), shape);
+            }
         }
     }
 
@@ -34124,9 +34190,16 @@ public class IrCompilerTest {
     private MethodNode threeImmediateReturnsWithGetfieldArg(
             String ownerName, String superName,
             String holderName, String shape) {
+        boolean overwrittenHolder =
+                shape.contains("overwritten-holder");
+        boolean overwrittenExtraLocalHolder =
+                shape.contains("overwritten-extra-local-holder");
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC,
-                "<init>", "(IL" + holderName + ";)V", null, null);
+                "<init>", "(IL" + holderName + ";"
+                        + (overwrittenHolder || overwrittenExtraLocalHolder
+                        ? "L" + holderName + ";" : "")
+                        + ")V", null, null);
         LabelNode negative = new LabelNode();
         LabelNode zero = new LabelNode();
         boolean extraLocalHolder =
@@ -34137,15 +34210,16 @@ public class IrCompilerTest {
                     new VarInsnNode(
                             Opcodes.ALOAD, extraLocalThis ? 0 : 2));
             method.instructions.add(
-                    new VarInsnNode(Opcodes.ASTORE, 3));
+                    new VarInsnNode(Opcodes.ASTORE,
+                            overwrittenExtraLocalHolder ? 4 : 3));
         }
-        if (shape.contains("overwritten-extra-local-holder")) {
-            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        if (overwrittenExtraLocalHolder) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
             method.instructions.add(
-                    new VarInsnNode(Opcodes.ASTORE, 3));
+                    new VarInsnNode(Opcodes.ASTORE, 4));
         }
-        if (shape.contains("overwritten-holder")) {
-            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        if (overwrittenHolder) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
             method.instructions.add(
                     new VarInsnNode(Opcodes.ASTORE, 2));
         }
@@ -34161,7 +34235,9 @@ public class IrCompilerTest {
         method.instructions.add(zero);
         appendGetfieldArgChainCall(
                 method, ownerName, superName, holderName, shape);
-        method.maxLocals = extraLocalHolder || extraLocalThis ? 4 : 3;
+        method.maxLocals = overwrittenExtraLocalHolder ? 5
+                : extraLocalHolder || extraLocalThis || overwrittenHolder
+                ? 4 : 3;
         method.maxStack = 4;
         return method;
     }
@@ -34222,7 +34298,9 @@ public class IrCompilerTest {
                     Opcodes.INVOKESPECIAL, "java/lang/Object",
                     "<init>", "()V", false));
         } else {
-            int holderLocal = shape.contains("extra-local-holder")
+            int holderLocal =
+                    shape.contains("overwritten-extra-local-holder") ? 4
+                    : shape.contains("extra-local-holder")
                     || shape.contains("extra-local-this") ? 3
                     : shape.contains("this") ? 0 : 2;
             method.instructions.add(
