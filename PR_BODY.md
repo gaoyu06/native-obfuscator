@@ -30,15 +30,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Local JUnit XML totals from this child run:
+Parent JUnit XML under `obfuscator/build/test-results/test/`:
 
-- `TEST-by.radioegor146.ir.IrCompilerTest.xml`: 496 tests, 0 failures,
-  0 errors, 0 skipped.
-- `TEST-by.radioegor146.CodegenModeTest.xml`: 7 tests, 0 failures, 0 errors,
-  0 skipped.
+- `IrCompilerTest`: 496 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
 - Total: 503 tests, 0 failures, 0 errors, 0 skipped.
 
-The parent will re-run the gate and discard these child totals.
+Cite `threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity`. Child totals are discarded.
 
 Admitted: **Yes**
 
@@ -75,15 +73,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本次子任务运行的本地 JUnit XML 汇总：
+父级 `obfuscator/build/test-results/test/` JUnit XML 汇总：
 
-- `TEST-by.radioegor146.ir.IrCompilerTest.xml`：496 个测试，0 失败，
-  0 错误，0 跳过。
-- `TEST-by.radioegor146.CodegenModeTest.xml`：7 个测试，0 失败，
-  0 错误，0 跳过。
-- 总计：503 个测试，0 失败，0 错误，0 跳过。
+- `IrCompilerTest`：496 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：503 个测试，0 个失败，0 个错误，0 个跳过。
 
-父任务会重新运行门禁并丢弃这些子任务汇总数据。
+引用 `threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity`。子代理汇总作废。
 
 Admitted（已放行）：**Yes**
 
