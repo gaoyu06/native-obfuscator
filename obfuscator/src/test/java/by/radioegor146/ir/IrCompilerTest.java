@@ -3519,7 +3519,7 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.AALOAD));
-        assertEquals(3, Collections.frequency(
+        assertEquals(4, Collections.frequency(
                 variableIndexes(constructor, Opcodes.ILOAD), 2));
         assertEquals(
                 "(Ljava/lang/Object;II[Ljava/lang/Object;)V",
