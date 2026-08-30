@@ -2197,12 +2197,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Restricts bounded multi-call forms to calls whose complete operand
      * sequence is visible locally: a direct receiver ALOAD followed by direct
-     * declared-argument loads, one leaf-only LADD over proven long inputs,
-     * int-family constants, one INEG over a direct declared int-family argument
-     * load, or an admitted int binary tree of at most four levels over those
-     * int-family leaves. The identical-copy and distinct-suffix forms may
-     * accept a direct alias load only when their separate receiver-frame proof
-     * succeeds.
+     * declared-argument loads, proven prefix copies of declared int-family
+     * loads, one leaf-only LADD over proven long inputs, int-family constants,
+     * one INEG over a direct declared int-family argument load, or an admitted
+     * int binary tree of at most four levels over those int-family leaves. The
+     * identical-copy and distinct-suffix forms may accept a direct alias load
+     * only when their separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2213,6 +2213,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArguments.put(declaredLocal, argument);
             declaredLocal += argument.getSize();
         }
+        Set<Integer> prefixIntCopies =
+                provenPrefixIntCopyLocals(
+                        constructor, callIndexes, declaredArguments);
         Set<Integer> prefixLongCopies =
                 provenPrefixLongCopyLocals(
                         constructor, callIndexes, declaredArguments);
@@ -2232,8 +2235,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             for (int i = callArguments.length - 1; i >= 0; i--) {
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
-                        declaredArguments, prefixLongCopies, prefixFloatCopies,
-                        prefixDoubleCopies);
+                        declaredArguments, prefixIntCopies, prefixLongCopies,
+                        prefixFloatCopies, prefixDoubleCopies);
                 if (previousInput == null) {
                     return false;
                 }
@@ -2254,6 +2257,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixIntCopies,
             Set<Integer> prefixLongCopies,
             Set<Integer> prefixFloatCopies,
             Set<Integer> prefixDoubleCopies) {
@@ -2288,6 +2292,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         return previousProvenIntChainOperand(
                 constructor, inputIndex, declaredArguments,
+                prefixIntCopies,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
     }
 
@@ -2821,6 +2826,83 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
+     * Finds extra int-family locals whose only overlapping write before the
+     * final chain call is one pre-first-call ISTORE directly fed by a declared
+     * int-family ILOAD. Requiring the resulting int state at every chain call
+     * proves that the store dominates all selected paths. The scan deliberately
+     * stops at the final chain call; suffix extra-local forwarding is a
+     * separate proof.
+     */
+    private static Set<Integer> provenPrefixIntCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Set<Integer> proven = new HashSet<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.ISTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal
+                    || sourceIndex < 0
+                    || !isDirectDeclaredIntArgumentLoad(
+                    constructor.instructions.get(sourceIndex),
+                    declaredArguments)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.INT_TYPE)
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.INT_TYPE)) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_INT) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.add(local);
+            }
+        }
+        return proven;
+    }
+
+    /**
      * Proves an int-family operand with a bounded number of binary levels.
      * Every recursive descent consumes one level, so deeper trees stay rejected
      * rather than opening the local input proof without a bound. Trapping
@@ -2829,6 +2911,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenIntChainOperand(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixIntCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
             return null;
@@ -2841,31 +2924,43 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             Integer beforeRight = previousProvenIntChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, inputIndex - 1),
-                    declaredArguments, remainingBinaryLevels - 1);
+                    declaredArguments, prefixIntCopies,
+                    remainingBinaryLevels - 1);
             if (beforeRight == null) {
                 return null;
             }
             return previousProvenIntChainOperand(
                     constructor, beforeRight, declaredArguments,
+                    prefixIntCopies,
                     remainingBinaryLevels - 1);
         }
         return previousProvenIntChainLeaf(
-                constructor, inputIndex, declaredArguments);
+                constructor, inputIndex, declaredArguments,
+                prefixIntCopies);
     }
 
     /**
-     * Proves one non-recursive int-family leaf: a declared load, constant, or
-     * one INEG over a direct declared load.
+     * Proves one non-recursive int-family leaf: a declared load, one proven
+     * prefix copy of a declared load, a constant, or one INEG over a direct
+     * declared load.
      */
     private static Integer previousProvenIntChainLeaf(
             MethodNode constructor, int inputIndex,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixIntCopies) {
         if (inputIndex < 0) {
             return null;
         }
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (isDirectDeclaredIntArgumentLoad(input, declaredArguments)
                 || isIntFamilyConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (input.getOpcode() == Opcodes.ILOAD
+                && !isDirectDeclaredIntArgumentLoad(
+                input, declaredArguments)
+                && prefixIntCopies.contains(
+                ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         if (input.getOpcode() != Opcodes.INEG) {
