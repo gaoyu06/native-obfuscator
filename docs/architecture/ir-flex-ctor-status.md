@@ -97,9 +97,9 @@ The constructor split now covers these related prefix shapes:
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs; one `IALOAD`, `BALOAD`,
   `CALOAD`, or `SALOAD` whose source is an unchanged declared array argument
-  of the matching type (`[I`, `[B`/`[Z`, `[C`, or `[S`) or, for `IALOAD`,
-  a prefix extra-local `ALOAD` with one dominating `ASTORE` copy of that
-  `int[]` argument, and whose index is an int-family constant or one
+  of the matching type (`[I`, `[B`/`[Z`, `[C`, or `[S`) or a prefix
+  extra-local `ALOAD` with one dominating `ASTORE` copy of that same
+  declared argument, and whose index is an int-family constant or one
   single-instruction declared or proven-prefix-copy `ILOAD`; or one
   reference `AALOAD` whose source is an unchanged directly loaded declared
   array argument or its proven prefix extra-local copy, whose index is a
