@@ -27,8 +27,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Local JUnit XML results will be recorded after the focused gate. The parent
-discards child totals.
+Local JUnit XML under `obfuscator/build/test-results/test/`:
+
+- `TEST-by.radioegor146.ir.IrCompilerTest.xml`: 499 tests, 0 failures,
+  0 errors, 0 skipped.
+- `TEST-by.radioegor146.CodegenModeTest.xml`: 7 tests, 0 failures, 0 errors,
+  0 skipped.
+- Total: 506 tests, 0 failures, 0 errors, 0 skipped.
+
+The parent discards child totals.
 
 Admitted: **No**
 
@@ -58,7 +65,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-聚焦门禁完成后记录本地 JUnit XML；父代理会丢弃子代理汇总。
+本地 JUnit XML 位于 `obfuscator/build/test-results/test/`：
+
+- `TEST-by.radioegor146.ir.IrCompilerTest.xml`：499 个测试，0 个失败，
+  0 个错误，0 个跳过。
+- `TEST-by.radioegor146.CodegenModeTest.xml`：7 个测试，0 个失败，
+  0 个错误，0 个跳过。
+- 合计：506 个测试，0 个失败，0 个错误，0 个跳过。
+
+父代理会丢弃子代理汇总。
 
 已接纳：**否**
 

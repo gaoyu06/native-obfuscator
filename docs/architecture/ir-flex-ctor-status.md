@@ -1690,11 +1690,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-JUnit XML records for this increment:
-
-- `IrCompilerTest`: 500 tests, 0 failures, 0 errors, 0 skipped.
-- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 507 tests, 0 failures, 0 errors, 0 skipped.
+This increment adds two fail-closed constructor `jsr`/`ret` tests on top of
+the #290 five-arg suite (`IrCompilerTest` 500 + `CodegenModeTest` 7). Parent
+re-runs the focused gate; child pre-rebase totals are discarded.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
