@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing extra-array plus extra-index composition
-[#260](https://github.com/gaoyu06/native-obfuscator/pull/260)
-(parent re-ran 460/460: 453 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity`)
-on the post-[#259](https://github.com/gaoyu06/native-obfuscator/pull/259)
-wide-array `ILOAD` indexes. Active process:
+Last updated after landing the fail-closed prefix→suffix crossing audit
+[#261](https://github.com/gaoyu06/native-obfuscator/pull/261)
+(parent re-ran 461/461: 454 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `unprovenPostChainSwitchShapesPassJava8JvmVerification`)
+on the post-[#260](https://github.com/gaoyu06/native-obfuscator/pull/260)
+extra-array plus extra-index composition. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -352,6 +352,10 @@ legacy。不能当成 JDK 支持矩阵。
   Computed stores, overwritten copies, prior array stores, and
   computed/`INEG` indexes stay rejected. Wide extra-array plus
   extra-index stays rejected.
+  [#261](https://github.com/gaoyu06/native-obfuscator/pull/261) keeps
+  unproven prefix→suffix jumps and switches fail-closed and adds
+  reject-before-mutation plus Java 8 verification for skip-init and
+  unproven post-chain switch variants. No new crossing shape is admitted.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -551,6 +555,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local `LALOAD`/`FALOAD`/`DALOAD` sources (#258) | 453 tests (`IrCompilerTest` 446 + `CodegenModeTest` 7). Parent re-ran 453/453 including `threeImmediateExtraLocalWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | `LALOAD`/`FALOAD`/`DALOAD` `ILOAD` indexes (#259) | 456 tests (`IrCompilerTest` 449 + `CodegenModeTest` 7). Parent re-ran 456/456 including `threeImmediateWideArrayLoadIndexesCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-array plus extra-index composition (#260) | 460 tests (`IrCompilerTest` 453 + `CodegenModeTest` 7). Parent re-ran 460/460 including `threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Fail-closed prefix→suffix crossing audit (#261) | 461 tests (`IrCompilerTest` 454 + `CodegenModeTest` 7). Parent re-ran 461/461 including `unprovenPostChainSwitchShapesPassJava8JvmVerification` | Prefix→suffix leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -628,6 +633,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   admitted by #259.
   Extra-array plus extra-index composition for `AALOAD` and int-family
   loads is admitted by #260.
+  Unproven prefix→suffix crossings stay reject-before-mutation; #261
+  strengthens those fail-closed tests.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -644,9 +651,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #260
-  (extra-array plus extra-index for `AALOAD` and int-family loads). /
-  落地 #260 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #261
+  (fail-closed prefix→suffix crossing audit). /
+  落地 #261 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

@@ -53,11 +53,10 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #260 (extra-array plus extra-index for `AALOAD` and
-   int-family loads)
+   `master` after #261 (fail-closed prefix→suffix crossing audit)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
-   jumps/switches, other mixed prefix/suffix try/catch placements
+   jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
    beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
    suffixes or cover a chain call,
    remaining multi-super shapes such as seventeen-or-more nested
