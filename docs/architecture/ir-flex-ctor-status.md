@@ -92,7 +92,7 @@ The constructor split now covers these related prefix shapes:
   extra-local copy;
   a prefix extra-local `ILOAD` with one dominating `ISTORE` copy of a declared
   int-family argument load; int-family constants; or one `INEG` over a direct
-  declared int-family argument load,
+  declared int-family argument load or the same proven prefix extra-local copy,
   plus a tree of at most eight `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs; or one reference `AALOAD` whose
@@ -190,7 +190,8 @@ One additional family is reduced to that same shared-join form:
   int-family call argument; a prefix extra-local `ILOAD` with exactly one
   dominating overlapping write consisting of an `ISTORE` directly fed by a
   declared int-family argument `ILOAD`; or exactly one `INEG` over a direct
-  `ILOAD` of a declared int-family constructor argument. An int-family
+  `ILOAD` of a declared int-family constructor argument or the same proven
+  prefix extra-local copy. An int-family
   argument may also have at most eight
   levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
   `IUSHR`, `IDIV`, or `IREM`. The operand proof recursively consumes one
@@ -200,7 +201,8 @@ One additional family is reduced to that same shared-join form:
   `IDIV`, `IREM`, and shifts; unlike prefix long copies, they have no
   operator-specific exclusion. This admits `IDIV`/`IREM` as inner or outer
   nodes, including nesting with each other, while a ninth binary level is
-  rejected. `INEG` remains restricted to a direct declared argument `ILOAD`.
+  rejected. `INEG` remains restricted to one declared or proven-copy `ILOAD`;
+  a constant, double `INEG`, and a computed operand remain rejected.
   Shift-count masking is not reproduced by this proof: every admitted shift
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
@@ -851,7 +853,15 @@ Synthetic bytecode unit tests in
   hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
   transform matches plain Java. `admitsFormerExtraLocalIntChainInputLeftovers`
   covers the direct leaf, every admitted int binary, inner `IDIV`, and the
-  four-level fixture; five-level trees and unsafe `INEG` forms remain rejected.
+  four-level fixture; nine-or-more binary levels remain rejected.
+- `admitsThreeImmediateReturnsWithExtraLocalIntInegChainInputs`, the matching
+  rewritten-verification test, and
+  `threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity`
+  extend the single-`INEG` leaf to a proven prefix extra-local copy of a
+  declared int-family `ILOAD`. The `ISTORE` copy and all three `INEG`s remain
+  in retained JVM bytecode, one hidden bridge is used, `Integer.MIN_VALUE`
+  keeps JVM negate semantics, and native stdout matches plain Java. `INEG` of
+  a constant, double `INEG`, and computed operands remain fail-closed.
 - `admitsThreeImmediateReturnsWithLaddOfProvenChainInputs` admits the former
   `long-binary` leftover: each of three retained chain calls computes its long
   argument with `LLOAD; LCONST_1; LADD`, while the native body contains only
