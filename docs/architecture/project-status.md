@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after extra-local float as both `NEW` initializer args
-[#313](https://github.com/gaoyu06/native-obfuscator/pull/313)
-(parent XML 554; latest leftover inventory remains
+Last updated after extra-local double as both `NEW` initializer args
+[#314](https://github.com/gaoyu06/native-obfuscator/pull/314)
+(parent XML 557; latest leftover inventory remains
 [#310](https://github.com/gaoyu06/native-obfuscator/pull/310)
 on post-[#309](https://github.com/gaoyu06/native-obfuscator/pull/309)
 `688c0ea`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -659,6 +659,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local float as second `NEW` initializer (#311) | 548 tests (`IrCompilerTest` 541 + `CodegenModeTest` 7). Parent re-ran 548/548 including `threeImmediateNewExtraLocalFloatSecondArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-local double as second `NEW` initializer (#312) | 551 tests (`IrCompilerTest` 544 + `CodegenModeTest` 7). Parent re-ran 551/551 including `threeImmediateNewExtraLocalDoubleSecondArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Extra-local float as both `NEW` initializer args (#313) | 554 tests (`IrCompilerTest` 547 + `CodegenModeTest` 7). Parent re-ran 554/554 including `threeImmediateNewExtraLocalFloatBothArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Extra-local double as both `NEW` initializer args (#314) | 557 tests (`IrCompilerTest` 550 + `CodegenModeTest` 7). Parent re-ran 557/557 including `threeImmediateNewExtraLocalDoubleBothArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -780,7 +781,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Extra-local proven double-copy as the second `NEW` initializer
   argument is admitted by #312 (fixture-only). Extra-local proven
   float-copy as both `NEW` initializer arguments is admitted by
-  #313 (fixture-only).
+  #313 (fixture-only). Extra-local proven double-copy as both
+  `NEW` initializer arguments is admitted by #314 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -843,9 +845,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #313
-  (extra-local float-copy as both NEW initializer arguments). /
-  落地 #313 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #314
+  (extra-local double-copy as both NEW initializer arguments). /
+  落地 #314 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
