@@ -1553,9 +1553,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 466 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 470 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 473 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 477 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.

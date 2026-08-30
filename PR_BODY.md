@@ -31,9 +31,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 ```
 
 Rebased onto `origin/master` `7a5d000` (post-#267 fail-closed nine-path
-audit). Child XML on the pre-#267 base is stale and is not cited here. Parent
-will re-run the focused suite and report JUnit XML after rebase. The runtime
-test is `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity`.
+audit). Parent-verified JUnit XML after rebase: `IrCompilerTest` 470/470 and
+`CodegenModeTest` 7/7, with zero failures, errors, or skips (total 477). The
+runtime test is `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity`.
 
 The default codegen mode remains `legacy`.
 
@@ -61,9 +61,9 @@ Ship-ready: **No**
 - `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity`
 - `rejectsUnprovenNewChainInputsBeforeMutation`
 
-已变基到 `origin/master` `7a5d000`（#267 九路径失败关闭审计之后）。变基前
-子代理 XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告
-JUnit XML。运行时测试为
+已变基到 `origin/master` `7a5d000`（#267 九路径失败关闭审计之后）。父代理
+变基后聚焦 JUnit XML：`IrCompilerTest` 470/470、`CodegenModeTest` 7/7，失败、
+错误和跳过均为 0（合计 477）。运行时测试为
 `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity`。
 
 默认 codegen 模式仍为 `legacy`。
