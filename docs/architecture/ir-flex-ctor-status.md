@@ -159,6 +159,12 @@ The constructor split now covers these related prefix shapes:
   and at least one forwarded extra must be unassigned at the earlier,
   immediately returning chain call. The retained return never loads that local
   or invokes the bridge. No synthetic `null` or zero value is introduced.
+- No additional prefix-to-suffix jump or switch shape is admitted. Before any
+  selected chain call, such an edge can skip required initialization. After one
+  selected call, the proven single-entry, single-hidden-bridge cases are already
+  exactly the shared-join `GOTO`, conditional, and switch forms above. Mixed
+  targets or intervening work outside those local proofs remain rejected before
+  constructor, hidden-method, generated-source, or cache mutation.
 
 Multiple direct this/super candidates are admitted only under a stricter
 fail-closed rule:
@@ -696,6 +702,17 @@ Synthetic bytecode unit tests in
 - `postChainSwitchesCompileAndRunWithJavaParity` runs those cases through plain
   Java and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `rejectsPrefixBranchTargetingSuffixLabelBeforeMutation`,
+  `rejectsSwitchPathThatSkipsEveryChainCallBeforeMutation`, and
+  `rejectsMultipleSuperPathThatSkipsEveryChainCallBeforeMutation` keep direct
+  and switch-based skip-initialization paths fail-closed before constructor,
+  hidden-method, generated-source, or cache mutation.
+- `rejectsUnprovenPostChainSwitchShapes` applies the same pre-mutation checks to
+  both switch opcodes with a computed key, extra prefix-return work, or an
+  exception table. `unprovenPostChainSwitchShapesPassJava8JvmVerification`
+  loads and executes the original Java 8 classes through their prefix-return,
+  first-call suffix, and second-call suffix paths, documenting that these are
+  conservative rejects of verifier-valid but unproven forms.
 - `admitsMultipleSuperWithIdenticalLinearSuffixCopies` proves that two
   separate, identical field-writing suffix copies produce one native body and
   normalize to a retained two-call wrapper with one hidden bridge.
@@ -1465,9 +1482,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 446 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 454 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 453 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 461 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
