@@ -24,7 +24,14 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-The parent must rerun this gate after integration and use its own JUnit XML totals. Child-local XML is not a parent total.
+Child-local JUnit XML under `obfuscator/build/test-results/test/`:
+
+- `IrCompilerTest`: 510 tests, 0 failures, 0 errors, 0 skipped.
+- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 517 tests, 0 failures, 0 errors, 0 skipped.
+
+The parent must rerun this gate after integration and use its own JUnit XML
+totals. These child-local counts are not parent totals.
 
 ### Readiness
 
@@ -58,7 +65,13 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-父级在集成后必须重新运行该门禁并使用自己的 JUnit XML 汇总。子代理本地 XML 不是父级汇总。
+`obfuscator/build/test-results/test/` 下的子代理本地 JUnit XML 汇总：
+
+- `IrCompilerTest`：510 个测试，0 个失败，0 个错误，0 个跳过。
+- `CodegenModeTest`：7 个测试，0 个失败，0 个错误，0 个跳过。
+- 总计：517 个测试，0 个失败，0 个错误，0 个跳过。
+
+父级在集成后必须重新运行该门禁并使用自己的 JUnit XML 汇总。这些子代理本地计数不是父级汇总。
 
 ### 就绪状态
 
