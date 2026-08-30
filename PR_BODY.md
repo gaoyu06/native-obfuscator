@@ -25,9 +25,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Child XML is not cited here. Parent will re-run the focused suite and report
-JUnit XML. The verification test is
-`ninePathIdDistinctSuffixesPassJvmVerification`.
+Parent-verified JUnit XML: `IrCompilerTest` 466/466 and `CodegenModeTest`
+7/7, with zero failures, errors, or skips (total 473). The verification test
+is `ninePathIdDistinctSuffixesPassJvmVerification`.
 
 Ship-ready: **No**
 
@@ -49,7 +49,8 @@ Ship-ready: **No**
 
 ### 验证
 
-子代理 XML 此处不再引用。父代理将重跑聚焦套件并报告 JUnit XML。验证测试为
+父代理聚焦 JUnit XML：`IrCompilerTest` 466/466、`CodegenModeTest` 7/7，失败、
+错误和跳过均为 0（合计 473）。验证测试为
 `ninePathIdDistinctSuffixesPassJvmVerification`。
 
 可发布：**否**
