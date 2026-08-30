@@ -1,17 +1,18 @@
-# IR leftover inventory on post-#296 master
+# IR leftover inventory on post-#299 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `ee8f987ee6a212fb257a1527e764ddbf0cd4aa09`
-- Measurement commit: `ee8f987ee6a212fb257a1527e764ddbf0cd4aa09`
+- Measured compiler base (merge-base with `origin/master`): `d070653d8176ef5bab338f76eb2992c1bffbbfbf`
+- Measurement commit: `d070653d8176ef5bab338f76eb2992c1bffbbfbf`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
 - Java 8 remains the only version described as fully supported.
-- #296 admitted extra-local int-copy as a two-argument `NEW`; #294 admitted isolated six-argument int-family `NEW`; #293 is a fail-closed audit of unproven wide `NEW`.
-- This post-#296 remeasurement supersedes #295 on `44596132e0debebc422261c50ac2278e889d3400` (post-#294).
+- #299 admitted isolated one-argument long `NEW` (`Date(J)`); #298 admitted extra-local three-argument `NEW`; #296 admitted extra-local two-argument `NEW`; float/double `NEW` remain fail-closed after #293.
+- This post-#299 remeasurement supersedes #297 on `ee8f987ee6a212fb257a1527e764ddbf0cd4aa09` (post-#296).
 - Ship-ready: **No**.
+- Admitted: **No** (measurement only).
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
