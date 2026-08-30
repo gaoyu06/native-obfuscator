@@ -10,14 +10,16 @@
   pairing, overwrite, array-store, computed-source, and index rejection gates
 - add admit, reject-before-mutation, Java 8 verifier, and combined-JAR
   Java/native parity coverage for all four primitive array types
+- rebased onto current `master` after #255 so `ILOAD` indexes and extra-local
+  `int[]` `IALOAD` copies both remain
 
 ## Verification
 
 - `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
   by.radioegor146.ir.IrCompilerTest --tests
   by.radioegor146.CodegenModeTest`
-- JUnit XML: `IrCompilerTest` 431 tests, `CodegenModeTest` 7 tests; 438 total,
-  0 skipped, 0 failures, 0 errors
+- Parent re-run XML on this rebased branch will replace the pre-#254 child
+  count. Do not treat the old 438 figure as current.
 - combined-JAR runtime parity:
   `threeImmediateExtraLocalIntFamilyArrayLoadsCompileAndRunWithJavaParity`
 
@@ -37,14 +39,16 @@ Ship-ready: No.
   计算来源和非常量索引
 - 为四种原始数组类型补充准入、拒绝前不变异、Java 8 校验器，以及组合 JAR 的
   Java/native 一致性覆盖
+- 已变基到包含 #255 的当前 `master`，`ILOAD` 下标与额外局部 `int[]`
+  `IALOAD` 同时保留
 
 ## 验证
 
 - `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
   by.radioegor146.ir.IrCompilerTest --tests
   by.radioegor146.CodegenModeTest`
-- JUnit XML：`IrCompilerTest` 431 项、`CodegenModeTest` 7 项；合计 438 项，
-  0 跳过、0 失败、0 错误
+- 父进程将在变基后的分支上重跑 XML，以替换 #254 之前的子代理计数。
+  请勿把旧的 438 当作当前数字。
 - 组合 JAR 运行时一致性测试：
   `threeImmediateExtraLocalIntFamilyArrayLoadsCompileAndRunWithJavaParity`
 
