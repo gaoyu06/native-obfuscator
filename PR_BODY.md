@@ -33,8 +33,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 ```
 
 Rebased onto `origin/master` `3d39c17` (post-#262 wide extra-array plus
-extra-index). Child XML on the pre-#261 base is stale and is not cited here.
-Parent will re-run the focused suite and report JUnit XML after rebase.
+extra-index). Parent-verified JUnit XML after rebase: `IrCompilerTest`
+459/459 and `CodegenModeTest` 7/7, with zero failures, errors, or skips
+(total 466). The verification test is
+`unassignedExtraUnusedOnOneDistinctSuffixPassesJvmVerification`.
 
 Ship-ready: **No**
 
@@ -65,7 +67,8 @@ Ship-ready: **No**
 ## 验证
 
 已变基到 `origin/master` `3d39c17`（#262 宽数组额外源加额外索引之后）。
-变基前子代理 XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告
-JUnit XML。
+父代理变基后聚焦 JUnit XML：`IrCompilerTest` 459/459、`CodegenModeTest` 7/7，
+失败、错误和跳过均为 0（合计 466）。验证测试为
+`unassignedExtraUnusedOnOneDistinctSuffixPassesJvmVerification`。
 
 可发布：**否**
