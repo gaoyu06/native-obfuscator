@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #243 (prefix extra-local long `LNEG`)
+   `master` after #244 (retained-prefix `AALOAD` chain inputs)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
@@ -63,8 +63,7 @@ The goal is complete only when all of the following are true:
    int binaries, nine-or-more nested long
    binaries, nine-or-more nested float binaries,
    nine-or-more nested double binaries,
-   extra-local long shift counts, reference computed
-   inputs, or more than eight
+   extra-local long shift counts, or more than eight
    distinct paths, extras still unassigned on a bridge-taking
    path),
    remaining unsafe/unproven condy shapes (non-static, varargs,
