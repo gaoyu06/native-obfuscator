@@ -4229,6 +4229,67 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewSixArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewSixArgBase",
+                "(Ljava/util/GregorianCalendar;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewSixArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-six-arguments");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_4));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_5));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.BIPUSH));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDeclaredIndexAaloadChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperDeclaredIndexAaloadBase");
@@ -7613,7 +7674,7 @@ public class IrCompilerTest {
                 "new-constructor-extra-local-this-argument",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
-                "new-constructor-six-arguments",
+                "new-constructor-seven-arguments",
                 "newarray",
                 "anewarray",
                 "multianewarray",
@@ -7667,13 +7728,18 @@ public class IrCompilerTest {
                 "new-constructor-extra-local-argument-second-unproven",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
-                "new-constructor-six-arguments",
+                "new-constructor-seven-arguments",
                 "newarray",
                 "anewarray",
                 "multianewarray",
                 "new-mismatched-type")) {
             String classSuffix = shape.replace("-", "");
             String constructorDescriptor = newArgChainDescriptor(shape);
+            ClassNode sevenArgumentType = null;
+            if ("new-constructor-seven-arguments".equals(shape)) {
+                sevenArgumentType = sevenIntHolder("example/SevenIntHolder");
+                sevenArgumentType.version = Opcodes.V1_8;
+            }
             ClassNode base = multipleSuperReferenceBase(
                     "example/VerifiedRejectedNew" + classSuffix + "Base",
                     constructorDescriptor);
@@ -7686,6 +7752,9 @@ public class IrCompilerTest {
 
             ByteArrayClassLoader loader = new ByteArrayClassLoader();
             loader.define(writeClass(base));
+            if (sevenArgumentType != null) {
+                loader.define(writeClass(sevenArgumentType));
+            }
             Class<?> verified = loader.define(writeClass(owner));
 
             for (int selector : new int[]{7, -7, 0}) {
@@ -7709,9 +7778,13 @@ public class IrCompilerTest {
                 } else if ("multianewarray".equals(shape)) {
                     assertEquals(1, ((Object[][]) value).length, shape);
                     assertEquals(1, ((Object[][]) value)[0].length, shape);
-                } else if ("new-constructor-six-arguments".equals(shape)) {
-                    assertTrue(value instanceof java.util.GregorianCalendar,
-                            shape);
+                } else if ("new-constructor-seven-arguments".equals(shape)) {
+                    assertEquals("example.SevenIntHolder",
+                            value.getClass().getName(), shape);
+                    for (int i = 1; i <= 7; i++) {
+                        assertEquals(i, value.getClass()
+                                .getField("value" + i).getInt(value), shape);
+                    }
                 } else if (shape.endsWith("-second-unproven")) {
                     assertEquals("java.awt.Point",
                             value.getClass().getName(), shape);
@@ -10553,6 +10626,71 @@ public class IrCompilerTest {
                 realOpcodes(constructor), Opcodes.ICONST_4));
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.ICONST_5));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewSixArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewSixArgBase",
+                "(Ljava/util/GregorianCalendar;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewSixArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-six-arguments");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_4));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_5));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.BIPUSH));
         assertEquals(6, Collections.frequency(
                 realOpcodes(constructor), Opcodes.INVOKESPECIAL));
         assertEquals(
@@ -18221,6 +18359,111 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native NEW five-argument multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewSixArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW six-argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW six-argument runtime test");
+
+        String ownerName = "example/NewSixArgRuntime";
+        String baseName = "example/NewSixArgRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-new-six-arg-run");
+        Path inputJar = directory.resolve("new-six-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-six-arguments");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW six-argument multi-super Java run");
+        String calendar =
+                "java.util.GregorianCalendar" + System.lineSeparator();
+        assertEquals(calendar + calendar + calendar, javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_4));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_5));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.BIPUSH));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW six-argument CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW six-argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW six-argument native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW six-argument multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -33117,6 +33360,32 @@ public class IrCompilerTest {
         return holder;
     }
 
+    private ClassNode sevenIntHolder(String name) {
+        ClassNode holder = constructorOwner(name, "java/lang/Object");
+        for (int i = 1; i <= 7; i++) {
+            holder.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "value" + i, "I", null, null));
+        }
+        MethodNode constructor = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(IIIIIII)V", null, null);
+        constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        for (int i = 1; i <= 7; i++) {
+            constructor.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            constructor.instructions.add(new VarInsnNode(Opcodes.ILOAD, i));
+            constructor.instructions.add(new FieldInsnNode(
+                    Opcodes.PUTFIELD, name, "value" + i, "I"));
+        }
+        constructor.instructions.add(new InsnNode(Opcodes.RETURN));
+        constructor.maxLocals = 8;
+        constructor.maxStack = 2;
+        holder.methods.add(constructor);
+        return holder;
+    }
+
     private ClassNode multipleSuperPrimitiveBase(
             String name, String descriptor) {
         if ("I".equals(descriptor)) {
@@ -35965,6 +36234,8 @@ public class IrCompilerTest {
             String allocated;
             if (extraLocalThisArgument) {
                 allocated = "java/util/concurrent/atomic/AtomicReference";
+            } else if (argumentCount == 7) {
+                allocated = "example/SevenIntHolder";
             } else if (argumentCount == 5 || argumentCount == 6) {
                 allocated = "java/util/GregorianCalendar";
             } else if (argumentCount == 4) {
@@ -36022,7 +36293,12 @@ public class IrCompilerTest {
                 method.instructions.add(
                         new IntInsnNode(Opcodes.BIPUSH, 6));
             }
-            String initializerDescriptor = argumentCount == 6
+            if (argumentCount >= 7) {
+                method.instructions.add(
+                        new IntInsnNode(Opcodes.BIPUSH, 7));
+            }
+            String initializerDescriptor = argumentCount == 7
+                    ? "(IIIIIII)V" : argumentCount == 6
                     ? "(IIIIII)V" : argumentCount == 5
                     ? "(IIIII)V" : argumentCount == 4
                     ? "(IIII)V" : argumentCount == 3
@@ -36065,6 +36341,9 @@ public class IrCompilerTest {
     }
 
     private String newArgChainDescriptor(String shape) {
+        if ("new-constructor-seven-arguments".equals(shape)) {
+            return "(Lexample/SevenIntHolder;)V";
+        }
         if ("new-constructor-five-arguments".equals(shape)
                 || "new-constructor-six-arguments".equals(shape)) {
             return "(Ljava/util/GregorianCalendar;)V";
@@ -36098,6 +36377,9 @@ public class IrCompilerTest {
     }
 
     private int newConstructorArgumentCount(String shape) {
+        if ("new-constructor-seven-arguments".equals(shape)) {
+            return 7;
+        }
         if ("new-constructor-six-arguments".equals(shape)) {
             return 6;
         }

@@ -1637,20 +1637,32 @@ Synthetic bytecode unit tests in
   bridge and singular `MethodContext.proxyMethod`. Rewritten classfile-52
   bytecode and selector paths `7`, `-7`, and `0` preserve JVM verification
   and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewSixArgChainInputs`,
+  `rewrittenThreeImmediateNewSixArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewSixArgChainInputsCompileAndRunWithJavaParity` extend the
+  isolated leaf to
+  `NEW GregorianCalendar; DUP; ICONST_1; ICONST_2; ICONST_3; ICONST_4;
+  ICONST_5; BIPUSH 6;
+  INVOKESPECIAL GregorianCalendar.<init>(IIIIII)V`. All nine instructions
+  stay in each retained JVM prefix, the native body contains neither that
+  `NEW` nor its `INVOKESPECIAL`, and the rewrite keeps one hidden bridge and
+  singular `MethodContext.proxyMethod`. Rewritten classfile-52 bytecode and
+  selector paths `7`, `-7`, and `0` preserve JVM verification and
+  plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
 - `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
   allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs, a
-  six-int-argument `GregorianCalendar` initializer, `NEWARRAY`, `ANEWARRAY`,
-  `MULTIANEWARRAY`,
+  seven-int-argument synthetic `SevenIntHolder` initializer, `NEWARRAY`,
+  `ANEWARRAY`, `MULTIANEWARRAY`,
   and a descriptor-mismatched allocation while preserving every constructor
   instruction object, generated buffer, hidden-method inventory, and the
   singular `MethodContext.proxyMethod`.
 - `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
   classfile-52 computed-argument, `GETSTATIC`-argument,
-  six-int-argument `GregorianCalendar`, exact-type-conservative mismatch, and
-  all three array-allocation fixtures, then constructs all three ordinary
-  paths. These remain conservative rejects rather than admissions. The raw
-  uninitialized-reference and missing-`DUP` fixtures remain rejected but are
-  inherently not verifier-valid.
+  seven-int-argument synthetic `SevenIntHolder`, exact-type-conservative
+  mismatch, and all three array-allocation fixtures, then constructs all
+  three ordinary paths. These remain conservative rejects rather than
+  admissions. The raw uninitialized-reference and missing-`DUP` fixtures
+  remain rejected but are inherently not verifier-valid.
 - `rejectsUnprovenWideNewChainInputsBeforeMutation` keeps isolated `NEW`
   initializer arguments with long, float, or double carriers fail-closed.
   Every constructor instruction object, generated buffer, hidden-method
@@ -1658,7 +1670,7 @@ Synthetic bytecode unit tests in
 - `unprovenWideNewChainInputShapesPassJava8JvmVerification` loads untouched
   classfile-52 `Date(J)`, `Point2D.Float(FF)`, and `Point2D.Double(DD)`
   fixtures and constructs all three ordinary paths. These are verifier-valid
-  conservative rejects, not admissions; only the existing zero-through-five
+  conservative rejects, not admissions; isolated zero-through-six
   int-family initializer-argument forms are admitted.
 - `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` loads the
   untouched classfile-52 constructor with `ICONST_0; POP` after its first
@@ -1699,9 +1711,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-This increment adds two fail-closed non-int-family `NEW` initializer tests on
-top of the #291 constructor `jsr`/`ret` audit. Parent re-runs the focused gate;
-child pre-rebase totals are discarded.
+This increment adds three six-argument `NEW` admission tests and extends the
+two existing `NEW` reject harnesses with the synthetic seven-int boundary,
+on top of the #293 unproven wide NEW fail-closed audit. Parent re-runs the
+focused gate; child pre-rebase totals are discarded.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
