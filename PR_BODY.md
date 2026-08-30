@@ -20,7 +20,8 @@
 
 - Focused Gradle verification:
   `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
-- JUnit XML totals will be recorded after the required focused run.
+- Parsed JUnit XML: `IrCompilerTest` 363 and `CodegenModeTest` 7, for 370
+  combined; 0 failures, 0 errors, and 0 skipped.
 - Ship-ready: **No**. The production goal remains incomplete and the default
   remains `legacy`.
 
@@ -46,5 +47,6 @@
 
 - 聚焦 Gradle 命令：
   `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
-- 完成规定的聚焦测试后，将记录 JUnit XML 实际总数。
+- JUnit XML 实际结果：`IrCompilerTest` 363 项，`CodegenModeTest` 7 项，
+  合计 370 项；失败 0，错误 0，跳过 0。
 - 可发布：**否**。生产目标尚未完成，默认路径仍为 `legacy`。
