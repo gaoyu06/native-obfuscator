@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#330 master
+# IR leftover inventory on post-#332 master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `753c401b06d3f3cfdcea56165bf09b6287f2fa19`
-- Measurement commit: `753c401b06d3f3cfdcea56165bf09b6287f2fa19`
+- Measured compiler base (merge-base with `origin/master`): `c4b646136a708a219db71860159c8214e93ab162`
+- Measurement commit: `c4b646136a708a219db71860159c8214e93ab162`
 - This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
 - Zero measured leftovers is **not production-goal complete** and does **not** authorize changing any default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-[#330](https://github.com/gaoyu06/native-obfuscator/pull/330) leftover-docs tree after an extra-local `int` value was admitted as the second `Insets` `NEW` argument.
-- This post-#330 remeasurement supersedes [#329](https://github.com/gaoyu06/native-obfuscator/pull/329) on `b751addb1d42d52be7ec18943a0202c53d31a88b` (post-#328). [#327](https://github.com/gaoyu06/native-obfuscator/pull/327) remains the earlier post-#326 snapshot; [#325](https://github.com/gaoyu06/native-obfuscator/pull/325) remains the earlier post-#324 snapshot.
-- Latest compiler parent XML: **[#330](https://github.com/gaoyu06/native-obfuscator/pull/330) (584)**. This measurement adds no compiler XML.
+- This is the post-[#332](https://github.com/gaoyu06/native-obfuscator/pull/332) leftover-docs tree after an extra-local `int` value was admitted as the third `Insets` `NEW` argument.
+- This post-#332 remeasurement supersedes [#331](https://github.com/gaoyu06/native-obfuscator/pull/331) on `753c401b06d3f3cfdcea56165bf09b6287f2fa19` (post-#330). [#329](https://github.com/gaoyu06/native-obfuscator/pull/329) remains the earlier post-#328 snapshot; [#327](https://github.com/gaoyu06/native-obfuscator/pull/327) remains the earlier post-#326 snapshot.
+- Latest compiler parent XML: **[#332](https://github.com/gaoyu06/native-obfuscator/pull/332) (587)**. This measurement adds no compiler XML.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Admitted: **No** (measurement only).
