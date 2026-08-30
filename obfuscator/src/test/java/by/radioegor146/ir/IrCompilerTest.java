@@ -7341,6 +7341,8 @@ public class IrCompilerTest {
                 MethodContext context =
                         new MethodContext(
                                 obfuscator, constructor, 0, owner, 0);
+                RejectedIrState originalState =
+                        rejectedIrState(constructor, context, obfuscator);
 
                 assertThrows(
                         UnsupportedIrConstructException.class,
@@ -7349,8 +7351,8 @@ public class IrCompilerTest {
                                 .processMethod(context),
                         shape);
 
-                assertUnchangedAfterRejectedIr(
-                        constructor, context, obfuscator);
+                assertRejectedIrStateUnchanged(
+                        originalState, constructor, context, obfuscator, shape);
                 assertEquals(instructionCount,
                         constructor.instructions.size(), shape);
                 assertEquals(opcodes, realOpcodes(constructor), shape);
@@ -7424,6 +7426,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7432,8 +7436,8 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
@@ -7462,6 +7466,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7470,8 +7476,8 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
@@ -7504,6 +7510,8 @@ public class IrCompilerTest {
             MethodContext context =
                     new MethodContext(
                             obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
 
             assertThrows(
                     UnsupportedIrConstructException.class,
@@ -7512,14 +7520,109 @@ public class IrCompilerTest {
                             .processMethod(context),
                     shape);
 
-            assertUnchangedAfterRejectedIr(
-                    constructor, context, obfuscator);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
             assertEquals(instructionCount,
                     constructor.instructions.size(), shape);
             assertEquals(opcodes, realOpcodes(constructor), shape);
             assertTrue(context.proxyMethod == null, shape);
             assertTrue(obfuscator.getHiddenMethodsPool()
                     .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void seventeenLevelNestedBinariesPassJava8JvmVerification()
+            throws Exception {
+        int[] selectors = {7, -7, 0};
+
+        ClassNode intBase =
+                multipleSuperBase("example/VerifiedSeventeenLevelIntBase");
+        intBase.version = Opcodes.V1_8;
+        ClassNode intOwner = constructorOwner(
+                "example/VerifiedSeventeenLevelInt", intBase.name);
+        intOwner.version = Opcodes.V1_8;
+        intOwner.methods.add(threeImmediateReturnsConstructorWithShape(
+                intBase.name, "seventeen-level-iadd"));
+
+        ByteArrayClassLoader intLoader = new ByteArrayClassLoader();
+        intLoader.define(writeClass(intBase));
+        Class<?> verifiedInt = intLoader.define(writeClass(intOwner));
+        int[] intArguments = {11, -22, 0};
+        int[] expectedInts = {28, 22, 0};
+        for (int i = 0; i < selectors.length; i++) {
+            Object instance = verifiedInt.getConstructor(int.class)
+                    .newInstance(intArguments[i]);
+            assertEquals(expectedInts[i],
+                    verifiedInt.getField("magnitude").getInt(instance),
+                    "int path " + selectors[i]);
+        }
+
+        ClassNode longBase = multipleSuperLongBase(
+                "example/VerifiedSeventeenLevelLongBase");
+        longBase.version = Opcodes.V1_8;
+        ClassNode longOwner = constructorOwner(
+                "example/VerifiedSeventeenLevelLong", longBase.name);
+        longOwner.version = Opcodes.V1_8;
+        longOwner.methods.add(threeImmediateReturnsWithComputedInput(
+                longBase.name, "long-seventeen-level-ladd"));
+
+        ByteArrayClassLoader longLoader = new ByteArrayClassLoader();
+        longLoader.define(writeClass(longBase));
+        Class<?> verifiedLong = longLoader.define(writeClass(longOwner));
+        long[] longArguments = {5L, -20L, 0L};
+        for (int i = 0; i < selectors.length; i++) {
+            Object instance = verifiedLong.getConstructor(
+                            int.class, long.class)
+                    .newInstance(selectors[i], longArguments[i]);
+            assertEquals(longArguments[i] + 17L,
+                    verifiedLong.getField("value").getLong(instance),
+                    "long path " + selectors[i]);
+        }
+
+        ClassNode floatBase = multipleSuperFloatBase(
+                "example/VerifiedSeventeenLevelFloatBase");
+        floatBase.version = Opcodes.V1_8;
+        ClassNode floatOwner = constructorOwner(
+                "example/VerifiedSeventeenLevelFloat", floatBase.name);
+        floatOwner.version = Opcodes.V1_8;
+        floatOwner.methods.add(threeImmediateReturnsWithComputedInput(
+                floatBase.name, "float-seventeen-level-fadd"));
+
+        ByteArrayClassLoader floatLoader = new ByteArrayClassLoader();
+        floatLoader.define(writeClass(floatBase));
+        Class<?> verifiedFloat = floatLoader.define(writeClass(floatOwner));
+        float[] floatArguments = {5.0f, -20.0f, 0.0f};
+        for (int i = 0; i < selectors.length; i++) {
+            Object instance = verifiedFloat.getConstructor(
+                            int.class, float.class)
+                    .newInstance(selectors[i], floatArguments[i]);
+            assertEquals(floatArguments[i] + 17.0f,
+                    verifiedFloat.getField("value").getFloat(instance),
+                    0.0f, "float path " + selectors[i]);
+        }
+
+        ClassNode doubleBase = multipleSuperDoubleBase(
+                "example/VerifiedSeventeenLevelDoubleBase");
+        doubleBase.version = Opcodes.V1_8;
+        ClassNode doubleOwner = constructorOwner(
+                "example/VerifiedSeventeenLevelDouble", doubleBase.name);
+        doubleOwner.version = Opcodes.V1_8;
+        doubleOwner.methods.add(threeImmediateReturnsWithComputedInput(
+                doubleBase.name, "double-seventeen-level-dadd"));
+
+        ByteArrayClassLoader doubleLoader = new ByteArrayClassLoader();
+        doubleLoader.define(writeClass(doubleBase));
+        Class<?> verifiedDouble =
+                doubleLoader.define(writeClass(doubleOwner));
+        double[] doubleArguments = {5.0, -20.0, 0.0};
+        for (int i = 0; i < selectors.length; i++) {
+            Object instance = verifiedDouble.getConstructor(
+                            int.class, double.class)
+                    .newInstance(selectors[i], doubleArguments[i]);
+            assertEquals(doubleArguments[i] + 17.0,
+                    verifiedDouble.getField("value").getDouble(instance),
+                    0.0, "double path " + selectors[i]);
         }
     }
 
