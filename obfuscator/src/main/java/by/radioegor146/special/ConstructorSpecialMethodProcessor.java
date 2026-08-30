@@ -2199,10 +2199,12 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, one AALOAD from an unchanged declared array
      * argument or its proven prefix extra-local copy at a constant or
-     * single-load proven int index, proven prefix copies of declared primitive
-     * loads, bounded primitive computations, or int-family constants. The
-     * identical-copy and distinct-suffix forms may accept a direct alias load
-     * only when their separate receiver-frame proof succeeds.
+     * single-load proven int index, one GETFIELD on an unchanged directly
+     * loaded declared object argument, proven prefix copies of declared
+     * primitive loads, bounded primitive computations, or int-family
+     * constants. The identical-copy and distinct-suffix forms may accept a
+     * direct alias load only when their separate receiver-frame proof
+     * succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2274,6 +2276,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 input, expected, declaredArguments)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
+        Integer beforeGetfield = previousProvenGetfieldChainInput(
+                constructor, inputIndex, expected, declaredArguments);
+        if (beforeGetfield != null) {
+            return beforeGetfield;
+        }
         if (expected.getSort() == Type.OBJECT
                 || expected.getSort() == Type.ARRAY) {
             return previousProvenReferenceChainInput(
@@ -2305,6 +2312,70 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 constructor, inputIndex, declaredArguments,
                 prefixArrayCopies, prefixIntCopies,
                 MAX_PROVEN_INT_CHAIN_BINARY_LEVELS);
+    }
+
+    /**
+     * Proves the isolated retained-prefix field read
+     * {@code ALOAD declaredArgument; GETFIELD}. The receiver must be an
+     * unchanged declared object argument whose exact declared class owns the
+     * field. Exact ownership deliberately avoids guessing about class
+     * hierarchies that are unavailable to this local proof. The field and its
+     * receiver load remain JVM bytecode, preserving JVM null checks and field
+     * access semantics.
+     */
+    private static Integer previousProvenGetfieldChainInput(
+            MethodNode constructor, int inputIndex, Type expected,
+            Map<Integer, Type> declaredArguments) {
+        AbstractInsnNode input = constructor.instructions.get(inputIndex);
+        if (!(input instanceof FieldInsnNode)
+                || input.getOpcode() != Opcodes.GETFIELD) {
+            return null;
+        }
+        FieldInsnNode field = (FieldInsnNode) input;
+        int receiverIndex =
+                previousExecutableIndex(constructor, inputIndex - 1);
+        if (receiverIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode receiver =
+                constructor.instructions.get(receiverIndex);
+        if (!(receiver instanceof VarInsnNode)
+                || receiver.getOpcode() != Opcodes.ALOAD) {
+            return null;
+        }
+        int receiverLocal = ((VarInsnNode) receiver).var;
+        Type declaredReceiver = declaredArguments.get(receiverLocal);
+        if (receiverLocal == 0
+                || declaredReceiver == null
+                || declaredReceiver.getSort() != Type.OBJECT
+                || !declaredReceiver.getInternalName().equals(field.owner)) {
+            return null;
+        }
+        Type fieldType;
+        try {
+            fieldType = Type.getType(field.desc);
+        } catch (IllegalArgumentException malformedDescriptor) {
+            return null;
+        }
+        if (!sameInvocationCarrier(fieldType, expected)) {
+            return null;
+        }
+        for (int i = 0; i < inputIndex; i++) {
+            AbstractInsnNode instruction =
+                    constructor.instructions.get(i);
+            Type stored = storeType(instruction);
+            if (stored != null
+                    && localRangesOverlap(
+                    ((VarInsnNode) instruction).var, stored,
+                    receiverLocal, declaredReceiver)
+                    || instruction instanceof IincInsnNode
+                    && localRangesOverlap(
+                    ((IincInsnNode) instruction).var, Type.INT_TYPE,
+                    receiverLocal, declaredReceiver)) {
+                return null;
+            }
+        }
+        return previousExecutableIndex(constructor, receiverIndex - 1);
     }
 
     /**

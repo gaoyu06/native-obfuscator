@@ -3603,6 +3603,52 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithGetfieldArgChainInputs() {
+        String holderName = "example/GetfieldArgHolder";
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperGetfieldArgBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeGetfieldArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithGetfieldArg(
+                owner.name, owner.superName, holderName, "getfield-arg");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(IL" + holderName + ";)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.GETFIELD));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GETFIELD));
+        assertEquals(4, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ALOAD), 2));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;IL" + holderName + ";)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDeclaredIndexAaloadChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperDeclaredIndexAaloadBase");
@@ -6832,6 +6878,52 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsUnprovenGetfieldChainInputsBeforeMutation() {
+        String holderName = "example/RejectedGetfieldHolder";
+        for (String shape : Arrays.asList(
+                "getfield-this",
+                "getfield-overwritten-holder",
+                "getfield-mismatched-type",
+                "getfield-extra-local-holder",
+                "getfield-computed-holder",
+                "getfield-getstatic",
+                "getfield-new")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedGetfield"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperReferenceBase");
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "value",
+                    "Ljava/lang/Object;", null, null));
+            MethodNode constructor = threeImmediateReturnsWithGetfieldArg(
+                    owner.name, owner.superName, holderName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.output.toString().isEmpty(), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
     public void rejectsUnprovenIntArrayIaloadChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "int-iaload-computed-index",
@@ -8665,6 +8757,62 @@ public class IrCompilerTest {
                 realOpcodes(constructor), Opcodes.AALOAD));
         assertEquals(
                 "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateGetfieldArgChainInputsPassJvmVerification()
+            throws Exception {
+        String holderName = "example/VerifiedGetfieldArgHolder";
+        ClassNode holder = getfieldArgHolder(holderName);
+        holder.version = Opcodes.V1_8;
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedGetfieldArgBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedGetfieldArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithGetfieldArg(
+                owner.name, base.name, holderName, "getfield-arg");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        Class<?> holderClass = loader.define(writeClass(holder));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        Object holderValue = holderClass.getConstructor(Object.class)
+                .newInstance("VALUE");
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, holderClass)
+                            .newInstance(new Object[]{
+                                    selector, holderValue}));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        InvocationTargetException nullHolder = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class, holderClass)
+                        .newInstance(new Object[]{7, null}));
+        assertTrue(nullHolder.getCause() instanceof NullPointerException);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GETFIELD));
+        assertEquals(4, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ALOAD), 2));
+        assertEquals(
+                "(Ljava/lang/Object;IL" + holderName + ";)V",
                 context.proxyMethod.getMethodNode().desc);
     }
 
@@ -15310,6 +15458,99 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native reference-computed multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the GETFIELD argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the GETFIELD argument runtime test");
+
+        String ownerName = "example/GetfieldArgRuntime";
+        String baseName = "example/GetfieldArgRuntimeBase";
+        String holderName = "example/GetfieldArgRuntimeHolder";
+        Path directory =
+                Files.createTempDirectory("ir-getfield-arg-run");
+        Path inputJar = directory.resolve("getfield-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeGetfieldArgReturnsJar(
+                inputJar, ownerName, baseName, holderName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check("plain GETFIELD argument multi-super Java run");
+        assertEquals(
+                "POSITIVE" + System.lineSeparator()
+                        + "NEGATIVE" + System.lineSeparator()
+                        + "ZERO" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GETFIELD));
+        assertEquals(4, Collections.frequency(
+                variableIndexes(
+                        transformedConstructor, Opcodes.ALOAD), 2));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("GETFIELD argument CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("GETFIELD argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "GETFIELD argument native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native GETFIELD argument multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -26804,6 +27045,40 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeGetfieldArgReturnsJar(
+            Path jarPath, String ownerName, String baseName,
+            String holderName) throws IOException {
+        ClassNode holder = getfieldArgHolder(holderName);
+        holder.version = Opcodes.V1_8;
+        ClassNode base = multipleSuperReferenceBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithGetfieldArg(
+                ownerName, baseName, holderName, "getfield-arg"));
+        owner.methods.add(multipleSuperThreeGetfieldArgReturnsMain(
+                ownerName, baseName, holderName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(holder.name + ".class"));
+            output.write(writeClass(holder));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeExtraLocalIndexAaloadReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -29963,6 +30238,41 @@ public class IrCompilerTest {
         return base;
     }
 
+    private ClassNode getfieldArgHolder(String name) {
+        ClassNode holder = constructorOwner(name, "java/lang/Object");
+        holder.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "value",
+                "Ljava/lang/Object;", null, null));
+        holder.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "number", "I", null, null));
+        holder.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "nested",
+                "L" + name + ";", null, null));
+        holder.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "staticValue",
+                "Ljava/lang/Object;", null, null));
+        MethodNode constructor = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(Ljava/lang/Object;)V", null, null);
+        constructor.instructions.add(
+                new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        constructor.instructions.add(
+                new VarInsnNode(Opcodes.ALOAD, 0));
+        constructor.instructions.add(
+                new VarInsnNode(Opcodes.ALOAD, 1));
+        constructor.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, name, "value",
+                "Ljava/lang/Object;"));
+        constructor.instructions.add(new InsnNode(Opcodes.RETURN));
+        constructor.maxLocals = 2;
+        constructor.maxStack = 2;
+        holder.methods.add(constructor);
+        return holder;
+    }
+
     private ClassNode multipleSuperLongBase(String name) {
         ClassNode base = constructorOwner(name, "java/lang/Object");
         base.fields.add(new FieldNode(
@@ -32559,6 +32869,82 @@ public class IrCompilerTest {
         return Opcodes.SASTORE;
     }
 
+    private MethodNode threeImmediateReturnsWithGetfieldArg(
+            String ownerName, String superName,
+            String holderName, String shape) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(IL" + holderName + ";)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        if (shape.contains("extra-local-holder")) {
+            method.instructions.add(
+                    new VarInsnNode(Opcodes.ALOAD, 2));
+            method.instructions.add(
+                    new VarInsnNode(Opcodes.ASTORE, 3));
+        }
+        if (shape.contains("overwritten-holder")) {
+            method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+            method.instructions.add(
+                    new VarInsnNode(Opcodes.ASTORE, 2));
+        }
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        appendGetfieldArgChainCall(
+                method, ownerName, superName, holderName, shape);
+        method.instructions.add(negative);
+        appendGetfieldArgChainCall(
+                method, ownerName, superName, holderName, shape);
+        method.instructions.add(zero);
+        appendGetfieldArgChainCall(
+                method, ownerName, superName, holderName, shape);
+        method.maxLocals =
+                shape.contains("extra-local-holder") ? 4 : 3;
+        method.maxStack = 4;
+        return method;
+    }
+
+    private void appendGetfieldArgChainCall(
+            MethodNode method, String ownerName, String superName,
+            String holderName, String shape) {
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        if (shape.contains("getstatic")) {
+            method.instructions.add(new FieldInsnNode(
+                    Opcodes.GETSTATIC, holderName, "staticValue",
+                    "Ljava/lang/Object;"));
+        } else if (shape.contains("new")) {
+            method.instructions.add(
+                    new TypeInsnNode(Opcodes.NEW, "java/lang/Object"));
+            method.instructions.add(new InsnNode(Opcodes.DUP));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESPECIAL, "java/lang/Object",
+                    "<init>", "()V", false));
+        } else {
+            int holderLocal = shape.contains("this") ? 0
+                    : shape.contains("extra-local-holder") ? 3 : 2;
+            method.instructions.add(
+                    new VarInsnNode(Opcodes.ALOAD, holderLocal));
+            if (shape.contains("computed-holder")) {
+                method.instructions.add(new FieldInsnNode(
+                        Opcodes.GETFIELD, holderName, "nested",
+                        "L" + holderName + ";"));
+            }
+            method.instructions.add(new FieldInsnNode(
+                    Opcodes.GETFIELD,
+                    shape.contains("this") ? ownerName : holderName,
+                    shape.contains("mismatched-type")
+                            ? "number" : "value",
+                    shape.contains("mismatched-type")
+                            ? "I" : "Ljava/lang/Object;"));
+        }
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName,
+                "<init>", "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
     private MethodNode threeImmediateReturnsWithComputedInput(
             String superName, String shape) {
         String constructorDescriptor;
@@ -34243,6 +34629,51 @@ public class IrCompilerTest {
         method.maxLocals = 1;
         method.maxStack = 8;
         return method;
+    }
+
+    private MethodNode multipleSuperThreeGetfieldArgReturnsMain(
+            String owner, String superName, String holderName) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "main", "([Ljava/lang/String;)V", null, null);
+        appendMultipleSuperGetfieldArgPrint(
+                method, owner, superName, holderName, 7, "POSITIVE");
+        appendMultipleSuperGetfieldArgPrint(
+                method, owner, superName, holderName, -7, "NEGATIVE");
+        appendMultipleSuperGetfieldArgPrint(
+                method, owner, superName, holderName, 0, "ZERO");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxLocals = 1;
+        method.maxStack = 7;
+        return method;
+    }
+
+    private void appendMultipleSuperGetfieldArgPrint(
+            MethodNode method, String owner, String superName,
+            String holderName, int selector, String value) {
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETSTATIC, "java/lang/System",
+                "out", "Ljava/io/PrintStream;"));
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, owner));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(
+                new IntInsnNode(Opcodes.BIPUSH, selector));
+        method.instructions.add(
+                new TypeInsnNode(Opcodes.NEW, holderName));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new LdcInsnNode(value));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, holderName, "<init>",
+                "(Ljava/lang/Object;)V", false));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                "(IL" + holderName + ";)V", false));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.GETFIELD, superName, "value",
+                "Ljava/lang/Object;"));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
+                "println", "(Ljava/lang/Object;)V", false));
     }
 
     private MethodNode multipleSuperThreeReferenceIndexReturnsMain(
