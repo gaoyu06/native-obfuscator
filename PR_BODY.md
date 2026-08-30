@@ -30,7 +30,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Local JUnit XML totals: pending the focused gate.
+Local JUnit XML totals from this child run:
+
+- `TEST-by.radioegor146.ir.IrCompilerTest.xml`: 496 tests, 0 failures,
+  0 errors, 0 skipped.
+- `TEST-by.radioegor146.CodegenModeTest.xml`: 7 tests, 0 failures, 0 errors,
+  0 skipped.
+- Total: 503 tests, 0 failures, 0 errors, 0 skipped.
+
+The parent will re-run the gate and discard these child totals.
 
 Admitted: **Yes**
 
@@ -67,7 +75,15 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-本地 JUnit XML 汇总：等待上述聚焦门禁执行。
+本次子任务运行的本地 JUnit XML 汇总：
+
+- `TEST-by.radioegor146.ir.IrCompilerTest.xml`：496 个测试，0 失败，
+  0 错误，0 跳过。
+- `TEST-by.radioegor146.CodegenModeTest.xml`：7 个测试，0 失败，
+  0 错误，0 跳过。
+- 总计：503 个测试，0 失败，0 错误，0 跳过。
+
+父任务会重新运行门禁并丢弃这些子任务汇总数据。
 
 Admitted（已放行）：**Yes**
 
