@@ -18,21 +18,23 @@
 Computed extra-local stores, overwritten copies, overwritten declared arrays,
 prior array stores, wrong array sources, computed or `INEG` indexes,
 unproven indexes, skip-super paths, and all other unlisted inputs remain
-fail-closed. This does not admit extra-local `LALOAD`/`FALOAD`/`DALOAD`
-sources or wide extra-index shapes.
+fail-closed. Extra-array plus extra-index for `LALOAD`/`FALOAD`/`DALOAD`
+stays rejected. Extra-local wide-array sources (#258) and wide `ILOAD`
+indexes (#259) stay admitted.
 
 The default `--codegen` mode remains `legacy`.
 
+## Rebase
+
+Rebased onto `origin/master` `6d454f6` (post-#259). Child XML on the
+pre-#258 merge-base is stale and is not the parent number.
+
 ## Validation
 
-The focused Gradle gate passed. JUnit XML records:
-
-- `IrCompilerTest`: 446 tests, 0 failures, 0 errors, 0 skipped.
-- `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 453 tests, 0 failures, 0 errors, 0 skipped.
-
-The passing runtime test is
-`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity`.
+Parent will re-run the full focused `IrCompilerTest` + `CodegenModeTest`
+suite on this rebased branch and report JUnit XML from
+`obfuscator/build/test-results/test/`. Runtime name to confirm:
+`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity()`.
 
 Ship-ready: **No**
 
@@ -55,20 +57,21 @@ Ship-ready: **No**
 
 计算得到的额外局部变量写入、被覆盖的复制、被覆盖的声明数组、先前数组
 写入、错误数组来源、计算或 `INEG` 索引、未证明索引、跳过 super 的路径，
-以及其他未列出的输入仍然保持失败关闭。本增量不放行额外局部变量来源的
-`LALOAD`/`FALOAD`/`DALOAD`，也不放行宽类型数组的额外索引形状。
+以及其他未列出的输入仍然保持失败关闭。`LALOAD`/`FALOAD`/`DALOAD` 的
+额外数组加额外索引组合仍拒绝。#258 的 extra-local 宽数组源与 #259 的
+宽数组 `ILOAD` 索引保持接纳。
 
 默认 `--codegen` 模式仍为 `legacy`。
 
+## 变基
+
+已变基到 `origin/master` `6d454f6`（#259 之后）。变基前的子代理 XML
+不是父代理数字。
+
 ## 验证
 
-聚焦 Gradle 测试已通过。JUnit XML 记录：
-
-- `IrCompilerTest`：446 个测试，0 失败，0 错误，0 跳过。
-- `CodegenModeTest`：7 个测试，0 失败，0 错误，0 跳过。
-- 合计：453 个测试，0 失败，0 错误，0 跳过。
-
-通过的运行时测试为
-`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity`。
+父代理将在变基后的分支上重跑完整聚焦套件，并从
+`obfuscator/build/test-results/test/` 读取 JUnit XML。运行时名称：
+`threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity()`。
 
 可发布：**否（No）**
