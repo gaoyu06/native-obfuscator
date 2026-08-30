@@ -4036,6 +4036,63 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithNewFourArgChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperNewFourArgBase",
+                "(Ljava/awt/Insets;)V");
+        ClassNode owner = constructorOwner(
+                "example/ThreeNewFourArgMultiReturn", base.name);
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-four-arguments");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.NEW));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.INVOKESPECIAL));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_4));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDeclaredIndexAaloadChainInputs() {
         ClassNode base = multipleSuperReferenceBase(
                 "example/MultiSuperDeclaredIndexAaloadBase");
@@ -7420,7 +7477,7 @@ public class IrCompilerTest {
                 "new-constructor-extra-local-this-argument",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
-                "new-constructor-four-arguments",
+                "new-constructor-five-arguments",
                 "newarray",
                 "anewarray",
                 "multianewarray",
@@ -7474,7 +7531,7 @@ public class IrCompilerTest {
                 "new-constructor-extra-local-argument-second-unproven",
                 "new-constructor-computed-argument",
                 "new-constructor-getstatic-argument",
-                "new-constructor-four-arguments",
+                "new-constructor-five-arguments",
                 "newarray",
                 "anewarray",
                 "multianewarray",
@@ -7516,8 +7573,9 @@ public class IrCompilerTest {
                 } else if ("multianewarray".equals(shape)) {
                     assertEquals(1, ((Object[][]) value).length, shape);
                     assertEquals(1, ((Object[][]) value)[0].length, shape);
-                } else if ("new-constructor-four-arguments".equals(shape)) {
-                    assertTrue(value instanceof java.awt.Insets, shape);
+                } else if ("new-constructor-five-arguments".equals(shape)) {
+                    assertTrue(value instanceof java.util.GregorianCalendar,
+                            shape);
                 } else if (shape.endsWith("-second-unproven")) {
                     assertEquals("java.awt.Point",
                             value.getClass().getName(), shape);
@@ -10081,6 +10139,67 @@ public class IrCompilerTest {
         assertEquals(
                 "(Ljava/lang/Object;I)V",
                 context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
+    public void rewrittenThreeImmediateNewFourArgChainInputsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedNewFourArgBase",
+                "(Ljava/awt/Insets;)V");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedNewFourArg", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor = threeImmediateReturnsWithNewArg(
+                base.name, "new-constructor-four-arguments");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden :
+                obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class)
+                            .newInstance(selector));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.ICONST_4));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(constructor), Opcodes.INVOKESPECIAL));
+        assertEquals(
+                "(Ljava/lang/Object;I)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
     }
 
     @Test
@@ -17533,6 +17652,108 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native NEW three-argument multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the NEW four-argument runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the NEW four-argument runtime test");
+
+        String ownerName = "example/NewFourArgRuntime";
+        String baseName = "example/NewFourArgRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-new-four-arg-run");
+        Path inputJar = directory.resolve("new-four-arg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeNewArgReturnsJar(
+                inputJar, ownerName, baseName,
+                "new-constructor-four-arguments");
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain NEW four-argument multi-super Java run");
+        String insets =
+                "java.awt.Insets[top=1,left=2,bottom=3,right=4]"
+                        + System.lineSeparator();
+        assertEquals(insets + insets + insets, javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.NEW));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DUP));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_1));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_2));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_3));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.ICONST_4));
+        assertEquals(6, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.INVOKESPECIAL));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("NEW four-argument CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("NEW four-argument CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "NEW four-argument native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native NEW four-argument multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -35277,6 +35498,8 @@ public class IrCompilerTest {
             String allocated;
             if (extraLocalThisArgument) {
                 allocated = "java/util/concurrent/atomic/AtomicReference";
+            } else if (argumentCount == 5) {
+                allocated = "java/util/GregorianCalendar";
             } else if (argumentCount == 4) {
                 allocated = "java/awt/Insets";
             } else if (argumentCount == 3) {
@@ -35325,7 +35548,11 @@ public class IrCompilerTest {
             if (argumentCount >= 4) {
                 method.instructions.add(new InsnNode(Opcodes.ICONST_4));
             }
-            String initializerDescriptor = argumentCount == 4
+            if (argumentCount >= 5) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_5));
+            }
+            String initializerDescriptor = argumentCount == 5
+                    ? "(IIIII)V" : argumentCount == 4
                     ? "(IIII)V" : argumentCount == 3
                     ? "(III)V" : argumentCount == 2
                     ? "(II)V" : "(I)V";
@@ -35366,6 +35593,9 @@ public class IrCompilerTest {
     }
 
     private String newArgChainDescriptor(String shape) {
+        if ("new-constructor-five-arguments".equals(shape)) {
+            return "(Ljava/util/GregorianCalendar;)V";
+        }
         if ("new-constructor-four-arguments".equals(shape)) {
             return "(Ljava/awt/Insets;)V";
         }
@@ -35395,6 +35625,9 @@ public class IrCompilerTest {
     }
 
     private int newConstructorArgumentCount(String shape) {
+        if ("new-constructor-five-arguments".equals(shape)) {
+            return 5;
+        }
         if ("new-constructor-four-arguments".equals(shape)) {
             return 4;
         }
@@ -37211,12 +37444,18 @@ public class IrCompilerTest {
         method.instructions.add(new FieldInsnNode(
                 Opcodes.GETFIELD, superName, "value",
                 "Ljava/lang/Object;"));
-        method.instructions.add(new MethodInsnNode(
-                Opcodes.INVOKEVIRTUAL, "java/lang/Object",
-                "getClass", "()Ljava/lang/Class;", false));
-        method.instructions.add(new MethodInsnNode(
-                Opcodes.INVOKEVIRTUAL, "java/lang/Class",
-                "getName", "()Ljava/lang/String;", false));
+        if ("new-constructor-four-arguments".equals(shape)) {
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL, "java/lang/Object",
+                    "toString", "()Ljava/lang/String;", false));
+        } else {
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL, "java/lang/Object",
+                    "getClass", "()Ljava/lang/Class;", false));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL, "java/lang/Class",
+                    "getName", "()Ljava/lang/String;", false));
+        }
         method.instructions.add(new MethodInsnNode(
                 Opcodes.INVOKEVIRTUAL, "java/io/PrintStream",
                 "println", "(Ljava/lang/String;)V", false));

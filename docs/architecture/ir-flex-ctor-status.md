@@ -1596,18 +1596,32 @@ Synthetic bytecode unit tests in
   `MethodContext.proxyMethod`. Rewritten classfile-52 bytecode and all three
   selector paths preserve JVM verification and plain-Java/CMake/g++ JNI parity
   under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewFourArgChainInputs`,
+  `rewrittenThreeImmediateNewFourArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity` extend the
+  isolated leaf to
+  `NEW Insets; DUP; ICONST_1; ICONST_2; ICONST_3; ICONST_4;
+  INVOKESPECIAL Insets.<init>(IIII)V`. All seven instructions stay in each
+  retained JVM prefix, the native body contains neither that `NEW` nor its
+  `INVOKESPECIAL`, and the rewrite keeps one hidden bridge and singular
+  `MethodContext.proxyMethod`. Rewritten classfile-52 bytecode and selector
+  paths `7`, `-7`, and `0` preserve JVM verification and
+  plain-Java/CMake/g++ JNI parity while retaining all four `Insets` field
+  values under `-Xverify:all -Xcheck:jni`.
 - `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
   allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs, a
-  four-int-argument initializer, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`,
+  five-int-argument `GregorianCalendar` initializer, `NEWARRAY`, `ANEWARRAY`,
+  `MULTIANEWARRAY`,
   and a descriptor-mismatched allocation while preserving every constructor
   instruction object, generated buffer, hidden-method inventory, and the
   singular `MethodContext.proxyMethod`.
 - `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
   classfile-52 computed-argument, `GETSTATIC`-argument,
-  exact-type-conservative mismatch, and all three array-allocation fixtures,
-  then constructs all three ordinary paths. These remain conservative rejects
-  rather than admissions. The raw uninitialized-reference and missing-`DUP`
-  fixtures remain rejected but are inherently not verifier-valid.
+  five-int-argument `GregorianCalendar`, exact-type-conservative mismatch, and
+  all three array-allocation fixtures, then constructs all three ordinary
+  paths. These remain conservative rejects rather than admissions. The raw
+  uninitialized-reference and missing-`DUP` fixtures remain rejected but are
+  inherently not verifier-valid.
 - `unprovenPostCallAndAstoreZeroShapesPassJava8JvmVerification` loads the
   untouched classfile-52 constructor with `ICONST_0; POP` after its first
   chain call and constructs selectors `7`, `-7`, and `0`. This extra post-call
@@ -1637,9 +1651,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 490 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 496 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 497 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 503 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
