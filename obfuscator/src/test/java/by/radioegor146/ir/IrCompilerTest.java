@@ -2668,7 +2668,8 @@ public class IrCompilerTest {
 
             ByteArrayClassLoader loader = new ByteArrayClassLoader();
             loader.define(writeClass(base));
-            Class<?> verified = loader.define(writeClass(owner));
+            Class<?> verified =
+                    loader.define(writeClassPreservingFrames(owner));
 
             Object firstPath =
                     verified.getConstructor(int.class).newInstance(7);
@@ -25476,6 +25477,12 @@ public class IrCompilerTest {
         return writer.toByteArray();
     }
 
+    private byte[] writeClassPreservingFrames(ClassNode classNode) {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
     private void createInterfaceConstantDynamicJar(
             Path jarPath, String interfaceName, String counterName,
             String mainName) throws IOException {
@@ -30857,6 +30864,14 @@ public class IrCompilerTest {
         LabelNode start = new LabelNode();
         LabelNode end = new LabelNode();
         LabelNode handler = new LabelNode();
+        LabelNode negative = Arrays.stream(method.instructions.toArray())
+                .filter(JumpInsnNode.class::isInstance)
+                .map(JumpInsnNode.class::cast)
+                .findFirst().orElseThrow(AssertionError::new).label;
+        method.instructions.insert(negative, new FrameNode(
+                Opcodes.F_FULL, 2,
+                new Object[]{Opcodes.UNINITIALIZED_THIS, Opcodes.INTEGER},
+                0, new Object[0]));
         if ("cross-suffix".equals(shape)) {
             AbstractInsnNode firstSuffixStart = calls.get(0).getNext();
             AbstractInsnNode firstReturn =
@@ -30867,6 +30882,10 @@ public class IrCompilerTest {
             method.instructions.insertBefore(
                     secondSuffixStart, new InsnNode(Opcodes.ACONST_NULL));
             method.instructions.insertBefore(secondSuffixStart, handler);
+            method.instructions.insert(handler, new FrameNode(
+                    Opcodes.F_FULL, 2,
+                    new Object[]{owner, Opcodes.INTEGER},
+                    1, new Object[]{"java/lang/Throwable"}));
             method.instructions.insertBefore(
                     secondSuffixStart, new InsnNode(Opcodes.POP));
         } else if ("covers-chain".equals(shape)) {
@@ -30874,6 +30893,10 @@ public class IrCompilerTest {
             method.instructions.insertBefore(calls.get(0), start);
             method.instructions.insertBefore(firstSuffixStart, end);
             method.instructions.add(handler);
+            method.instructions.add(new FrameNode(
+                    Opcodes.F_FULL, 2,
+                    new Object[]{Opcodes.UNINITIALIZED_THIS, Opcodes.INTEGER},
+                    1, new Object[]{"java/lang/Throwable"}));
             method.instructions.add(new InsnNode(Opcodes.ATHROW));
         } else {
             throw new IllegalArgumentException("Unknown shape " + shape);
