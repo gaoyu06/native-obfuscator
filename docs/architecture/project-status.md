@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing declared-argument `GETFIELD` chain inputs
-[#266](https://github.com/gaoyu06/native-obfuscator/pull/266)
-(parent re-ran 471/471: 464 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity`)
-on the post-[#265](https://github.com/gaoyu06/native-obfuscator/pull/265)
-fail-closed spanning-catch audit. Active process:
+Last updated after landing the fail-closed nine-path audit
+[#267](https://github.com/gaoyu06/native-obfuscator/pull/267)
+(parent re-ran 473/473: 466 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `ninePathIdDistinctSuffixesPassJvmVerification`)
+on the post-[#266](https://github.com/gaoyu06/native-obfuscator/pull/266)
+declared-argument `GETFIELD` admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -377,13 +377,17 @@ legacy。不能当成 JDK 支持矩阵。
   carrier matches the chain argument. `NEW`, `GETFIELD` on local 0,
   extra-local or overwritten holders, and mismatched field types stay
   rejected.
+  [#267](https://github.com/gaoyu06/native-obfuscator/pull/267) keeps
+  nine or more path-id distinct suffixes fail-closed
+  (`MAX_DISTINCT_SUFFIXES` remains 8). No new path-count is admitted.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (seventeen-or-more nested int binaries, seventeen-or-more nested long
   binaries, seventeen-or-more nested float binaries,
   seventeen-or-more nested double binaries,
-  `NEW` and unproven `GETFIELD` inputs),
+  `NEW` and unproven `GETFIELD` inputs,
+  more than eight distinct paths),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -582,6 +586,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#263 leftover inventory (#264) | Measurement only on `c0304fe`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed spanning-catch audit (#265) | 467 tests (`IrCompilerTest` 460 + `CodegenModeTest` 7). Parent re-ran 467/467 including `spanningAndChainCoveringTryCatchShapesPassJvmVerification` | Spanning/covering catch leftover remains reject |
 | Declared-argument `GETFIELD` chain inputs (#266) | 471 tests (`IrCompilerTest` 464 + `CodegenModeTest` 7). Parent re-ran 471/471 including `threeImmediateGetfieldArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Fail-closed nine-path audit (#267) | 473 tests (`IrCompilerTest` 466 + `CodegenModeTest` 7). Parent re-ran 473/473 including `ninePathIdDistinctSuffixesPassJvmVerification` | Nine-path leftover remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -636,7 +641,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   seventeen-or-more nested double binaries,
   extras still unassigned
   on a bridge-taking path,
-  `NEW` and unproven `GETFIELD` inputs).
+  `NEW` and unproven `GETFIELD` inputs,
+  more than eight distinct paths).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
   subroutines are admitted by #241. Extra-local long shift values and
   `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
@@ -669,6 +675,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   reject-before-mutation; #265 strengthens those fail-closed tests.
   Declared-argument `GETFIELD` chain inputs are admitted by #266.
   `NEW` and unproven `GETFIELD` forms stay reject-before-mutation.
+  More than eight path-id suffixes stay reject-before-mutation; #267
+  strengthens those fail-closed tests. The eight-path cap is unchanged.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#264](https://github.com/gaoyu06/native-obfuscator/pull/264),
   measured on post-#263 `c0304fe`) observed 0 leftovers; that is not
@@ -686,9 +694,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #266
-  (declared-argument `GETFIELD`). /
-  落地 #266 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #267
+  (fail-closed nine-path audit). /
+  落地 #267 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

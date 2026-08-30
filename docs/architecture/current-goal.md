@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #266 (declared-argument `GETFIELD`)
+   `master` after #267 (fail-closed nine-path audit)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -66,7 +66,7 @@ The goal is complete only when all of the following are true:
    `NEW` and unproven `GETFIELD` inputs (local 0, extra-local or
    overwritten holders, mismatched field types),
    or more than eight
-   distinct paths, extras still unassigned on a bridge-taking
+   distinct paths, still rejected after #267, extras still unassigned on a bridge-taking
    path, still rejected after #263),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
