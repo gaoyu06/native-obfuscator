@@ -278,6 +278,83 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsConstructorJsrRetWithExceptionTableBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "jsr-range-catch", "subroutine-range-catch",
+                "ret-range-catch", "nested-subroutine",
+                "work-after-ret")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedJsrRet" + shape.replace("-", ""),
+                    "java/lang/Object");
+            owner.version = Opcodes.V1_6;
+            owner.access |= Opcodes.ACC_SUPER;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            MethodNode constructor =
+                    constructorWithRejectedJsrRetShape(owner.name, shape);
+            owner.methods.add(constructor);
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            java.util.List<TryCatchBlockNode> tryCatches =
+                    new java.util.ArrayList<>(constructor.tryCatchBlocks);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
+
+            UnsupportedIrConstructException error = assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertTrue(error.getMessage().contains("Constructor"), shape);
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertEquals(tryCatches, constructor.tryCatchBlocks, shape);
+            assertTrue(realOpcodes(constructor).contains(Opcodes.JSR), shape);
+            assertTrue(realOpcodes(constructor).contains(Opcodes.RET), shape);
+        }
+    }
+
+    @Test
+    public void unprovenConstructorJsrRetShapesPassJava8JvmVerification()
+            throws Exception {
+        // These legacy subroutines require classfile version 50: StackMapTable
+        // frames cannot represent return-address values. The work-after-RET
+        // fixture is inherently verifier-invalid because its branch jumps
+        // across a RET within one subroutine, so it remains reject-only. Every
+        // listed exception-table and nested-subroutine shape is loadable and is
+        // executed here without running the IR transform.
+        for (String shape : Arrays.asList(
+                "jsr-range-catch", "subroutine-range-catch",
+                "ret-range-catch", "nested-subroutine")) {
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedJsrRet"
+                            + shape.replace("-", ""),
+                    "java/lang/Object");
+            owner.version = Opcodes.V1_6;
+            owner.access |= Opcodes.ACC_SUPER;
+            owner.fields.add(new FieldNode(
+                    Opcodes.ACC_PUBLIC, "result", "I", null, null));
+            owner.methods.add(
+                    constructorWithRejectedJsrRetShape(owner.name, shape));
+
+            ClassWriter writer = new ClassWriter(0);
+            owner.accept(writer);
+            Class<?> verified =
+                    new ByteArrayClassLoader().define(writer.toByteArray());
+            Object instance = verified.getConstructor().newInstance();
+
+            assertEquals(41,
+                    verified.getField("result").getInt(instance), shape);
+        }
+    }
+
+    @Test
     public void rejectsMalformedJsrRetBeforeMutation() {
         MethodNode method = malformedRetMethod();
         AbstractInsnNode[] originalInstructions =
@@ -41382,6 +41459,89 @@ public class IrCompilerTest {
         method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
         method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
         method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+        method.maxLocals = 3;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode constructorWithRejectedJsrRetShape(
+            String ownerName, String shape) {
+        MethodNode method = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        LabelNode jsrStart = new LabelNode();
+        LabelNode continuation = new LabelNode();
+        LabelNode subroutine = new LabelNode();
+        LabelNode subroutineBody = new LabelNode();
+        LabelNode beforeRet = new LabelNode();
+        LabelNode afterRet = new LabelNode();
+        LabelNode handler = new LabelNode();
+
+        method.instructions.add(jsrStart);
+        method.instructions.add(new JumpInsnNode(Opcodes.JSR, subroutine));
+        method.instructions.add(continuation);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, "java/lang/Object",
+                "<init>", "()V", false));
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new FieldInsnNode(
+                Opcodes.PUTFIELD, ownerName, "result", "I"));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.instructions.add(subroutine);
+        method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+
+        if ("nested-subroutine".equals(shape)) {
+            LabelNode nested = new LabelNode();
+            method.instructions.add(new JumpInsnNode(Opcodes.JSR, nested));
+            method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+            method.instructions.add(nested);
+            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.RET, 3));
+            method.maxLocals = 4;
+            method.maxStack = 2;
+            return method;
+        }
+
+        if ("work-after-ret".equals(shape)) {
+            LabelNode work = new LabelNode();
+            method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+            method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, work));
+            method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+            method.instructions.add(work);
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+            method.maxLocals = 3;
+            method.maxStack = 2;
+            return method;
+        }
+
+        method.instructions.add(subroutineBody);
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 41));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 1));
+        method.instructions.add(beforeRet);
+        method.instructions.add(new VarInsnNode(Opcodes.RET, 2));
+        method.instructions.add(afterRet);
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        if ("jsr-range-catch".equals(shape)) {
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    jsrStart, continuation, handler,
+                    "java/lang/Throwable"));
+        } else if ("subroutine-range-catch".equals(shape)) {
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    subroutineBody, beforeRet, handler,
+                    "java/lang/Throwable"));
+        } else if ("ret-range-catch".equals(shape)) {
+            method.tryCatchBlocks.add(new TryCatchBlockNode(
+                    subroutineBody, afterRet, handler,
+                    "java/lang/Throwable"));
+        } else {
+            throw new IllegalArgumentException("Unknown JSR/RET shape: " + shape);
+        }
         method.maxLocals = 3;
         method.maxStack = 2;
         return method;
