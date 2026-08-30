@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix extra-local int `INEG`
-[#248](https://github.com/gaoyu06/native-obfuscator/pull/248)
-(parent re-ran 410/410: 403 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#247](https://github.com/gaoyu06/native-obfuscator/pull/247)
-extra-local double `DNEG` admission. Active process:
+Last updated after landing declared-array `IALOAD` int leaves
+[#249](https://github.com/gaoyu06/native-obfuscator/pull/249)
+(parent re-ran 414/414: 407 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#248](https://github.com/gaoyu06/native-obfuscator/pull/248)
+extra-local int `INEG` admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -295,12 +295,17 @@ legacy。不能当成 JDK 支持矩阵。
   [#248](https://github.com/gaoyu06/native-obfuscator/pull/248) admits
   one `INEG` over a proven prefix extra-local int copy. Constant,
   double, and computed `INEG` stay rejected.
+  [#249](https://github.com/gaoyu06/native-obfuscator/pull/249) admits
+  `ALOAD` of an unchanged declared `int[]` argument, a constant index,
+  and `IALOAD` as an int-family chain-input leaf. Computed indexes,
+  extra-local arrays, and other array-load families stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
   (nine-or-more nested int binaries, nine-or-more nested long
   binaries, nine-or-more nested float binaries,
-  nine-or-more nested double binaries),
+  nine-or-more nested double binaries,
+  extra-local array `AALOAD` sources, other `*ALOAD` families),
   and extras still unassigned on a bridge-taking path are still
   rejected.
   This is not a JDK 25 support badge and was not re-run as a Temurin 25
@@ -481,6 +486,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Prefix extra-local float `FNEG` (#246) | 403 tests (`IrCompilerTest` 396 + `CodegenModeTest` 7). Parent re-ran 403/403 including `threeImmediateExtraLocalFloatFnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local double `DNEG` (#247) | 406 tests (`IrCompilerTest` 399 + `CodegenModeTest` 7). Parent re-ran 406/406 including `threeImmediateExtraLocalDoubleDnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local int `INEG` (#248) | 410 tests (`IrCompilerTest` 403 + `CodegenModeTest` 7). Parent re-ran 410/410 including `threeImmediateExtraLocalIntInegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Declared-array `IALOAD` int leaves (#249) | 414 tests (`IrCompilerTest` 407 + `CodegenModeTest` 7). Parent re-ran 414/414 including `threeImmediateIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -543,6 +549,7 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   by #245. Extra-local float `FNEG` is admitted by #246.
   Extra-local double `DNEG` is admitted by #247.
   Extra-local int `INEG` is admitted by #248.
+  Declared-array `IALOAD` int leaves are admitted by #249.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -559,9 +566,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #248
-  (prefix extra-local int `INEG`). /
-  落地 #248 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #249
+  (declared-array `IALOAD` int leaves). /
+  落地 #249 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
