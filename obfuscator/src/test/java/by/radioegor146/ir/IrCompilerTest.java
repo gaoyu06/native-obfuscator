@@ -908,7 +908,7 @@ public class IrCompilerTest {
         MethodNode nativeBody =
                 ConstructorSpecialMethodProcessor.createNativeBody(
                         owner, constructor);
-        assertEquals("(I)V", nativeBody.desc);
+        assertEquals("(II)V", nativeBody.desc);
         assertEquals(1, nativeBody.tryCatchBlocks.size());
         assertEquals(Arrays.asList(
                         Opcodes.BIPUSH, Opcodes.ILOAD, Opcodes.IDIV,
@@ -3897,7 +3897,7 @@ public class IrCompilerTest {
         new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                 .processMethod(context);
 
-        assertEquals(3, constructor.maxLocals);
+        assertEquals(4, constructor.maxLocals);
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
@@ -3905,9 +3905,9 @@ public class IrCompilerTest {
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.DUP));
         assertEquals(3, Collections.frequency(
-                variableIndexes(constructor, Opcodes.ILOAD), 2));
+                variableIndexes(constructor, Opcodes.ILOAD), 3));
         assertEquals(1, Collections.frequency(
-                variableIndexes(constructor, Opcodes.ISTORE), 2));
+                variableIndexes(constructor, Opcodes.ISTORE), 3));
         assertEquals(0, Collections.frequency(
                 realOpcodes(constructor), Opcodes.ICONST_1));
         assertEquals(6, Collections.frequency(
@@ -3917,7 +3917,7 @@ public class IrCompilerTest {
         assertEquals(1, Collections.frequency(
                 realOpcodes(constructor), Opcodes.RETURN));
         assertEquals(
-                "(Ljava/lang/Object;I)V",
+                "(Ljava/lang/Object;II)V",
                 context.proxyMethod.getMethodNode().desc);
         assertEquals(1, obfuscator.getHiddenMethodsPool()
                 .getClasses().stream()
@@ -7496,8 +7496,18 @@ public class IrCompilerTest {
             Class<?> verified = loader.define(writeClass(owner));
 
             for (int selector : new int[]{7, -7, 0}) {
-                Object instance = verified.getConstructor(int.class)
-                        .newInstance(selector);
+                Object instance;
+                if (shape.startsWith(
+                        "new-constructor-extra-local-argument")) {
+                    int copiedValue =
+                            shape.endsWith("-computed") ? -8 : 8;
+                    instance = verified.getConstructor(
+                                    int.class, int.class)
+                            .newInstance(selector, copiedValue);
+                } else {
+                    instance = verified.getConstructor(int.class)
+                            .newInstance(selector);
+                }
                 Object value = verified.getField("value").get(instance);
                 if ("newarray".equals(shape)) {
                     assertEquals(1, ((int[]) value).length, shape);
@@ -9945,11 +9955,11 @@ public class IrCompilerTest {
         for (int selector : new int[]{7, -7, 0}) {
             InvocationTargetException bridge = assertThrows(
                     InvocationTargetException.class,
-                    () -> verified.getConstructor(int.class)
-                            .newInstance(selector));
+                    () -> verified.getConstructor(int.class, int.class)
+                            .newInstance(selector, 8));
             assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
         }
-        assertEquals(3, constructor.maxLocals);
+        assertEquals(4, constructor.maxLocals);
         assertEquals(3, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertEquals(3, Collections.frequency(
@@ -9957,15 +9967,15 @@ public class IrCompilerTest {
         assertEquals(3, Collections.frequency(
                 realOpcodes(constructor), Opcodes.DUP));
         assertEquals(3, Collections.frequency(
-                variableIndexes(constructor, Opcodes.ILOAD), 2));
+                variableIndexes(constructor, Opcodes.ILOAD), 3));
         assertEquals(1, Collections.frequency(
-                variableIndexes(constructor, Opcodes.ISTORE), 2));
+                variableIndexes(constructor, Opcodes.ISTORE), 3));
         assertEquals(0, Collections.frequency(
                 realOpcodes(constructor), Opcodes.ICONST_1));
         assertEquals(6, Collections.frequency(
                 realOpcodes(constructor), Opcodes.INVOKESPECIAL));
         assertEquals(
-                "(Ljava/lang/Object;I)V",
+                "(Ljava/lang/Object;II)V",
                 context.proxyMethod.getMethodNode().desc);
     }
 
@@ -17272,7 +17282,7 @@ public class IrCompilerTest {
         MethodNode transformedConstructor = transformed.methods.stream()
                 .filter(method -> "<init>".equals(method.name))
                 .findFirst().orElseThrow(AssertionError::new);
-        assertEquals(3, transformedConstructor.maxLocals);
+        assertEquals(4, transformedConstructor.maxLocals);
         assertEquals(3, directChainCallCount(
                 transformedConstructor, transformed));
         assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
@@ -17281,9 +17291,9 @@ public class IrCompilerTest {
         assertEquals(3, Collections.frequency(
                 realOpcodes(transformedConstructor), Opcodes.DUP));
         assertEquals(3, Collections.frequency(
-                variableIndexes(transformedConstructor, Opcodes.ILOAD), 2));
+                variableIndexes(transformedConstructor, Opcodes.ILOAD), 3));
         assertEquals(1, Collections.frequency(
-                variableIndexes(transformedConstructor, Opcodes.ISTORE), 2));
+                variableIndexes(transformedConstructor, Opcodes.ISTORE), 3));
         assertEquals(0, Collections.frequency(
                 realOpcodes(transformedConstructor), Opcodes.ICONST_1));
         assertEquals(6, Collections.frequency(
@@ -29121,7 +29131,7 @@ public class IrCompilerTest {
         owner.methods.add(threeImmediateReturnsWithNewArg(
                 baseName, shape));
         owner.methods.add(multipleSuperThreeNewArgReturnsMain(
-                ownerName, baseName));
+                ownerName, baseName, shape));
 
         java.util.jar.Manifest manifest = new java.util.jar.Manifest();
         manifest.getMainAttributes().put(
@@ -35209,24 +35219,25 @@ public class IrCompilerTest {
 
     private MethodNode threeImmediateReturnsWithNewArg(
             String superName, String shape) {
-        MethodNode method = new MethodNode(
-                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
-                "<init>", "(I)V", null, null);
-        LabelNode negative = new LabelNode();
-        LabelNode zero = new LabelNode();
         boolean extraLocalIntArgument =
                 shape.startsWith("new-constructor-extra-local-argument");
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", extraLocalIntArgument ? "(II)V" : "(I)V",
+                null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
         boolean extraLocalThisArgument =
                 "new-constructor-extra-local-this-argument".equals(shape);
         if (extraLocalIntArgument) {
-            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+            method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
             if (shape.endsWith("-computed")) {
                 method.instructions.add(new InsnNode(Opcodes.INEG));
             }
-            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+            method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
             if (shape.endsWith("-overwritten")) {
                 method.instructions.add(new InsnNode(Opcodes.ICONST_2));
-                method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 2));
+                method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 3));
             }
         } else if (extraLocalThisArgument) {
             method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -35242,7 +35253,8 @@ public class IrCompilerTest {
         method.instructions.add(zero);
         appendNewArgChainCall(method, superName, shape);
         method.maxLocals =
-                extraLocalIntArgument || extraLocalThisArgument ? 3 : 2;
+                extraLocalIntArgument ? 4
+                        : extraLocalThisArgument ? 3 : 2;
         if (shape.startsWith("new-constructor-")) {
             method.maxStack = 3 + newConstructorArgumentCount(shape);
         } else {
@@ -35289,7 +35301,7 @@ public class IrCompilerTest {
             } else if (shape.startsWith(
                     "new-constructor-extra-local-argument")) {
                 method.instructions.add(
-                        new VarInsnNode(Opcodes.ILOAD, 2));
+                        new VarInsnNode(Opcodes.ILOAD, 3));
             } else {
                 method.instructions.add(new InsnNode(
                         "new-constructor-computed-argument".equals(shape)
@@ -37160,21 +37172,26 @@ public class IrCompilerTest {
     }
 
     private MethodNode multipleSuperThreeNewArgReturnsMain(
-            String owner, String superName) {
+            String owner, String superName, String shape) {
         MethodNode method = new MethodNode(
                 Opcodes.ASM9, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "main", "([Ljava/lang/String;)V", null, null);
-        appendMultipleSuperNewArgPrint(method, owner, superName, 7);
-        appendMultipleSuperNewArgPrint(method, owner, superName, -7);
-        appendMultipleSuperNewArgPrint(method, owner, superName, 0);
+        appendMultipleSuperNewArgPrint(
+                method, owner, superName, shape, 7);
+        appendMultipleSuperNewArgPrint(
+                method, owner, superName, shape, -7);
+        appendMultipleSuperNewArgPrint(
+                method, owner, superName, shape, 0);
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxLocals = 1;
-        method.maxStack = 5;
+        method.maxStack = shape.startsWith(
+                "new-constructor-extra-local-argument") ? 6 : 5;
         return method;
     }
 
     private void appendMultipleSuperNewArgPrint(
-            MethodNode method, String owner, String superName, int selector) {
+            MethodNode method, String owner, String superName,
+            String shape, int selector) {
         method.instructions.add(new FieldInsnNode(
                 Opcodes.GETSTATIC, "java/lang/System",
                 "out", "Ljava/io/PrintStream;"));
@@ -37182,8 +37199,15 @@ public class IrCompilerTest {
         method.instructions.add(new InsnNode(Opcodes.DUP));
         method.instructions.add(
                 new IntInsnNode(Opcodes.BIPUSH, selector));
+        boolean extraLocalIntArgument =
+                shape.startsWith("new-constructor-extra-local-argument");
+        if (extraLocalIntArgument) {
+            method.instructions.add(
+                    new IntInsnNode(Opcodes.BIPUSH, 8));
+        }
         method.instructions.add(new MethodInsnNode(
-                Opcodes.INVOKESPECIAL, owner, "<init>", "(I)V", false));
+                Opcodes.INVOKESPECIAL, owner, "<init>",
+                extraLocalIntArgument ? "(II)V" : "(I)V", false));
         method.instructions.add(new FieldInsnNode(
                 Opcodes.GETFIELD, superName, "value",
                 "Ljava/lang/Object;"));
