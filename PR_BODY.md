@@ -35,9 +35,18 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-- Result / 结果: `BUILD SUCCESSFUL`
-- JUnit XML: 438 tests, 0 skipped, 0 failures, 0 errors
-- Runtime parity / 运行时一致性:
-  `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity()`
+- Rebased onto `origin/master` `d63d568` (post-#256 extra-local BALOAD
+  sources). The child XML on the pre-#254/#255/#256 merge-base is stale
+  and is not the parent number.
+- Parent will re-run the full focused `IrCompilerTest` + `CodegenModeTest`
+  suite on this rebased branch and report JUnit XML totals from
+  `obfuscator/build/test-results/test/`.
+- Expected new tests (not a parent total):
+  `admitsThreeImmediateReturnsWithWideArrayLoadChainInputs`,
+  `rejectsUnprovenWideArrayLoadChainInputsBeforeMutation`,
+  `rewrittenThreeImmediateWideArrayLoadsPassJvmVerification`,
+  `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity()`.
+- Kept landed #254/#255/#256 tests and helpers; did not restore the
+  obsolete singular `rejectsUnprovenReferenceComputedIndexBeforeMutation`.
 
 Ship-ready / 可发布: **No / 否**
