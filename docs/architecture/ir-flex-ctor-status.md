@@ -1603,6 +1603,18 @@ Synthetic bytecode unit tests in
   one hidden bridge and singular `MethodContext.proxyMethod`. Rewritten
   classfile-52 bytecode and all three selector paths preserve JVM verification
   and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewExtraLocalTwoArgChainInputs`,
+  `rewrittenThreeImmediateNewExtraLocalTwoArgChainInputsPassJvmVerification`,
+  and
+  `threeImmediateNewExtraLocalTwoArgChainInputsCompileAndRunWithJavaParity`
+  compose that two-argument leaf with a proven prefix extra-local int copy:
+  `NEW Point; DUP; ILOAD 3; ICONST_2;
+  INVOKESPECIAL Point.<init>(II)V`. The prefix `ILOAD 2; ISTORE 3`, all three
+  allocations, and their initializer calls stay in retained JVM bytecode;
+  the native body contains only `RETURN`, and the rewrite keeps one hidden
+  bridge and singular `MethodContext.proxyMethod`. Rewritten classfile-52
+  bytecode and selector paths `7`, `-7`, and `0` preserve JVM verification
+  and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
 - `admitsThreeImmediateReturnsWithNewThreeArgChainInputs`,
   `rewrittenThreeImmediateNewThreeArgChainInputsPassJvmVerification`, and
   `threeImmediateNewThreeArgChainInputsCompileAndRunWithJavaParity` extend the
