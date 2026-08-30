@@ -111,16 +111,19 @@ The constructor split now covers these related prefix shapes:
   descriptor exactly matches the call argument descriptor); one isolated
   `ALOAD n; GETFIELD owner.name:desc` leaf where `n` is an unchanged declared
   object argument, `owner` is exactly that declared class, and `desc` has the
-  same JVM invocation carrier as the call argument; plus `LALOAD`,
+  same JVM invocation carrier as the call argument; one isolated
+  `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf whose allocated
+  reference descriptor exactly matches the call argument descriptor; plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
   int-family constant indexes or at one single-instruction declared or
   proven-prefix-copy `ILOAD` index, including when both the wide-array source
   and index use those proven prefix copies. The complete array-load tree stays
   in the retained bytecode prefix, so JVM null, bounds, widening, and
-  reference-array behavior remains JVM-executed. The admitted field read and
-  its receiver load also stay in the retained prefix, preserving JVM null and
-  field-access behavior.
+  reference-array behavior remains JVM-executed. The admitted field read,
+  its receiver load, and the complete admitted allocation/initialization
+  sequence also stay in the retained prefix, preserving JVM field-access and
+  object-initialization behavior.
 
 ## Current rule
 
@@ -242,6 +245,14 @@ One additional family is reduced to that same shared-join form:
   Extra-local, overwritten, computed, or `this` receivers remain rejected.
   The receiver load and field read stay in the retained bytecode prefix, so
   JVM null checks and field-access semantics are unchanged.
+- A reference call argument may instead be one isolated
+  `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf. The three executable
+  instructions must be adjacent, the constructor owner must exactly match the
+  allocated class, the constructor descriptor must be exactly `()V`, and the
+  allocated reference descriptor must exactly match the call parameter.
+  The complete sequence stays in the retained JVM prefix. Constructor
+  arguments, missing or non-adjacent `DUP`/initialization, type mismatches, and
+  every array-allocation opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
@@ -377,8 +388,9 @@ reassigned sources, computed, negated, or unproven extra-local indexes,
 non-array or opcode-mismatched declared locals, prior array-store mutations,
 unlisted primitive-result array loads, `GETFIELD` on local 0, an extra local,
 a computed object, an overwritten declared argument, an owner-incompatible
-declared argument, or with a mismatched field carrier, and other reference
-computations such as `NEW`, int-family binary expression
+declared argument, or with a mismatched field carrier, non-isolated or
+argument-taking `NEW`, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`, and other
+unlisted reference computations, int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
 sixteen levels, float or double expression trees deeper than the sixteen
 admitted binary levels,
@@ -1510,6 +1522,15 @@ Synthetic bytecode unit tests in
   stored exception.
 - `rejectsEveryMixedTryCatchLabelPlacement` checks all six mixed prefix/suffix
   assignments at non-boundary labels and verifies rejection before mutation.
+- `admitsThreeImmediateReturnsWithNewArgChainInputs`,
+  `rewrittenThreeImmediateNewArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewArgChainInputsCompileAndRunWithJavaParity` admit only the
+  isolated `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` reference leaf. All
+  three copies remain in retained JVM bytecode, the rewrite uses one hidden
+  bridge, rewritten classes verify, and the CMake/g++ JNI transform matches
+  plain Java. `rejectsUnprovenNewChainInputsBeforeMutation` covers an
+  uninitialized allocation, a constructor argument, `NEWARRAY`, and a
+  descriptor-mismatched allocation.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
   seventeen-level nested binary input,
@@ -1532,9 +1553,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 466 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 470 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 473 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 477 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
