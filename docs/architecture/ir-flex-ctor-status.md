@@ -113,7 +113,7 @@ The constructor split now covers these related prefix shapes:
   object argument or one dominating prefix extra-local `ALOAD`/`ASTORE` copy
   of that argument, `owner` is exactly the declared source class, and `desc`
   has the same JVM invocation carrier as the call argument; one isolated
-  `NEW owner; DUP; {0..2 args}; INVOKESPECIAL owner.<init>({0..2 X})V` leaf
+  `NEW owner; DUP; {0..3 args}; INVOKESPECIAL owner.<init>({0..3 X})V` leaf
   whose allocated reference descriptor exactly matches the call argument
   descriptor, where every `X` is int-family and every `arg` is one
   single-instruction proven int-family leaf; plus `LALOAD`,
@@ -253,14 +253,16 @@ One additional family is reduced to that same shared-join form:
 - A reference call argument may instead be one isolated allocation leaf:
   `NEW owner; DUP; INVOKESPECIAL owner.<init>()V`, or
   `NEW owner; DUP; arg; INVOKESPECIAL owner.<init>(X)V`, or
-  `NEW owner; DUP; arg1; arg2; INVOKESPECIAL owner.<init>(X1X2)V`. Every
+  `NEW owner; DUP; arg1; arg2; INVOKESPECIAL owner.<init>(X1X2)V`, or
+  `NEW owner; DUP; arg1; arg2; arg3;
+  INVOKESPECIAL owner.<init>(X1X2X3)V`. Every
   initializer parameter must be an int-family carrier and each corresponding
   argument must be exactly one executable instruction accepted by the existing
   int-family leaf proof: a constant, a declared-argument `ILOAD`, or a proven
   prefix-copy `ILOAD`. The constructor owner must exactly match the allocated
   class and the allocated reference descriptor must exactly match the call
   parameter. The complete sequence stays in the retained JVM prefix. Missing
-  `DUP`, three or more initializer arguments, computed initializer inputs
+  `DUP`, four or more initializer arguments, computed initializer inputs
   (including `INEG`), unproven inputs, type mismatches, and every
   array-allocation opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
@@ -1583,12 +1585,23 @@ Synthetic bytecode unit tests in
   one hidden bridge and singular `MethodContext.proxyMethod`. Rewritten
   classfile-52 bytecode and all three selector paths preserve JVM verification
   and plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewThreeArgChainInputs`,
+  `rewrittenThreeImmediateNewThreeArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewThreeArgChainInputsCompileAndRunWithJavaParity` extend the
+  isolated leaf to
+  `NEW Color; DUP; ICONST_1; ICONST_2; ICONST_3;
+  INVOKESPECIAL Color.<init>(III)V`. All six instructions stay in each
+  retained JVM prefix, the native body contains neither that `NEW` nor its
+  `INVOKESPECIAL`, and the rewrite keeps one hidden bridge and singular
+  `MethodContext.proxyMethod`. Rewritten classfile-52 bytecode and all three
+  selector paths preserve JVM verification and plain-Java/CMake/g++ JNI parity
+  under `-Xverify:all -Xcheck:jni`.
 - `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
-  allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs,
-  `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`, and a descriptor-mismatched
-  allocation while preserving every constructor instruction object, generated
-  buffer, hidden-method inventory, and the singular
-  `MethodContext.proxyMethod`.
+  allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs, a
+  four-int-argument initializer, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`,
+  and a descriptor-mismatched allocation while preserving every constructor
+  instruction object, generated buffer, hidden-method inventory, and the
+  singular `MethodContext.proxyMethod`.
 - `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
   classfile-52 computed-argument, `GETSTATIC`-argument,
   exact-type-conservative mismatch, and all three array-allocation fixtures,
