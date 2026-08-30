@@ -34583,7 +34583,9 @@ public class IrCompilerTest {
                         Opcodes.GETSTATIC, "java/lang/Integer",
                         "MAX_VALUE", "I"));
             } else {
-                method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+                method.instructions.add(new InsnNode(
+                        "new-constructor-computed-argument".equals(shape)
+                                ? Opcodes.ICONST_M1 : Opcodes.ICONST_1));
             }
             if ("new-constructor-computed-argument".equals(shape)) {
                 method.instructions.add(new InsnNode(Opcodes.INEG));
