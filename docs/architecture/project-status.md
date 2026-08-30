@@ -1,12 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix extra-local long shift values and
-`LDIV`/`LREM` operands
-[#242](https://github.com/gaoyu06/native-obfuscator/pull/242)
-(parent re-ran 391/391: 384 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalLongShiftValueSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#241](https://github.com/gaoyu06/native-obfuscator/pull/241)
-well-formed `jsr`/`ret` inlining. Active process:
+Last updated after landing prefix extra-local long `LNEG`
+[#243](https://github.com/gaoyu06/native-obfuscator/pull/243)
+(parent re-ran 394/394: 387 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `threeImmediateExtraLocalLongLnegSuperReturnsCompileAndRunWithJavaParity`)
+on the post-[#242](https://github.com/gaoyu06/native-obfuscator/pull/242)
+extra-local long shift-value and `LDIV`/`LREM` admission. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -276,6 +275,9 @@ legacy。不能当成 JDK 支持矩阵。
   [#242](https://github.com/gaoyu06/native-obfuscator/pull/242) admits
   proven prefix extra-local long copies as long-shift values and as
   `LDIV`/`LREM` operands. Extra-local long shift counts stay rejected.
+  [#243](https://github.com/gaoyu06/native-obfuscator/pull/243) admits
+  one `LNEG` over a proven prefix extra-local long copy. Constant,
+  double, and computed `LNEG` stay rejected.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
@@ -458,6 +460,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Five-level nested chain inputs, budget 8 (#240) | 382 tests (`IrCompilerTest` 375 + `CodegenModeTest` 7). Parent re-ran 382/382 including `fiveLevelNestedChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Well-formed `jsr`/`ret` inlining (#241) | 387 tests (`IrCompilerTest` 380 + `CodegenModeTest` 7). Parent re-ran 387/387 including `jsrRetSubroutineCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local long shift values and `LDIV`/`LREM` (#242) | 391 tests (`IrCompilerTest` 384 + `CodegenModeTest` 7). Parent re-ran 391/391 including `threeImmediateExtraLocalLongShiftValueSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Prefix extra-local long `LNEG` (#243) | 394 tests (`IrCompilerTest` 387 + `CodegenModeTest` 7). Parent re-ran 394/394 including `threeImmediateExtraLocalLongLnegSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -514,7 +517,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   on a bridge-taking path).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
   subroutines are admitted by #241. Extra-local long shift values and
-  `LDIV`/`LREM` operands are admitted by #242.
+  `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
+  is admitted by #243.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
   ([#207](https://github.com/gaoyu06/native-obfuscator/pull/207),
   measured on post-#206 `42e52c0`) observed 0 leftovers; that is not
@@ -531,9 +535,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #242 (prefix
-  extra-local long shift values and `LDIV`/`LREM` operands). /
-  落地 #242 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #243 (prefix
+  extra-local long `LNEG`). /
+  落地 #243 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

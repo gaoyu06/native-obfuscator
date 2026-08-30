@@ -53,8 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #242 (prefix extra-local long shift values and
-   `LDIV`/`LREM` operands)
+   `master` after #243 (prefix extra-local long `LNEG`)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
