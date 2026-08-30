@@ -100,11 +100,14 @@ The constructor split now covers these related prefix shapes:
   of the matching type (`[I`, `[B`/`[Z`, `[C`, or `[S`) or a prefix
   extra-local `ALOAD` with one dominating `ASTORE` copy of that same
   declared argument, and whose index is an int-family constant or one
-  single-instruction declared or proven-prefix-copy `ILOAD`; or one
+  single-instruction declared or proven-prefix-copy `ILOAD`, including the
+  composition where both the array source and index use those proven prefix
+  copies; or one
   reference `AALOAD` whose source is an unchanged directly loaded declared
   array argument or its proven prefix extra-local copy, whose index is a
   proven int-family constant or one single-instruction declared or
-  proven-prefix-copy `ILOAD`, and whose declared immediate component
+  proven-prefix-copy `ILOAD` (including both copies together), and whose
+  declared immediate component
   descriptor exactly matches the call argument descriptor); plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
@@ -1166,6 +1169,18 @@ Synthetic bytecode unit tests in
   preserving JVM null, bounds, and primitive widening behavior. Binary or
   negated indexes and computed or overwritten extra-local copies remain
   rejected before constructor or hidden-method mutation.
+- `admitsThreeImmediateReturnsWithExtraArrayExtraIndexChainInputs`,
+  `rewrittenThreeImmediateExtraArrayExtraIndexPassJvmVerification`, and
+  `threeImmediateExtraArrayExtraIndexCompileAndRunWithJavaParity` prove the
+  composition of a dominating prefix `ALOAD`/`ASTORE` array copy with a
+  dominating prefix `ILOAD`/`ISTORE` index copy for `AALOAD`, `IALOAD`,
+  `BALOAD`, `CALOAD`, and `SALOAD`. Both copies and every array load remain in
+  retained JVM bytecode behind one hidden bridge; the runtime JAR covers
+  `AALOAD` and `IALOAD` under `-Xverify:all -Xcheck:jni`.
+  `rejectsUnprovenExtraArrayExtraIndexChainInputsBeforeMutation` keeps
+  computed or overwritten copies, prior array stores, wrong sources, and
+  computed or negated indexes fail-closed before mutation. Wide array-load
+  extra sources/indexes remain outside this rule.
 - `admitsThreeImmediateReturnsWithWideArrayLoadChainInputs`,
   `rewrittenThreeImmediateWideArrayLoadsPassJvmVerification`, and
   `threeImmediateWidePrimitiveArrayLoadsCompileAndRunWithJavaParity` cover
