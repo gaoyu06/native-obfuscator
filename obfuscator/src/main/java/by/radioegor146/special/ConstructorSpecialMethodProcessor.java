@@ -44,10 +44,10 @@ import java.util.TreeMap;
  */
 public final class ConstructorSpecialMethodProcessor implements SpecialMethodProcessor {
     private static final int MAX_DISTINCT_SUFFIXES = 8;
-    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 8;
-    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 8;
-    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 8;
-    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 8;
+    private static final int MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS = 16;
+    private static final int MAX_PROVEN_FLOAT_CHAIN_BINARY_LEVELS = 16;
+    private static final int MAX_PROVEN_DOUBLE_CHAIN_BINARY_LEVELS = 16;
+    private static final int MAX_PROVEN_INT_CHAIN_BINARY_LEVELS = 16;
 
     private List<TryCatchBlockNode> retainedPrefixTryCatches = new ArrayList<>();
     private List<TryCatchBlockNode> retainedSuffixTryCatches = new ArrayList<>();
