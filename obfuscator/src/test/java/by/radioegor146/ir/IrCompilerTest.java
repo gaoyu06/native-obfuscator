@@ -3584,7 +3584,6 @@ public class IrCompilerTest {
     }
 
     @Test
-    @Test
     public void admitsThreeImmediateReturnsWithExtraLocalIntChainInputs() {
         ClassNode base = multipleSuperBase(
                 "example/MultiSuperExtraLocalIntBase");
@@ -6055,7 +6054,6 @@ public class IrCompilerTest {
     }
 
     @Test
-    @Test
     public void rejectsUnprovenDoubleComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "double-seventeen-level-dadd",
@@ -7527,7 +7525,6 @@ public class IrCompilerTest {
                 context.proxyMethod.getMethodNode().desc);
     }
 
-    @Test
     @Test
     public void rewrittenThreeImmediateExtraLocalIntSuperReturnsPassJvmVerification()
             throws Exception {
@@ -13350,7 +13347,6 @@ public class IrCompilerTest {
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
-    @Test
     @Test
     public void threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity()
             throws Exception {
