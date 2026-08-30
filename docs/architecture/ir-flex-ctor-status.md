@@ -99,7 +99,8 @@ The constructor split now covers these related prefix shapes:
   `CALOAD`, or `SALOAD` whose source is an unchanged declared array argument
   of the matching type (`[I`, `[B`/`[Z`, `[C`, or `[S`) or, for `IALOAD`,
   a prefix extra-local `ALOAD` with one dominating `ASTORE` copy of that
-  `int[]` argument, and whose index is an int-family constant; or one
+  `int[]` argument, and whose index is an int-family constant or one
+  single-instruction declared or proven-prefix-copy `ILOAD`; or one
   reference `AALOAD` whose source is an unchanged directly loaded declared
   array argument or its proven prefix extra-local copy, whose index is a
   proven int-family constant or one single-instruction declared or
@@ -1135,7 +1136,7 @@ Synthetic bytecode unit tests in
   `IALOAD` stay in retained JVM bytecode, one hidden bridge is shared, rewritten
   Java 8 classes verify, and native stdout matches plain Java. Computed stores,
   overwritten copies or source arguments, prior array stores, non-`int[]`
-  sources, and computed indexes remain rejected before mutation.
+  sources, and unproven indexes remain rejected before mutation.
 - `admitsThreeImmediateReturnsWithIntFamilyArrayLoadChainInputs`,
   `rewrittenThreeImmediateIntFamilyArrayLoadsPassJvmVerification`, and
   `threeImmediateIntFamilyArrayLoadsCompileAndRunWithJavaParity` cover
@@ -1143,9 +1144,17 @@ Synthetic bytecode unit tests in
   declared `[B`/`[Z`, `[C`, and `[S` arguments. Each load stays in
   retained JVM bytecode so sign/zero extension, null, and bounds stay
   JVM-executed, one hidden bridge is shared, rewritten Java 8 classes
-  verify, and native stdout matches plain Java. Computed indexes,
-  extra-local indexes, extra-local array sources, and opcode/type
-  mismatches remain rejected before mutation.
+  verify, and native stdout matches plain Java. Extra-local array sources and
+  opcode/type mismatches remain rejected before mutation.
+- `admitsThreeImmediateReturnsWithIntArrayLoadIndexInputs`,
+  `rewrittenThreeImmediateIntArrayLoadIndexesPassJvmVerification`, and
+  `threeImmediateIntArrayLoadIndexesCompileAndRunWithJavaParity` admit an
+  `IALOAD`, `BALOAD`, `CALOAD`, or `SALOAD` index only when it is one direct
+  declared `ILOAD` or one `ILOAD` of a proven prefix extra-local copy. The
+  combined runtime JAR covers both index forms for all four opcodes while
+  preserving JVM null, bounds, and primitive widening behavior. Binary or
+  negated indexes and computed or overwritten extra-local copies remain
+  rejected before constructor or hidden-method mutation.
 - `admitsTwoLevelNestedFloatChainInputs`,
   `rewrittenTwoLevelNestedFloatChainInputsPassJvmVerification`, and
   `twoLevelNestedFloatChainInputsCompileAndRunWithJavaParity` cover bounded
