@@ -53,9 +53,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 ```
 
 Rebased onto `origin/master` `a37801f` (post-#261 fail-closed prefix-suffix
-audit). Child XML on the pre-#261 base is stale and is not cited here. Parent
-will re-run the focused suite and report JUnit XML after rebase. The runtime
-test is
+audit). Parent-verified JUnit XML after rebase: `IrCompilerTest` 458/458 and
+`CodegenModeTest` 7/7, with zero failures, errors, or skips (total 465). The
+runtime test is
 `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity`.
 
 Ship-ready: **No**
@@ -113,8 +113,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 ```
 
 已变基到 `origin/master` `a37801f`（#261 之后的前缀到后缀失败关闭审计）。
-变基前子代理 XML 已过期，此处不再引用。父代理将在变基后重跑聚焦套件并报告
-JUnit XML。运行时测试为
+父代理变基后聚焦 JUnit XML：`IrCompilerTest` 458/458、`CodegenModeTest` 7/7，
+失败、错误和跳过均为 0（合计 465）。运行时测试为
 `threeImmediateWideExtraArrayExtraIndexCompileAndRunWithJavaParity`。
 
 可发布：**否**
