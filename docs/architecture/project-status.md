@@ -1,11 +1,12 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory
+Last updated after extra-local int as second Insets `NEW` arg
+[#330](https://github.com/gaoyu06/native-obfuscator/pull/330)
+(parent XML 584; latest leftover inventory remains
 [#329](https://github.com/gaoyu06/native-obfuscator/pull/329)
 on post-[#328](https://github.com/gaoyu06/native-obfuscator/pull/328)
-`b751add` (ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
-0 leftovers; not coverage-complete; not a JDK support badge).
-Latest compiler parent XML remains #328 (581). Active process:
+`b751add`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -674,6 +675,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#326 leftover inventory (#327) | Measurement only on `0894b16`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as second and third Color `NEW` args (#328) | 581 tests (`IrCompilerTest` 574 + `CodegenModeTest` 7). Parent re-ran 581/581 including `threeImmediateNewExtraLocalThreeSecondThirdArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#328 leftover inventory (#329) | Measurement only on `b751add`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Extra-local int as second Insets `NEW` arg (#330) | 584 tests (`IrCompilerTest` 577 + `CodegenModeTest` 7). Parent re-ran 584/584 including `threeImmediateNewExtraLocalFourSecondArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -813,6 +815,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   initializer arguments is admitted by #326 (fixture-only).
   Extra-local proven int-copy as the second and third Color `NEW`
   initializer arguments is admitted by #328 (fixture-only).
+  Extra-local proven int-copy as the second four-arg Insets `NEW`
+  initializer argument is admitted by #330 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -882,8 +886,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after leftover inventory remasurement #329. /
-  leftover inventory 重测 #329 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #330
+  (extra-local int-copy as the second Insets NEW initializer argument). /
+  落地 #330 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
