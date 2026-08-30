@@ -12,7 +12,14 @@
 
 ### 验证
 
-最终验证命令与 XML 计数将在测试完成后补充。
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+结果：通过。XML：`IrCompilerTest` 387 个测试、`CodegenModeTest` 7 个测试；
+共 394 个测试，0 skipped、0 failures、0 errors。
 
 可发布 / Ship-ready: **No**
 
@@ -33,6 +40,13 @@
 
 ### Verification
 
-The final verification command and XML totals will be added after testing.
+```text
+CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
+  --tests by.radioegor146.ir.IrCompilerTest \
+  --tests by.radioegor146.CodegenModeTest
+```
+
+Result: passed. XML totals: 387 `IrCompilerTest` tests and 7
+`CodegenModeTest` tests; 394 total, 0 skipped, 0 failures, 0 errors.
 
 Ship-ready: **No**
