@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #283 (isolated three-arg `NEW`)
+   `master` after #285 (extra-local NEW initializer)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -65,7 +65,8 @@ The goal is complete only when all of the following are true:
    seventeen-or-more nested double binaries, still rejected after #271,
    unproven `NEW` inputs (`NEW` with four or more initializer arguments,
    unproven/computed/`GETSTATIC` initializer inputs, missing
-   `DUP`/`<init>`, array allocation), still rejected after #274/#283, and unproven `GETFIELD` inputs (local 0, extra-local of `this`,
+   `DUP`/`<init>`, array allocation, extra-local of `this` /
+   overwritten / computed extra as a `NEW` argument), still rejected after #274/#285, and unproven `GETFIELD` inputs (local 0, extra-local of `this`,
    overwritten holders, mismatched field types), still rejected after #277,
    or more than eight
    distinct paths, still rejected after #267, extras still unassigned on a bridge-taking
