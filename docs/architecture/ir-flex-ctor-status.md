@@ -849,6 +849,14 @@ Synthetic bytecode unit tests in
 - `admitsFourSuperCallsWithPairwiseDistinctStraightLineSuffixes` proves the
   bounded dispatch and wrapper reconstruction also retain four chain calls
   and four invocations of one hidden bridge.
+- `rejectsNinePathIdDistinctSuffixesBeforeMutation` fixes the path-id boundary
+  at eight: nine reachable chain calls with pairwise-distinct nonempty suffixes
+  remain fail-closed, preserving every instruction object, generated buffers,
+  the singular `MethodContext.proxyMethod`, and the empty hidden-method pool.
+- `ninePathIdDistinctSuffixesPassJvmVerification` loads the untouched Java 8
+  fixture and executes all nine paths, proving that the bounded rejection is an
+  IR admission limit rather than invalid constructor bytecode. The
+  `MAX_DISTINCT_SUFFIXES = 8` cap remains unchanged.
 - `admitsPrefixOnlyTryCatchOnThreeImmediateReturns`,
   `admitsPrefixOnlyTryCatchOnThreeDistinctSuffixes`, and
   `admitsPrefixOnlyTryCatchOnTwoDistinctSuffixes` prove that the complete
@@ -1524,9 +1532,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 JUnit XML records for this increment:
 
-- `IrCompilerTest`: 464 tests, 0 failures, 0 errors, 0 skipped.
+- `IrCompilerTest`: 466 tests, 0 failures, 0 errors, 0 skipped.
 - `CodegenModeTest`: 7 tests, 0 failures, 0 errors, 0 skipped.
-- Total: 471 tests, 0 failures, 0 errors, 0 skipped.
+- Total: 473 tests, 0 failures, 0 errors, 0 skipped.
 
 This focused suite includes the existing constructor branch/parameter-store,
 constant-dynamic, invokedynamic, and monitor harnesses.
