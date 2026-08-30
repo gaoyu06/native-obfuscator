@@ -3186,7 +3186,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         Integer beforeIntArrayLoad = previousProvenIntArrayLoadLeaf(
                 constructor, inputIndex, declaredArguments,
-                prefixArrayCopies);
+                prefixArrayCopies, prefixIntCopies);
         if (beforeIntArrayLoad != null) {
             return beforeIntArrayLoad;
         }
@@ -3212,10 +3212,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the exact retained-prefix int computation
-     * {@code ALOAD array; constant; xALOAD}, where {@code xALOAD} is
+     * {@code ALOAD array; index; xALOAD}, where {@code xALOAD} is
      * {@code IALOAD}, {@code BALOAD}, {@code CALOAD}, or {@code SALOAD} and
-     * the array type exactly matches that opcode. The source must be an
-     * unchanged declared argument or its proven prefix extra-local copy,
+     * the array type exactly matches that opcode. The index must be a constant
+     * or one single-instruction declared/proven-copy ILOAD. The source must be
+     * an unchanged declared argument or its proven prefix extra-local copy,
      * and no earlier array store is accepted. The load remains JVM bytecode,
      * preserving null, bounds, and primitive widening behavior without
      * reproducing it in native code.
@@ -3223,7 +3224,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenIntArrayLoadLeaf(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
-            Map<Integer, Integer> prefixArrayCopies) {
+            Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         int loadOpcode = input.getOpcode();
         if (loadOpcode != Opcodes.IALOAD
@@ -3234,13 +3236,25 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int indexIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (indexIndex < 0
-                || !isIntFamilyConstant(
-                constructor.instructions.get(indexIndex))) {
+        if (indexIndex < 0) {
             return null;
         }
-        int arrayIndex =
+        int beforeSingleIndex =
                 previousExecutableIndex(constructor, indexIndex - 1);
+        AbstractInsnNode index = constructor.instructions.get(indexIndex);
+        if (!isIntFamilyConstant(index)) {
+            if (index.getOpcode() != Opcodes.ILOAD) {
+                return null;
+            }
+            Integer beforeIndex = previousProvenIntChainLeaf(
+                    constructor, indexIndex, declaredArguments,
+                    prefixArrayCopies, prefixIntCopies);
+            if (beforeIndex == null
+                    || beforeIndex != beforeSingleIndex) {
+                return null;
+            }
+        }
+        int arrayIndex = beforeSingleIndex;
         if (arrayIndex < 0) {
             return null;
         }
