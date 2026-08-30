@@ -2,14 +2,14 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `42e52c0076e4a0d3d69be81e47de3c916ca4919e`
-- Measurement commit: `42e52c0076e4a0d3d69be81e47de3c916ca4919e`
+- Measured compiler base (merge-base with `origin/master`): `c0304febc41f1c665fb42ce0947f38bf0c29947a`
+- Measurement commit: `c0304febc41f1c665fb42ce0947f38bf0c29947a`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/native E2E claim**.
-- Zero measured leftovers does **not** authorize changing the `--codegen` default.
+- Zero measured leftovers is **not production-goal complete** and does **not** authorize changing the `--codegen` default.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This remeasurement supersedes #199, the post-#198 snapshot at `4214d7498c4b902d1dbf54f0bc14a3be16649b89`. #191 remains the earlier post-#190 snapshot, and #181 remains the earlier post-#180 snapshot.
-- #200–#206 landed after #199, covering catch tables, relocated prefix handlers, receiver-alias families, and identical-copy extras. The joined fixture totals did not change from #199, so this report does not attribute a fixture-leftover change to those landings.
+- This remeasurement supersedes #207, the post-#206 snapshot at `42e52c0076e4a0d3d69be81e47de3c916ca4919e`.
+- Current master contains the subsequent changes through #263. The joined fixture totals did not change from #207, so this report does not attribute a fixture-leftover change to those landings.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
@@ -69,7 +69,7 @@ No historical fixture branch was fetched. All source trees came from `obfuscator
 
 ## Joined totals
 
-| Corpus | Inventory | IR | Leftover (`legacy-fallback`) | Constructor left in Java | Missing |
+| Corpus | Inventory | IR | Legacy fallback | Constructor left in Java | Missing |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `ClassicTest` | 108 | 108 | 0 | 0 | 0 |
 | `jdk17` | 82 | 82 | 0 | 0 | 0 |
@@ -78,7 +78,7 @@ No historical fixture branch was fetched. All source trees came from `obfuscator
 
 ClassicTest result from this run: **108/108 IR**, 0 legacy fallback, 0 constructor left in Java, and 0 missing.
 
-The helper reported zero measured leftovers in every corpus. This is not a complete JVM inventory.
+The helper reported zero measured leftovers in every corpus. This is neither a complete JVM inventory nor evidence that the production goal is complete.
 
 ## ClassicTest measured leftovers only
 
