@@ -53,16 +53,16 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #239 (prefix extra-local int chain-input leaves)
+   `master` after #240 (five-level nested chain-input trees, budget 8)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, other mixed prefix/suffix try/catch placements
    beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
    suffixes or cover a chain call,
-   remaining multi-super shapes such as five-or-more nested
-   int binaries, five-or-more nested long
-   binaries, five-or-more nested float binaries,
-   five-or-more nested double binaries,
+   remaining multi-super shapes such as nine-or-more nested
+   int binaries, nine-or-more nested long
+   binaries, nine-or-more nested float binaries,
+   nine-or-more nested double binaries,
    extra-local long shift count/value and `LDIV`/`LREM` operands, reference computed
    inputs, or more than eight
    distinct paths, extras still unassigned on a bridge-taking

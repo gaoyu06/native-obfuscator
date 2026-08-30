@@ -1,11 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after landing prefix extra-local int chain-input leaves
-[#239](https://github.com/gaoyu06/native-obfuscator/pull/239)
-(parent re-ran 370/370: 363 `IrCompilerTest` + 7 `CodegenModeTest`,
-including `threeImmediateExtraLocalIntSuperReturnsCompileAndRunWithJavaParity`)
-on the post-[#238](https://github.com/gaoyu06/native-obfuscator/pull/238)
-extra-local long leaf. Active process:
+Last updated after landing five-level nested chain-input trees
+[#240](https://github.com/gaoyu06/native-obfuscator/pull/240)
+(parent re-ran 382/382: 375 `IrCompilerTest` + 7 `CodegenModeTest`,
+including `fiveLevelNestedChainInputsCompileAndRunWithJavaParity`)
+on the post-[#239](https://github.com/gaoyu06/native-obfuscator/pull/239)
+extra-local int leaf. Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
 This page is the current public status. It must not be read as a support
@@ -265,12 +265,15 @@ legacy。不能当成 JDK 支持矩阵。
   [#239](https://github.com/gaoyu06/native-obfuscator/pull/239) admits
   a prefix extra-local copy of a declared int-family `ILOAD` as an
   int-family chain-input leaf, including already-admitted int binaries.
+  [#240](https://github.com/gaoyu06/native-obfuscator/pull/240) raises the
+  int/long/float/double chain-input binary budget from 4 to 8 and admits
+  the former five-level leftover fixtures.
   Unproven
   prefix→suffix jumps/switches, other mixed try/catch placements
   (tables that span suffixes or cover a chain call), remaining multi-super shapes
-  (five-or-more nested int binaries, five-or-more nested long
-  binaries, five-or-more nested float binaries,
-  five-or-more nested double binaries,
+  (nine-or-more nested int binaries, nine-or-more nested long
+  binaries, nine-or-more nested float binaries,
+  nine-or-more nested double binaries,
   extra-local long shift count/value and `LDIV`/`LREM` operands,
   reference computed inputs),
   and extras still unassigned on a bridge-taking path are still
@@ -444,6 +447,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Prefix extra-local float chain-input leaves (#237) | 363 tests (`IrCompilerTest` 356 + `CodegenModeTest` 7). Parent re-ran 363/363 including `threeImmediateExtraLocalFloatSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local long chain-input leaves (#238) | 366 tests (`IrCompilerTest` 359 + `CodegenModeTest` 7). Parent re-ran 366/366 including `threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Prefix extra-local int chain-input leaves (#239) | 370 tests (`IrCompilerTest` 363 + `CodegenModeTest` 7). Parent re-ran 370/370 including `threeImmediateExtraLocalIntSuperReturnsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Five-level nested chain inputs, budget 8 (#240) | 382 tests (`IrCompilerTest` 375 + `CodegenModeTest` 7). Parent re-ran 382/382 including `fiveLevelNestedChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -492,10 +496,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   prefix→suffix jumps/switches, other mixed try/catch placements
   beyond #171/#184/#187/#188/#200/#201/#208/#209 such as tables that span
   suffixes or cover a chain call,
-  remaining multi-super shapes such as five-or-more nested
-  int binaries, five-or-more nested long
-  binaries, five-or-more nested float binaries,
-  five-or-more nested double binaries,
+  remaining multi-super shapes such as nine-or-more nested
+  int binaries, nine-or-more nested long
+  binaries, nine-or-more nested float binaries,
+  nine-or-more nested double binaries,
   extra-local long shift count/value and
   `LDIV`/`LREM` operands, extras still unassigned
   on a bridge-taking path) and
@@ -516,9 +520,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #239 (prefix
-  extra-local int chain-input leaves). /
-  落地 #239 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #240 (five-level
+  nested chain-input trees, budget 8). /
+  落地 #240 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
