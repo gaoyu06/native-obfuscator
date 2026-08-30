@@ -16,9 +16,9 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Expected child XML totals: 613 `IrCompilerTest` tests plus 7 `CodegenModeTest` tests, 620 total. The parent reruns the focused gate; child XML is discarded.
+Child XML totals: 613 passing `IrCompilerTest` tests plus 7 passing `CodegenModeTest` tests, 620 total. The parent reruns the focused gate; child XML is discarded.
 
-预期子任务 XML 总数：`IrCompilerTest` 613 项，`CodegenModeTest` 7 项，共 620 项。父任务会重新运行聚焦测试门禁；子任务 XML 将被丢弃。
+子任务 XML 总数：`IrCompilerTest` 613 项通过，`CodegenModeTest` 7 项通过，共 620 项。父任务会重新运行聚焦测试门禁；子任务 XML 将被丢弃。
 
 ## Scope / 范围
 
