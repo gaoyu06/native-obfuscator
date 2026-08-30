@@ -13,7 +13,13 @@
 
 ## Verification
 
-- Pending final scoped Gradle verification and JUnit XML totals.
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest`
+- JUnit XML: `IrCompilerTest` 431 tests, `CodegenModeTest` 7 tests; 438 total,
+  0 skipped, 0 failures, 0 errors
+- combined-JAR runtime parity:
+  `threeImmediateExtraLocalIntFamilyArrayLoadsCompileAndRunWithJavaParity`
 
 ## Release status
 
@@ -34,7 +40,13 @@ Ship-ready: No.
 
 ## 验证
 
-- 最终限定 Gradle 验证及 JUnit XML 汇总待完成。
+- `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests
+  by.radioegor146.ir.IrCompilerTest --tests
+  by.radioegor146.CodegenModeTest`
+- JUnit XML：`IrCompilerTest` 431 项、`CodegenModeTest` 7 项；合计 438 项，
+  0 跳过、0 失败、0 错误
+- 组合 JAR 运行时一致性测试：
+  `threeImmediateExtraLocalIntFamilyArrayLoadsCompileAndRunWithJavaParity`
 
 ## 发布状态
 
