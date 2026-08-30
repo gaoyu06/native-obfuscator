@@ -25,8 +25,10 @@
 
 # Verification / 验证
 
-- Required Gradle suites: pending.
-- 必需的 Gradle 测试套件：待运行。
+- `IrCompilerTest`: 412 tests, 0 skipped, 0 failures, 0 errors.
+- `CodegenModeTest`: 7 tests, 0 skipped, 0 failures, 0 errors.
+- `IrCompilerTest`：412 项测试，0 跳过，0 失败，0 错误。
+- `CodegenModeTest`：7 项测试，0 跳过，0 失败，0 错误。
 - Added dedicated admission and rewritten-class JVM verification coverage for
   all four nine-level families, plus one combined CMake/g++ JNI Java-parity
   runtime under `-Xverify:all -Xcheck:jni`.
