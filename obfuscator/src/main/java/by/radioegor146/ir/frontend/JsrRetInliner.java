@@ -39,7 +39,8 @@ public final class JsrRetInliner {
 
         if (containsJsrOrRet(inlined)) {
             throw new UnsupportedIrConstructException(
-                    "JSR/RET inlining left legacy subroutine instructions");
+                    "Malformed JSR/RET subroutine cannot be inlined: "
+                            + "inliner left legacy subroutine instructions");
         }
         return inlined;
     }
