@@ -3490,7 +3490,6 @@ public class IrCompilerTest {
                 .count());
     }
 
-    @Test
     public void admitsThreeImmediateReturnsWithIntArrayIaloadChainInputs() {
         ClassNode base = multipleSuperBase(
                 "example/MultiSuperIntArrayIaloadBase");
@@ -3534,6 +3533,57 @@ public class IrCompilerTest {
                 .count());
     }
 
+    @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalArrayAaloadChainInputs() {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/MultiSuperExtraLocalArrayAaloadBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeExtraLocalArrayAaloadMultiReturn", base.name);
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName,
+                        "reference-computed-extra-array");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(I[Ljava/lang/Object;)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.AALOAD));
+        assertFalse(realOpcodes(nativeBody).contains(Opcodes.ASTORE));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.AALOAD));
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(constructor, Opcodes.ASTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.ALOAD), 3));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     @Test
     public void admitsThreeImmediateReturnsWithExtraLocalIntChainInputs() {
         ClassNode base = multipleSuperBase(
@@ -5928,7 +5978,6 @@ public class IrCompilerTest {
                 .getClasses().isEmpty());
     }
 
-    @Test
     public void rejectsUnprovenIntArrayIaloadChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "int-iaload-computed-index",
@@ -5965,6 +6014,47 @@ public class IrCompilerTest {
         }
     }
 
+    @Test
+    public void rejectsUnprovenExtraLocalArrayAaloadSourcesBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "reference-computed-extra-array-computed-store",
+                "reference-computed-extra-array-overwrite",
+                "reference-computed-extra-array-declared-overwrite",
+                "reference-computed-extra-array-store",
+                "reference-computed-extra-array-primitive-result")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedExtraLocalArrayAaload"
+                            + shape.replace("-", ""),
+                    "example/MultiSuperReferenceBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithComputedInput(
+                            owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertUnchangedAfterRejectedIr(
+                    constructor, context, obfuscator);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
     @Test
     public void rejectsUnprovenDoubleComputedChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
@@ -7324,7 +7414,6 @@ public class IrCompilerTest {
                 context.proxyMethod.getMethodNode().desc);
     }
 
-    @Test
     public void rewrittenThreeImmediateIntArrayIaloadSuperReturnsPassJvmVerification()
             throws Exception {
         ClassNode base = multipleSuperBase(
@@ -7380,6 +7469,65 @@ public class IrCompilerTest {
                 context.proxyMethod.getMethodNode().desc);
     }
 
+    @Test
+    public void rewrittenThreeImmediateExtraLocalArrayAaloadSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base = multipleSuperReferenceBase(
+                "example/VerifiedExtraLocalArrayAaloadBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedExtraLocalArrayAaload", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name,
+                        "reference-computed-extra-array");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        for (int selector : new int[]{7, -7, 0}) {
+            InvocationTargetException bridge = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(
+                                    int.class, Object[].class)
+                            .newInstance(new Object[]{
+                                    selector, new Object[]{"VALUE"}}));
+            assertTrue(bridge.getCause() instanceof UnsatisfiedLinkError);
+        }
+        InvocationTargetException nullArray = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class, Object[].class)
+                        .newInstance(new Object[]{7, null}));
+        assertTrue(nullArray.getCause() instanceof NullPointerException);
+        InvocationTargetException emptyArray = assertThrows(
+                InvocationTargetException.class,
+                () -> verified.getConstructor(int.class, Object[].class)
+                        .newInstance(new Object[]{7, new Object[0]}));
+        assertTrue(emptyArray.getCause()
+                instanceof ArrayIndexOutOfBoundsException);
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.AALOAD));
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(constructor, Opcodes.ASTORE));
+        assertEquals(
+                "(Ljava/lang/Object;I[Ljava/lang/Object;)V",
+                context.proxyMethod.getMethodNode().desc);
+    }
+
+    @Test
     @Test
     public void rewrittenThreeImmediateExtraLocalIntSuperReturnsPassJvmVerification()
             throws Exception {
@@ -13020,7 +13168,6 @@ public class IrCompilerTest {
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
-    @Test
     public void threeImmediateIntArrayIaloadSuperReturnsCompileAndRunWithJavaParity()
             throws Exception {
         assertTrue(executableOnPath("cmake") != null,
@@ -13111,6 +13258,99 @@ public class IrCompilerTest {
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
+    @Test
+    public void threeImmediateExtraLocalArrayAaloadSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local array runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local array runtime test");
+
+        String ownerName = "example/ExtraLocalArrayAaloadRuntime";
+        String baseName = "example/ExtraLocalArrayAaloadRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-array-aaload-run");
+        Path inputJar = directory.resolve("extra-local-array-aaload.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalArrayAaloadReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local array AALOAD multi-super Java run");
+        assertEquals(
+                "POSITIVE" + System.lineSeparator()
+                        + "NEGATIVE" + System.lineSeparator()
+                        + "ZERO" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.AALOAD));
+        assertEquals(Collections.singletonList(3),
+                variableIndexes(transformedConstructor, Opcodes.ASTORE));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local array AALOAD CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local array AALOAD CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local array AALOAD native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local array AALOAD multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
     @Test
     public void threeImmediateExtraLocalLongSuperReturnsCompileAndRunWithJavaParity()
             throws Exception {
@@ -23202,6 +23442,35 @@ public class IrCompilerTest {
         }
     }
 
+    private void createMultipleSuperThreeExtraLocalArrayAaloadReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        ClassNode base = multipleSuperReferenceBase(baseName);
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(ownerName, baseName);
+        owner.version = Opcodes.V1_8;
+        owner.methods.add(threeImmediateReturnsWithComputedInput(
+                baseName, "reference-computed-extra-array"));
+        owner.methods.add(multipleSuperThreeReferenceComputedReturnsMain(
+                ownerName, baseName));
+
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().put(
+                Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(
+                Attributes.Name.MAIN_CLASS, owner.name.replace('/', '.'));
+        try (JarOutputStream output =
+                     new JarOutputStream(
+                             Files.newOutputStream(jarPath), manifest)) {
+            output.putNextEntry(new JarEntry(base.name + ".class"));
+            output.write(writeClass(base));
+            output.closeEntry();
+            output.putNextEntry(new JarEntry(owner.name + ".class"));
+            output.write(writeClass(owner));
+            output.closeEntry();
+        }
+    }
+
     private void createMultipleSuperThreeExtraLocalLongReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
@@ -28452,11 +28721,21 @@ public class IrCompilerTest {
             constructorDescriptor = "(ID)V";
             callDescriptor = "(D)V";
         } else if (shape.startsWith("reference-computed")) {
-            constructorDescriptor =
-                    "reference-computed-index".equals(shape)
-                            ? "(II[Ljava/lang/Object;)V"
-                            : "(I[Ljava/lang/Object;)V";
-            callDescriptor = "(Ljava/lang/Object;)V";
+            if ("reference-computed-index".equals(shape)) {
+                constructorDescriptor = "(II[Ljava/lang/Object;)V";
+            } else if ("reference-computed-extra-array-computed-store"
+                    .equals(shape)) {
+                constructorDescriptor = "(I[[Ljava/lang/Object;)V";
+            } else if ("reference-computed-extra-array-primitive-result"
+                    .equals(shape)) {
+                constructorDescriptor = "(I[[I)V";
+            } else {
+                constructorDescriptor = "(I[Ljava/lang/Object;)V";
+            }
+            callDescriptor =
+                    "reference-computed-extra-array-primitive-result"
+                            .equals(shape)
+                            ? "([I)V" : "(Ljava/lang/Object;)V";
         } else if (shape.startsWith("int-iaload")) {
             constructorDescriptor = "(I[I)V";
             callDescriptor = "(I)V";
@@ -28502,6 +28781,29 @@ public class IrCompilerTest {
         } else if ("long-lshl-extra-long-count".equals(shape)) {
             method.instructions.add(new VarInsnNode(Opcodes.LLOAD, 2));
             method.instructions.add(new VarInsnNode(Opcodes.LSTORE, 4));
+        } else if (shape.startsWith(
+                "reference-computed-extra-array")) {
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+            if ("reference-computed-extra-array-computed-store"
+                    .equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+                method.instructions.add(new InsnNode(Opcodes.AALOAD));
+            }
+            method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+            if ("reference-computed-extra-array-overwrite".equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 3));
+            } else if ("reference-computed-extra-array-declared-overwrite"
+                    .equals(shape)) {
+                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                method.instructions.add(new VarInsnNode(Opcodes.ASTORE, 2));
+            } else if ("reference-computed-extra-array-store"
+                    .equals(shape)) {
+                method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+                method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+                method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+                method.instructions.add(new InsnNode(Opcodes.AASTORE));
+            }
         }
         method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
         method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
@@ -28529,7 +28831,9 @@ public class IrCompilerTest {
                 || shape.startsWith("double-")
                 || "float-extra-local".equals(shape)
                 || "float-fneg-extra-local".equals(shape)
-                || "reference-computed-index".equals(shape) ? 4 : 3;
+                || "reference-computed-index".equals(shape)
+                || shape.startsWith(
+                        "reference-computed-extra-array") ? 4 : 3;
         if ("int-iaload-extra-array".equals(shape)) {
             method.maxLocals = 4;
         }
@@ -29117,7 +29421,9 @@ public class IrCompilerTest {
         } else if (shape.startsWith("reference-computed")) {
             method.instructions.add(new VarInsnNode(
                     Opcodes.ALOAD,
-                    "reference-computed-index".equals(shape) ? 3 : 2));
+                    "reference-computed-index".equals(shape)
+                            || shape.startsWith(
+                            "reference-computed-extra-array") ? 3 : 2));
             method.instructions.add(
                     "reference-computed-index".equals(shape)
                             ? new VarInsnNode(Opcodes.ILOAD, 2)
