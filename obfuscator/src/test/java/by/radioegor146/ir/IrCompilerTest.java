@@ -7723,6 +7723,95 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void rejectsUnprovenWideNewChainInputsBeforeMutation() {
+        for (String shape : Arrays.asList(
+                "new-constructor-long-argument",
+                "new-constructor-float-arguments",
+                "new-constructor-double-arguments")) {
+            ClassNode owner = constructorOwner(
+                    "example/RejectedWideNew" + shape.replace("-", ""),
+                    "example/RejectedWideNewBase");
+            MethodNode constructor =
+                    threeImmediateReturnsWithWideNewArg(
+                            owner.superName, shape);
+            int instructionCount = constructor.instructions.size();
+            java.util.List<Integer> opcodes = realOpcodes(constructor);
+            NativeObfuscator obfuscator = new NativeObfuscator();
+            MethodContext context =
+                    new MethodContext(
+                            obfuscator, constructor, 0, owner, 0);
+            RejectedIrState originalState =
+                    rejectedIrState(constructor, context, obfuscator);
+
+            assertThrows(
+                    UnsupportedIrConstructException.class,
+                    () -> new IrMethodCompiler(
+                            new MethodShellEmitter(obfuscator))
+                            .processMethod(context),
+                    shape);
+
+            assertRejectedIrStateUnchanged(
+                    originalState, constructor, context, obfuscator, shape);
+            assertEquals(instructionCount,
+                    constructor.instructions.size(), shape);
+            assertEquals(opcodes, realOpcodes(constructor), shape);
+            assertTrue(context.output.toString().isEmpty(), shape);
+            assertTrue(context.proxyMethod == null, shape);
+            assertTrue(obfuscator.getHiddenMethodsPool()
+                    .getClasses().isEmpty(), shape);
+        }
+    }
+
+    @Test
+    public void unprovenWideNewChainInputShapesPassJava8JvmVerification()
+            throws Exception {
+        // All three non-int-family initializer shapes are verifier-valid, so
+        // none require the verifier-invalid exclusions used by the broader
+        // NEW reject audit above.
+        for (String shape : Arrays.asList(
+                "new-constructor-long-argument",
+                "new-constructor-float-arguments",
+                "new-constructor-double-arguments")) {
+            String classSuffix = shape.replace("-", "");
+            ClassNode base = multipleSuperReferenceBase(
+                    "example/VerifiedRejectedWideNew"
+                            + classSuffix + "Base",
+                    wideNewArgChainDescriptor(shape));
+            base.version = Opcodes.V1_8;
+            ClassNode owner = constructorOwner(
+                    "example/VerifiedRejectedWideNew" + classSuffix,
+                    base.name);
+            owner.version = Opcodes.V1_8;
+            owner.methods.add(threeImmediateReturnsWithWideNewArg(
+                    base.name, shape));
+
+            ByteArrayClassLoader loader = new ByteArrayClassLoader();
+            loader.define(writeClass(base));
+            Class<?> verified = loader.define(writeClass(owner));
+
+            for (int selector : new int[]{7, -7, 0}) {
+                Object instance = verified.getConstructor(int.class)
+                        .newInstance(selector);
+                Object value = verified.getField("value").get(instance);
+                if ("new-constructor-long-argument".equals(shape)) {
+                    assertEquals(1L,
+                            ((java.util.Date) value).getTime(), shape);
+                } else {
+                    assertEquals(
+                            shape.contains("float")
+                                    ? "java.awt.geom.Point2D$Float"
+                                    : "java.awt.geom.Point2D$Double",
+                            value.getClass().getName(), shape);
+                    assertEquals(1.0,
+                            ((java.awt.geom.Point2D) value).getX(), shape);
+                    assertEquals(0.0,
+                            ((java.awt.geom.Point2D) value).getY(), shape);
+                }
+            }
+        }
+    }
+
+    @Test
     public void rejectsUnprovenIntArrayIaloadChainInputsBeforeMutation() {
         for (String shape : Arrays.asList(
                 "int-iaload-computed-index",
@@ -36026,6 +36115,77 @@ public class IrCompilerTest {
             return 2;
         }
         return 1;
+    }
+
+    private MethodNode threeImmediateReturnsWithWideNewArg(
+            String superName, String shape) {
+        MethodNode method = new MethodNode(
+                Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>", "(I)V", null, null);
+        LabelNode negative = new LabelNode();
+        LabelNode zero = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, zero));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFLT, negative));
+        appendWideNewArgChainCall(method, superName, shape);
+        method.instructions.add(negative);
+        appendWideNewArgChainCall(method, superName, shape);
+        method.instructions.add(zero);
+        appendWideNewArgChainCall(method, superName, shape);
+        method.maxLocals = 2;
+        method.maxStack = 7;
+        return method;
+    }
+
+    private void appendWideNewArgChainCall(
+            MethodNode method, String superName, String shape) {
+        String allocated;
+        String initializerDescriptor;
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        if ("new-constructor-long-argument".equals(shape)) {
+            allocated = "java/util/Date";
+            initializerDescriptor = "(J)V";
+        } else if ("new-constructor-float-arguments".equals(shape)) {
+            allocated = "java/awt/geom/Point2D$Float";
+            initializerDescriptor = "(FF)V";
+        } else if ("new-constructor-double-arguments".equals(shape)) {
+            allocated = "java/awt/geom/Point2D$Double";
+            initializerDescriptor = "(DD)V";
+        } else {
+            throw new IllegalArgumentException("Unknown shape " + shape);
+        }
+        method.instructions.add(new TypeInsnNode(Opcodes.NEW, allocated));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        if ("(J)V".equals(initializerDescriptor)) {
+            method.instructions.add(new InsnNode(Opcodes.LCONST_1));
+        } else if ("(FF)V".equals(initializerDescriptor)) {
+            method.instructions.add(new InsnNode(Opcodes.FCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.FCONST_0));
+        } else {
+            method.instructions.add(new InsnNode(Opcodes.DCONST_1));
+            method.instructions.add(new InsnNode(Opcodes.DCONST_0));
+        }
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, allocated, "<init>",
+                initializerDescriptor, false));
+        method.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, superName, "<init>",
+                wideNewArgChainDescriptor(shape), false));
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+    }
+
+    private String wideNewArgChainDescriptor(String shape) {
+        if ("new-constructor-long-argument".equals(shape)) {
+            return "(Ljava/util/Date;)V";
+        }
+        if ("new-constructor-float-arguments".equals(shape)) {
+            return "(Ljava/awt/geom/Point2D$Float;)V";
+        }
+        if ("new-constructor-double-arguments".equals(shape)) {
+            return "(Ljava/awt/geom/Point2D$Double;)V";
+        }
+        throw new IllegalArgumentException("Unknown shape " + shape);
     }
 
     private MethodNode threeImmediateReturnsWithComputedInput(
