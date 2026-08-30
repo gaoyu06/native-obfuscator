@@ -2608,7 +2608,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves one float leaf: a declared FLOAD, one proven prefix copy of a
      * declared FLOAD, FCONST_0/1/2, an LDC whose constant is a Float, or one
-     * FNEG over a direct declared FLOAD.
+     * FNEG over a direct declared FLOAD or its proven prefix copy.
      */
     private static Integer previousProvenFloatChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2635,10 +2635,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int operandIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (operandIndex < 0
-                || !isDirectDeclaredArgumentLoad(
-                constructor.instructions.get(operandIndex),
-                Type.FLOAT_TYPE, declaredArguments)) {
+        if (operandIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode operand =
+                constructor.instructions.get(operandIndex);
+        if (!isDirectDeclaredArgumentLoad(
+                operand, Type.FLOAT_TYPE, declaredArguments)
+                && (operand.getOpcode() != Opcodes.FLOAD
+                || !prefixFloatCopies.contains(
+                ((VarInsnNode) operand).var))) {
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
