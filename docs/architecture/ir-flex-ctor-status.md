@@ -84,8 +84,9 @@ The constructor split now covers these related prefix shapes:
   extra-local `DLOAD` with one dominating `DSTORE` copy of a declared
   double-argument load, `DCONST_0`, `DCONST_1`, `LDC` of `Double`, or one
   `DNEG` over a direct declared double-argument load;
-  int-family constants; or one `INEG` over a direct declared int-family
-  argument load,
+  a prefix extra-local `ILOAD` with one dominating `ISTORE` copy of a declared
+  int-family argument load; int-family constants; or one `INEG` over a direct
+  declared int-family argument load,
   plus a tree of at most four `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`,
   `ISHL`, `ISHR`, `IUSHR`, `IDIV`, or `IREM` levels whose leaves are each one
   of those already-proven int-family inputs).
@@ -175,15 +176,20 @@ One additional family is reduced to that same shared-join form:
   invocation order, each argument must then be either a direct load of a
   declared constructor argument with a matching JVM carrier; `ICONST_M1`
   through `ICONST_5`, `BIPUSH`, `SIPUSH`, or `LDC` of `Integer` for an
-  int-family call argument; or exactly one `INEG` over a direct `ILOAD` of a
-  declared int-family constructor argument. An int-family argument may also
-  have at most four
+  int-family call argument; a prefix extra-local `ILOAD` with exactly one
+  dominating overlapping write consisting of an `ISTORE` directly fed by a
+  declared int-family argument `ILOAD`; or exactly one `INEG` over a direct
+  `ILOAD` of a declared int-family constructor argument. An int-family
+  argument may also have at most four
   levels of `IADD`, `ISUB`, `IMUL`, `IAND`, `IOR`, `IXOR`, `ISHL`, `ISHR`,
   `IUSHR`, `IDIV`, or `IREM`. The operand proof recursively consumes one
   explicit depth budget per binary level, and the leaves remain direct loads,
-  constants, or single-load `INEG` forms. This admits `IDIV`/`IREM` as inner
-  or outer nodes, including nesting with each other, while a fifth binary
-  level is rejected.
+  proven prefix copies, constants, or single-load `INEG` forms. Prefix
+  extra-local int copies may be used by every admitted int binary, including
+  `IDIV`, `IREM`, and shifts; unlike prefix long copies, they have no
+  operator-specific exclusion. This admits `IDIV`/`IREM` as inner or outer
+  nodes, including nesting with each other, while a fifth binary level is
+  rejected. `INEG` remains restricted to a direct declared argument `ILOAD`.
   Shift-count masking is not reproduced by this proof: every admitted shift
   remains in the retained bytecode prefix and therefore keeps JVM shift
   semantics. Every admitted division or remainder also stays in that retained
@@ -201,7 +207,7 @@ One additional family is reduced to that same shared-join form:
   standalone `LNEG` leaf is admitted under the same declared-load restriction.
   Prefix extra-local long copies are not admitted as shift values or as
   `LDIV`/`LREM` operands. This proof has its own explicit four-level binary
-  budget: five-or-more nested long binaries, extra-local int operands,
+  budget: five-or-more nested long binaries, extra-local int shift counts,
   extra-local long shift counts or values, extra-local `LDIV`/`LREM` operands,
   `LNEG` of a constant, double `LNEG`, and `LNEG` of an extra-local or computed
   value remain rejected. The retained bytecode prefix executes admitted
@@ -819,6 +825,15 @@ Synthetic bytecode unit tests in
 - `threeImmediateIaddSuperReturnsCompileAndRunWithJavaParity` selects all three
   paths through plain Java and the complete CMake/g++ JNI transform under
   `-Xverify:all -Xcheck:jni`, requiring identical stdout.
+- `admitsThreeImmediateReturnsWithExtraLocalIntChainInputs`,
+  `rewrittenThreeImmediateExtraLocalIntSuperReturnsPassJvmVerification`, and
+  `threeImmediateExtraLocalIntSuperReturnsCompileAndRunWithJavaParity` admit a
+  prefix `ISTORE` copy of a declared int-family `ILOAD` as a chain-input leaf.
+  The copy and three `IADD`s stay in retained bytecode, the rewrite uses one
+  hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
+  transform matches plain Java. `admitsFormerExtraLocalIntChainInputLeftovers`
+  covers the direct leaf, every admitted int binary, inner `IDIV`, and the
+  four-level fixture; five-level trees and unsafe `INEG` forms remain rejected.
 - `admitsThreeImmediateReturnsWithLaddOfProvenChainInputs` admits the former
   `long-binary` leftover: each of three retained chain calls computes its long
   argument with `LLOAD; LCONST_1; LADD`, while the native body contains only
@@ -837,11 +852,10 @@ Synthetic bytecode unit tests in
   `LLOAD` may be used as a long chain-input leaf. The copy and all three
   `LADD`s remain in the retained bytecode prefix, the rewrite uses one hidden
   bridge, rewritten classes verify, and the complete CMake/g++ JNI transform
-  matches plain Java. Extra-local int operands, extra-local long shift
+  matches plain Java. Extra-local int shift counts, extra-local long shift
   counts/values, extra-local `LDIV`/`LREM` operands, `LNEG` of an extra-local,
-  and five-or-more nested long binaries remain rejected. This does not
-  complete the production goal or authorize changing the default compiler
-  path.
+  and five-or-more nested long binaries remain rejected. This does not complete
+  the production goal or authorize changing the default compiler path.
 - `admitsThreeImmediateReturnsWithFaddOfProvenChainInputs` admits leaf-only
   `FLOAD; FCONST_1; FADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -863,8 +877,8 @@ Synthetic bytecode unit tests in
 - `rejectsUnprovenFloatComputedChainInputsBeforeMutation` keeps float binaries
   at five-or-more levels and unsafe `FNEG` forms, including `FNEG` of an
   extra-local, fail-closed without constructor or hidden-method mutation.
-  Extra-local int and long operands remain rejected. This does not authorize
-  changing the default compiler path.
+  Cross-carrier extra-local int and long operands remain rejected by the float
+  proof. This does not authorize changing the default compiler path.
 - `admitsThreeImmediateReturnsWithDaddOfProvenChainInputs` admits leaf-only
   `DLOAD; DCONST_1; DADD` chain arguments while retaining all three additions,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
@@ -913,9 +927,9 @@ Synthetic bytecode unit tests in
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
   binaries at five-or-more levels, computed extra-local stores, and unsafe
   `DNEG` forms fail-closed without constructor or hidden-method mutation.
-  Extra-local int and long operands and computed reference inputs remain
-  outside this admission increment. This does not authorize changing the
-  default compiler path.
+  Cross-carrier extra-local int and long operands and computed reference inputs
+  remain outside the double proof. This does not authorize changing the default
+  compiler path.
 - `admitsThreeImmediateReturnsWithFnegOfProvenChainInputs` admits one `FNEG`
   over each direct declared float load while retaining all three negations,
   all three chain calls, two join `GOTO`s, and one hidden bridge.
