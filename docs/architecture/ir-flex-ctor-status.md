@@ -1677,8 +1677,10 @@ Synthetic bytecode unit tests in
 - `unprovenConstructorJsrRetShapesPassJava8JvmVerification` serializes and
   executes every loadable untouched reject fixture without the IR transform.
   Each version-50 constructor completes its legacy subroutine and stores the
-  expected field value. The admitted straight-line, no-exception-table
-  constructor and its one hidden bridge are unchanged.
+  expected field value. The branch that jumps across a lexical `RET` is
+  inherently verifier-invalid and remains reject-before-mutation-only. The
+  admitted straight-line, no-exception-table constructor and its one hidden
+  bridge are unchanged.
 
 The focused gate was executed with:
 

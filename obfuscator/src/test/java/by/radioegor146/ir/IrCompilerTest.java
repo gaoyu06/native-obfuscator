@@ -324,13 +324,14 @@ public class IrCompilerTest {
     public void unprovenConstructorJsrRetShapesPassJava8JvmVerification()
             throws Exception {
         // These legacy subroutines require classfile version 50: StackMapTable
-        // frames cannot represent return-address values. Every listed rejected
-        // exception-table, nested-subroutine, and post-RET shape is otherwise
-        // verifier-valid and is executed here without running the IR transform.
+        // frames cannot represent return-address values. The work-after-RET
+        // fixture is inherently verifier-invalid because its branch jumps
+        // across a RET within one subroutine, so it remains reject-only. Every
+        // listed exception-table and nested-subroutine shape is loadable and is
+        // executed here without running the IR transform.
         for (String shape : Arrays.asList(
                 "jsr-range-catch", "subroutine-range-catch",
-                "ret-range-catch", "nested-subroutine",
-                "work-after-ret")) {
+                "ret-range-catch", "nested-subroutine")) {
             ClassNode owner = constructorOwner(
                     "example/VerifiedRejectedJsrRet"
                             + shape.replace("-", ""),

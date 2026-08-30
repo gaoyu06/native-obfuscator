@@ -10,7 +10,9 @@
 - Keep nested subroutines and control flow that reaches extra work after a
   lexical `RET` rejected before mutation.
 - Execute every loadable untouched reject fixture through JVM verification at
-  the required legacy classfile version 50. The processor is unchanged.
+  the required legacy classfile version 50. The branch that jumps across a
+  lexical `RET` is inherently verifier-invalid and remains reject-only. The
+  processor is unchanged.
 
 ### Tests
 
@@ -40,7 +42,8 @@ Ship-ready: **No**
 - 覆盖 `JSR`、子程序主体、`RET` 或生成的内联副本的异常表继续在修改前拒绝。
 - 嵌套子程序以及在词法 `RET` 后到达额外工作的控制流继续在修改前拒绝。
 - 使用旧式字节码所需的 classfile 50，对每个可加载且未经改写的拒绝夹具执行
-  JVM 验证。处理器未改。
+  JVM 验证。跨越词法 `RET` 的分支本身无法通过验证器，因此仅保留修改前拒绝
+  覆盖。处理器未改。
 
 ### 测试
 
