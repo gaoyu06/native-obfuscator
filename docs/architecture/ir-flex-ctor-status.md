@@ -428,8 +428,12 @@ must be wholly in the canonical final copy; tables in discarded copies and
 cross-copy ranges remain rejected. All-identical suffix sets that do not match
 that normalizer, non-identity `ASTORE 0` outside the exact single-call,
 strict-join, identical-copy, or path-id alias rules, and other unlisted catch
-forms remain rejected. This is intentionally a narrow set of proven constructor
-split forms, not a general multi-exit constructor rewriter.
+forms remain rejected. Constructor-prefix `JSR`/`RET` remains admitted only for
+the already-proven straight-line subroutine with no exception table. A table
+covering its call, body, `RET`, or generated inline clone, plus nested
+subroutines and control flow that reaches extra work after a lexical `RET`,
+remain rejected. This is intentionally a narrow set of proven constructor split
+forms, not a general multi-exit constructor rewriter.
 
 It also classifies writes to reference/array constructor-argument locals:
 
@@ -1665,6 +1669,16 @@ Synthetic bytecode unit tests in
   path that executes two chain calls. Existing prefix-to-suffix,
   suffix-to-prefix, and conditionally assigned extra-local negatives remain.
 - Existing unsupported-opcode fallback still restores the original constructor.
+- `rejectsConstructorJsrRetWithExceptionTableBeforeMutation` keeps constructor
+  `JSR`/`RET` exception ranges, a nested subroutine, and a branch reaching work
+  after a lexical `RET` fail-closed. The original version-50 instruction
+  objects and exception entries, generated buffers, hidden-method inventory,
+  and singular `MethodContext.proxyMethod` remain unchanged.
+- `unprovenConstructorJsrRetShapesPassJava8JvmVerification` serializes and
+  executes every loadable untouched reject fixture without the IR transform.
+  Each version-50 constructor completes its legacy subroutine and stores the
+  expected field value. The admitted straight-line, no-exception-table
+  constructor and its one hidden bridge are unchanged.
 
 The focused gate was executed with:
 
