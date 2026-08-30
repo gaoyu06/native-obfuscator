@@ -12,16 +12,21 @@
   `(Ljava/lang/Object;II)V`, one hidden bridge, JVM verification, and JNI
   runtime parity across all three immediate-return paths.
 - Does not change `ConstructorSpecialMethodProcessor` or production compiler
-  code. Default selections remain unchanged, including
-  `--codegen=legacy`.
+  code. No default or CLI selection changes: `--codegen=legacy`,
+  `--ir-lower=direct`, and `--backend=cpp` were not flipped.
 
 ## Tests
 
 - `admitsThreeImmediateReturnsWithNewExtraLocalFiveSecondArgChainInputs`
 - `rewrittenThreeImmediateNewExtraLocalFiveSecondArgChainInputsPassJvmVerification`
 - `threeImmediateNewExtraLocalFiveSecondArgChainInputsCompileAndRunWithJavaParity`
-- Focused child gate is pending before final handoff. The parent will rerun
-  the focused gate and discard the child XML.
+- Focused child gate passed:
+  `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks`
+  `--tests by.radioegor146.ir.IrCompilerTest`
+  `--tests by.radioegor146.CodegenModeTest`.
+- Child JUnit XML totals: 619 `IrCompilerTest` + 7 `CodegenModeTest` = 626
+  tests, with 0 skipped, 0 failures, and 0 errors. The parent will rerun the
+  focused gate and discard the child XML.
 
 ## Delivery
 
@@ -40,16 +45,22 @@
 - 验证 `(II)V` 构造函数前缀 `ILOAD 2; ISTORE 3`、仅包含 `RETURN`
   的单个 native 方法、代理描述符 `(Ljava/lang/Object;II)V`、一个隐藏桥、
   JVM 验证，以及三条立即返回路径的 JNI 运行时一致性。
-- 不修改 `ConstructorSpecialMethodProcessor` 或生产编译器代码。默认选项
-  保持不变，包括 `--codegen=legacy`。
+- 不修改 `ConstructorSpecialMethodProcessor` 或生产编译器代码，也不修改
+  默认或 CLI 选择：未翻转 `--codegen=legacy`、`--ir-lower=direct` 或
+  `--backend=cpp`。
 
 ## 测试
 
 - `admitsThreeImmediateReturnsWithNewExtraLocalFiveSecondArgChainInputs`
 - `rewrittenThreeImmediateNewExtraLocalFiveSecondArgChainInputsPassJvmVerification`
 - `threeImmediateNewExtraLocalFiveSecondArgChainInputsCompileAndRunWithJavaParity`
-- 子代理聚焦门禁将在最终交接前运行；父代理会重新运行聚焦门禁，并丢弃
-  子代理 XML。
+- 子代理聚焦门禁已通过：
+  `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks`
+  `--tests by.radioegor146.ir.IrCompilerTest`
+  `--tests by.radioegor146.CodegenModeTest`。
+- 子代理 JUnit XML 总计：`IrCompilerTest` 619 项 +
+  `CodegenModeTest` 7 项 = 626 项测试，0 跳过、0 失败、0 错误。父代理会
+  重新运行聚焦门禁，并丢弃子代理 XML。
 
 ## 交付状态
 
