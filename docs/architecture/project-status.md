@@ -1,10 +1,11 @@
 # Project status on master / master 现状
 
-Last updated after fail-closed unproven-`GETFIELD` audit
-[#277](https://github.com/gaoyu06/native-obfuscator/pull/277)
-(parent XML 487/487 including
-`unprovenGetfieldChainInputShapesPassJava8JvmVerification`;
-unproven `GETFIELD` leftovers remain reject;
+Last updated after isolated one-arg `NEW`
+[#278](https://github.com/gaoyu06/native-obfuscator/pull/278)
+(parent XML 490/490 including
+`threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity`;
+two-or-more initializer arguments and other unproven `NEW` forms
+remain reject;
 [#276](https://github.com/gaoyu06/native-obfuscator/pull/276)
 remains the latest leftover inventory remasurement on post-#275
 `1699fa2`). Active process:
@@ -624,6 +625,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Primitive extra-local `GETFIELD` holders (#275) | 486 tests (`IrCompilerTest` 479 + `CodegenModeTest` 7). Parent re-ran 486/486 including `threeImmediateGetfieldExtraLocalPrimitiveHoldersCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#275 leftover inventory (#276) | Measurement only on `1699fa2`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Fail-closed unproven-`GETFIELD` audit (#277) | 487 tests (`IrCompilerTest` 480 + `CodegenModeTest` 7). Parent re-ran 487/487 including `unprovenGetfieldChainInputShapesPassJava8JvmVerification` | Unproven `GETFIELD` leftover remains reject |
+| Isolated one-arg `NEW` chain inputs (#278) | 490 tests (`IrCompilerTest` 483 + `CodegenModeTest` 7). Parent re-ran 490/490 including `threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -715,9 +717,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Extra-local proven object-copy `GETFIELD` holders are admitted by #272.
   Primitive-carrier extra-local `GETFIELD` holders are admitted by #275.
   Isolated no-arg `NEW` chain inputs are admitted by #268.
+  Isolated one-arg int-family `NEW` chain inputs are admitted by #278.
   Unproven `NEW` forms stay reject-before-mutation; #274
   strengthens those fail-closed tests. Do not admit `NEW` with
-  initializer arguments or array-allocation opcodes.
+  two or more initializer arguments or array-allocation opcodes.
   Unproven `GETFIELD` forms stay reject-before-mutation; #277
   strengthens those fail-closed tests.
   More than eight path-id suffixes stay reject-before-mutation; #267
@@ -747,9 +750,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #277
-  (fail-closed unproven-`GETFIELD` audit). /
-  落地 #277 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #278
+  (isolated one-arg `NEW`). /
+  落地 #278 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
