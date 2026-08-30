@@ -1,7 +1,9 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory remasurement
-[#286](https://github.com/gaoyu06/native-obfuscator/pull/286)
+Last updated after isolated four-arg `NEW`
+[#287](https://github.com/gaoyu06/native-obfuscator/pull/287)
+(parent XML 503/503 on the rebased child branch). Latest leftover inventory
+remains [#286](https://github.com/gaoyu06/native-obfuscator/pull/286)
 (measurement only on post-[#285](https://github.com/gaoyu06/native-obfuscator/pull/285)
 `5a9a041`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
 0 leftovers; not coverage-complete; not a JDK support badge). Active process:
@@ -630,6 +632,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#283 leftover inventory (#284) | Measurement only on `164fed1`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int-copy `NEW` initializer (#285) | 500 tests (`IrCompilerTest` 493 + `CodegenModeTest` 7). Parent re-ran 500/500 including `threeImmediateNewExtraLocalArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#285 leftover inventory (#286) | Measurement only on `5a9a041`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Isolated four-arg `NEW` chain inputs (#287) | 503 tests (`IrCompilerTest` 496 + `CodegenModeTest` 7). Parent re-ran 503/503 including `threeImmediateNewFourArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -727,9 +730,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   Isolated three-arg int-family `NEW` chain inputs are admitted by #283.
   Extra-local proven int-copy `NEW` initializer arguments are admitted
   by #285 (fixture-only).
+  Isolated four-arg int-family `NEW` chain inputs are admitted by #287.
   Unproven `NEW` forms stay reject-before-mutation; #274
   strengthens those fail-closed tests. Do not admit `NEW` with
-  four or more initializer arguments, array-allocation opcodes,
+  five or more initializer arguments, array-allocation opcodes,
   extra-local of `this`, or overwritten / computed extras as
   initializer arguments.
   Unproven `GETFIELD` forms stay reject-before-mutation; #277
@@ -769,9 +773,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #286
-  (leftover inventory remasurement on post-#285 master). /
-  落地 #286 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #287
+  (isolated four-arg `NEW` initializer). /
+  落地 #287 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

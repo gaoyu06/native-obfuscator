@@ -255,14 +255,16 @@ One additional family is reduced to that same shared-join form:
   `NEW owner; DUP; arg; INVOKESPECIAL owner.<init>(X)V`, or
   `NEW owner; DUP; arg1; arg2; INVOKESPECIAL owner.<init>(X1X2)V`, or
   `NEW owner; DUP; arg1; arg2; arg3;
-  INVOKESPECIAL owner.<init>(X1X2X3)V`. Every
+  INVOKESPECIAL owner.<init>(X1X2X3)V`, or
+  `NEW owner; DUP; arg1; arg2; arg3; arg4;
+  INVOKESPECIAL owner.<init>(X1X2X3X4)V`. Every
   initializer parameter must be an int-family carrier and each corresponding
   argument must be exactly one executable instruction accepted by the existing
   int-family leaf proof: a constant, a declared-argument `ILOAD`, or a proven
   prefix-copy `ILOAD`. The constructor owner must exactly match the allocated
   class and the allocated reference descriptor must exactly match the call
   parameter. The complete sequence stays in the retained JVM prefix. Missing
-  `DUP`, four or more initializer arguments, computed initializer inputs
+  `DUP`, five or more initializer arguments, computed initializer inputs
   (including `INEG`), unproven inputs, type mismatches, and every
   array-allocation opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
