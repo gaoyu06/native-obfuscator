@@ -2368,7 +2368,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves one non-recursive long leaf: a declared LLOAD, one proven prefix
      * copy of a declared LLOAD, LCONST_0/1, an LDC whose constant is a Long, or
-     * one LNEG over a direct declared LLOAD.
+     * one LNEG over a direct declared LLOAD or its proven prefix copy.
      */
     private static Integer previousProvenLongChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2395,10 +2395,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int operandIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (operandIndex < 0
-                || !isDirectDeclaredArgumentLoad(
-                constructor.instructions.get(operandIndex),
-                Type.LONG_TYPE, declaredArguments)) {
+        if (operandIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode operand =
+                constructor.instructions.get(operandIndex);
+        if (!isDirectDeclaredArgumentLoad(
+                operand, Type.LONG_TYPE, declaredArguments)
+                && (operand.getOpcode() != Opcodes.LLOAD
+                || !prefixLongCopies.contains(
+                ((VarInsnNode) operand).var))) {
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
