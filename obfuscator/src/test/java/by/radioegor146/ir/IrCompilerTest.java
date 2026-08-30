@@ -8015,7 +8015,7 @@ public class IrCompilerTest {
             Class<?> verified = loader.define(writeClass(owner));
 
             for (int selector : new int[]{7, -7, 0}) {
-                int selectedIndex = selector > 0 ? 0 : selector < 0 ? 1 : 2;
+                // Every path in these fixtures deliberately uses AALOAD 0.
                 if (shape.endsWith("-primitive-result")) {
                     int[][] source = {
                             {10}, {20}, {30}
@@ -8023,7 +8023,7 @@ public class IrCompilerTest {
                     Object instance = verified.getConstructor(
                                     int.class, int[][].class)
                             .newInstance(new Object[]{selector, source});
-                    assertSame(source[selectedIndex],
+                    assertSame(source[0],
                             verified.getField("value").get(instance), shape);
                     continue;
                 }
@@ -8051,7 +8051,7 @@ public class IrCompilerTest {
 
                 Object instance = verified.getConstructor(int.class, arrayType)
                         .newInstance(new Object[]{selector, arrayArgument});
-                assertSame(values[selectedIndex],
+                assertSame(values[0],
                         verified.getField("value").get(instance), shape);
             }
         }
