@@ -2213,6 +2213,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArguments.put(declaredLocal, argument);
             declaredLocal += argument.getSize();
         }
+        Set<Integer> prefixLongCopies =
+                provenPrefixLongCopyLocals(
+                        constructor, callIndexes, declaredArguments);
         Set<Integer> prefixFloatCopies =
                 provenPrefixFloatCopyLocals(
                         constructor, callIndexes, declaredArguments);
@@ -2229,7 +2232,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             for (int i = callArguments.length - 1; i >= 0; i--) {
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
-                        declaredArguments, prefixFloatCopies,
+                        declaredArguments, prefixLongCopies, prefixFloatCopies,
                         prefixDoubleCopies);
                 if (previousInput == null) {
                     return false;
@@ -2251,6 +2254,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixLongCopies,
             Set<Integer> prefixFloatCopies,
             Set<Integer> prefixDoubleCopies) {
         if (inputIndex < 0) {
@@ -2264,6 +2268,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.LONG) {
             return previousProvenLongChainOperand(
                     constructor, inputIndex, declaredArguments,
+                    prefixLongCopies,
                     MAX_PROVEN_LONG_CHAIN_BINARY_LEVELS);
         }
         if (expected.getSort() == Type.FLOAT) {
@@ -2296,6 +2301,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenLongChainOperand(
             MethodNode constructor, int inputIndex,
             Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixLongCopies,
             int remainingBinaryLevels) {
         if (inputIndex < 0) {
             return null;
@@ -2316,7 +2322,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || longShift;
         if (!longBinary) {
             return previousProvenLongChainLeaf(
-                    constructor, inputIndex, declaredArguments);
+                    constructor, inputIndex, declaredArguments,
+                    prefixLongCopies);
         }
         if (remainingBinaryLevels == 0) {
             return null;
@@ -2336,27 +2343,36 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return previousProvenLongChainOperand(
                     constructor,
                     previousExecutableIndex(constructor, countIndex - 1),
-                    declaredArguments, remainingBinaryLevels - 1);
+                    declaredArguments, java.util.Collections.emptySet(),
+                    remainingBinaryLevels - 1);
         }
+        Set<Integer> nestedPrefixLongCopies =
+                opcode == Opcodes.LDIV || opcode == Opcodes.LREM
+                        ? java.util.Collections.emptySet()
+                        : prefixLongCopies;
         Integer beforeRight = previousProvenLongChainOperand(
                 constructor,
                 previousExecutableIndex(constructor, inputIndex - 1),
-                declaredArguments, remainingBinaryLevels - 1);
+                declaredArguments, nestedPrefixLongCopies,
+                remainingBinaryLevels - 1);
         if (beforeRight == null) {
             return null;
         }
         return previousProvenLongChainOperand(
                 constructor, beforeRight, declaredArguments,
+                nestedPrefixLongCopies,
                 remainingBinaryLevels - 1);
     }
 
     /**
-     * Proves one non-recursive long leaf: a declared LLOAD, LCONST_0/1, an LDC
-     * whose constant is a Long, or one LNEG over a direct declared LLOAD.
+     * Proves one non-recursive long leaf: a declared LLOAD, one proven prefix
+     * copy of a declared LLOAD, LCONST_0/1, an LDC whose constant is a Long, or
+     * one LNEG over a direct declared LLOAD.
      */
     private static Integer previousProvenLongChainLeaf(
             MethodNode constructor, int inputIndex,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Set<Integer> prefixLongCopies) {
         if (inputIndex < 0) {
             return null;
         }
@@ -2364,6 +2380,13 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (isDirectDeclaredArgumentLoad(
                 input, Type.LONG_TYPE, declaredArguments)
                 || isLongConstant(input)) {
+            return previousExecutableIndex(constructor, inputIndex - 1);
+        }
+        if (input.getOpcode() == Opcodes.LLOAD
+                && !isDirectDeclaredArgumentLoad(
+                input, Type.LONG_TYPE, declaredArguments)
+                && prefixLongCopies.contains(
+                ((VarInsnNode) input).var)) {
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         if (input.getOpcode() != Opcodes.LNEG) {
@@ -2378,6 +2401,83 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
+    }
+
+    /**
+     * Finds extra long locals whose only overlapping write before the final
+     * chain call is one pre-first-call LSTORE directly fed by a declared
+     * LLOAD. Requiring the resulting long state at every chain call proves
+     * that the store dominates all selected paths. The scan deliberately
+     * stops at the final chain call; suffix extra-local forwarding is a
+     * separate proof.
+     */
+    private static Set<Integer> provenPrefixLongCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Set<Integer> proven = new HashSet<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.LSTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal
+                    || sourceIndex < 0
+                    || !isDirectDeclaredArgumentLoad(
+                    constructor.instructions.get(sourceIndex),
+                    Type.LONG_TYPE, declaredArguments)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.LONG_TYPE)
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.LONG_TYPE)) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_LONG) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.add(local);
+            }
+        }
+        return proven;
     }
 
     private static boolean isLongConstant(AbstractInsnNode input) {
