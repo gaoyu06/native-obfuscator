@@ -69,10 +69,11 @@ The goal is complete only when all of the following are true:
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
    `jsr` / `ret` (well-formed subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
-   admission (#207 measurement on post-#206 `42e52c0`) observed no
-   leftover methods; that is not a complete JVM inventory. #199 remains
-   the earlier post-#198 snapshot; #191 remains the earlier post-#190
-   snapshot; #181 remains the earlier post-#180 snapshot.
+   admission (#264 measurement on post-#263 `c0304fe`) observed no
+   leftover methods; that is not a complete JVM inventory. #207 remains
+   the earlier post-#206 snapshot; #199 remains the earlier post-#198
+   snapshot; #191 remains the earlier post-#190 snapshot; #181 remains
+   the earlier post-#180 snapshot.
 2. **Do not flip `--codegen` off `legacy`** until those supported methods
    no longer need fallback. The default flip is reversible and comes
    *after* coverage, not before.
