@@ -2198,10 +2198,11 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
      * Restricts bounded multi-call forms to calls whose complete operand
      * sequence is visible locally: a direct receiver ALOAD followed by direct
      * declared-argument loads, one AALOAD from an unchanged declared array
-     * argument at a constant index, proven prefix copies of declared
-     * int-family loads, bounded primitive computations, or int-family
-     * constants. The identical-copy and distinct-suffix forms may accept a
-     * direct alias load only when their separate receiver-frame proof succeeds.
+     * argument or its proven prefix extra-local copy at a constant index,
+     * proven prefix copies of declared primitive loads, bounded primitive
+     * computations, or int-family constants. The identical-copy and
+     * distinct-suffix forms may accept a direct alias load only when their
+     * separate receiver-frame proof succeeds.
      */
     private static boolean hasDirectDeclaredChainInputs(
             MethodNode constructor, List<Integer> callIndexes,
@@ -2212,6 +2213,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             declaredArguments.put(declaredLocal, argument);
             declaredLocal += argument.getSize();
         }
+        Map<Integer, Integer> prefixReferenceCopies =
+                provenPrefixReferenceCopyLocals(
+                        constructor, callIndexes, declaredArguments);
         Set<Integer> prefixIntCopies =
                 provenPrefixIntCopyLocals(
                         constructor, callIndexes, declaredArguments);
@@ -2234,8 +2238,9 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             for (int i = callArguments.length - 1; i >= 0; i--) {
                 Integer previousInput = previousProvenChainInput(
                         constructor, inputIndex, callArguments[i],
-                        declaredArguments, prefixIntCopies, prefixLongCopies,
-                        prefixFloatCopies, prefixDoubleCopies);
+                        declaredArguments, prefixReferenceCopies,
+                        prefixIntCopies, prefixLongCopies, prefixFloatCopies,
+                        prefixDoubleCopies);
                 if (previousInput == null) {
                     return false;
                 }
@@ -2256,6 +2261,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     private static Integer previousProvenChainInput(
             MethodNode constructor, int inputIndex, Type expected,
             Map<Integer, Type> declaredArguments,
+            Map<Integer, Integer> prefixReferenceCopies,
             Set<Integer> prefixIntCopies,
             Set<Integer> prefixLongCopies,
             Set<Integer> prefixFloatCopies,
@@ -2271,7 +2277,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         if (expected.getSort() == Type.OBJECT
                 || expected.getSort() == Type.ARRAY) {
             return previousProvenReferenceChainInput(
-                    constructor, inputIndex, expected, declaredArguments);
+                    constructor, inputIndex, expected, declaredArguments,
+                    prefixReferenceCopies);
         }
         if (expected.getSort() == Type.LONG) {
             return previousProvenLongChainOperand(
@@ -2302,14 +2309,17 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
 
     /**
      * Proves the exact retained-prefix reference computation
-     * {@code ALOAD declaredArray; constant; AALOAD}. The array local must still
-     * contain its declared constructor argument, and no earlier array store is
-     * accepted. The load remains JVM bytecode, preserving null, bounds, and
-     * reference-array semantics without reproducing them in native code.
+     * {@code ALOAD array; constant; AALOAD}. The loaded array must be either an
+     * unchanged declared constructor argument or its proven prefix extra-local
+     * copy. The declared source local must remain unchanged, and no earlier
+     * array store is accepted. The load remains JVM bytecode, preserving null,
+     * bounds, and reference-array semantics without reproducing them in native
+     * code.
      */
     private static Integer previousProvenReferenceChainInput(
             MethodNode constructor, int inputIndex, Type expected,
-            Map<Integer, Type> declaredArguments) {
+            Map<Integer, Type> declaredArguments,
+            Map<Integer, Integer> prefixReferenceCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (input.getOpcode() != Opcodes.AALOAD) {
             return null;
@@ -2331,9 +2341,19 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
                 || array.getOpcode() != Opcodes.ALOAD) {
             return null;
         }
-        int arrayLocal = ((VarInsnNode) array).var;
-        Type declaredArray = declaredArguments.get(arrayLocal);
-        if (declaredArray == null || declaredArray.getSort() != Type.ARRAY) {
+        int loadedArrayLocal = ((VarInsnNode) array).var;
+        Type declaredArray = declaredArguments.get(loadedArrayLocal);
+        int declaredArrayLocal = loadedArrayLocal;
+        if (declaredArray == null) {
+            Integer copiedFrom =
+                    prefixReferenceCopies.get(loadedArrayLocal);
+            if (copiedFrom == null) {
+                return null;
+            }
+            declaredArrayLocal = copiedFrom;
+            declaredArray = declaredArguments.get(declaredArrayLocal);
+        }
+        if (!isReferenceArray(declaredArray)) {
             return null;
         }
         Type component = Type.getType(
@@ -2348,7 +2368,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             if (i < arrayIndex && stored != null
                     && localRangesOverlap(
                     ((VarInsnNode) instruction).var, stored,
-                    arrayLocal, declaredArray)) {
+                    declaredArrayLocal, declaredArray)) {
                 return null;
             }
             if (isArrayStoreOpcode(instruction.getOpcode())) {
@@ -2356,6 +2376,106 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             }
         }
         return previousExecutableIndex(constructor, arrayIndex - 1);
+    }
+
+    /**
+     * Finds extra reference locals whose only overlapping write before the
+     * final chain call is one pre-first-call ASTORE directly fed by an ALOAD of
+     * a declared reference-array argument. Requiring the resulting reference
+     * state at every chain call proves that the store dominates all selected
+     * paths. The declared source local is retained so each AALOAD proof can
+     * independently require that argument to remain unchanged.
+     */
+    private static Map<Integer, Integer> provenPrefixReferenceCopyLocals(
+            MethodNode constructor, List<Integer> callIndexes,
+            Map<Integer, Type> declaredArguments) {
+        Map<Integer, Integer> proven = new HashMap<>();
+        if (callIndexes.isEmpty()) {
+            return proven;
+        }
+        int firstCallIndex = callIndexes.get(0);
+        int lastCallIndex = callIndexes.get(callIndexes.size() - 1);
+        int firstExtraLocal = firstExtraLocal(constructor);
+        Map<Integer, Integer> candidateStores = new HashMap<>();
+        Map<Integer, Integer> candidateSources = new HashMap<>();
+        for (int i = 0; i < firstCallIndex; i++) {
+            AbstractInsnNode instruction = constructor.instructions.get(i);
+            if (instruction.getOpcode() != Opcodes.ASTORE) {
+                continue;
+            }
+            int local = ((VarInsnNode) instruction).var;
+            int sourceIndex = previousExecutableIndex(constructor, i - 1);
+            if (local < firstExtraLocal || sourceIndex < 0) {
+                continue;
+            }
+            AbstractInsnNode source =
+                    constructor.instructions.get(sourceIndex);
+            if (!(source instanceof VarInsnNode)
+                    || source.getOpcode() != Opcodes.ALOAD) {
+                continue;
+            }
+            int sourceLocal = ((VarInsnNode) source).var;
+            Type declaredArray = declaredArguments.get(sourceLocal);
+            if (!isReferenceArray(declaredArray)) {
+                continue;
+            }
+            candidateStores.put(local, i);
+            candidateSources.put(local, sourceLocal);
+        }
+
+        for (Map.Entry<Integer, Integer> candidate :
+                candidateStores.entrySet()) {
+            int local = candidate.getKey();
+            int writeCount = 0;
+            int writeIndex = -1;
+            for (int i = 0; i < lastCallIndex; i++) {
+                AbstractInsnNode instruction =
+                        constructor.instructions.get(i);
+                Type stored = storeType(instruction);
+                if (stored != null
+                        && localRangesOverlap(
+                        ((VarInsnNode) instruction).var, stored,
+                        local, Type.getType(Object.class))
+                        || instruction instanceof IincInsnNode
+                        && localRangesOverlap(
+                        ((IincInsnNode) instruction).var,
+                        Type.INT_TYPE, local, Type.getType(Object.class))) {
+                    writeCount++;
+                    writeIndex = i;
+                }
+            }
+            if (writeCount != 1 || writeIndex != candidate.getValue()) {
+                continue;
+            }
+
+            int[] states = localStatesToSplit(
+                    constructor, lastCallIndex, local);
+            boolean dominatesCalls = true;
+            for (Integer callIndex : callIndexes) {
+                if (states[callIndex] != LOCAL_REFERENCE) {
+                    dominatesCalls = false;
+                    break;
+                }
+            }
+            if (dominatesCalls) {
+                proven.put(local, candidateSources.get(local));
+            }
+        }
+        return proven;
+    }
+
+    private static boolean isReferenceArray(Type type) {
+        if (type == null || type.getSort() != Type.ARRAY) {
+            return false;
+        }
+        Type component = Type.getType(type.getDescriptor().substring(1));
+        if (component.getSort() == Type.OBJECT) {
+            return true;
+        }
+        if (component.getSort() != Type.ARRAY) {
+            return false;
+        }
+        return component.getElementType().getSort() == Type.OBJECT;
     }
 
     private static boolean isArrayStoreOpcode(int opcode) {
