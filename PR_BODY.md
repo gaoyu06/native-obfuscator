@@ -12,8 +12,9 @@
 
 ## Verification
 
-- Required Gradle suites: pending.
-- JUnit XML totals: pending (child-only; no parent XML number).
+- Required Gradle suites: passed.
+- JUnit XML totals: 470 tests, 0 failures, 0 errors, 0 skipped across
+  2 child XML files (child-only; no parent XML number).
 - Default `--codegen` remains `legacy`.
 
 ## Readiness
@@ -34,8 +35,9 @@ Ship-ready: **No**
 
 ## 验证
 
-- 必跑 Gradle 测试：待执行。
-- JUnit XML 汇总：待补充（仅子测试；不虚构父 XML 数量）。
+- 必跑 Gradle 测试：已通过。
+- JUnit XML 汇总：2 个子 XML 文件，共 470 项测试、0 失败、0 错误、
+  0 跳过（仅子测试；不虚构父 XML 数量）。
 - 默认 `--codegen` 仍为 `legacy`。
 
 ## 就绪状态
