@@ -1,8 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after isolated five-arg `NEW`
-[#290](https://github.com/gaoyu06/native-obfuscator/pull/290)
-(parent XML 507/507 on the rebased child branch). Latest leftover inventory
+Last updated after fail-closed constructor `jsr`/`ret` exception-table
+[#291](https://github.com/gaoyu06/native-obfuscator/pull/291)
+(parent XML 509/509 on the rebased child branch). Latest leftover inventory
 remains [#289](https://github.com/gaoyu06/native-obfuscator/pull/289)
 (measurement only on post-[#288](https://github.com/gaoyu06/native-obfuscator/pull/288)
 `cdce5a3`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
@@ -636,6 +636,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Fail-closed unproven extra-array `AALOAD` audit (#288) | 504 tests (`IrCompilerTest` 497 + `CodegenModeTest` 7). Parent re-ran 504/504 including `unprovenExtraLocalArrayAaloadShapesPassJava8JvmVerification` | Unproven extra-array `AALOAD` leftover remains reject |
 | Post-#288 leftover inventory (#289) | Measurement only on `cdce5a3`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Isolated five-arg `NEW` chain inputs (#290) | 507 tests (`IrCompilerTest` 500 + `CodegenModeTest` 7). Parent re-ran 507/507 including `threeImmediateNewFiveArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Fail-closed constructor `jsr`/`ret` catch audit (#291) | 509 tests (`IrCompilerTest` 502 + `CodegenModeTest` 7). Parent re-ran 509/509 including `unprovenConstructorJsrRetShapesPassJava8JvmVerification` | Constructor `jsr`/`ret` with exception tables remains reject |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -694,9 +695,12 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   unproven extra-array `AALOAD` inputs,
   more than eight distinct paths,
   skip-super constructors,
-  post-call extra work and three-immediate `astore-zero`).
+  post-call extra work and three-immediate `astore-zero`,
+  constructor `jsr`/`ret` with an exception table).
   Malformed `jsr`/`ret` stay reject-before-mutation; well-formed
-  subroutines are admitted by #241. Extra-local long shift values and
+  straight-line subroutines are admitted by #241. Constructor `jsr`/`ret`
+  with an exception table or non-straight-line inlined clone stay
+  reject-before-mutation; #291 strengthens those fail-closed tests. Extra-local long shift values and
   `LDIV`/`LREM` operands are admitted by #242. Extra-local long `LNEG`
   is admitted by #243. Retained-prefix `AALOAD` chain inputs are
   admitted by #244. Extra-local int long-shift counts are admitted
@@ -755,6 +759,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   `astore-zero` stay reject-before-mutation; #280 strengthens those
   fail-closed tests. Do not admit post-call extra work. Identity
   `ASTORE 0` remains the existing admit.
+  Constructor `jsr`/`ret` with an exception table or a non-straight-line
+  inlined clone stay reject-before-mutation; #291 strengthens those
+  fail-closed tests. Do not admit those leftovers. The admitted
+  straight-line no-exception-table constructor prefix remains #241.
   Seventeen-or-more nested binaries stay reject-before-mutation; #271
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
@@ -783,9 +791,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #290
-  (isolated five-arg `NEW` initializer). /
-  落地 #290 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #291
+  (fail-closed constructor `jsr`/`ret` exception-table leftover). /
+  落地 #291 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /

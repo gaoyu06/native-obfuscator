@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #290 (isolated five-arg `NEW`)
+   `master` after #291 (constructor `jsr`/`ret` exception-table fail-closed)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -72,10 +72,12 @@ The goal is complete only when all of the following are true:
    distinct paths, still rejected after #267, extras still unassigned on a bridge-taking
    path, still rejected after #263,
    skip-super constructors, still rejected after #269,
-   post-call extra work and three-immediate `astore-zero`, still rejected after #280),
+   post-call extra work and three-immediate `astore-zero`, still rejected after #280,
+   constructor `jsr`/`ret` with an exception table or non-straight-line
+   inlined clone, still rejected after #291),
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
-   `jsr` / `ret` (well-formed subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
+   `jsr` / `ret` (well-formed straight-line subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
    admission (#289 measurement on post-#288 `cdce5a3`) observed no
    leftover methods; that is not a complete JVM inventory. #286 remains
    the earlier post-#285 snapshot; #284 remains
