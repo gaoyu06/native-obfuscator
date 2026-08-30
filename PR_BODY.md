@@ -2,6 +2,8 @@
 
 Ship-ready: **No**
 
+PR: **No** (GitHub write access is unavailable for this child task.)
+
 ## English
 
 ### Summary
@@ -28,7 +30,10 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Test XML totals will be recorded after the required run.
+Result: **403 tests, 0 failures, 0 errors, 0 skipped**.
+
+- `IrCompilerTest`: 396 tests
+- `CodegenModeTest`: 7 tests
 
 ## 中文
 
@@ -50,4 +55,7 @@ Test XML totals will be recorded after the required run.
 
 ### 验证
 
-将运行上方完整命令，并在完成后记录测试 XML 汇总。
+上方完整命令已通过：**403 个测试，0 failures，0 errors，0 skipped**。
+
+- `IrCompilerTest`：396 个测试
+- `CodegenModeTest`：7 个测试
