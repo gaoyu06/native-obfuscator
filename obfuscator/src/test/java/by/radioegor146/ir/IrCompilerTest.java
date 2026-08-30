@@ -4004,6 +4004,53 @@ public class IrCompilerTest {
     }
 
     @Test
+    public void admitsThreeImmediateReturnsWithExtraLocalDoubleDnegChainInputs() {
+        ClassNode base = multipleSuperDoubleBase(
+                "example/MultiSuperExtraLocalDoubleDnegBase");
+        ClassNode owner = constructorOwner(
+                "example/ThreeExtraLocalDoubleDnegMultiReturn", base.name);
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        owner.superName, "double-dneg-extra-local");
+
+        MethodNode nativeBody =
+                ConstructorSpecialMethodProcessor.createNativeBody(
+                        owner, constructor);
+        assertEquals("(ID)V", nativeBody.desc);
+        assertEquals(Collections.singletonList(Opcodes.RETURN),
+                realOpcodes(nativeBody));
+        frontend.build(owner.name, nativeBody);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DNEG));
+        assertEquals(Collections.singletonList(4),
+                variableIndexes(constructor, Opcodes.DSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.DLOAD), 4));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
+        assertEquals(
+                "(Ljava/lang/Object;ID)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
     public void admitsThreeImmediateReturnsWithDsubAndDmulOfProvenChainInputs() {
         for (String shape : Arrays.asList("double-dsub", "double-dmul")) {
             ClassNode base = multipleSuperDoubleBase(
@@ -5556,7 +5603,7 @@ public class IrCompilerTest {
         for (String shape : Arrays.asList(
                 "double-nine-level-dadd",
                 "double-dneg-constant", "double-double-dneg",
-                "double-dneg-extra-local", "double-dneg-computed")) {
+                "double-dneg-computed")) {
             ClassNode base = multipleSuperDoubleBase(
                     "example/RejectedDoubleComputedBase"
                             + shape.replace("-", ""));
@@ -7546,6 +7593,67 @@ public class IrCompilerTest {
                 variableIndexes(constructor, Opcodes.DSTORE));
         assertEquals(3, Collections.frequency(
                 variableIndexes(constructor, Opcodes.DLOAD), 4));
+        assertEquals(
+                "(Ljava/lang/Object;ID)V",
+                context.proxyMethod.getMethodNode().desc);
+        assertEquals(1, obfuscator.getHiddenMethodsPool()
+                .getClasses().stream()
+                .flatMap(hidden -> hidden.methods.stream())
+                .filter(method ->
+                        method == context.proxyMethod.getMethodNode())
+                .count());
+    }
+
+    @Test
+    public void rewrittenThreeImmediateExtraLocalDoubleDnegSuperReturnsPassJvmVerification()
+            throws Exception {
+        ClassNode base =
+                multipleSuperDoubleBase(
+                        "example/VerifiedExtraLocalDoubleDnegMultiReturnBase");
+        base.version = Opcodes.V1_8;
+        ClassNode owner = constructorOwner(
+                "example/VerifiedExtraLocalDoubleDnegMultiReturn", base.name);
+        owner.version = Opcodes.V1_8;
+        MethodNode constructor =
+                threeImmediateReturnsWithComputedInput(
+                        base.name, "double-dneg-extra-local");
+        owner.methods.add(constructor);
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context =
+                new MethodContext(obfuscator, constructor, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        loader.define(writeClass(base));
+        for (ClassNode hidden : obfuscator.getHiddenMethodsPool().getClasses()) {
+            loader.define(writeClass(hidden));
+        }
+        Class<?> verified = loader.define(writeClass(owner));
+        int[] selectors = {7, -7, 0};
+        double[] values = {11.0, -22.0, 0.25};
+        for (int i = 0; i < selectors.length; i++) {
+            int selector = selectors[i];
+            double value = values[i];
+            InvocationTargetException error = assertThrows(
+                    InvocationTargetException.class,
+                    () -> verified.getConstructor(int.class, double.class)
+                            .newInstance(selector, value));
+            assertTrue(error.getCause() instanceof UnsatisfiedLinkError);
+        }
+        assertEquals(3, directChainCallCount(constructor, owner));
+        assertEquals(1, hiddenBridgeCallCount(constructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(constructor), Opcodes.DNEG));
+        assertEquals(Collections.singletonList(4),
+                variableIndexes(constructor, Opcodes.DSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(constructor, Opcodes.DLOAD), 4));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(constructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(constructor), Opcodes.RETURN));
         assertEquals(
                 "(Ljava/lang/Object;ID)V",
                 context.proxyMethod.getMethodNode().desc);
@@ -13036,6 +13144,102 @@ public class IrCompilerTest {
                         "-jar", outputJar.toString()));
         nativeResult.check(
                 "native extra-local double multi-super Java run");
+        assertEquals(javaResult.stdout, nativeResult.stdout);
+    }
+
+    @Test
+    public void threeImmediateExtraLocalDoubleDnegSuperReturnsCompileAndRunWithJavaParity()
+            throws Exception {
+        assertTrue(executableOnPath("cmake") != null,
+                "cmake is required for the extra-local double negate runtime test");
+        assertTrue(executableOnPath("g++") != null,
+                "g++ is required for the extra-local double negate runtime test");
+
+        String ownerName =
+                "example/ExtraLocalDoubleDnegMultiReturnRuntime";
+        String baseName =
+                "example/ExtraLocalDoubleDnegMultiReturnRuntimeBase";
+        Path directory =
+                Files.createTempDirectory("ir-extra-local-double-dneg-run");
+        Path inputJar = directory.resolve("extra-local-double-dneg.jar");
+        Path outputDirectory = directory.resolve("output");
+        createMultipleSuperThreeExtraLocalDoubleDnegReturnsJar(
+                inputJar, ownerName, baseName);
+
+        ProcessHelper.ProcessResult javaResult = ProcessHelper.run(
+                directory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-jar", inputJar.toString()));
+        javaResult.check(
+                "plain extra-local double negate multi-super Java run");
+        assertEquals(
+                "-11.0" + System.lineSeparator()
+                        + "22.0" + System.lineSeparator()
+                        + "-0.25" + System.lineSeparator(),
+                javaResult.stdout);
+
+        new NativeObfuscator().process(
+                inputJar, outputDirectory, Collections.emptyList(),
+                Collections.singletonList(
+                        ownerName + "#main!([Ljava/lang/String;)V"),
+                null, "native_library", null, Platform.STD_JAVA,
+                false, false, CodegenMode.IR);
+
+        Path outputJar = outputDirectory.resolve(inputJar.getFileName());
+        ClassNode transformed = new ClassNode(Opcodes.ASM9);
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            new org.objectweb.asm.ClassReader(jar.getInputStream(
+                    jar.getJarEntry(ownerName + ".class")))
+                    .accept(transformed, 0);
+        }
+        MethodNode transformedConstructor = transformed.methods.stream()
+                .filter(method -> "<init>".equals(method.name))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertEquals(3, directChainCallCount(
+                transformedConstructor, transformed));
+        assertEquals(1, hiddenBridgeCallCount(transformedConstructor));
+        assertEquals(3, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.DNEG));
+        assertEquals(Collections.singletonList(4),
+                variableIndexes(transformedConstructor, Opcodes.DSTORE));
+        assertEquals(3, Collections.frequency(
+                variableIndexes(transformedConstructor, Opcodes.DLOAD), 4));
+        assertEquals(2, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.GOTO));
+        assertEquals(1, Collections.frequency(
+                realOpcodes(transformedConstructor), Opcodes.RETURN));
+
+        Path cppDirectory = outputDirectory.resolve("cpp");
+        ProcessHelper.run(cppDirectory, 120_000,
+                        Arrays.asList(
+                                "cmake", "-DCMAKE_BUILD_TYPE=Release", "."))
+                .check("extra-local double negate CMake configure");
+        ProcessHelper.run(cppDirectory, 160_000,
+                        Arrays.asList("cmake", "--build", ".",
+                                "--config", "Release"))
+                .check("extra-local double negate CMake build");
+
+        Path library;
+        try (Stream<Path> files =
+                     Files.list(cppDirectory.resolve("build/lib"))) {
+            library = files.filter(Files::isRegularFile)
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(
+                            "Extra-local double negate native library "
+                                    + "was not produced"));
+        }
+        Files.copy(library, outputDirectory.resolve(library.getFileName()),
+                StandardCopyOption.REPLACE_EXISTING);
+
+        ProcessHelper.ProcessResult nativeResult = ProcessHelper.run(
+                outputDirectory, 120_000,
+                Arrays.asList(javaExecutable().toString(),
+                        "-Xverify:all", "-Xcheck:jni",
+                        "-Djava.library.path=" + outputDirectory,
+                        "-jar", outputJar.toString()));
+        nativeResult.check(
+                "native extra-local double negate multi-super Java run");
         assertEquals(javaResult.stdout, nativeResult.stdout);
     }
 
@@ -22196,12 +22400,26 @@ public class IrCompilerTest {
     private void createMultipleSuperThreeDnegReturnsJar(
             Path jarPath, String ownerName, String baseName)
             throws IOException {
+        createMultipleSuperThreeDnegReturnsJar(
+                jarPath, ownerName, baseName, "double-dneg");
+    }
+
+    private void createMultipleSuperThreeExtraLocalDoubleDnegReturnsJar(
+            Path jarPath, String ownerName, String baseName)
+            throws IOException {
+        createMultipleSuperThreeDnegReturnsJar(
+                jarPath, ownerName, baseName, "double-dneg-extra-local");
+    }
+
+    private void createMultipleSuperThreeDnegReturnsJar(
+            Path jarPath, String ownerName, String baseName, String shape)
+            throws IOException {
         ClassNode base = multipleSuperDoubleBase(baseName);
         base.version = Opcodes.V1_8;
         ClassNode owner = constructorOwner(ownerName, baseName);
         owner.version = Opcodes.V1_8;
         owner.methods.add(threeImmediateReturnsWithComputedInput(
-                baseName, "double-dneg"));
+                baseName, shape));
         owner.methods.add(multipleSuperThreeDnegReturnsMain(
                 ownerName, baseName));
 
