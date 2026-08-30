@@ -19,7 +19,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-Admitted: Yes — isolated float `NEW` initializer arguments only.  
+Admitted: Yes — isolated float `NEW` initializer arguments only.
+
 Ship-ready: No.
 
 # 中文
@@ -41,5 +42,6 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
   --tests by.radioegor146.CodegenModeTest
 ```
 
-已准入：是——仅限独立的 `float` 参数 `NEW`。  
+已准入：是——仅限独立的 `float` 参数 `NEW`。
+
 可发布：否。
