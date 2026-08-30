@@ -88,7 +88,8 @@ The constructor split now covers these related prefix shapes:
   a double argument, whose leaves are declared double-argument loads, a prefix
   extra-local `DLOAD` with one dominating `DSTORE` copy of a declared
   double-argument load, `DCONST_0`, `DCONST_1`, `LDC` of `Double`, or one
-  `DNEG` over a direct declared double-argument load;
+  `DNEG` over a direct declared double-argument load or its proven prefix
+  extra-local copy;
   a prefix extra-local `ILOAD` with one dominating `ISTORE` copy of a declared
   int-family argument load; int-family constants; or one `INEG` over a direct
   declared int-family argument load,
@@ -246,13 +247,14 @@ One additional family is reduced to that same shared-join form:
   declared-argument `DLOAD`, a prefix extra-local `DLOAD` with exactly one
   dominating `DSTORE` directly fed by a matching declared-argument `DLOAD`,
   `DCONST_0`, `DCONST_1`, or `LDC` of `Double`, or one `DNEG` whose sole
-  operand is a matching declared-argument `DLOAD`.
+  operand is a matching declared-argument `DLOAD` or its proven prefix
+  extra-local copy.
   This proof has its own eight-level binary budget, which `DNEG` does not
   consume: nine-or-more nested double binaries, unproven or computed
   extra-local stores, `DNEG` of a constant, double `DNEG`, and `DNEG` of an
-  extra-local or computed value remain rejected, as do extra-local int and
-  long operands and computed reference inputs. The admitted arithmetic stays
-  in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
+  unproven extra-local or computed value remain rejected, as do extra-local
+  int and long operands and computed reference inputs. The admitted arithmetic
+  stays in the retained bytecode prefix, preserving JVM divide-by-zero, NaN,
   signed-zero, negate, and other double semantics without reproducing double
   arithmetic in C++.
 - A receiver-state CFG analysis proves that each call consumes the original
@@ -966,9 +968,18 @@ Synthetic bytecode unit tests in
   three `DADD`s remain in the retained bytecode prefix, the rewrite uses one
   hidden bridge, rewritten classes verify, and the complete CMake/g++ JNI
   transform matches plain Java.
+- `admitsThreeImmediateReturnsWithExtraLocalDoubleDnegChainInputs`,
+  `rewrittenThreeImmediateExtraLocalDoubleDnegSuperReturnsPassJvmVerification`,
+  and
+  `threeImmediateExtraLocalDoubleDnegSuperReturnsCompileAndRunWithJavaParity`
+  admit one `DNEG` whose sole operand is that proven prefix extra-local
+  `DLOAD`. The prefix copy and all three negations remain in retained
+  bytecode, the rewrite uses one hidden bridge, rewritten classes verify, and
+  the complete CMake/g++ JNI transform matches plain Java.
 - `rejectsUnprovenDoubleComputedChainInputsBeforeMutation` keeps double
   binaries at nine-or-more levels, computed extra-local stores, and unsafe
-  `DNEG` forms fail-closed without constructor or hidden-method mutation.
+  `DNEG` forms (constant, double negate, and computed operands) fail-closed
+  without constructor or hidden-method mutation.
   Cross-carrier extra-local int and long operands and computed reference inputs
   remain outside the double proof. This does not authorize changing the default
   compiler path.

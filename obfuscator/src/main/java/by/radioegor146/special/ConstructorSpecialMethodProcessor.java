@@ -2779,7 +2779,7 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     /**
      * Proves one double leaf: a declared DLOAD, one proven prefix copy of a
      * declared DLOAD, DCONST_0/1, an LDC whose constant is a Double, or one
-     * DNEG over a direct declared DLOAD.
+     * DNEG over a direct declared DLOAD or its proven prefix copy.
      */
     private static Integer previousProvenDoubleChainLeaf(
             MethodNode constructor, int inputIndex,
@@ -2806,10 +2806,16 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
         }
         int operandIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
-        if (operandIndex < 0
-                || !isDirectDeclaredArgumentLoad(
-                constructor.instructions.get(operandIndex),
-                Type.DOUBLE_TYPE, declaredArguments)) {
+        if (operandIndex < 0) {
+            return null;
+        }
+        AbstractInsnNode operand =
+                constructor.instructions.get(operandIndex);
+        if (!isDirectDeclaredArgumentLoad(
+                operand, Type.DOUBLE_TYPE, declaredArguments)
+                && (operand.getOpcode() != Opcodes.DLOAD
+                || !prefixDoubleCopies.contains(
+                ((VarInsnNode) operand).var))) {
             return null;
         }
         return previousExecutableIndex(constructor, operandIndex - 1);
