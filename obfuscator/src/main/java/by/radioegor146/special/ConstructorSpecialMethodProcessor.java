@@ -2282,7 +2282,8 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
             return previousExecutableIndex(constructor, inputIndex - 1);
         }
         Integer beforeNew = previousProvenNewChainInput(
-                constructor, inputIndex, expected);
+                constructor, inputIndex, expected, declaredArguments,
+                prefixArrayCopies, prefixIntCopies);
         if (beforeNew != null) {
             return beforeNew;
         }
@@ -2326,28 +2327,49 @@ public final class ConstructorSpecialMethodProcessor implements SpecialMethodPro
     }
 
     /**
-     * Proves the isolated retained-prefix allocation
-     * {@code NEW owner; DUP; INVOKESPECIAL owner.<init>()V}. Requiring the
-     * exact adjacent no-argument constructor call prevents an uninitialized
-     * reference or a wider allocation expression from becoming a chain
-     * input. The allocated reference descriptor must exactly match the chain
-     * argument descriptor.
+     * Proves an isolated retained-prefix allocation with either no initializer
+     * argument or exactly one single-instruction proven int-family leaf. The
+     * allocated reference descriptor must exactly match the chain argument
+     * descriptor. Wider or computed initializer inputs fail closed.
      */
     private static Integer previousProvenNewChainInput(
-            MethodNode constructor, int inputIndex, Type expected) {
+            MethodNode constructor, int inputIndex, Type expected,
+            Map<Integer, Type> declaredArguments,
+            Map<Integer, Integer> prefixArrayCopies,
+            Set<Integer> prefixIntCopies) {
         AbstractInsnNode input = constructor.instructions.get(inputIndex);
         if (!(input instanceof MethodInsnNode)
                 || input.getOpcode() != Opcodes.INVOKESPECIAL) {
             return null;
         }
         MethodInsnNode initializer = (MethodInsnNode) input;
+        Type[] initializerArguments =
+                Type.getArgumentTypes(initializer.desc);
         if (!"<init>".equals(initializer.name)
-                || !"()V".equals(initializer.desc)
+                || !Type.VOID_TYPE.equals(
+                Type.getReturnType(initializer.desc))
+                || initializerArguments.length > 1
                 || initializer.itf) {
             return null;
         }
         int duplicateIndex =
                 previousExecutableIndex(constructor, inputIndex - 1);
+        if (initializerArguments.length == 1) {
+            if (!isIntFamily(initializerArguments[0])) {
+                return null;
+            }
+            int beforeSingleArgument =
+                    previousExecutableIndex(
+                            constructor, duplicateIndex - 1);
+            Integer beforeArgument = previousProvenIntChainLeaf(
+                    constructor, duplicateIndex, declaredArguments,
+                    prefixArrayCopies, prefixIntCopies);
+            if (beforeArgument == null
+                    || beforeArgument != beforeSingleArgument) {
+                return null;
+            }
+            duplicateIndex = beforeArgument;
+        }
         if (duplicateIndex < 0
                 || constructor.instructions.get(duplicateIndex).getOpcode()
                 != Opcodes.DUP) {

@@ -113,8 +113,10 @@ The constructor split now covers these related prefix shapes:
   object argument or one dominating prefix extra-local `ALOAD`/`ASTORE` copy
   of that argument, `owner` is exactly the declared source class, and `desc`
   has the same JVM invocation carrier as the call argument; one isolated
-  `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf whose allocated
-  reference descriptor exactly matches the call argument descriptor; plus `LALOAD`,
+  `NEW owner; DUP; [arg;] INVOKESPECIAL owner.<init>([X])V` leaf whose
+  allocated reference descriptor exactly matches the call argument descriptor,
+  where the optional sole `X` is int-family and `arg` is one
+  single-instruction proven int-family leaf; plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
   arguments or one dominating prefix extra-local `ALOAD`/`ASTORE` copy, at
   int-family constant indexes or at one single-instruction declared or
@@ -248,14 +250,17 @@ One additional family is reduced to that same shared-join form:
   owners or carriers, and `GETSTATIC` remain rejected. The receiver load and
   field read stay in the retained bytecode prefix, so JVM null checks and
   field-access semantics are unchanged.
-- A reference call argument may instead be one isolated
-  `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf. The three executable
-  instructions must be adjacent, the constructor owner must exactly match the
-  allocated class, the constructor descriptor must be exactly `()V`, and the
-  allocated reference descriptor must exactly match the call parameter.
-  The complete sequence stays in the retained JVM prefix. Constructor
-  arguments, missing or non-adjacent `DUP`/initialization, type mismatches, and
-  every array-allocation opcode remain rejected.
+- A reference call argument may instead be one isolated allocation leaf:
+  `NEW owner; DUP; INVOKESPECIAL owner.<init>()V`, or
+  `NEW owner; DUP; arg; INVOKESPECIAL owner.<init>(X)V`. In the second form,
+  `X` must be an int-family carrier and `arg` must be exactly one executable
+  instruction accepted by the existing int-family leaf proof: a constant, a
+  declared-argument `ILOAD`, or a proven prefix-copy `ILOAD`. The constructor
+  owner must exactly match the allocated class and the allocated reference
+  descriptor must exactly match the call parameter. The complete sequence
+  stays in the retained JVM prefix. Missing `DUP`, two or more initializer
+  arguments, computed initializer inputs (including `INEG`), unproven inputs,
+  type mismatches, and every array-allocation opcode remain rejected.
 - A long call argument may instead have at most sixteen levels of `LADD`, `LSUB`,
   `LMUL`, `LDIV`, `LREM`, `LAND`, `LOR`, or `LXOR`, recursively proving both
   long operands, or `LSHL`, `LSHR`, or `LUSHR`, recursively proving the long
@@ -392,7 +397,7 @@ non-array or opcode-mismatched declared locals, prior array-store mutations,
 unlisted primitive-result array loads, `GETFIELD` on local 0, an unproven or
 overwritten extra local, a copy of local 0 or an array, a computed object, an
 overwritten declared argument, an owner-incompatible declared argument, or
-with a mismatched field carrier, `GETSTATIC`, non-isolated or
+with a mismatched field carrier, `GETSTATIC`, non-isolated or unsupported
 argument-taking `NEW`, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`, and other
 unlisted reference computations, int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
@@ -1555,17 +1560,29 @@ Synthetic bytecode unit tests in
   isolated `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` reference leaf. All
   three copies remain in retained JVM bytecode, the rewrite uses one hidden
   bridge, rewritten classes verify, and the CMake/g++ JNI transform matches
-  plain Java. `rejectsUnprovenNewChainInputsBeforeMutation` covers an
-  uninitialized allocation, a constructor argument, `NEWARRAY`, `ANEWARRAY`,
-  `MULTIANEWARRAY`, and a descriptor-mismatched allocation while preserving
-  every constructor instruction object, generated buffer, hidden-method
-  inventory, and the singular `MethodContext.proxyMethod`.
+  plain Java.
+- `admitsThreeImmediateReturnsWithNewOneArgChainInputs`,
+  `rewrittenThreeImmediateNewOneArgChainInputsPassJvmVerification`, and
+  `threeImmediateNewOneArgChainInputsCompileAndRunWithJavaParity` extend that
+  leaf to the isolated
+  `NEW StringBuilder; DUP; ICONST_1; INVOKESPECIAL StringBuilder.<init>(I)V`
+  form. All four instructions stay in each retained JVM prefix, the native
+  body contains neither that `NEW` nor its `INVOKESPECIAL`, the rewrite keeps
+  one hidden bridge and singular `MethodContext.proxyMethod`, and selectors
+  `7`, `-7`, and `0` preserve plain-Java/CMake/g++ JNI parity under
+  `-Xverify:all -Xcheck:jni`.
+- `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
+  allocation, missing `DUP`, two initializer arguments, computed and
+  `GETSTATIC` initializer inputs, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`,
+  and a descriptor-mismatched allocation while preserving every constructor
+  instruction object, generated buffer, hidden-method inventory, and the
+  singular `MethodContext.proxyMethod`.
 - `unprovenNewChainInputShapesPassJava8JvmVerification` loads the untouched
-  classfile-52 argument-taking allocation, exact-type-conservative mismatch,
-  and all three array-allocation fixtures, then constructs all three ordinary
-  paths. These remain conservative rejects rather than admissions. The raw
-  uninitialized-reference fixture remains rejected but is inherently not
-  verifier-valid.
+  classfile-52 two-argument, computed-argument, `GETSTATIC`-argument,
+  exact-type-conservative mismatch, and all three array-allocation fixtures,
+  then constructs all three ordinary paths. These remain conservative rejects
+  rather than admissions. The raw uninitialized-reference and missing-`DUP`
+  fixtures remain rejected but are inherently not verifier-valid.
 - Three-call negatives reject direct extra-local inputs, every admitted
   arithmetic, bitwise, or shift binary opcode using an extra local, a
   seventeen-level nested binary input,
