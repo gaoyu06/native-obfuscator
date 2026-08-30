@@ -110,8 +110,9 @@ The constructor split now covers these related prefix shapes:
   declared immediate component
   descriptor exactly matches the call argument descriptor); one isolated
   `ALOAD n; GETFIELD owner.name:desc` leaf where `n` is an unchanged declared
-  object argument, `owner` is exactly that declared class, and `desc` has the
-  same JVM invocation carrier as the call argument; one isolated
+  object argument or one dominating prefix extra-local `ALOAD`/`ASTORE` copy
+  of that argument, `owner` is exactly the declared source class, and `desc`
+  has the same JVM invocation carrier as the call argument; one isolated
   `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf whose allocated
   reference descriptor exactly matches the call argument descriptor; plus `LALOAD`,
   `FALOAD`, and `DALOAD` leaves from unchanged declared `[J`, `[F`, and `[D`
@@ -239,12 +240,14 @@ One additional family is reduced to that same shared-join form:
   prefix, preserving JVM divide-by-zero and signed-overflow behavior.
 - A call argument of any JVM carrier may instead be one isolated
   `ALOAD n; GETFIELD owner.name:desc` leaf. Local `n` must be a declared object
-  constructor argument other than local 0, the declared class must exactly
-  equal `owner`, no overlapping store to `n` may precede the field read, and
-  `desc` must have the same invocation carrier as the call parameter.
-  Extra-local, overwritten, computed, or `this` receivers remain rejected.
-  The receiver load and field read stay in the retained bytecode prefix, so
-  JVM null checks and field-access semantics are unchanged.
+  constructor argument other than local 0 or an extra local with exactly one
+  dominating prefix `ASTORE` directly fed by `ALOAD` of that argument. The
+  declared source must remain unchanged, its class must exactly equal `owner`,
+  and `desc` must have the same invocation carrier as the call parameter.
+  Copies of local 0 or arrays, overwritten or computed receivers, mismatched
+  owners or carriers, and `GETSTATIC` remain rejected. The receiver load and
+  field read stay in the retained bytecode prefix, so JVM null checks and
+  field-access semantics are unchanged.
 - A reference call argument may instead be one isolated
   `NEW owner; DUP; INVOKESPECIAL owner.<init>()V` leaf. The three executable
   instructions must be adjacent, the constructor owner must exactly match the
@@ -386,9 +389,10 @@ normalizing the suffixes to one copied join:
 Unproven extra-local or aliased chain inputs, array loads from computed or
 reassigned sources, computed, negated, or unproven extra-local indexes,
 non-array or opcode-mismatched declared locals, prior array-store mutations,
-unlisted primitive-result array loads, `GETFIELD` on local 0, an extra local,
-a computed object, an overwritten declared argument, an owner-incompatible
-declared argument, or with a mismatched field carrier, non-isolated or
+unlisted primitive-result array loads, `GETFIELD` on local 0, an unproven or
+overwritten extra local, a copy of local 0 or an array, a computed object, an
+overwritten declared argument, an owner-incompatible declared argument, or
+with a mismatched field carrier, `GETSTATIC`, non-isolated or
 argument-taking `NEW`, `NEWARRAY`, `ANEWARRAY`, `MULTIANEWARRAY`, and other
 unlisted reference computations, int-family binary expression
 trees deeper than sixteen levels, long binary expression trees deeper than
