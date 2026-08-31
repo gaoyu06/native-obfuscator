@@ -2,12 +2,12 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
-- Measurement commit: `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
+- Measured compiler base (merge-base with `origin/master`): `1db7af56ee6fc787977efbd2974ce070bc71a8da`
+- Measurement commit: `1db7af56ee6fc787977efbd2974ce070bc71a8da`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
-- This is the [#387](https://github.com/gaoyu06/native-obfuscator/pull/387) leftover-docs tree at `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`: post-[#386](https://github.com/gaoyu06/native-obfuscator/pull/386) first-plus-second-plus-third five-argument `GregorianCalendar` `NEW` extra-local `int` leftover-docs plus the #387 inventory leftover-docs.
-- This measurement supersedes [#387](https://github.com/gaoyu06/native-obfuscator/pull/387)'s measurement of the [#385](https://github.com/gaoyu06/native-obfuscator/pull/385) leftover-docs tree at `48f5ab56659ca04101478963ab83aff7a0003679`.
-- Latest compiler parent XML is **[#386](https://github.com/gaoyu06/native-obfuscator/pull/386) (671)** (`IrCompilerTest` 664 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the [#389](https://github.com/gaoyu06/native-obfuscator/pull/389) leftover-docs tree at `1db7af56ee6fc787977efbd2974ce070bc71a8da`: post-[#388](https://github.com/gaoyu06/native-obfuscator/pull/388) first-plus-second-plus-fourth five-argument `GregorianCalendar` `NEW` extra-local `int` leftover-docs plus the #389 inventory leftover-docs.
+- This measurement supersedes [#389](https://github.com/gaoyu06/native-obfuscator/pull/389)'s measurement of the [#387](https://github.com/gaoyu06/native-obfuscator/pull/387) leftover-docs tree at `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`.
+- Latest compiler parent XML is **[#388](https://github.com/gaoyu06/native-obfuscator/pull/388) (674)** (`IrCompilerTest` 667 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
