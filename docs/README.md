@@ -11,7 +11,7 @@ with an older brief.
 | Document | Language | What it is |
 | --- | --- | --- |
 | [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Active goal: IR-complete codegen, then delete legacy. |
-| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#368. Claims that are **not** allowed. |
+| [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#369. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
 | [architecture/production-roadmap.md](architecture/production-roadmap.md) | EN | Longer-term production plan. The “evidence from master @ e7ca4c8” section is historical; see the preface. |
@@ -82,7 +82,7 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 | [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + legacy + IR) |
 | [benchmarks/results-ir-vs-legacy-phase19.md](benchmarks/results-ir-vs-legacy-phase19.md) | Latest three-mode bench (all three kernels on IR; one VM). Fable accept-with-nits: [reviews/bench-ir-phase19-fable.md](reviews/bench-ir-phase19-fable.md) |
 | [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Pre-phase-19 three-mode bench; only `string-concat-hash` stayed fully IR |
-| [benchmarks/ir-leftover-inventory.md](benchmarks/ir-leftover-inventory.md) | Post-#366 admission inventory (#367; ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21). Not coverage-complete |
+| [benchmarks/ir-leftover-inventory.md](benchmarks/ir-leftover-inventory.md) | Post-#368 admission inventory (#369; ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21). Not coverage-complete |
 | [benchmarks/ir-admission-phase18-corpus.md](benchmarks/ir-admission-phase18-corpus.md) | Latest admission tables (ClassicTest 108/108 IR; JDK 17 36/36 admit; JDK 21 extra 36/38) |
 | [benchmarks/results-local.md](benchmarks/results-local.md) | Early local JVM vs JNI numbers |
 | [benchmarks/results-ir-vs-legacy.md](benchmarks/results-ir-vs-legacy.md) | IR vs legacy vs JVM (local) |
