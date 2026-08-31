@@ -12,7 +12,7 @@
 ### Verification
 
 - Runtime verification: `threeImmediateNewExtraLocalFiveSecondFourthFifthArgChainInputsCompileAndRunWithJavaParity`
-- Child-local XML: pending local run.
+- Child-local XML: 695 tests (`IrCompilerTest` 688 + `CodegenModeTest` 7), 0 failed / 0 errors / 0 skipped.
 - Parent XML: pending parent re-run.
 
 Ship-ready: **No**.
@@ -29,7 +29,7 @@ Ship-ready: **No**.
 ### 验证
 
 - 运行时验证：`threeImmediateNewExtraLocalFiveSecondFourthFifthArgChainInputsCompileAndRunWithJavaParity`
-- 子分支本地 XML：等待本地运行。
+- 子分支本地 XML：695 项测试（`IrCompilerTest` 688 + `CodegenModeTest` 7），0 失败 / 0 错误 / 0 跳过。
 - 父分支 XML：等待父代理重新运行。
 
 可发布：**否**。
