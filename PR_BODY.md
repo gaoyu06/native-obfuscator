@@ -17,7 +17,7 @@
 - Processor changed: No.
 - Ship-ready: No.
 - Defaults unchanged.
-- Child XML: pending local verification.
+- Child XML: 743 tests, 0 failures, 0 errors, 0 skipped (`IrCompilerTest` 736 + `CodegenModeTest` 7).
 
 ### Verification
 
@@ -44,7 +44,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 - 处理器已更改：否。
 - 可发布：否。
 - 默认设置未更改。
-- 子任务 XML：等待本地验证。
+- 子任务 XML：743 项测试，0 项失败、0 项错误、0 项跳过（`IrCompilerTest` 736 + `CodegenModeTest` 7）。
 
 ### 验证
 
