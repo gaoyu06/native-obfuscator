@@ -12,6 +12,8 @@ This fixture-only change admits the shape
 - Chain descriptor: `(Ljava/util/GregorianCalendar;)V`.
 - Processor changed: No.
 - Ship-ready: No.
+- Rebased onto leftover-docs #416 (`c0cff1a001daf40f64d7279967f7677337185a42`).
+- Latest compiler parent XML until this parent re-run: #415 (713).
 - Expected parent XML after leftover-docs: 716 tests (713 + 3).
 - The `--codegen`, `--ir-lower`, and `--backend` defaults are unchanged.
 - This is fixture admission coverage, not a JDK support badge.
@@ -28,6 +30,8 @@ This fixture-only change admits the shape
 - 链式调用描述符：`(Ljava/util/GregorianCalendar;)V`。
 - 是否修改处理器：否。
 - 是否可发布：否。
+- 已变基到 leftover-docs #416（`c0cff1a001daf40f64d7279967f7677337185a42`）。
+- 本次父分支复跑之前的最新编译器父分支 XML：#415（713）。
 - leftover-docs 之后预期父分支 XML：716 个测试（713 + 3）。
 - `--codegen`、`--ir-lower` 和 `--backend` 的默认值均未改变。
 - 这是测试夹具接纳覆盖，不代表 JDK 支持徽章。
