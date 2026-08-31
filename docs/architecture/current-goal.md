@@ -53,7 +53,7 @@ The goal is complete only when all of the following are true:
 ## Sequencing / 顺序
 
 1. **Fill IR admission gaps** (current work). Known leftovers on
-   `master` after #380 (extra-local int as the third and fourth five-arg GregorianCalendar NEW args)
+   `master` after #381 (leftover inventory remasurement after leftover-docs #379)
    include at least: remaining
    constructor-split rejects (unproven prefix→suffix
    jumps/switches, still rejected after #261, other mixed prefix/suffix try/catch placements
@@ -78,8 +78,9 @@ The goal is complete only when all of the following are true:
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
    `jsr` / `ret` (well-formed straight-line subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
-   admission (#378 measurement on post-#377 `de3f430`) observed no
-   leftover methods; that is not a complete JVM inventory. #376 remains
+   admission (#381 measurement on leftover-docs #379 `9fa5181`) observed no
+   leftover methods; that is not a complete JVM inventory. #378 remains
+   the earlier post-#377 snapshot; #376 remains
    the earlier post-#375 snapshot; #374 remains
    the earlier post-#372 snapshot; #371 remains
    the earlier post-#370 snapshot; #369 remains
