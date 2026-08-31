@@ -1,0 +1,82 @@
+# test: admit extra-local int as the first and third six-arg NEW arguments
+
+## English
+
+### Summary
+
+- Adds fixture-only IR compiler coverage for an extra-local `int` used as the
+  first and third arguments of a six-argument `GregorianCalendar` bytecode
+  initializer.
+- Keeps `NEW; DUP; args; <init>` in the retained JVM prefix. The native
+  `(II)V` body contains only `RETURN`; the constructor uses one hidden bridge
+  and a `(Ljava/lang/Object;II)V` proxy.
+- Leaves the processor and production compiler/runtime code unchanged.
+
+### Fixture wiring
+
+- Shape: `new-constructor-extra-local-argument-six-first-third`
+- First-argument exclude list: unchanged (not excluded; emits `ILOAD 3`)
+- Second-argument `ILOAD 3` list: unchanged (emits `ICONST_2`)
+- Third-argument `ILOAD 3` list: added (emits `ILOAD 3`)
+- Fourth/fifth/sixth `ILOAD 3` lists: unchanged (emit `ICONST_4`,
+  `ICONST_5`, and `BIPUSH 6`)
+- Constructor argument count: 6
+- Chain descriptor: `(Ljava/util/GregorianCalendar;)V`
+
+### Tests
+
+- `admitsThreeImmediateReturnsWithNewExtraLocalSixFirstThirdArgChainInputs`
+- `rewrittenThreeImmediateNewExtraLocalSixFirstThirdArgChainInputsPassJvmVerification`
+- `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`
+
+### Baseline and validation
+
+- Leftover-docs baseline: [#431](https://github.com/gaoyu06/native-obfuscator/pull/431)
+  at [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c).
+- Parent XML: **737** (`IrCompilerTest` 730 + `CodegenModeTest` 7), including
+  `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`.
+- Parent re-ran 737/737 with zero failures, errors, or skips. Child XML is discarded.
+- Processor changed: **No**.
+- Ship-ready: **No**.
+- Defaults unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or
+  `--backend=cpp` override.
+
+## 中文
+
+### 摘要
+
+- 仅增加 IR 编译器测试夹具覆盖：将额外局部 `int` 用作六参数
+  `GregorianCalendar` 字节码初始化器的第一和第三个参数。
+- 完整的 `NEW; DUP; args; <init>` 保留在 JVM 前缀中。原生 `(II)V`
+  方法体仅包含 `RETURN`；构造器使用一个隐藏桥接和
+  `(Ljava/lang/Object;II)V` 代理。
+- 处理器及生产编译器/运行时代码均未修改。
+
+### 夹具接线
+
+- 形状：`new-constructor-extra-local-argument-six-first-third`
+- 第一参数排除列表：不变（未排除，发出 `ILOAD 3`）
+- 第二参数 `ILOAD 3` 列表：不变（发出 `ICONST_2`）
+- 第三参数 `ILOAD 3` 列表：已添加（发出 `ILOAD 3`）
+- 第四/第五/第六参数 `ILOAD 3` 列表：不变（分别发出 `ICONST_4`、
+  `ICONST_5` 和 `BIPUSH 6`）
+- 构造器参数数量：6
+- 链描述符：`(Ljava/util/GregorianCalendar;)V`
+
+### 测试
+
+- `admitsThreeImmediateReturnsWithNewExtraLocalSixFirstThirdArgChainInputs`
+- `rewrittenThreeImmediateNewExtraLocalSixFirstThirdArgChainInputsPassJvmVerification`
+- `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`
+
+### 基线与验证
+
+- leftover-docs 基线：[#431](https://github.com/gaoyu06/native-obfuscator/pull/431)，
+  提交为 [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c)。
+- 父任务 XML：**737**（`IrCompilerTest` 730 + `CodegenModeTest` 7），含
+  `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`。
+- 父任务重跑 737/737，失败、错误和跳过均为零。子任务 XML 作废。
+- 处理器修改：**否**。
+- 可发布：**否**。
+- 默认选项不变：未使用 `--codegen=legacy`、`--ir-lower=direct` 或
+  `--backend=cpp` 覆盖。
