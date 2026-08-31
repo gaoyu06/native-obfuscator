@@ -105,7 +105,7 @@ A longer visual walkthrough lives in
 Recorded on `master` after
 [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119)
 and the follow-up landings through
-[#436](https://github.com/gaoyu06/native-obfuscator/pull/436). Active goal:
+[#437](https://github.com/gaoyu06/native-obfuscator/pull/437). Active goal:
 [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md). Status detail:
 [`docs/architecture/project-status.md`](docs/architecture/project-status.md).
 
