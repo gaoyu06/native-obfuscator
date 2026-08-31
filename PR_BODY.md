@@ -11,7 +11,7 @@
 
 ### Baseline and status
 
-- Leftover-docs baseline: [#434](https://github.com/gaoyu06/native-obfuscator/pull/434) at `3645eb36` (`3645eb3600e23115ab46885c7450fde97cb47666`).
+- Leftover-docs baseline: [#435](https://github.com/gaoyu06/native-obfuscator/pull/435) at `b0a401aa` (`b0a401aa5ec29f7ca7c5850648521d86ba2e0115`).
 - Latest compiler parent XML until the parent re-runs: [#434](https://github.com/gaoyu06/native-obfuscator/pull/434), 740 tests (`IrCompilerTest` 733 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: 743 tests (740 + 3).
 - Processor changed: No.
@@ -38,7 +38,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 ### 基线与状态
 
-- leftover-docs 基线：[PR #434](https://github.com/gaoyu06/native-obfuscator/pull/434)，提交 `3645eb36`（`3645eb3600e23115ab46885c7450fde97cb47666`）。
+- leftover-docs 基线：[PR #435](https://github.com/gaoyu06/native-obfuscator/pull/435)，提交 `b0a401aa`（`b0a401aa5ec29f7ca7c5850648521d86ba2e0115`）。
 - 在父任务重新运行前，最新编译器父 XML 为 [PR #434](https://github.com/gaoyu06/native-obfuscator/pull/434) 的 740 项测试（`IrCompilerTest` 733 + `CodegenModeTest` 7）。
 - leftover-docs 之后预期父 XML：743 项测试（740 + 3）。
 - 处理器已更改：否。
