@@ -10,8 +10,7 @@
 ### Baseline and scope
 
 - Leftover-docs baseline: [#429](https://github.com/gaoyu06/native-obfuscator/pull/429) at `49efdedf` (`49efdedf44ad1bb112cfbc3e38aa47413642a3c5`).
-- Latest compiler parent XML until the parent re-runs: [#427](https://github.com/gaoyu06/native-obfuscator/pull/427) — **731** (`IrCompilerTest` 724 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: **734** (731 + 3).
+- Parent XML: **734** (`IrCompilerTest` 727 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalSixFirstSecondArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Defaults unchanged: no change to `--codegen=legacy`, `--ir-lower=direct`, or `--backend=cpp`.
@@ -19,7 +18,7 @@
 
 ### Local verification
 
-Child XML: **734 passed** (`IrCompilerTest` 727 + `CodegenModeTest` 7), with zero failures, errors, or skips. The parent must re-run independently.
+Parent re-ran 734/734 with zero failures, errors, or skips. Child XML is discarded.
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest
@@ -37,8 +36,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerT
 ### 基线与范围
 
 - leftover-docs 基线：[#429](https://github.com/gaoyu06/native-obfuscator/pull/429)，提交 `49efdedf`（`49efdedf44ad1bb112cfbc3e38aa47413642a3c5`）。
-- 在父任务重新运行之前，最新编译器父 XML 为 [#427](https://github.com/gaoyu06/native-obfuscator/pull/427) 的 **731**（`IrCompilerTest` 724 + `CodegenModeTest` 7）。
-- leftover-docs 之后预期父 XML：**734**（731 + 3）。
+- 父任务 XML：**734**（`IrCompilerTest` 727 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalSixFirstSecondArgChainInputsCompileAndRunWithJavaParity`。
 - Processor changed：**No**。
 - Ship-ready：**No**。
 - 默认值保持不变：未改动 `--codegen=legacy`、`--ir-lower=direct` 或 `--backend=cpp`。
@@ -46,7 +44,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerT
 
 ### 本地验证
 
-子任务 XML：**734 项通过**（`IrCompilerTest` 727 + `CodegenModeTest` 7），失败、错误和跳过均为零。父任务仍需独立重新运行。
+父任务重跑 734/734，失败、错误和跳过均为零。子任务 XML 作废。
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest
