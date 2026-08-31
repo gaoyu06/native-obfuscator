@@ -2,12 +2,12 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `48f5ab56659ca04101478963ab83aff7a0003679`
-- Measurement commit: `48f5ab56659ca04101478963ab83aff7a0003679`
+- Measured compiler base (merge-base with `origin/master`): `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
+- Measurement commit: `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
-- This is the [#385](https://github.com/gaoyu06/native-obfuscator/pull/385) leftover-docs tree at `48f5ab56659ca04101478963ab83aff7a0003679`: post-[#384](https://github.com/gaoyu06/native-obfuscator/pull/384) fourth-and-fifth five-argument `GregorianCalendar` `NEW` extra-local `int` leftover-docs plus the #385 inventory leftover-docs.
-- This measurement supersedes [#385](https://github.com/gaoyu06/native-obfuscator/pull/385), which measured the [#383](https://github.com/gaoyu06/native-obfuscator/pull/383) leftover-docs tree at `664986503919153f072b9a2444c07a9de26efb6c`.
-- Latest compiler parent XML is **[#384](https://github.com/gaoyu06/native-obfuscator/pull/384) (668)** (`IrCompilerTest` 661 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the [#387](https://github.com/gaoyu06/native-obfuscator/pull/387) leftover-docs tree at `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`: post-[#386](https://github.com/gaoyu06/native-obfuscator/pull/386) first-plus-second-plus-third five-argument `GregorianCalendar` `NEW` extra-local `int` leftover-docs plus the #387 inventory leftover-docs.
+- This measurement supersedes [#387](https://github.com/gaoyu06/native-obfuscator/pull/387)'s measurement of the [#385](https://github.com/gaoyu06/native-obfuscator/pull/385) leftover-docs tree at `48f5ab56659ca04101478963ab83aff7a0003679`.
+- Latest compiler parent XML is **[#386](https://github.com/gaoyu06/native-obfuscator/pull/386) (671)** (`IrCompilerTest` 664 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
