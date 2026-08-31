@@ -6,7 +6,7 @@
 - Measurement SHA: `a760bc0d857f60210e649dc09af6e187487d0b2c`.
 - Merge-base with `origin/master` at measurement: `a760bc0d857f60210e649dc09af6e187487d0b2c`.
 - Supersedes #403's measurement of the leftover-docs #401 tree at `2b94f0b6` (`2b94f0b611d6b71c121bfaf363903992d8fb8a0f`).
-- Latest compiler parent XML at measurement time: **#402 (695)** (`IrCompilerTest` 688 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- Latest compiler parent XML after rebase onto leftover-docs #404 (`da8917dd`): **#404 (698)** (`IrCompilerTest` 691 + `CodegenModeTest` 7). Measured tree remains leftover-docs #403 `a760bc0d`. Parent skipped Gradle (measurement-only). This measurement adds no compiler XML.
 
 ## Joined corpus totals
 
@@ -31,7 +31,7 @@
 - 测量 SHA：`a760bc0d857f60210e649dc09af6e187487d0b2c`。
 - 测量时与 `origin/master` 的合并基点：`a760bc0d857f60210e649dc09af6e187487d0b2c`。
 - 本次重新测量取代 #403 对 leftover-docs #401 树 `2b94f0b6`（`2b94f0b611d6b71c121bfaf363903992d8fb8a0f`）的测量。
-- 测量时最新的编译器父级 XML：**#402（695）**（`IrCompilerTest` 688 + `CodegenModeTest` 7）。本次测量不增加编译器 XML。
+- rebase 到 leftover-docs #404（`da8917dd`）后最新的编译器父级 XML：**#404（698）**（`IrCompilerTest` 691 + `CodegenModeTest` 7）。测量树仍为 leftover-docs #403 `a760bc0d`。父级跳过 Gradle（仅测量）。本次测量不增加编译器 XML。
 
 ## 合并语料总计
 
