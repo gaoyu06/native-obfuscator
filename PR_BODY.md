@@ -21,10 +21,10 @@
 
 ### Status
 
-- Baseline: leftover-docs #440 at `ef6884ed` (`ef6884ed4e61d84382ec8a435b830ccf18c083bd`).
-- Latest compiler parent XML: #440, 749 tests (`IrCompilerTest` 742 + `CodegenModeTest` 7).
+- Rebased onto leftover-docs #441 at `8ce7d407` (`8ce7d4070189aed44df82d536199cc20a8cb606a`).
+- Latest compiler parent XML until this parent re-run: #440, 749 tests (`IrCompilerTest` 742 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: 752 tests (`IrCompilerTest` 745 + `CodegenModeTest` 7).
-- Child validation passed: 752 tests (`IrCompilerTest` 745 + `CodegenModeTest` 7), with 0 skipped, failures, or errors.
+- Child XML is discarded; only the parent re-run is authoritative.
 - Processor changed: No.
 - Defaults changed: No (`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain unchanged).
 - Ship-ready: No.
@@ -51,10 +51,10 @@
 
 ### 状态
 
-- 基线：leftover-docs #440，`ef6884ed`（`ef6884ed4e61d84382ec8a435b830ccf18c083bd`）。
-- 最新编译器父 XML：#440，共 749 个测试（`IrCompilerTest` 742 + `CodegenModeTest` 7）。
+- 已变基到 leftover-docs #441，`8ce7d407`（`8ce7d4070189aed44df82d536199cc20a8cb606a`）。
+- 本次父级复跑前的最新编译器父 XML：#440，共 749 个测试（`IrCompilerTest` 742 + `CodegenModeTest` 7）。
 - leftover-docs 后预期父 XML：共 752 个测试（`IrCompilerTest` 745 + `CodegenModeTest` 7）。
-- 子分支验证已通过：共 752 个测试（`IrCompilerTest` 745 + `CodegenModeTest` 7），跳过、失败和错误均为 0。
+- 子分支 XML 作废；以父级复跑为准。
 - Processor 改动：无。
 - 默认值改动：无（`--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp` 保持不变）。
 - 可发布：否。
