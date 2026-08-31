@@ -78,8 +78,9 @@ The goal is complete only when all of the following are true:
    remaining unsafe/unproven condy shapes (non-static, varargs,
    malformed, cyclic; stay reject-before-mutation), and malformed
    `jsr` / `ret` (well-formed straight-line subroutines are admitted by #241). In-tree ClassicTest / JDK fixture
-   admission (#371 measurement on post-#370 `28f3f15`) observed no
-   leftover methods; that is not a complete JVM inventory. #369 remains
+   admission (#374 measurement on post-#372 `80ed2e0`) observed no
+   leftover methods; that is not a complete JVM inventory. #371 remains
+   the earlier post-#370 snapshot; #369 remains
    the earlier post-#368 snapshot; #367 remains
    the earlier post-#366 snapshot; #365 remains
    the earlier post-#364 snapshot; #363 remains
