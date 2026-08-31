@@ -8,7 +8,7 @@
 
 ## Baseline and test accounting
 
-- Baseline leftover-docs: #438 at `a158191a` (`a158191a3f3f5bcf77b5f01dbd59b022fd3c1cf1`).
+- Baseline leftover-docs: #439 at `40d2faa1` (`40d2faa12f19da2d31ec1d565aff96a5df0c6a3a`).
 - Latest compiler parent XML: #438 (746), comprising `IrCompilerTest` 739 and `CodegenModeTest` 7.
 - Expected parent XML after these three tests: 749, comprising `IrCompilerTest` 742 and `CodegenModeTest` 7.
 
@@ -36,7 +36,7 @@ Defaults changed: No (`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cp
 
 ## 基线与测试计数
 
-- leftover-docs 基线：#438，提交 `a158191a`（`a158191a3f3f5bcf77b5f01dbd59b022fd3c1cf1`）。
+- leftover-docs 基线：#439，提交 `40d2faa1`（`40d2faa12f19da2d31ec1d565aff96a5df0c6a3a`）。
 - 最新编译器父级 XML：#438（746），其中 `IrCompilerTest` 739、`CodegenModeTest` 7。
 - 新增三个测试后的预期父级 XML：749，其中 `IrCompilerTest` 742、`CodegenModeTest` 7。
 
