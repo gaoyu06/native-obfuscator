@@ -24,9 +24,8 @@
 
 ### Validation and status
 
-- Latest compiler parent XML until the parent reruns: [#432](https://github.com/gaoyu06/native-obfuscator/pull/432), 737 tests (`IrCompilerTest` 730 + `CodegenModeTest` 7).
-- Expected parent XML after this leftover-docs child: 740 tests (737 + 3).
-- Child XML: 740 tests (`IrCompilerTest` 733 + `CodegenModeTest` 7), with 0 skipped, 0 failures, and 0 errors. The parent will discard this child-only total.
+- Parent XML: **740** (`IrCompilerTest` 733 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalSixFirstFourthArgChainInputsCompileAndRunWithJavaParity`.
+- Parent re-ran 740/740 with zero failures, errors, or skips. Child XML is discarded.
 - Local verification passed: `CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`.
 - Defaults unchanged: IR code generation/lowering/backend defaults were not flipped.
 - Ship-ready: No.
@@ -56,9 +55,8 @@
 
 ### 验证与状态
 
-- 父分支重新运行前的最新编译器 XML：[＃432](https://github.com/gaoyu06/native-obfuscator/pull/432)，共 737 项（`IrCompilerTest` 730 + `CodegenModeTest` 7）。
-- 此 leftover-docs 子项合入后的预期父 XML：740 项（737 + 3）。
-- 子分支 XML：共 740 项（`IrCompilerTest` 733 + `CodegenModeTest` 7），0 项跳过、0 项失败、0 项错误。父分支将丢弃此子分支专用总数。
+- 父任务 XML：**740**（`IrCompilerTest` 733 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalSixFirstFourthArgChainInputsCompileAndRunWithJavaParity`。
+- 父任务重跑 740/740，失败、错误和跳过均为零。子任务 XML 作废。
 - 本地验证通过：`CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`。
 - 默认值未改变：未切换 IR 代码生成、lowering 或后端默认值。
 - 可发布：否。
