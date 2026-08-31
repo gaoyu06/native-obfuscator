@@ -18,13 +18,10 @@ Wiring checklist:
 Rebased onto leftover-docs #445 at `610945ba`
 (`610945bac1be76d021f8c3f4918bff1cb2df829c`).
 
-Latest compiler parent XML until this parent re-run: **#444 (755)**
-(`IrCompilerTest` 748 + `CodegenModeTest` 7).
+Parent XML: **758** (`IrCompilerTest` 751 + `CodegenModeTest` 7), 0
+failures/errors/skipped.
 
-Expected parent XML after leftover-docs: **758**
-(`IrCompilerTest` 751 + `CodegenModeTest` 7).
-
-Child XML is discarded; only the parent re-run is authoritative.
+Parent re-ran `threeImmediateNewExtraLocalSixSecondSixthArgChainInputsCompileAndRunWithJavaParity`.
 
 - Processor changed: No
 - Defaults unchanged: `--codegen=legacy`, `--ir-lower=direct`, and
@@ -50,13 +47,9 @@ Child XML is discarded; only the parent re-run is authoritative.
 已变基到 leftover-docs #445，`610945ba`
 （`610945bac1be76d021f8c3f4918bff1cb2df829c`）。
 
-本次父级复跑前的最新编译器父 XML：**#444（755）**
-（`IrCompilerTest` 748 + `CodegenModeTest` 7）。
+父级 XML：**758**（`IrCompilerTest` 751 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
 
-leftover-docs 之后预期的父分支 XML：**758**
-（`IrCompilerTest` 751 + `CodegenModeTest` 7）。
-
-子分支 XML 作废；以父级复跑为准。
+父级复跑包含 `threeImmediateNewExtraLocalSixSecondSixthArgChainInputsCompileAndRunWithJavaParity`。
 
 - Processor changed: No（处理器未更改）
 - 默认值未更改：`--codegen=legacy`、`--ir-lower=direct` 和
