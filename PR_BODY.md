@@ -10,12 +10,11 @@
 ## Scope and baseline
 
 - Fixture-only; processor changed: **No**.
+- Product defaults (`--codegen`, `--ir-lower`, and `--backend`) unchanged
 - Rebased onto leftover-docs #420 (`a8616b8c7c372aea80a11034fe85ccedaebb5f5d`).
-- Latest compiler parent XML until this parent re-run: #419 (719) (`IrCompilerTest` 712 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: **722** tests (719 + 3).
-- Ship-ready: **No**.
-- Default code generation remains unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or `--backend=cpp` switch.
-- This fixture admission is not a JDK support badge and does not mark the production goal complete.
+- Parent re-ran **722/722** (`IrCompilerTest` 715 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalSixFourthArgChainInputsCompileAndRunWithJavaParity`. Zero failures/errors/skips.
+- Ship-ready: **No**
+- This is fixture admission coverage, not a JDK support badge.
 
 ## Coverage
 
@@ -35,12 +34,11 @@
 ## 范围与基线
 
 - 仅修改测试夹具；处理器变更：**否**。
-- 已变基到 leftover-docs #420（`a8616b8c7c372aea80a11034fe85ccedaebb5f5d`）。
-- 本次父分支复跑之前的最新编译器父分支 XML：#419（719）（`IrCompilerTest` 712 + `CodegenModeTest` 7）。
-- 合入 leftover-docs 后预期父 XML：**722** 个测试（719 + 3）。
-- 可发布：**否**。
-- 默认代码生成配置不变：未切换 `--codegen=legacy`、`--ir-lower=direct` 或 `--backend=cpp`。
-- 此夹具准入不代表 JDK 支持徽章，也不表示生产目标已完成。
+- 产品默认值（`--codegen`、`--ir-lower` 和 `--backend`）保持不变
+- 已 rebase 到 leftover-docs #420（`a8616b8c7c372aea80a11034fe85ccedaebb5f5d`）。
+- 父级重跑 **722/722**（`IrCompilerTest` 715 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalSixFourthArgChainInputsCompileAndRunWithJavaParity`。失败/错误/跳过均为零。
+- 可发布状态：**否**
+- 此项仅为测试夹具准入覆盖，不代表 JDK 支持徽章。
 
 ## 覆盖范围
 
