@@ -10,7 +10,7 @@
 
 - Measured compiler base / merge-base: `664986503919153f072b9a2444c07a9de26efb6c`
 - Measurement commit: `664986503919153f072b9a2444c07a9de26efb6c`
-- Latest compiler parent XML: **[#382](https://github.com/gaoyu06/native-obfuscator/pull/382) (665)** (`IrCompilerTest` 658 + `CodegenModeTest` 7)
+- Latest compiler parent XML: **[#384](https://github.com/gaoyu06/native-obfuscator/pull/384) (668)** (`IrCompilerTest` 661 + `CodegenModeTest` 7). The branch was rebased onto leftover-docs #384 (`2c0cf70d227bc41a1db5b6e8f3b1a600a59e9da9`); the measured tree remains leftover-docs #383 `664986503919153f072b9a2444c07a9de26efb6c`.
 - This measurement adds no compiler XML.
 
 | Corpus | Inventory | IR | Legacy fallback | Constructor left in Java | Missing |
@@ -20,7 +20,7 @@
 | `jdk21` | 47 | 47 | 0 | 0 | 0 |
 | `jdk25` | 21 | 21 | 0 | 0 | 0 |
 
-Zero measured leftovers is not coverage-complete, is not a JDK support badge, and does not authorize a default flip. Defaults remain `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`.
+Zero measured leftovers is not coverage-complete, is not a JDK support badge, and does not authorize a default flip. Defaults remain `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`. Parent skipped Gradle (measurement-only).
 
 - Processor changed: **No**
 - Admitted: **No**
@@ -38,7 +38,7 @@ Zero measured leftovers is not coverage-complete, is not a JDK support badge, an
 
 - 编译器基线 / merge-base：`664986503919153f072b9a2444c07a9de26efb6c`
 - 测量提交：`664986503919153f072b9a2444c07a9de26efb6c`
-- 最新编译器父级 XML：**[#382](https://github.com/gaoyu06/native-obfuscator/pull/382) (665)**（`IrCompilerTest` 658 + `CodegenModeTest` 7）
+- 最新编译器父级 XML：**[#384](https://github.com/gaoyu06/native-obfuscator/pull/384) (668)**（`IrCompilerTest` 661 + `CodegenModeTest` 7）。分支已 rebase 到 leftover-docs #384（`2c0cf70d227bc41a1db5b6e8f3b1a600a59e9da9`）；实测树仍为 leftover-docs #383 `664986503919153f072b9a2444c07a9de26efb6c`。
 - 本次测量不新增编译器 XML。
 
 | 语料库 | 清单方法数 | IR | 回退到 legacy | 构造器保留在 Java | 缺失 |
@@ -48,7 +48,7 @@ Zero measured leftovers is not coverage-complete, is not a JDK support badge, an
 | `jdk21` | 47 | 47 | 0 | 0 | 0 |
 | `jdk25` | 21 | 21 | 0 | 0 | 0 |
 
-测得剩余项为零并不代表覆盖完整，不是 JDK 支持标志，也不授权切换默认值。默认值仍为 `--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。
+测得剩余项为零并不代表覆盖完整，不是 JDK 支持标志，也不授权切换默认值。默认值仍为 `--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。父任务跳过 Gradle（仅测量）。
 
 - Processor changed：**No**
 - Admitted：**No**
