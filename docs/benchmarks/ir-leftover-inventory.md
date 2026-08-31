@@ -1,12 +1,12 @@
-# IR leftover inventory on leftover-docs #440
+# IR leftover inventory on leftover-docs #442
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): leftover-docs [#440](https://github.com/gaoyu06/native-obfuscator/pull/440) at `ef6884ed4e61d84382ec8a435b830ccf18c083bd`.
-- Measurement commit: leftover-docs [#440](https://github.com/gaoyu06/native-obfuscator/pull/440) at `ef6884ed4e61d84382ec8a435b830ccf18c083bd`.
-- This is the [#440](https://github.com/gaoyu06/native-obfuscator/pull/440) leftover-docs tree.
-- This remeasurement supersedes [#439](https://github.com/gaoyu06/native-obfuscator/pull/439)'s measurement of the [#438](https://github.com/gaoyu06/native-obfuscator/pull/438) leftover-docs tree at `a158191a` (`a158191a3f3f5bcf77b5f01dbd59b022fd3c1cf1`).
-- Latest compiler parent XML at measurement time is **[#440](https://github.com/gaoyu06/native-obfuscator/pull/440) (749)** (`IrCompilerTest` 742 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- Measured compiler base (merge-base with `origin/master`): leftover-docs [#442](https://github.com/gaoyu06/native-obfuscator/pull/442) at `8d324696fcd9e5ffd28b176e508aff09869d9f44`.
+- Measurement commit: leftover-docs [#442](https://github.com/gaoyu06/native-obfuscator/pull/442) at `8d324696fcd9e5ffd28b176e508aff09869d9f44`.
+- This is the [#442](https://github.com/gaoyu06/native-obfuscator/pull/442) leftover-docs tree.
+- This remeasurement supersedes [#441](https://github.com/gaoyu06/native-obfuscator/pull/441)'s measurement of the [#440](https://github.com/gaoyu06/native-obfuscator/pull/440) leftover-docs tree at `ef6884ed` (`ef6884ed4e61d84382ec8a435b830ccf18c083bd`).
+- Latest compiler parent XML at measurement time is **[#442](https://github.com/gaoyu06/native-obfuscator/pull/442) (752)** (`IrCompilerTest` 745 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - Processor changed: **No**.
