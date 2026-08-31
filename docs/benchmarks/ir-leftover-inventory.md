@@ -1,19 +1,18 @@
-# IR leftover inventory on post-#379 leftover-docs tree
+# IR leftover inventory on current master
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `9fa518121ee00310888c9dd752094357e494d27c`
-- Measurement commit: `9fa518121ee00310888c9dd752094357e494d27c`
-- This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
-- This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/JNI E2E claim**.
+- Measured compiler base (merge-base with `origin/master`): `109c318237a0cf25daa3c70c7bc19445f1513b91`
+- Measurement commit: `109c318237a0cf25daa3c70c7bc19445f1513b91`
+- This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
+- This is the [#381](https://github.com/gaoyu06/native-obfuscator/pull/381) leftover-docs tree at `109c318237a0cf25daa3c70c7bc19445f1513b91`: post-[#380](https://github.com/gaoyu06/native-obfuscator/pull/380) third-and-fourth five-argument `GregorianCalendar` `NEW` extra-local `int` leftover-docs plus the #381 inventory leftover-docs.
+- This measurement supersedes [#381](https://github.com/gaoyu06/native-obfuscator/pull/381), which measured the [#379](https://github.com/gaoyu06/native-obfuscator/pull/379) leftover-docs tree at `9fa518121ee00310888c9dd752094357e494d27c`.
+- Latest compiler parent XML is **[#380](https://github.com/gaoyu06/native-obfuscator/pull/380) (662)** (`IrCompilerTest` 655 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
-- This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-[#379](https://github.com/gaoyu06/native-obfuscator/pull/379) leftover-docs tree after an extra-local `int` was admitted as the **second and fifth** five-argument `GregorianCalendar` `NEW` arguments.
-- This post-#379 snapshot supersedes [#378](https://github.com/gaoyu06/native-obfuscator/pull/378) on `de3f430bd01f225bb293dccd2e7898fcf6254f51` (post-#377).
-- Latest compiler parent XML is **[#379](https://github.com/gaoyu06/native-obfuscator/pull/379) (659)** (`IrCompilerTest` 652 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
 - Ship-ready: **No**.
+- This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
 - Inventory means `javap -p -s -c` methods with a `Code:` body. Results are joined by exact `class + method + descriptor`.
 - `// IR codegen:` means IR; `falling back to legacy for this method` means `legacy-fallback`; `leaving constructor bytecode unchanged` means `constructor-left-java`.
 
