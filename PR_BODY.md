@@ -4,7 +4,7 @@
 
 ### Baseline and scope
 
-- Baseline: leftover-docs [#432](https://github.com/gaoyu06/native-obfuscator/pull/432) at `ce634292263daedd23c3086bb66784730350c54b` (`ce634292`).
+- Baseline: leftover-docs [#433](https://github.com/gaoyu06/native-obfuscator/pull/433) at `1d7a7713ef2b9938b56cb9c992d0368082bc6a08` (`1d7a7713`).
 - Adds fixture/test wiring for `new-constructor-extra-local-argument-six-first-fourth` in `IrCompilerTest`.
 - Processor changed: No. Production compiler/runtime code is unchanged.
 
@@ -36,7 +36,7 @@
 
 ### 基线与范围
 
-- 基线：leftover-docs [#432](https://github.com/gaoyu06/native-obfuscator/pull/432)，提交 `ce634292263daedd23c3086bb66784730350c54b`（`ce634292`）。
+- 基线：leftover-docs [#433](https://github.com/gaoyu06/native-obfuscator/pull/433)，提交 `1d7a7713ef2b9938b56cb9c992d0368082bc6a08`（`1d7a7713`）。
 - 在 `IrCompilerTest` 中增加 `new-constructor-extra-local-argument-six-first-fourth` 的夹具和测试接线。
 - 处理器修改：否。生产编译器和运行时代码均未修改。
 
