@@ -82,7 +82,7 @@ sequenceDiagram
 
 ## 当前状态
 
-记录于 `master`，基于 [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) 以及后续到 [#446](https://github.com/gaoyu06/native-obfuscator/pull/446) 的合入。现行目标见 [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md)，状态细节见 [`docs/architecture/project-status.md`](docs/architecture/project-status.md)。
+记录于 `master`，基于 [#118](https://github.com/gaoyu06/native-obfuscator/pull/118)/[#119](https://github.com/gaoyu06/native-obfuscator/pull/119) 以及后续到 [#447](https://github.com/gaoyu06/native-obfuscator/pull/447) 的合入。现行目标见 [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md)，状态细节见 [`docs/architecture/project-status.md`](docs/architecture/project-status.md)。
 
 | 主题 | 实际情况 |
 | --- | --- |
