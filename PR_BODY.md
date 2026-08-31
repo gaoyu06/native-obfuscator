@@ -19,7 +19,7 @@
 
 ### Local verification
 
-Pending child run:
+Child XML: **734 passed** (`IrCompilerTest` 727 + `CodegenModeTest` 7), with zero failures, errors, or skips. The parent must re-run independently.
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest
@@ -46,7 +46,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerT
 
 ### 本地验证
 
-子任务测试待运行：
+子任务 XML：**734 项通过**（`IrCompilerTest` 727 + `CodegenModeTest` 7），失败、错误和跳过均为零。父任务仍需独立重新运行。
 
 ```bash
 CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest
