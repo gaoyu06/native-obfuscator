@@ -2,11 +2,11 @@
 
 ### Summary
 
-- Remeasures the joined in-tree IR leftover inventory on the leftover-docs #391 tree.
+- Remeasures the joined in-tree IR leftover inventory on the leftover-docs [#391](https://github.com/gaoyu06/native-obfuscator/pull/391) tree.
 - Measurement SHA: `51d6aedfc0f8c678950f8ee2c2b71f797377648d`
 - Merge-base with `origin/master`: `51d6aedfc0f8c678950f8ee2c2b71f797377648d`
-- Supersedes #391's measurement of leftover-docs #389 at `1db7af5`.
-- Latest compiler parent XML: **#390 (677)** (`IrCompilerTest` 670 + `CodegenModeTest` 7).
+- Supersedes [#391](https://github.com/gaoyu06/native-obfuscator/pull/391)'s measurement of leftover-docs [#389](https://github.com/gaoyu06/native-obfuscator/pull/389) at `1db7af5`.
+- Latest compiler parent XML: **[#390](https://github.com/gaoyu06/native-obfuscator/pull/390) (677)** (`IrCompilerTest` 670 + `CodegenModeTest` 7).
 
 ### Joined corpus
 
@@ -31,11 +31,11 @@ python3 docs/measurement/ir-leftover-inventory/measure.py --javac-25 /tmp/temuri
 
 ### 摘要
 
-- 在 leftover-docs #391 树上重新测量仓库内 IR 遗留项的联合清单。
+- 在 leftover-docs [#391](https://github.com/gaoyu06/native-obfuscator/pull/391) 树上重新测量仓库内 IR 遗留项的联合清单。
 - 测量 SHA：`51d6aedfc0f8c678950f8ee2c2b71f797377648d`
 - 与 `origin/master` 的 merge-base：`51d6aedfc0f8c678950f8ee2c2b71f797377648d`
-- 本次测量取代 #391 对 leftover-docs #389（`1db7af5`）的测量。
-- 最新编译器父级 XML：**#390 (677)**（`IrCompilerTest` 670 + `CodegenModeTest` 7）。
+- 本次测量取代 [#391](https://github.com/gaoyu06/native-obfuscator/pull/391) 对 leftover-docs [#389](https://github.com/gaoyu06/native-obfuscator/pull/389)（`1db7af5`）的测量。
+- 最新编译器父级 XML：**[#390](https://github.com/gaoyu06/native-obfuscator/pull/390) (677)**（`IrCompilerTest` 670 + `CodegenModeTest` 7）。
 
 ### 联合语料结果
 
