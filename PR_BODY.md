@@ -31,8 +31,8 @@
 
 ### Baseline and validation
 
-- Leftover-docs baseline: [#430](https://github.com/gaoyu06/native-obfuscator/pull/430)
-  at [`46a53713`](https://github.com/gaoyu06/native-obfuscator/commit/46a537135b309b2002e7610d6e38407f3ac26f82).
+- Leftover-docs baseline: [#431](https://github.com/gaoyu06/native-obfuscator/pull/431)
+  at [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c).
 - Latest compiler parent XML until the parent re-runs: **#430 (734)**
   (`IrCompilerTest` 727 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: **737** (734 + 3).
@@ -73,8 +73,8 @@
 
 ### 基线与验证
 
-- leftover-docs 基线：[#430](https://github.com/gaoyu06/native-obfuscator/pull/430)，
-  提交为 [`46a53713`](https://github.com/gaoyu06/native-obfuscator/commit/46a537135b309b2002e7610d6e38407f3ac26f82)。
+- leftover-docs 基线：[#431](https://github.com/gaoyu06/native-obfuscator/pull/431)，
+  提交为 [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c)。
 - 父任务重新运行前的最新编译器 XML：**#430（734）**
   （`IrCompilerTest` 727 + `CodegenModeTest` 7）。
 - leftover-docs 之后预期的父任务 XML：**737**（734 + 3）。
