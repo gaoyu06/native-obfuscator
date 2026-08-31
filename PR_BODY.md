@@ -9,7 +9,7 @@ Remeasures the joined in-tree IR leftover inventory on the leftover-docs [#409](
 - Measurement SHA: `2d46d0d15be42608ee9bc0b9193623cf172614ff`
 - Merge-base with `origin/master` at measurement: `2d46d0d15be42608ee9bc0b9193623cf172614ff`
 - Supersedes [#409](https://github.com/gaoyu06/native-obfuscator/pull/409)'s measurement of leftover-docs [#407](https://github.com/gaoyu06/native-obfuscator/pull/407) at `f1c9a811` (`f1c9a81106adef6440cb1e90412e0af1f5d875c8`).
-- Latest compiler parent XML: **[#408](https://github.com/gaoyu06/native-obfuscator/pull/408) (704)** (`IrCompilerTest` 697 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- Latest compiler parent XML after rebase onto leftover-docs #410 (`a0162653`): **[#410](https://github.com/gaoyu06/native-obfuscator/pull/410) (707)** (`IrCompilerTest` 700 + `CodegenModeTest` 7). Measured tree remains leftover-docs #409 `2d46d0d1`. Parent skipped Gradle (measurement-only). This measurement adds no compiler XML.
 
 | Corpus | Inventory | IR | Legacy fallback | Constructor left in Java | Missing |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -31,7 +31,7 @@ Zero leftovers is not coverage-complete, is not a JDK support badge, and does no
 - 测量 SHA：`2d46d0d15be42608ee9bc0b9193623cf172614ff`
 - 测量时与 `origin/master` 的 merge-base：`2d46d0d15be42608ee9bc0b9193623cf172614ff`
 - 本次测量取代 [#409](https://github.com/gaoyu06/native-obfuscator/pull/409) 对 leftover-docs [#407](https://github.com/gaoyu06/native-obfuscator/pull/407) `f1c9a811`（`f1c9a81106adef6440cb1e90412e0af1f5d875c8`）的测量。
-- 最新编译器父级 XML：**[#408](https://github.com/gaoyu06/native-obfuscator/pull/408)（704）**（`IrCompilerTest` 697 + `CodegenModeTest` 7）。本次测量未新增编译器 XML。
+- rebase 到 leftover-docs #410（`a0162653`）后最新的编译器父级 XML：**[#410](https://github.com/gaoyu06/native-obfuscator/pull/410)（707）**（`IrCompilerTest` 700 + `CodegenModeTest` 7）。测量树仍为 leftover-docs #409 `2d46d0d1`。父级跳过 Gradle（仅测量）。本次测量未新增编译器 XML。
 
 | 语料 | 清单总数 | IR | Legacy 回退 | 构造器留在 Java | 缺失 |
 | --- | ---: | ---: | ---: | ---: | ---: |
