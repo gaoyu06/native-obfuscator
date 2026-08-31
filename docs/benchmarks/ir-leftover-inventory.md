@@ -1,13 +1,13 @@
-# IR leftover inventory on current master
+# IR leftover inventory on leftover-docs #399
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `9675616f6d2e84442d7465232c2705dfd152c11d`
-- Measurement commit: `9675616f6d2e84442d7465232c2705dfd152c11d`
+- Measured compiler base (merge-base with `origin/master`): leftover-docs [#399](https://github.com/gaoyu06/native-obfuscator/pull/399) at `454af2687204a17204d2a60c511d019582a14774`.
+- Measurement commit: leftover-docs [#399](https://github.com/gaoyu06/native-obfuscator/pull/399) at `454af2687204a17204d2a60c511d019582a14774`.
+- This is the [#399](https://github.com/gaoyu06/native-obfuscator/pull/399) leftover-docs tree.
+- This remeasurement supersedes [#399](https://github.com/gaoyu06/native-obfuscator/pull/399)'s measurement of the [#397](https://github.com/gaoyu06/native-obfuscator/pull/397) leftover-docs tree at `9675616` (`9675616f6d2e84442d7465232c2705dfd152c11d`).
+- Latest compiler parent XML at measurement time is **[#398](https://github.com/gaoyu06/native-obfuscator/pull/398) (689)** (`IrCompilerTest` 682 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
-- This is the [#397](https://github.com/gaoyu06/native-obfuscator/pull/397) leftover-docs tree at `9675616f6d2e84442d7465232c2705dfd152c11d`.
-- This remeasurement supersedes [#397](https://github.com/gaoyu06/native-obfuscator/pull/397)'s measurement of the [#395](https://github.com/gaoyu06/native-obfuscator/pull/395) leftover-docs tree at `38c8cf0` (`38c8cf02920609f12a2717f799c8a0b228876b65`).
-- Latest compiler parent XML is **[#396](https://github.com/gaoyu06/native-obfuscator/pull/396) (686)** (`IrCompilerTest` 679 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
