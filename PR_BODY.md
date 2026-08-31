@@ -15,14 +15,16 @@ Wiring checklist:
 - Initializer argument count: `6`
 - Chain descriptor: `(Ljava/util/GregorianCalendar;)V`
 
-Baseline: leftover-docs #444 at `c89015d2`
-(`c89015d2b35ec7bf9511ad0301a5434d2e05a818`).
+Rebased onto leftover-docs #445 at `610945ba`
+(`610945bac1be76d021f8c3f4918bff1cb2df829c`).
 
-Latest compiler parent XML until the parent re-runs: **#444 (755)**
+Latest compiler parent XML until this parent re-run: **#444 (755)**
 (`IrCompilerTest` 748 + `CodegenModeTest` 7).
 
 Expected parent XML after leftover-docs: **758**
 (`IrCompilerTest` 751 + `CodegenModeTest` 7).
+
+Child XML is discarded; only the parent re-run is authoritative.
 
 - Processor changed: No
 - Defaults unchanged: `--codegen=legacy`, `--ir-lower=direct`, and
@@ -45,14 +47,16 @@ Expected parent XML after leftover-docs: **758**
 - 初始化参数数量：`6`
 - 链描述符：`(Ljava/util/GregorianCalendar;)V`
 
-基线：leftover-docs #444，提交 `c89015d2`
-（`c89015d2b35ec7bf9511ad0301a5434d2e05a818`）。
+已变基到 leftover-docs #445，`610945ba`
+（`610945bac1be76d021f8c3f4918bff1cb2df829c`）。
 
-父分支重新运行前的最新编译器 XML：**#444（755）**
+本次父级复跑前的最新编译器父 XML：**#444（755）**
 （`IrCompilerTest` 748 + `CodegenModeTest` 7）。
 
 leftover-docs 之后预期的父分支 XML：**758**
 （`IrCompilerTest` 751 + `CodegenModeTest` 7）。
+
+子分支 XML 作废；以父级复跑为准。
 
 - Processor changed: No（处理器未更改）
 - 默认值未更改：`--codegen=legacy`、`--ir-lower=direct` 和
