@@ -35,6 +35,8 @@ Tests added:
 - `rewrittenThreeImmediateNewExtraLocalFiveFirstSecondThirdFourthArgChainInputsPassJvmVerification`
 - `threeImmediateNewExtraLocalFiveFirstSecondThirdFourthArgChainInputsCompileAndRunWithJavaParity`
 
+Verification: the required Gradle command passed. Local child XML reports 694 `IrCompilerTest` tests and 7 `CodegenModeTest` tests (701 total), with zero failures, errors, or skips.
+
 Ship-ready: **No**. The `--codegen`, `--ir-lower`, and `--backend` defaults are unchanged.
 
 ## 中文
@@ -71,5 +73,7 @@ RETURN
 - `admitsThreeImmediateReturnsWithNewExtraLocalFiveFirstSecondThirdFourthArgChainInputs`
 - `rewrittenThreeImmediateNewExtraLocalFiveFirstSecondThirdFourthArgChainInputsPassJvmVerification`
 - `threeImmediateNewExtraLocalFiveFirstSecondThirdFourthArgChainInputsCompileAndRunWithJavaParity`
+
+验证：要求的 Gradle 命令已通过。子分支本地 XML 记录 `IrCompilerTest` 694 项测试、`CodegenModeTest` 7 项测试（共 701 项），失败、错误和跳过均为 0。
 
 可发布状态：**否**。`--codegen`、`--ir-lower` 和 `--backend` 的默认值均未改变。
