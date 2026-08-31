@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 668" width="1160" height="668" role="img" aria-label="Codegen and lowering modes with defaults" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif">
+  <defs>
+    <marker id="mArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6d28d9"/>
+    </marker>
+    <filter id="mShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="1159" height="667" rx="16" fill="#f7f9fc" stroke="#dbe3ec"/>
+  <text x="40" y="42" font-size="20" font-weight="700" fill="#1f2937">Codegen &amp; lowering modes <tspan font-size="15" font-weight="500" fill="#55627a">&#183; 代码生成与降级模式</tspan></text>
+  <text x="40" y="66" font-size="13" fill="#55627a">Defaults on master: --codegen=legacy &#183; --ir-lower=direct &#183; --backend=cpp&#12288;（master 上的默认值）</text>
+
+  <!-- Card 1: legacy (default) -->
+  <g filter="url(#mShadow)">
+    <rect x="40" y="92" width="520" height="180" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  </g>
+  <rect x="464" y="104" width="82" height="24" rx="12" fill="#16a34a"/>
+  <text x="505" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#ffffff">DEFAULT</text>
+  <text x="64" y="126" font-size="16" font-weight="700" fill="#1f2937">Legacy snippets <tspan font-size="13" font-weight="500" fill="#55627a">旧版模板生成</tspan></text>
+  <text x="64" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#116432">--codegen=legacy</text>
+  <text x="64" y="178" font-size="13" fill="#374151">Templates from cppsnippets.properties, substituted per opcode</text>
+  <text x="64" y="198" font-size="13" fill="#374151">into a StringBuilder. Covers everything the tool supports today.</text>
+  <text x="64" y="224" font-size="13" fill="#55627a">按操作码做字符串模板拼接；当前工具支持的构造全部走此路径。</text>
+  <text x="64" y="252" font-size="12.5" font-weight="600" fill="#116432">Stays the CLI default until IR coverage is complete &#183; 在 IR 覆盖完整前保持默认</text>
+
+  <!-- Card 2: IR direct (opt-in) -->
+  <g filter="url(#mShadow)">
+    <rect x="600" y="92" width="520" height="180" rx="12" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+  </g>
+  <rect x="1032" y="104" width="74" height="24" rx="12" fill="#8b5cf6"/>
+  <text x="1069" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#ffffff">OPT-IN</text>
+  <text x="624" y="126" font-size="16" font-weight="700" fill="#1f2937">IR &#183; direct lowering <tspan font-size="13" font-weight="500" fill="#55627a">IR 直接降级</tspan></text>
+  <text x="624" y="152" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#5b21b6">--codegen=ir  (--ir-lower=direct is the default lowering)</text>
+  <text x="624" y="178" font-size="13" fill="#374151">Typed CFG (i32 / i64 / f32 / f64 / reference) built by AsmToIr and</text>
+  <text x="624" y="198" font-size="13" fill="#374151">CfgBuilder, lowered by DirectCppStrategy into structured C++.</text>
+  <text x="624" y="224" font-size="13" fill="#55627a">类型化 CFG &#8594; 结构化 C++；仅在显式传入 --codegen=ir 时启用。</text>
+  <text x="624" y="252" font-size="12.5" font-weight="600" fill="#5b21b6">Unsupported constructs &#8594; per-method fallback to legacy &#183; 不支持时逐方法回退</text>
+
+  <!-- Card 3: IR eval (default off) -->
+  <g filter="url(#mShadow)">
+    <rect x="40" y="304" width="520" height="180" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  </g>
+  <rect x="438" y="316" width="108" height="24" rx="12" fill="#d97706"/>
+  <text x="492" y="332" text-anchor="middle" font-size="12.5" font-weight="700" fill="#ffffff">DEFAULT OFF</text>
+  <text x="64" y="338" font-size="16" font-weight="700" fill="#1f2937">IR &#183; eval lowering <tspan font-size="13" font-weight="500" fill="#55627a">共享求值器降级</tspan></text>
+  <text x="64" y="364" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#92500a">--codegen=ir --ir-lower=eval</text>
+  <text x="64" y="390" font-size="13" fill="#374151">Shared-evaluator lowering. Applies only to methods that already</text>
+  <text x="64" y="410" font-size="13" fill="#374151">built IR successfully, in a narrow integer slice. Not ship-ready.</text>
+  <text x="64" y="436" font-size="13" fill="#55627a">仅作用于已成功建成 IR 的方法，且限于窄整数切片；未达可交付状态。</text>
+  <text x="64" y="464" font-size="12.5" font-weight="600" fill="#92500a">Consulted only when --codegen=ir is set &#183; 仅在 IR 模式下才读取该开关</text>
+
+  <!-- Card 4: interpreter (default off) -->
+  <g filter="url(#mShadow)">
+    <rect x="600" y="304" width="520" height="180" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+  </g>
+  <rect x="998" y="316" width="108" height="24" rx="12" fill="#d97706"/>
+  <text x="1052" y="332" text-anchor="middle" font-size="12.5" font-weight="700" fill="#ffffff">DEFAULT OFF</text>
+  <text x="624" y="338" font-size="16" font-weight="700" fill="#1f2937">Interpreter backend <tspan font-size="13" font-weight="500" fill="#55627a">解释器后端</tspan></text>
+  <text x="624" y="364" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#92500a">--backend=interpreter  (default: --backend=cpp)</text>
+  <text x="624" y="390" font-size="13" fill="#374151">In-process interpreter, ISA v4: static int/long + references +</text>
+  <text x="624" y="410" font-size="13" fill="#374151">ATHROW / exception table. No NEW, no invokes, no fields.</text>
+  <text x="624" y="436" font-size="13" fill="#55627a">ISA v4：静态 int/long + 引用 + 异常表；无对象创建、调用与字段。</text>
+  <text x="624" y="464" font-size="12.5" font-weight="600" fill="#92500a">Not a protection product &#183; 不是保护类产品</text>
+
+  <!-- fallback annotation: IR direct -> legacy -->
+  <path d="M 600 234 L 578 234" fill="none" stroke="#6d28d9" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#mArrow)"/>
+
+  <!-- Fallback rules bar -->
+  <g filter="url(#mShadow)">
+    <rect x="40" y="516" width="1080" height="124" rx="12" fill="#eef2f7" stroke="#8fa3b8" stroke-width="1.5"/>
+  </g>
+  <text x="64" y="546" font-size="14.5" font-weight="700" fill="#1f2937">Fallback rules <tspan font-size="13" font-weight="500" fill="#55627a">回退规则</tspan></text>
+  <text x="64" y="570" font-size="13" fill="#374151">IR methods that hit an unsupported construct fall back per method to the legacy generator &#8212; except rejected &lt;init&gt; bodies,</text>
+  <text x="64" y="590" font-size="13" fill="#374151">which are restored to their original bytecode (including invokedynamic) instead of keeping preprocessor markers.</text>
+  <text x="64" y="616" font-size="13" fill="#55627a">不支持的构造逐方法回退到 legacy；被拒绝的 &lt;init&gt; 恢复为原始字节码（含 invokedynamic），不留下预处理器标记。</text>
+</svg>

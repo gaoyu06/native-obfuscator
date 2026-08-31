@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 560" width="1160" height="560" role="img" aria-label="Gradle modules and generated artifacts" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif">
+  <defs>
+    <marker id="rArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <filter id="rShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="1159" height="559" rx="16" fill="#f7f9fc" stroke="#dbe3ec"/>
+  <text x="40" y="40" font-size="20" font-weight="700" fill="#1f2937">Repository layout <tspan font-size="15" font-weight="500" fill="#55627a">&#183; 仓库结构与产物</tspan></text>
+
+  <text x="40" y="82" font-size="14" font-weight="700" fill="#55627a">GRADLE MODULES &#183; 模块</text>
+
+  <!-- obfuscator -->
+  <g filter="url(#rShadow)">
+    <rect x="40" y="96" width="520" height="116" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+  </g>
+  <text x="64" y="126" font-size="16" font-weight="700" fill="#1f2937">obfuscator <tspan font-size="13" font-weight="500" fill="#55627a">&#183; CLI + transpiler 转译器本体</tspan></text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#334155">
+    <text x="64" y="150">by.radioegor146 &#8212; NativeObfuscator &#183; MethodProcessor</text>
+    <text x="64" y="166">ir/ (frontend &#183; backend &#183; emit) &#183; interpreter/ &#183; zig/</text>
+    <text x="64" y="182">resources/sources &#8212; native_jvm.* &#183; cppsnippets.properties</text>
+  </g>
+  <text x="64" y="202" font-size="12.5" fill="#55627a">the tool you run &#183; 你实际运行的工具</text>
+
+  <!-- annotations -->
+  <g filter="url(#rShadow)">
+    <rect x="40" y="232" width="520" height="92" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  </g>
+  <text x="64" y="260" font-size="16" font-weight="700" fill="#1f2937">annotations <tspan font-size="13" font-weight="500" fill="#55627a">&#183; 注解（编译期依赖）</tspan></text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#334155">
+    <text x="64" y="284" font-size="12.5">@Native / @NotNative</text>
+    <text x="64" y="304" font-size="11.5">com.github.radioegor146.native-obfuscator:annotations:master-SNAPSHOT (JitPack)</text>
+  </g>
+
+  <!-- sdk -->
+  <g filter="url(#rShadow)">
+    <rect x="40" y="344" width="520" height="92" rx="12" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+  </g>
+  <text x="64" y="372" font-size="16" font-weight="700" fill="#1f2937">sdk <tspan font-size="13" font-weight="500" fill="#55627a">&#183; C++ SDK（随生成 JAR 打包）</tspan></text>
+  <text x="64" y="396" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#334155">by.radioegor146.sdk &#8212; NativePrimitives &#183; NativeStrings</text>
+  <text x="64" y="416" font-size="12.5" fill="#55627a">packed into generated JARs &#8212; not a standalone product SDK &#183; 非独立发布的 SDK</text>
+
+  <!-- docs -->
+  <g filter="url(#rShadow)">
+    <rect x="40" y="456" width="520" height="76" rx="12" fill="#eef2f7" stroke="#8fa3b8" stroke-width="1.5"/>
+  </g>
+  <text x="64" y="484" font-size="16" font-weight="700" fill="#1f2937">docs/ <tspan font-size="13" font-weight="500" fill="#55627a">&#183; status / design / benchmarks 文档</tspan></text>
+  <text x="64" y="508" font-size="12.5" fill="#55627a">project-status.md &amp; current-goal.md win over older briefs &#183; 现状页优先于旧简报</text>
+
+  <!-- generated artifacts container -->
+  <text x="660" y="82" font-size="14" font-weight="700" fill="#55627a">GENERATED PER RUN &#183; 每次运行的产物</text>
+  <rect x="660" y="96" width="460" height="436" rx="12" fill="#ffffff" fill-opacity="0.5" stroke="#8fa3b8" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="684" y="124" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700" fill="#334155">&lt;output-dir&gt;/</text>
+
+  <!-- cpp tree -->
+  <g filter="url(#rShadow)">
+    <rect x="684" y="140" width="412" height="96" rx="10" fill="#eef2f7" stroke="#8fa3b8" stroke-width="1.5"/>
+  </g>
+  <text x="706" y="168" font-size="15" font-weight="700" fill="#1f2937">cpp/ <tspan font-size="12.5" font-weight="500" fill="#55627a">&#183; generated C++ sources 生成的 C++ 源</tspan></text>
+  <text x="706" y="192" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#334155">*.cpp / *.hpp &#183; CMakeLists.txt &#183; native_jvm.*</text>
+  <text x="706" y="214" font-size="12.5" fill="#55627a">compile with CMake or Zig &#183; 用 CMake 或 Zig 编译</text>
+
+  <!-- output jar -->
+  <g filter="url(#rShadow)">
+    <rect x="684" y="260" width="412" height="160" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  </g>
+  <text x="706" y="288" font-size="15" font-weight="700" fill="#1f2937">Output JAR <tspan font-size="12.5" font-weight="500" fill="#55627a">&#183; 转换后的 JAR</tspan></text>
+  <text x="706" y="310" font-size="12.5" fill="#374151">selected methods replaced by native stubs + loader classes</text>
+  <text x="706" y="330" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#334155">META-INF: Enable-Native-Access: ALL-UNNAMED</text>
+  <rect x="706" y="346" width="368" height="56" rx="8" fill="#f7f9fc" stroke="#8fa3b8" stroke-width="1.2"/>
+  <text x="722" y="368" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="700" fill="#334155">native0/</text>
+  <text x="722" y="388" font-size="12.5" fill="#55627a">packed shared libraries (.so / .dll / .dylib) &#183; 打包的本地库</text>
+
+  <!-- debug jar note -->
+  <text x="684" y="452" font-size="12.5" fill="#55627a">with --debug: an extra non-executable debug JAR &#183; 加 --debug 时另生成调试 JAR</text>
+  <text x="684" y="474" font-size="12.5" fill="#55627a">loader dir defaults to native0/ unless --custom-lib-dir is set</text>
+
+  <!-- arrows -->
+  <line x1="562" y1="152" x2="656" y2="152" stroke="#64748b" stroke-width="1.8" marker-end="url(#rArrow)"/>
+  <text x="609" y="142" text-anchor="middle" font-size="12.5" font-weight="600" fill="#55627a">java -jar</text>
+  <path d="M 562 382 L 620 382 L 620 320 L 680 320" fill="none" stroke="#8b5cf6" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#rArrow)"/>
+</svg>
