@@ -22,8 +22,8 @@
 ### Baseline and status
 
 - Merge base: leftover-docs #452, `a6896796` (`a689679644c73bd577a6087993ca191fc2bf7e4d`).
-- Latest compiler parent XML: #452 (767).
-- Child XML is discarded; the expected parent XML total after the parent rerun is 770 (`IrCompilerTest` 763 + `CodegenModeTest` 7).
+- Parent XML: **770** (`IrCompilerTest` 763 + `CodegenModeTest` 7), 0 failures/errors/skipped.
+- Parent re-ran `threeImmediateNewExtraLocalSixFourthFifthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: No.
 - Ship-ready: No.
 - The production goal remains incomplete.
@@ -51,8 +51,8 @@
 ### 基线与状态
 
 - 合并基线：leftover-docs #452，`a6896796`（`a689679644c73bd577a6087993ca191fc2bf7e4d`）。
-- 最新编译器父级 XML：#452（767）。
-- 子任务 XML 会被丢弃；父任务重新运行后的预期 XML 总数为 770（`IrCompilerTest` 763 + `CodegenModeTest` 7）。
+- 父级 XML：**770**（`IrCompilerTest` 763 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
+- 父级复跑包含 `threeImmediateNewExtraLocalSixFourthFifthArgChainInputsCompileAndRunWithJavaParity`。
 - Processor changed：No。
 - Ship-ready：No。
 - 生产目标仍未完成。
