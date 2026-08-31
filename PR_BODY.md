@@ -22,9 +22,8 @@
 ### Status
 
 - Rebased onto leftover-docs #441 at `8ce7d407` (`8ce7d4070189aed44df82d536199cc20a8cb606a`).
-- Latest compiler parent XML until this parent re-run: #440, 749 tests (`IrCompilerTest` 742 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: 752 tests (`IrCompilerTest` 745 + `CodegenModeTest` 7).
-- Child XML is discarded; only the parent re-run is authoritative.
+- Parent XML: **752** (`IrCompilerTest` 745 + `CodegenModeTest` 7), 0 failures/errors/skipped.
+- Parent re-ran `threeImmediateNewExtraLocalSixSecondFourthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: No.
 - Defaults changed: No (`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain unchanged).
 - Ship-ready: No.
@@ -52,9 +51,8 @@
 ### 状态
 
 - 已变基到 leftover-docs #441，`8ce7d407`（`8ce7d4070189aed44df82d536199cc20a8cb606a`）。
-- 本次父级复跑前的最新编译器父 XML：#440，共 749 个测试（`IrCompilerTest` 742 + `CodegenModeTest` 7）。
-- leftover-docs 后预期父 XML：共 752 个测试（`IrCompilerTest` 745 + `CodegenModeTest` 7）。
-- 子分支 XML 作废；以父级复跑为准。
+- 父级 XML：**752**（`IrCompilerTest` 745 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
+- 父级复跑包含 `threeImmediateNewExtraLocalSixSecondFourthArgChainInputsCompileAndRunWithJavaParity`。
 - Processor 改动：无。
 - 默认值改动：无（`--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp` 保持不变）。
 - 可发布：否。
