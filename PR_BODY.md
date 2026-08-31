@@ -11,8 +11,8 @@
 
 ## Scope
 
-- Leftover-docs baseline: #423 at `9a45cc67`
-  (`9a45cc6714007544b8521c826d92e35312804642`).
+- Leftover-docs baseline: #424 at `287db160`
+  (`287db1608e34bcd39239acd819620eb8fccbb1f0`).
 - Processor changed: No.
 - Defaults unchanged: `--codegen`, `--ir-lower`, and `--backend` are unchanged.
 - This is fixture admission, not a JDK support badge.
@@ -20,10 +20,7 @@
 
 ## Validation
 
-- Latest compiler parent XML until the parent re-runs: #423 (725):
-  `IrCompilerTest` 718 + `CodegenModeTest` 7.
-- Expected parent XML after leftover-docs: 728 (725 + 3):
-  `IrCompilerTest` 721 + `CodegenModeTest` 7.
+- Parent XML: **728** tests (`IrCompilerTest` 721 + `CodegenModeTest` 7), 0 failures, 0 errors, 0 skips, including `threeImmediateNewExtraLocalSixSixthArgChainInputsCompileAndRunWithJavaParity`.
 - Child-local command:
   `CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
 
@@ -41,8 +38,8 @@
 
 ## 范围
 
-- leftover-docs 基线：#423，`9a45cc67`
-  (`9a45cc6714007544b8521c826d92e35312804642`)。
+- leftover-docs 基线：#424，`287db160`
+  (`287db1608e34bcd39239acd819620eb8fccbb1f0`)。
 - Processor changed：No。
 - 默认值不变：`--codegen`、`--ir-lower` 和 `--backend` 均未修改。
 - 这是测试夹具准入，不是 JDK 支持标识。
@@ -50,9 +47,6 @@
 
 ## 验证
 
-- 在父分支重新运行前，最新 compiler parent XML 为 #423 (725)：
-  `IrCompilerTest` 718 + `CodegenModeTest` 7。
-- leftover-docs 之后预期 parent XML 为 728 (725 + 3)：
-  `IrCompilerTest` 721 + `CodegenModeTest` 7。
+- 父级 XML：**728** 个测试（`IrCompilerTest` 721 + `CodegenModeTest` 7），0 失败 / 0 错误 / 0 跳过，含 `threeImmediateNewExtraLocalSixSixthArgChainInputsCompileAndRunWithJavaParity`。
 - 子分支本地命令：
   `CC=gcc CXX=g++ ./gradlew :obfuscator:test --tests by.radioegor146.ir.IrCompilerTest --tests by.radioegor146.CodegenModeTest`
