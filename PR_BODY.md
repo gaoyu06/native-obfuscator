@@ -6,7 +6,8 @@
 - Measurement SHA: `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
 - Merge-base with `origin/master`: `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
 - Supersedes [#387](https://github.com/gaoyu06/native-obfuscator/pull/387)'s measurement of leftover-docs [#385](https://github.com/gaoyu06/native-obfuscator/pull/385) at `48f5ab56659ca04101478963ab83aff7a0003679`.
-- Latest compiler parent XML: [#386](https://github.com/gaoyu06/native-obfuscator/pull/386) (671) (`IrCompilerTest` 664 + `CodegenModeTest` 7).
+- Latest compiler parent XML: [#388](https://github.com/gaoyu06/native-obfuscator/pull/388) (674) (`IrCompilerTest` 667 + `CodegenModeTest` 7). The branch was rebased onto leftover-docs #388 (`a05cacb`); the measured tree remains leftover-docs #387 `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`.
+- This measurement adds no compiler XML. Parent skipped Gradle (measurement-only).
 - Processor changed: No. Admitted: No. Ship-ready: No.
 
 ### Joined corpus
@@ -34,7 +35,8 @@ python3 docs/measurement/ir-leftover-inventory/measure.py --javac-25 /tmp/temuri
 - 测量 SHA：`3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
 - 与 `origin/master` 的 merge-base：`3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`
 - 本次测量取代 [#387](https://github.com/gaoyu06/native-obfuscator/pull/387) 对 leftover-docs [#385](https://github.com/gaoyu06/native-obfuscator/pull/385)（`48f5ab56659ca04101478963ab83aff7a0003679`）的测量。
-- 最新编译器父级 XML：[#386](https://github.com/gaoyu06/native-obfuscator/pull/386)（671，`IrCompilerTest` 664 + `CodegenModeTest` 7）。
+- 最新编译器父级 XML：[#388](https://github.com/gaoyu06/native-obfuscator/pull/388)（674，`IrCompilerTest` 667 + `CodegenModeTest` 7）。分支已 rebase 到 leftover-docs #388（`a05cacb`）；实测树仍为 leftover-docs #387 `3b9fce8969eb6f6d455bdeec2f5e1f9a2324b9c3`。
+- 本次测量不新增编译器 XML。父任务跳过 Gradle（仅测量）。
 - Processor changed：No。Admitted：No。Ship-ready：No。
 
 ### 合并语料
