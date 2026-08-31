@@ -8,8 +8,8 @@
 
 ## Baseline and status
 
-- Leftover-docs baseline: #417 at `fcff55af`.
-- Latest compiler parent XML until the parent reruns: #417, 716 tests (`IrCompilerTest` 709 + `CodegenModeTest` 7).
+- Rebased onto leftover-docs #418 (`3d0c9355a0ef70e75a34db68f3a4969787acbc15`).
+- Latest compiler parent XML until this parent re-run: #417 (716) (`IrCompilerTest` 709 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: 719 tests (716 + 3).
 - Processor changed: No.
 - Ship-ready: No.
@@ -30,8 +30,8 @@
 
 ## 基线与状态
 
-- leftover-docs 基线：#417，提交 `fcff55af`。
-- 父级重新运行前的最新编译器父级 XML：#417，共 716 项测试（`IrCompilerTest` 709 + `CodegenModeTest` 7）。
+- 已变基到 leftover-docs #418（`3d0c9355a0ef70e75a34db68f3a4969787acbc15`）。
+- 本次父分支复跑之前的最新编译器父分支 XML：#417（716）（`IrCompilerTest` 709 + `CodegenModeTest` 7）。
 - leftover-docs 之后预期的父级 XML：719 项测试（716 + 3）。
 - 处理器变更：否。
 - 可发布：否。
