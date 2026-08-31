@@ -8,17 +8,12 @@
 
 ## Baseline and status
 
+- Processor changed: **No**
+- Product defaults (`--codegen`, `--ir-lower`, and `--backend`) unchanged
 - Rebased onto leftover-docs #418 (`3d0c9355a0ef70e75a34db68f3a4969787acbc15`).
-- Latest compiler parent XML until this parent re-run: #417 (716) (`IrCompilerTest` 709 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: 719 tests (716 + 3).
-- Processor changed: No.
-- Ship-ready: No.
-- Defaults are unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or `--backend=cpp` flip.
-- This fixture admission exercises bytecode, CFG, and JNI behavior; it is not a JDK support badge.
-
-## Verification
-
-- Locally verified child XML: 719 tests (`IrCompilerTest` 712 + `CodegenModeTest` 7), with zero failures, errors, and skips.
+- Parent re-ran **719/719** (`IrCompilerTest` 712 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalSixThirdArgChainInputsCompileAndRunWithJavaParity`. Zero failures/errors/skips.
+- Ship-ready: **No**
+- This is fixture admission coverage, not a JDK support badge.
 
 # 中文
 
@@ -30,14 +25,9 @@
 
 ## 基线与状态
 
-- 已变基到 leftover-docs #418（`3d0c9355a0ef70e75a34db68f3a4969787acbc15`）。
-- 本次父分支复跑之前的最新编译器父分支 XML：#417（716）（`IrCompilerTest` 709 + `CodegenModeTest` 7）。
-- leftover-docs 之后预期的父级 XML：719 项测试（716 + 3）。
-- 处理器变更：否。
-- 可发布：否。
-- 默认配置不变：未切换 `--codegen=legacy`、`--ir-lower=direct` 或 `--backend=cpp`。
-- 此测试夹具准入仅验证字节码、CFG 和 JNI 行为，不代表 JDK 支持徽章。
-
-## 验证
-
-- 本地验证的子分支 XML：719 项测试（`IrCompilerTest` 712 + `CodegenModeTest` 7），失败、错误和跳过均为零。
+- 是否修改处理器：**否**
+- 产品默认值（`--codegen`、`--ir-lower` 和 `--backend`）保持不变
+- 已 rebase 到 leftover-docs #418（`3d0c9355a0ef70e75a34db68f3a4969787acbc15`）。
+- 父级重跑 **719/719**（`IrCompilerTest` 712 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalSixThirdArgChainInputsCompileAndRunWithJavaParity`。失败/错误/跳过均为零。
+- 可发布状态：**否**
+- 此项仅为测试夹具准入覆盖，不代表 JDK 支持徽章。
