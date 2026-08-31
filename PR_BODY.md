@@ -32,7 +32,7 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 Child validation passed with 746 tests, 0 failures, 0 errors, and 0 skipped: `IrCompilerTest` 739 plus `CodegenModeTest` 7.
 
-Baseline is leftover-docs #436 at `4fed275e` (`4fed275ea8e31858920ebb6ae76bf015c773f273`). The latest compiler parent XML remains #436 (743): `IrCompilerTest` 736 plus `CodegenModeTest` 7. Expected parent XML after this fixture is 746: `IrCompilerTest` 739 plus `CodegenModeTest` 7.
+Baseline is leftover-docs #437 at `daadd3de` (`daadd3de6ca39071718202a38ff303c5eb018b9b`). The latest compiler parent XML remains #436 (743): `IrCompilerTest` 736 plus `CodegenModeTest` 7. Expected parent XML after this fixture is 746: `IrCompilerTest` 739 plus `CodegenModeTest` 7.
 
 Processor changed: No. Ship-ready: No. Defaults remain unchanged (`--codegen=legacy`, `--ir-lower=direct`, `--backend=cpp`).
 
@@ -68,6 +68,6 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:test --rerun-tasks \
 
 Child 验证已通过，共 746 个测试，0 failures、0 errors、0 skipped：`IrCompilerTest` 739 加 `CodegenModeTest` 7。
 
-基线为 leftover-docs #436 的 `4fed275e`（`4fed275ea8e31858920ebb6ae76bf015c773f273`）。最新 compiler parent XML 仍为 #436（743）：`IrCompilerTest` 736 加 `CodegenModeTest` 7。加入本夹具后，预期 parent XML 为 746：`IrCompilerTest` 739 加 `CodegenModeTest` 7。
+基线为 leftover-docs #437 的 `daadd3de`（`daadd3de6ca39071718202a38ff303c5eb018b9b`）。最新 compiler parent XML 仍为 #436（743）：`IrCompilerTest` 736 加 `CodegenModeTest` 7。加入本夹具后，预期 parent XML 为 746：`IrCompilerTest` 739 加 `CodegenModeTest` 7。
 
 Processor changed：No。Ship-ready：No。默认值保持不变（`--codegen=legacy`、`--ir-lower=direct`、`--backend=cpp`）。
