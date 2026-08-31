@@ -22,9 +22,8 @@
 
 ### Verification notes
 
-- Latest compiler parent XML until this parent re-run: **#448 (761)** (`IrCompilerTest` 754 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: **764** (`IrCompilerTest` 757 + `CodegenModeTest` 7).
-- Child XML is discarded; only the parent re-run is authoritative.
+- Parent XML: **764** (`IrCompilerTest` 757 + `CodegenModeTest` 7), 0 failures/errors/skipped.
+- Parent re-ran `threeImmediateNewExtraLocalSixThirdFifthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: No.
 - Ship-ready: No.
 - The production goal remains incomplete.
@@ -51,9 +50,8 @@
 
 ### 验证说明
 
-- 本次父级复跑前的最新编译器父 XML：**#448（761）**（`IrCompilerTest` 754 + `CodegenModeTest` 7）。
-- leftover-docs 之后预期的父分支 XML：**764**（`IrCompilerTest` 757 + `CodegenModeTest` 7）。
-- 子分支 XML 会被丢弃；只有父分支重新运行的结果具有权威性。
+- 父级 XML：**764**（`IrCompilerTest` 757 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
+- 父级复跑包含 `threeImmediateNewExtraLocalSixThirdFifthArgChainInputsCompileAndRunWithJavaParity`。
 - Processor changed：No。
 - Ship-ready：No。
 - 生产目标仍未完成。
