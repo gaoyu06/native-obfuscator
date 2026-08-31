@@ -1,12 +1,14 @@
 # Project status on master / master 现状
 
-Last updated after extra-local int as the second, third, fourth, and fifth five-arg GregorianCalendar `NEW` args
-[#415](https://github.com/gaoyu06/native-obfuscator/pull/415)
-(parent XML 713; latest leftover inventory remains
-[#414](https://github.com/gaoyu06/native-obfuscator/pull/414)
+Last updated after leftover inventory remasurement
+[#416](https://github.com/gaoyu06/native-obfuscator/pull/416)
+(parent XML 713 from
+[#415](https://github.com/gaoyu06/native-obfuscator/pull/415);
+leftover inventory
+[#416](https://github.com/gaoyu06/native-obfuscator/pull/416)
 on leftover-docs
-[#413](https://github.com/gaoyu06/native-obfuscator/pull/413)
-`bb97bc39`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+[#415](https://github.com/gaoyu06/native-obfuscator/pull/415)
+`621d39be`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
 0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
@@ -762,6 +764,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local int as the first, third, fourth, and fifth five-arg GregorianCalendar `NEW` args (#413) | 710 tests (`IrCompilerTest` 703 + `CodegenModeTest` 7). Parent re-ran 710/710 including `threeImmediateNewExtraLocalFiveFirstThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#413 leftover inventory (#414) | Measurement only on `bb97bc39`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as the second, third, fourth, and fifth five-arg GregorianCalendar `NEW` args (#415) | 713 tests (`IrCompilerTest` 706 + `CodegenModeTest` 7). Parent re-ran 713/713 including `threeImmediateNewExtraLocalFiveSecondThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-#415 leftover inventory (#416) | Measurement only on `621d39be`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -1021,9 +1024,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#414](https://github.com/gaoyu06/native-obfuscator/pull/414),
-  measured on leftover-docs #413 `bb97bc39`) observed 0 leftovers; that is not
-  coverage-complete. #413 remains the earlier leftover-docs #411 snapshot.
+  ([#416](https://github.com/gaoyu06/native-obfuscator/pull/416),
+  measured on leftover-docs #415 `621d39be`) observed 0 leftovers; that is not
+  coverage-complete. #415 remains the earlier leftover-docs #413 snapshot.
+  #413 remains the earlier leftover-docs #411 snapshot.
   #411 remains the earlier leftover-docs #409 snapshot.
   #409 remains the earlier leftover-docs #407 snapshot.
   #407 remains the earlier leftover-docs #405 snapshot.
@@ -1100,9 +1104,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #415
-  (extra-local int-copy as the second, third, fourth, and fifth five-arg GregorianCalendar NEW initializer arguments). /
-  落地 #415 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #416
+  (leftover inventory remasurement on leftover-docs #415). /
+  落地 #416 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
