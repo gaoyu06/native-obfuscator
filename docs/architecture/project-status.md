@@ -1,12 +1,14 @@
 # Project status on master / master 现状
 
-Last updated after extra-local int as the sixth six-arg GregorianCalendar `NEW` args
-[#425](https://github.com/gaoyu06/native-obfuscator/pull/425)
-(parent XML 728; latest leftover inventory remains
-[#424](https://github.com/gaoyu06/native-obfuscator/pull/424)
+Last updated after leftover inventory remasurement
+[#426](https://github.com/gaoyu06/native-obfuscator/pull/426)
+(parent XML 728 from
+[#425](https://github.com/gaoyu06/native-obfuscator/pull/425);
+leftover inventory
+[#426](https://github.com/gaoyu06/native-obfuscator/pull/426)
 on leftover-docs
-[#423](https://github.com/gaoyu06/native-obfuscator/pull/423)
-`9a45cc67`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
+[#425](https://github.com/gaoyu06/native-obfuscator/pull/425)
+`a54d9a28`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR,
 0 leftovers; not coverage-complete; not a JDK support badge). Active process:
 [current-goal.md](current-goal.md) (fast-model increments, test gate,
 Fable 5 reserved for hard work).
@@ -772,6 +774,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Extra-local int as the fifth six-arg GregorianCalendar `NEW` args (#423) | 725 tests (`IrCompilerTest` 718 + `CodegenModeTest` 7). Parent re-ran 725/725 including `threeImmediateNewExtraLocalSixFifthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#423 leftover inventory (#424) | Measurement only on `9a45cc67`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as the sixth six-arg GregorianCalendar `NEW` args (#425) | 728 tests (`IrCompilerTest` 721 + `CodegenModeTest` 7). Parent re-ran 728/728 including `threeImmediateNewExtraLocalSixSixthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
+| Post-#425 leftover inventory (#426) | Measurement only on `a54d9a28`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -1041,9 +1044,10 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   strengthens those fail-closed tests. The sixteen-level family budgets
   are unchanged. Do not admit unbounded depth.
   Remaining unsafe condy shapes stay fail-closed. In-tree fixture admission
-  ([#424](https://github.com/gaoyu06/native-obfuscator/pull/424),
-  measured on leftover-docs #423 `9a45cc67`) observed 0 leftovers; that is not
-  coverage-complete. #423 remains the earlier leftover-docs #421 snapshot.
+  ([#426](https://github.com/gaoyu06/native-obfuscator/pull/426),
+  measured on leftover-docs #425 `a54d9a28`) observed 0 leftovers; that is not
+  coverage-complete. #425 remains the earlier leftover-docs #423 snapshot.
+  #423 remains the earlier leftover-docs #421 snapshot.
   #421 remains the earlier leftover-docs #419 snapshot.
   #419 remains the earlier leftover-docs #417 snapshot.
   #417 remains the earlier leftover-docs #415 snapshot.
@@ -1125,9 +1129,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #425
-  (extra-local int-copy as the sixth six-arg GregorianCalendar NEW initializer argument). /
-  落地 #425 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #426
+  (leftover inventory remasurement on leftover-docs #425). /
+  落地 #426 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
