@@ -6,7 +6,7 @@ Measurement-only remeasurement of the joined IR leftover inventory on the [#381]
 
 - Measured compiler base / measurement commit: `109c318237a0cf25daa3c70c7bc19445f1513b91`
 - Supersedes #381's measurement of the [#379](https://github.com/gaoyu06/native-obfuscator/pull/379) leftover-docs tree: `9fa518121ee00310888c9dd752094357e494d27c`
-- Latest compiler parent XML: **[#380](https://github.com/gaoyu06/native-obfuscator/pull/380) (662)** (`IrCompilerTest` 655 + `CodegenModeTest` 7)
+- Latest compiler parent XML: **[#382](https://github.com/gaoyu06/native-obfuscator/pull/382) (665)** (`IrCompilerTest` 658 + `CodegenModeTest` 7). The branch was rebased onto leftover-docs #382 (`de096b8552a5c4c9452f682cd3e2aa2c15eb71c5`); the measured tree remains leftover-docs #381 `109c318237a0cf25daa3c70c7bc19445f1513b91`.
 - This measurement adds no compiler XML.
 
 ### Joined corpus
@@ -18,7 +18,7 @@ Measurement-only remeasurement of the joined IR leftover inventory on the [#381]
 | `jdk21` | 47 | 47 | 0 | 0 | 0 |
 | `jdk25` | 21 | 21 | 0 | 0 | 0 |
 
-Zero measured leftovers is not coverage-complete, not a JDK support badge, and does not authorize a default flip. Processor changed: **No**. Admitted: **No**. Ship-ready: **No**. Defaults remain `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`.
+Zero measured leftovers is not coverage-complete, not a JDK support badge, and does not authorize a default flip. Processor changed: **No**. Admitted: **No**. Ship-ready: **No**. Defaults remain `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`. Parent skipped Gradle (measurement-only).
 
 ### Measurement
 
@@ -34,7 +34,7 @@ python3 docs/measurement/ir-leftover-inventory/measure.py --javac-25 /tmp/temuri
 
 - 编译器基线 / 测量提交：`109c318237a0cf25daa3c70c7bc19445f1513b91`
 - 本次测量取代 #381 对 [#379](https://github.com/gaoyu06/native-obfuscator/pull/379) leftover-docs 树的测量：`9fa518121ee00310888c9dd752094357e494d27c`
-- 最新编译器父级 XML：**[#380](https://github.com/gaoyu06/native-obfuscator/pull/380) (662)**（`IrCompilerTest` 655 + `CodegenModeTest` 7）
+- 最新编译器父级 XML：**[#382](https://github.com/gaoyu06/native-obfuscator/pull/382) (665)**（`IrCompilerTest` 658 + `CodegenModeTest` 7）。分支已 rebase 到 leftover-docs #382（`de096b8552a5c4c9452f682cd3e2aa2c15eb71c5`）；实测树仍为 leftover-docs #381 `109c318237a0cf25daa3c70c7bc19445f1513b91`。
 - 本次测量不增加编译器 XML。
 
 ### 合并语料
