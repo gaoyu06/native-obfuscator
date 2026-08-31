@@ -18,7 +18,7 @@
 
 ## Verification
 
-- Expected child XML: 719 tests (`IrCompilerTest` 712 + `CodegenModeTest` 7), with zero failures, errors, and skips.
+- Locally verified child XML: 719 tests (`IrCompilerTest` 712 + `CodegenModeTest` 7), with zero failures, errors, and skips.
 
 # 中文
 
@@ -40,4 +40,4 @@
 
 ## 验证
 
-- 预期子分支 XML：719 项测试（`IrCompilerTest` 712 + `CodegenModeTest` 7），失败、错误和跳过均为零。
+- 本地验证的子分支 XML：719 项测试（`IrCompilerTest` 712 + `CodegenModeTest` 7），失败、错误和跳过均为零。
