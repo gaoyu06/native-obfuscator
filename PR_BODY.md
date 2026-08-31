@@ -22,8 +22,8 @@
 - Constructor argument count: 6.
 - Chain descriptor: `(Ljava/util/GregorianCalendar;)V`.
 
-Processor changed: No.  
-Ship-ready: No.  
+Processor changed: No.
+Ship-ready: No.
 Defaults changed: No (`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain unchanged).
 
 # 中文
@@ -50,6 +50,6 @@ Defaults changed: No (`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cp
 - 构造参数数量：6。
 - 链描述符：`(Ljava/util/GregorianCalendar;)V`。
 
-处理器有改动：否。  
-可发布：否。  
+处理器有改动：否。
+可发布：否。
 默认值有改动：否（`--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp` 均保持不变）。
