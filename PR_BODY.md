@@ -36,7 +36,8 @@
 - Latest compiler parent XML until the parent re-runs: **#430 (734)**
   (`IrCompilerTest` 727 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: **737** (734 + 3).
-- Child XML: pending local verification.
+- Child XML: **737** (`IrCompilerTest` 730 + `CodegenModeTest` 7), with
+  0 failures, 0 errors, and 0 skipped.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Defaults unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or
@@ -77,7 +78,8 @@
 - 父任务重新运行前的最新编译器 XML：**#430（734）**
   （`IrCompilerTest` 727 + `CodegenModeTest` 7）。
 - leftover-docs 之后预期的父任务 XML：**737**（734 + 3）。
-- 子任务 XML：等待本地验证。
+- 子任务 XML：**737**（`IrCompilerTest` 730 + `CodegenModeTest` 7），
+  0 个失败、0 个错误、0 个跳过。
 - 处理器修改：**否**。
 - 可发布：**否**。
 - 默认选项不变：未使用 `--codegen=legacy`、`--ir-lower=direct` 或
