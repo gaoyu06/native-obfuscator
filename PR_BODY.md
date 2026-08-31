@@ -10,8 +10,8 @@
 ## Scope and baseline
 
 - Fixture-only; processor changed: **No**.
-- Leftover-docs baseline: #419 at `82ee119a`.
-- Latest compiler parent XML until the parent re-runs: #419, **719** tests (`IrCompilerTest` 712 + `CodegenModeTest` 7).
+- Rebased onto leftover-docs #420 (`a8616b8c7c372aea80a11034fe85ccedaebb5f5d`).
+- Latest compiler parent XML until this parent re-run: #419 (719) (`IrCompilerTest` 712 + `CodegenModeTest` 7).
 - Expected parent XML after leftover-docs: **722** tests (719 + 3).
 - Ship-ready: **No**.
 - Default code generation remains unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or `--backend=cpp` switch.
@@ -35,8 +35,8 @@
 ## 范围与基线
 
 - 仅修改测试夹具；处理器变更：**否**。
-- leftover-docs 基线：#419，提交 `82ee119a`。
-- 在父任务重新运行前，最新 compiler 父 XML 为 #419：**719** 个测试（`IrCompilerTest` 712 + `CodegenModeTest` 7）。
+- 已变基到 leftover-docs #420（`a8616b8c7c372aea80a11034fe85ccedaebb5f5d`）。
+- 本次父分支复跑之前的最新编译器父分支 XML：#419（719）（`IrCompilerTest` 712 + `CodegenModeTest` 7）。
 - 合入 leftover-docs 后预期父 XML：**722** 个测试（719 + 3）。
 - 可发布：**否**。
 - 默认代码生成配置不变：未切换 `--codegen=legacy`、`--ir-lower=direct` 或 `--backend=cpp`。
