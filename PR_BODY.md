@@ -10,7 +10,9 @@
 - Parent XML totals are pending the parent's re-run.
 
 ### Verification
-- Child-local XML verification pending.
+- Required Gradle selection passed.
+- Child-local XML: 698 tests (`IrCompilerTest` 691 + `CodegenModeTest` 7),
+  with 0 failures, 0 errors, and 0 skipped.
 
 ### Release status
 - Ship-ready: No.
@@ -26,7 +28,9 @@
 - 父分支 XML 总数等待父代理重新运行后确认。
 
 ### 验证
-- 子分支本地 XML 校验待运行。
+- 要求的 Gradle 测试组合已通过。
+- 子分支本地 XML：698 项测试（`IrCompilerTest` 691 +
+  `CodegenModeTest` 7），0 失败、0 错误、0 跳过。
 
 ### 发布状态
 - 可发布：否。
