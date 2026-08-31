@@ -46,7 +46,7 @@ python3 docs/measurement/ir-leftover-inventory/measure.py --javac-25 /tmp/temuri
 | `jdk21` | 47 | 47 | 0 | 0 | 0 |
 | `jdk25` | 21 | 21 | 0 | 0 | 0 |
 
-测得的剩余项为零不代表覆盖完整，不是 JDK 支持徽章，也不授权切换默认值。处理器变更：**否**。新增准入：**否**。可发布：**否**。默认值仍为 `--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。
+测得的剩余项为零不代表覆盖完整，不是 JDK 支持徽章，也不授权切换默认值。处理器变更：**否**。新增准入：**否**。可发布：**否**。默认值仍为 `--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。父任务跳过 Gradle（仅测量）。
 
 ### 测量命令
 
