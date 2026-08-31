@@ -22,9 +22,8 @@
 ### Baseline and verification
 
 - Rebased onto leftover-docs #443 at `626f494f` (`626f494f4bf705a9ea015545857dae438683f507`).
-- Latest compiler parent XML until this parent re-run: #442 (752), comprising `IrCompilerTest` 745 + `CodegenModeTest` 7.
-- Expected parent XML after leftover-docs: 755, comprising `IrCompilerTest` 748 + `CodegenModeTest` 7.
-- Child XML is discarded; only the parent re-run is authoritative.
+- Parent XML: **755** (`IrCompilerTest` 748 + `CodegenModeTest` 7), 0 failures/errors/skipped.
+- Parent re-ran `threeImmediateNewExtraLocalSixSecondFifthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: No.
 - Defaults unchanged: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp`.
 - Ship-ready: No.
@@ -52,9 +51,8 @@
 ### 基线与验证
 
 - 已变基到 leftover-docs #443，`626f494f`（`626f494f4bf705a9ea015545857dae438683f507`）。
-- 本次父级复跑前的最新编译器父 XML：#442（752），其中 `IrCompilerTest` 745 + `CodegenModeTest` 7。
-- leftover-docs 之后父分支预期 XML：755，其中 `IrCompilerTest` 748 + `CodegenModeTest` 7。
-- 子分支 XML 作废；以父级复跑为准。
+- 父级 XML：**755**（`IrCompilerTest` 748 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
+- 父级复跑包含 `threeImmediateNewExtraLocalSixSecondFifthArgChainInputsCompileAndRunWithJavaParity`。
 - 处理器已更改：否。
 - 默认值未更改：`--codegen=legacy`、`--ir-lower=direct` 和 `--backend=cpp`。
 - 可发布：否。
