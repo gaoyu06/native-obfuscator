@@ -11,8 +11,8 @@ This fixture-only change admits the shape
 - Chain descriptor: `(Ljava/util/GregorianCalendar;)V`
 - Processor changed: No
 - Product defaults (`--codegen`, `--ir-lower`, and `--backend`) unchanged
-- Rebased onto leftover-docs #412 (`54793a8c`). Latest compiler parent XML remains **#410 (707)** until the parent re-run.
-- Expected parent XML after leftover-docs: 710 (707 + 3)
+- Rebased onto leftover-docs #412 (`54793a8c`).
+- Parent re-ran **710/710** (`IrCompilerTest` 703 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalFiveFirstThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity`. Zero failures/errors/skips.
 - Ship-ready: No
 - This is fixture admission coverage, not a JDK support badge.
 
@@ -27,7 +27,7 @@ This fixture-only change admits the shape
 - 链描述符：`(Ljava/util/GregorianCalendar;)V`
 - 是否修改处理器：否
 - 产品默认值（`--codegen`、`--ir-lower` 和 `--backend`）保持不变
-- 已 rebase 到 leftover-docs #412（`54793a8c`）。父级重跑前最新编译器父级 XML 仍为 **#410（707）**。
-- leftover-docs 合入后预期父分支 XML 总数：710（707 + 3）
+- 已 rebase 到 leftover-docs #412（`54793a8c`）。
+- 父级重跑 **710/710**（`IrCompilerTest` 703 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalFiveFirstThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity`。失败/错误/跳过均为零。
 - 可发布状态：否
 - 这是测试夹具接纳覆盖，不代表 JDK 支持标记。
