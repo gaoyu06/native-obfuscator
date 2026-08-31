@@ -22,10 +22,10 @@
 
 ### Baseline and verification
 
-- Baseline: leftover-docs #446 at `7e95adc3` (`7e95adc3811e137f0e6d6949fbf6f7a6c059b2d0`).
-- Latest compiler parent XML until parent re-run: #446 (758), with `IrCompilerTest` 751 and `CodegenModeTest` 7.
-- Expected parent XML after leftover-docs: 761, with `IrCompilerTest` 754 and `CodegenModeTest` 7.
-- Child-only XML: 761 tests, 0 failures, 0 errors (`IrCompilerTest` 754; `CodegenModeTest` 7).
+- Rebased onto leftover-docs #447 at `7a4f96f5` (`7a4f96f58f19c68d908deec153758bcec2cc415c`).
+- Latest compiler parent XML until this parent re-run: **#446 (758)**, with `IrCompilerTest` 751 and `CodegenModeTest` 7.
+- Expected parent XML after leftover-docs: **761**, with `IrCompilerTest` 754 and `CodegenModeTest` 7.
+- Child XML is discarded; only the parent re-run is authoritative.
 - Defaults unchanged: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` were not flipped.
 - Ship-ready: No.
 - Production goal incomplete.
@@ -52,10 +52,10 @@
 
 ### 基线与验证
 
-- 基线：leftover-docs #446，提交 `7e95adc3`（`7e95adc3811e137f0e6d6949fbf6f7a6c059b2d0`）。
-- 父分支重新运行前的最新编译器 XML：#446（758），其中 `IrCompilerTest` 751、`CodegenModeTest` 7。
-- leftover-docs 之后预期的父分支 XML：761，其中 `IrCompilerTest` 754、`CodegenModeTest` 7。
-- 仅子分支 XML：761 个测试，0 failures，0 errors（`IrCompilerTest` 754；`CodegenModeTest` 7）。
+- 已变基到 leftover-docs #447，`7a4f96f5`（`7a4f96f58f19c68d908deec153758bcec2cc415c`）。
+- 本次父级复跑前的最新编译器父 XML：**#446（758）**，其中 `IrCompilerTest` 751、`CodegenModeTest` 7。
+- leftover-docs 之后预期的父分支 XML：**761**，其中 `IrCompilerTest` 754、`CodegenModeTest` 7。
+- 子分支 XML 作废；以父级复跑为准。
 - 默认值未变：未切换 `--codegen=legacy`、`--ir-lower=direct` 或 `--backend=cpp`。
 - Ship-ready：No。
 - 生产目标尚未完成。
