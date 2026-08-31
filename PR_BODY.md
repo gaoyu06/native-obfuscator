@@ -33,11 +33,9 @@
 
 - Leftover-docs baseline: [#431](https://github.com/gaoyu06/native-obfuscator/pull/431)
   at [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c).
-- Latest compiler parent XML until the parent re-runs: **#430 (734)**
-  (`IrCompilerTest` 727 + `CodegenModeTest` 7).
-- Expected parent XML after leftover-docs: **737** (734 + 3).
-- Child XML: **737** (`IrCompilerTest` 730 + `CodegenModeTest` 7), with
-  0 failures, 0 errors, and 0 skipped.
+- Parent XML: **737** (`IrCompilerTest` 730 + `CodegenModeTest` 7), including
+  `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`.
+- Parent re-ran 737/737 with zero failures, errors, or skips. Child XML is discarded.
 - Processor changed: **No**.
 - Ship-ready: **No**.
 - Defaults unchanged: no `--codegen=legacy`, `--ir-lower=direct`, or
@@ -75,11 +73,9 @@
 
 - leftover-docs 基线：[#431](https://github.com/gaoyu06/native-obfuscator/pull/431)，
   提交为 [`472074ea`](https://github.com/gaoyu06/native-obfuscator/commit/472074eab7f7d5f55926c14343dc54c349d0335c)。
-- 父任务重新运行前的最新编译器 XML：**#430（734）**
-  （`IrCompilerTest` 727 + `CodegenModeTest` 7）。
-- leftover-docs 之后预期的父任务 XML：**737**（734 + 3）。
-- 子任务 XML：**737**（`IrCompilerTest` 730 + `CodegenModeTest` 7），
-  0 个失败、0 个错误、0 个跳过。
+- 父任务 XML：**737**（`IrCompilerTest` 730 + `CodegenModeTest` 7），含
+  `threeImmediateNewExtraLocalSixFirstThirdArgChainInputsCompileAndRunWithJavaParity`。
+- 父任务重跑 737/737，失败、错误和跳过均为零。子任务 XML 作废。
 - 处理器修改：**否**。
 - 可发布：**否**。
 - 默认选项不变：未使用 `--codegen=legacy`、`--ir-lower=direct` 或
