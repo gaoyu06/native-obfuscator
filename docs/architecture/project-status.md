@@ -1,10 +1,8 @@
 # Project status on master / master 现状
 
-Last updated after leftover inventory remasurement
-[#399](https://github.com/gaoyu06/native-obfuscator/pull/399)
-(parent XML 689 from
-[#398](https://github.com/gaoyu06/native-obfuscator/pull/398);
-leftover inventory
+Last updated after extra-local int as the second, third, and fifth five-arg GregorianCalendar `NEW` args
+[#400](https://github.com/gaoyu06/native-obfuscator/pull/400)
+(parent XML 692; latest leftover inventory remains
 [#399](https://github.com/gaoyu06/native-obfuscator/pull/399)
 on leftover-docs
 [#397](https://github.com/gaoyu06/native-obfuscator/pull/397)
@@ -748,6 +746,7 @@ Sources: `docs/benchmarks/ir-admission-phase18-corpus.md`,
 | Post-#395 leftover inventory (#397) | Measurement only on `38c8cf0`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
 | Extra-local int as the second, third, and fourth five-arg GregorianCalendar `NEW` args (#398) | 689 tests (`IrCompilerTest` 682 + `CodegenModeTest` 7). Parent re-ran 689/689 including `threeImmediateNewExtraLocalFiveSecondThirdFourthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Post-#397 leftover inventory (#399) | Measurement only on `9675616`: ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21 IR. 0 leftovers | Not coverage-complete; not a JDK support badge |
+| Extra-local int as the second, third, and fifth five-arg GregorianCalendar `NEW` args (#400) | 692 tests (`IrCompilerTest` 685 + `CodegenModeTest` 7). Parent re-ran 692/692 including `threeImmediateNewExtraLocalFiveSecondThirdFifthArgChainInputsCompileAndRunWithJavaParity` | Remaining ctor-split rejects are gone |
 | Phase-18 focused tests (Sol + Fable) | 88 `IrCompilerTest` + 4 `CodegenModeTest` = 92 | A complete compiler test suite |
 | Runtime-fix focused tests (Sol / Fable on #115) | 85 + 4 = 89 before later phase-18 tests were stacked | — |
 | #53 eval-lower bench | Eval fell back; median **N/A** | Do not back-fill |
@@ -959,6 +958,8 @@ Active-goal work (IR admission, then default flip, then legacy deletion):
   initializer arguments is admitted by #396 (fixture-only).
   Extra-local proven int-copy as the second, third, and fourth five-arg GregorianCalendar `NEW`
   initializer arguments is admitted by #398 (fixture-only).
+  Extra-local proven int-copy as the second, third, and fifth five-arg GregorianCalendar `NEW`
+  initializer arguments is admitted by #400 (fixture-only).
   Isolated float `NEW` chain inputs are admitted by #303.
   Isolated double `NEW` chain inputs are admitted by #305.
   Unproven extra-array `AALOAD` forms stay reject-before-mutation; #288
@@ -1062,9 +1063,9 @@ Not a substitute for the active goal:
 
 ## (a)(b)(c)(d) for this document / 本文发布问答
 
-- **(a) Scope / 范围:** Status refresh after landing #399
-  (leftover inventory remasurement on leftover-docs #397). /
-  落地 #399 之后的现状刷新。
+- **(a) Scope / 范围:** Status refresh after landing #400
+  (extra-local int-copy as the second, third, and fifth five-arg GregorianCalendar NEW initializer arguments). /
+  落地 #400 之后的现状刷新。
 - **(b) Ship-ready? / 可直接上线？** **No.** / **否。**
 - **(c) Review / 是否需要审查？** Yes — check that no support badge
   leaked and that the CLI default was not flipped. /
