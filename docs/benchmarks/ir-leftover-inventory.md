@@ -2,12 +2,12 @@
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `051d2837bd526624f612bc6c867a074dd08f4cea`
-- Measurement commit: `051d2837bd526624f612bc6c867a074dd08f4cea`
+- Measured compiler base (merge-base with `origin/master`): `38c8cf02920609f12a2717f799c8a0b228876b65`
+- Measurement commit: `38c8cf02920609f12a2717f799c8a0b228876b65`
 - This is an admission measurement of checked-in fixtures with explicit `--codegen=ir`.
-- This is the [#393](https://github.com/gaoyu06/native-obfuscator/pull/393) leftover-docs tree at `051d2837bd526624f612bc6c867a074dd08f4cea`.
-- This measurement supersedes [#393](https://github.com/gaoyu06/native-obfuscator/pull/393)'s measurement of the [#391](https://github.com/gaoyu06/native-obfuscator/pull/391) leftover-docs tree at `51d6aedfc0f8c678950f8ee2c2b71f797377648d`.
-- Latest compiler parent XML is **[#392](https://github.com/gaoyu06/native-obfuscator/pull/392) (680)** (`IrCompilerTest` 673 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the [#395](https://github.com/gaoyu06/native-obfuscator/pull/395) leftover-docs tree at `38c8cf02920609f12a2717f799c8a0b228876b65`.
+- This remeasurement supersedes [#395](https://github.com/gaoyu06/native-obfuscator/pull/395)'s measurement of the [#393](https://github.com/gaoyu06/native-obfuscator/pull/393) leftover-docs tree at `051d283` (`051d2837bd526624f612bc6c867a074dd08f4cea`).
+- Latest compiler parent XML is **[#394](https://github.com/gaoyu06/native-obfuscator/pull/394) (683)** (`IrCompilerTest` 676 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
