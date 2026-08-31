@@ -13,8 +13,8 @@ This fixture-only change admits the shape
 - `ConstructorSpecialMethodProcessor` changed: No.
 - Product defaults changed: No (`--codegen`, `--ir-lower`, and `--backend`
   remain unchanged).
-- Rebased onto leftover-docs #414 (`2cd5fb00`). Latest compiler parent XML remains **#413 (710)** until the parent re-run.
-- Expected parent XML after leftover-docs: 713 tests (710 + 3).
+- Rebased onto leftover-docs #414 (`2cd5fb00`).
+- Parent re-ran **713/713** (`IrCompilerTest` 706 + `CodegenModeTest` 7), including `threeImmediateNewExtraLocalFiveSecondThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity`. Zero failures/errors/skips.
 - Ship-ready: No.
 - This is fixture admission coverage, not a JDK support badge.
 
@@ -30,7 +30,7 @@ This fixture-only change admits the shape
 - 是否修改 `ConstructorSpecialMethodProcessor`：否。
 - 是否修改产品默认值：否（`--codegen`、`--ir-lower` 和 `--backend`
   均保持不变）。
-- 已 rebase 到 leftover-docs #414（`2cd5fb00`）。父级重跑前最新编译器父级 XML 仍为 **#413（710）**。
-- leftover-docs 之后预期父分支 XML：713 个测试（710 + 3）。
+- 已 rebase 到 leftover-docs #414（`2cd5fb00`）。
+- 父级重跑 **713/713**（`IrCompilerTest` 706 + `CodegenModeTest` 7），含 `threeImmediateNewExtraLocalFiveSecondThirdFourthFifthArgChainInputsCompileAndRunWithJavaParity`。失败/错误/跳过均为零。
 - 可发布：否。
 - 此项仅为测试夹具准入覆盖，不代表 JDK 支持徽章。
