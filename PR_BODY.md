@@ -7,7 +7,7 @@
 - Adds the fixture shape `new-constructor-extra-local-argument-six-third-fifth`.
 - Admits an extra-local `int` as the third and fifth initializer arguments of a six-argument `GregorianCalendar` `NEW` chain.
 - Adds admission, JVM-verification, and Java/JNI parity coverage.
-- Based on leftover-docs #448 at `9a95f300` (`9a95f30030a6dbfd2772484c8a3148f11f855e71`).
+- Based on [leftover-docs #448](https://github.com/gaoyu06/native-obfuscator/pull/448) at `9a95f300` (`9a95f30030a6dbfd2772484c8a3148f11f855e71`).
 
 ### Wiring checklist
 
@@ -36,7 +36,7 @@
 - 新增夹具形状 `new-constructor-extra-local-argument-six-third-fifth`。
 - 允许额外局部 `int` 作为六参数 `GregorianCalendar` `NEW` 初始化链的第三个和第五个参数。
 - 新增准入、JVM 验证以及 Java/JNI 一致性覆盖。
-- 基于 leftover-docs #448 的 `9a95f300`（`9a95f30030a6dbfd2772484c8a3148f11f855e71`）。
+- 基于 [leftover-docs #448](https://github.com/gaoyu06/native-obfuscator/pull/448) 的 `9a95f300`（`9a95f30030a6dbfd2772484c8a3148f11f855e71`）。
 
 ### 接线检查清单
 
