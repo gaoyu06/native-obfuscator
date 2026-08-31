@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-label="native-obfuscator: Java bytecode to C++/JNI transpiler">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="0.55" stop-color="#101b30"/>
+      <stop offset="1" stop-color="#0d2338"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#38bdf8" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </linearGradient>
+    <marker id="bArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7dd3fc"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="280" rx="14" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1199" height="279" rx="14" fill="none" stroke="#2c3e57" stroke-width="1"/>
+
+  <!-- decorative grid dots -->
+  <g fill="#334760" opacity="0.55">
+    <circle cx="60" cy="40" r="2"/><circle cx="110" cy="40" r="2"/><circle cx="160" cy="40" r="2"/>
+    <circle cx="60" cy="80" r="2"/><circle cx="110" cy="80" r="2"/>
+    <circle cx="1090" cy="230" r="2"/><circle cx="1140" cy="230" r="2"/>
+    <circle cx="1040" cy="250" r="2"/><circle cx="1090" cy="250" r="2"/><circle cx="1140" cy="250" r="2"/>
+  </g>
+  <line x1="60" y1="252" x2="560" y2="252" stroke="url(#beam)" stroke-width="2"/>
+
+  <!-- title block -->
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif">
+    <text x="64" y="118" font-size="46" font-weight="700" fill="#f1f5f9" letter-spacing="0.5">native-obfuscator</text>
+    <text x="64" y="156" font-size="19" fill="#9fb3c8">Java bytecode &#8594; C++/JNI transpiler &#183; selected methods become native code</text>
+    <text x="64" y="184" font-size="15" fill="#7d93aa">Java 字节码 &#8594; C++/JNI 转译器 &#183; 选定方法编译为本地代码</text>
+
+    <!-- fact chips -->
+    <g font-size="13" font-weight="600">
+      <rect x="64" y="206" width="86" height="26" rx="13" fill="#14263d" stroke="#33506e"/>
+      <text x="107" y="223" text-anchor="middle" fill="#93c5fd">GPL-3.0</text>
+      <rect x="158" y="206" width="120" height="26" rx="13" fill="#14263d" stroke="#33506e"/>
+      <text x="218" y="223" text-anchor="middle" fill="#93c5fd">Java 8 baseline</text>
+      <rect x="286" y="206" width="176" height="26" rx="13" fill="#14263d" stroke="#33506e"/>
+      <text x="374" y="223" text-anchor="middle" fill="#c4b5fd">typed CFG IR (opt-in)</text>
+      <rect x="470" y="206" width="118" height="26" rx="13" fill="#14263d" stroke="#33506e"/>
+      <text x="529" y="223" text-anchor="middle" fill="#86efac">CMake / Zig</text>
+    </g>
+  </g>
+
+  <!-- right-side schematic: .class -> C++ -> .so -->
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif">
+    <!-- bytecode card -->
+    <rect x="700" y="58" width="130" height="86" rx="10" fill="#152a45" stroke="#3b5b82" stroke-width="1.5"/>
+    <text x="765" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#bfdbfe">.class</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#7ea4cc">
+      <text x="714" y="106">iload_1</text>
+      <text x="714" y="121">iadd</text>
+      <text x="714" y="136">ireturn</text>
+    </g>
+
+    <line x1="838" y1="101" x2="884" y2="101" stroke="#7dd3fc" stroke-width="2" marker-end="url(#bArrow)"/>
+
+    <!-- C++ card -->
+    <rect x="892" y="58" width="130" height="86" rx="10" fill="#231a3f" stroke="#5b4a8f" stroke-width="1.5"/>
+    <text x="957" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#ddd6fe">.cpp / JNI</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#a793d6">
+      <text x="906" y="106">JNIEXPORT</text>
+      <text x="906" y="121">jint ...(env)</text>
+      <text x="906" y="136">return a+b;</text>
+    </g>
+
+    <line x1="1030" y1="101" x2="1076" y2="101" stroke="#7dd3fc" stroke-width="2" marker-end="url(#bArrow)"/>
+
+    <!-- shared lib card -->
+    <rect x="1084" y="70" width="72" height="62" rx="10" fill="#0f2e26" stroke="#2f6b53" stroke-width="1.5"/>
+    <text x="1120" y="97" text-anchor="middle" font-size="13" font-weight="700" fill="#86efac">.so /</text>
+    <text x="1120" y="115" text-anchor="middle" font-size="13" font-weight="700" fill="#86efac">.dll</text>
+
+    <!-- JNI return path -->
+    <path d="M 1120 140 L 1120 176 L 765 176 L 765 152" fill="none" stroke="#4d6883" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#bArrow)"/>
+    <text x="942" y="196" text-anchor="middle" font-size="12.5" fill="#7d93aa">JVM dispatches native stubs into the generated library at runtime</text>
+  </g>
+</svg>

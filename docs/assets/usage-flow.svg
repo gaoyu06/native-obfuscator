@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 410" width="1160" height="410" role="img" aria-label="User workflow from transpile to run" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Droid Sans Fallback', sans-serif">
+  <defs>
+    <marker id="uArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="uArrowZig" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+    <filter id="uShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="1159" height="409" rx="16" fill="#f7f9fc" stroke="#dbe3ec"/>
+  <text x="40" y="42" font-size="20" font-weight="700" fill="#1f2937">User workflow <tspan font-size="15" font-weight="500" fill="#55627a">&#183; 使用流程</tspan></text>
+
+  <!-- step cards -->
+  <g filter="url(#uShadow)">
+    <rect x="40" y="80" width="250" height="180" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="320" y="80" width="250" height="180" rx="12" fill="#eef2f7" stroke="#8fa3b8" stroke-width="1.5"/>
+    <rect x="600" y="80" width="250" height="180" rx="12" fill="#eef2f7" stroke="#8fa3b8" stroke-width="1.5"/>
+    <rect x="880" y="80" width="250" height="180" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  </g>
+
+  <!-- step 1 -->
+  <circle cx="76" cy="112" r="14" fill="#3b82f6"/>
+  <text x="76" y="117" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">1</text>
+  <text x="100" y="117" font-size="15" font-weight="700" fill="#1f2937">Transpile <tspan font-size="13" font-weight="500" fill="#55627a">转译</tspan></text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#1e3a8a">
+    <text x="58" y="146">java -jar \</text>
+    <text x="58" y="162">  native-obfuscator.jar \</text>
+    <text x="58" y="178">  app.jar out/</text>
+  </g>
+  <text x="58" y="204" font-size="12.5" fill="#374151">optional: --codegen=ir</text>
+  <text x="58" y="224" font-size="12.5" fill="#55627a">writes out/cpp/ + output JAR</text>
+  <text x="58" y="242" font-size="12.5" fill="#55627a">生成 cpp/ 与转换后 JAR</text>
+
+  <!-- step 2 -->
+  <circle cx="356" cy="112" r="14" fill="#64748b"/>
+  <text x="356" y="117" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">2</text>
+  <text x="380" y="117" font-size="15" font-weight="700" fill="#1f2937">Compile <tspan font-size="13" font-weight="500" fill="#55627a">编译</tspan></text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#334155">
+    <text x="338" y="146">cd out/cpp</text>
+    <text x="338" y="162">cmake .</text>
+    <text x="338" y="178">cmake --build . \</text>
+    <text x="338" y="194">  --config Release</text>
+  </g>
+  <text x="338" y="222" font-size="12.5" fill="#55627a">recorded IR builds used</text>
+  <text x="338" y="240" font-size="12.5" fill="#55627a">CC=gcc CXX=g++ &#183; 曾用 gcc/g++</text>
+
+  <!-- step 3 -->
+  <circle cx="636" cy="112" r="14" fill="#64748b"/>
+  <text x="636" y="117" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">3</text>
+  <text x="660" y="117" font-size="15" font-weight="700" fill="#1f2937">Copy library <tspan font-size="13" font-weight="500" fill="#55627a">拷贝</tspan></text>
+  <text x="618" y="146" font-size="12.5" fill="#374151">copy the shared library from</text>
+  <text x="618" y="164" font-size="12.5" fill="#374151">build/libs/ into the loader dir</text>
+  <text x="618" y="182" font-size="12.5" fill="#374151">printed on stdout (native0/)</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#334155">
+    <text x="618" y="208">x64-linux.so</text>
+    <text x="618" y="224">x64-windows.dll ...</text>
+  </g>
+  <text x="618" y="244" font-size="12.5" fill="#55627a">复制共享库到装载目录</text>
+
+  <!-- step 4 -->
+  <circle cx="916" cy="112" r="14" fill="#16a34a"/>
+  <text x="916" y="117" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">4</text>
+  <text x="940" y="117" font-size="15" font-weight="700" fill="#1f2937">Run <tspan font-size="13" font-weight="500" fill="#55627a">运行</tspan></text>
+  <text x="898" y="150" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#116432">java -jar out/app.jar</text>
+  <text x="898" y="178" font-size="12.5" fill="#374151">classpath launch on JDK 24+:</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#334155">
+    <text x="898" y="196">--enable-native-access=</text>
+    <text x="898" y="212">  ALL-UNNAMED</text>
+  </g>
+  <text x="898" y="240" font-size="12.5" fill="#55627a">JVM 经 JNI 调入本地库</text>
+
+  <!-- arrows -->
+  <line x1="292" y1="170" x2="316" y2="170" stroke="#64748b" stroke-width="1.8" marker-end="url(#uArrow)"/>
+  <line x1="572" y1="170" x2="596" y2="170" stroke="#64748b" stroke-width="1.8" marker-end="url(#uArrow)"/>
+  <line x1="852" y1="170" x2="876" y2="170" stroke="#64748b" stroke-width="1.8" marker-end="url(#uArrow)"/>
+
+  <!-- zig bypass -->
+  <path d="M 165 262 L 165 322 L 1005 322 L 1005 266" fill="none" stroke="#d97706" stroke-width="1.8" stroke-dasharray="7 5" marker-end="url(#uArrowZig)"/>
+  <text x="585" y="313" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92500a">--use-zig &#8212; compiles with Zig and packs the libraries automatically, skipping steps 2&#8211;3 &#183; 用 Zig 自动编译打包，跳过第 2&#8211;3 步</text>
+
+  <text x="585" y="366" text-anchor="middle" font-size="12.5" fill="#55627a">one-time Zig install: <tspan font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#334155">java -jar native-obfuscator.jar install-zig</tspan> &#183; SHA-256 verified official release</text>
+</svg>
