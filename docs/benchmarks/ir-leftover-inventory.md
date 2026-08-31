@@ -1,16 +1,16 @@
-# IR leftover inventory on post-#377 leftover-docs tree
+# IR leftover inventory on post-#379 leftover-docs tree
 
 ## Scope and interpretation
 
-- Measured compiler base (merge-base with `origin/master`): `de3f430bd01f225bb293dccd2e7898fcf6254f51`
-- Measurement commit: `de3f430bd01f225bb293dccd2e7898fcf6254f51`
+- Measured compiler base (merge-base with `origin/master`): `9fa518121ee00310888c9dd752094357e494d27c`
+- Measurement commit: `9fa518121ee00310888c9dd752094357e494d27c`
 - This is a measurement of checked-in fixtures with explicit `--codegen=ir`.
 - This is **measurement only**, **not a JDK support badge**, **not coverage-complete**, and **not a behavioral/JNI E2E claim**.
 - Zero measured leftovers is **not coverage-complete**, **not a JDK support badge**, and **does not authorize a default flip**.
 - This run changes no compiler/runtime source or defaults: `--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain the defaults.
-- This is the post-[#377](https://github.com/gaoyu06/native-obfuscator/pull/377) leftover-docs tree after an extra-local `int` was admitted as the **second and fourth** five-argument `GregorianCalendar` `NEW` arguments.
-- This post-#377 snapshot supersedes [#376](https://github.com/gaoyu06/native-obfuscator/pull/376) on `1b48c8510395a11d1baf972d6061cab9dc2aea40` (post-#375).
-- Latest compiler parent XML is **[#377](https://github.com/gaoyu06/native-obfuscator/pull/377) (656)** (`IrCompilerTest` 649 + `CodegenModeTest` 7). This measurement adds no compiler XML.
+- This is the post-[#379](https://github.com/gaoyu06/native-obfuscator/pull/379) leftover-docs tree after an extra-local `int` was admitted as the **second and fifth** five-argument `GregorianCalendar` `NEW` arguments.
+- This post-#379 snapshot supersedes [#378](https://github.com/gaoyu06/native-obfuscator/pull/378) on `de3f430bd01f225bb293dccd2e7898fcf6254f51` (post-#377).
+- Latest compiler parent XML is **[#379](https://github.com/gaoyu06/native-obfuscator/pull/379) (659)** (`IrCompilerTest` 652 + `CodegenModeTest` 7). This measurement adds no compiler XML.
 - Processor changed: **No**.
 - Admitted: **No** (measurement only).
 - Ship-ready: **No**.
