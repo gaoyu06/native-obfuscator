@@ -7,7 +7,7 @@
 - Add the fixture shape `new-constructor-extra-local-argument-six-fourth-sixth`.
 - Admit a proven extra-local `int` copy as the fourth and sixth arguments of a six-argument `GregorianCalendar` `NEW`.
 - Keep the constructor descriptor `(II)V`, prefix `ILOAD 2; ISTORE 3`, `maxLocals = 4`, native body `(II)V` with only `RETURN`, proxy descriptor `(Ljava/lang/Object;II)V`, one hidden bridge, and one native method per constructor.
-- Base this increment on leftover-docs [#453](https://github.com/gaoyu06/native-obfuscator/pull/453), commit `69292d37` (`69292d37adebe2ed53f877725ce8e52ae4ac52b5`).
+- Rebased onto leftover-docs [#454](https://github.com/gaoyu06/native-obfuscator/pull/454) at `a44e3237` (`a44e32370cafd2495dec92bd2c29f3763a5c8471`).
 
 ### Fixture wiring
 
@@ -37,7 +37,7 @@
 - 新增夹具形状 `new-constructor-extra-local-argument-six-fourth-sixth`。
 - 允许已证明的额外局部 `int` 副本作为六参数 `GregorianCalendar` `NEW` 的第四和第六个初始化参数。
 - 构造函数描述符保持 `(II)V`，前缀保持 `ILOAD 2; ISTORE 3`，`maxLocals = 4`；原生方法体保持 `(II)V` 且仅含 `RETURN`；代理描述符保持 `(Ljava/lang/Object;II)V`；每个构造函数仅有一个隐藏桥接和一个原生方法。
-- 本增量基于 leftover-docs [#453](https://github.com/gaoyu06/native-obfuscator/pull/453)，提交 `69292d37`（`69292d37adebe2ed53f877725ce8e52ae4ac52b5`）。
+- 已变基到 leftover-docs [#454](https://github.com/gaoyu06/native-obfuscator/pull/454)，`a44e3237`（`a44e32370cafd2495dec92bd2c29f3763a5c8471`）。
 
 ### 夹具接线
 
