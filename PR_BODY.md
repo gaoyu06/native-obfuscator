@@ -23,8 +23,8 @@
 ### Tests and status
 
 - Add admission, JVM verification, and Java/native parity tests.
-- Latest compiler parent XML remains [#453](https://github.com/gaoyu06/native-obfuscator/pull/453) (**770**) until the parent reruns the suite.
-- Child XML is discarded. Expected parent XML after this increment: **773** (`IrCompilerTest` 766 + `CodegenModeTest` 7).
+- Parent XML: **773** (`IrCompilerTest` 766 + `CodegenModeTest` 7), 0 failures/errors/skipped.
+- Parent re-ran `threeImmediateNewExtraLocalSixFourthSixthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: **No**
 - Ship-ready: **No**
 - The production goal remains incomplete.
@@ -53,8 +53,8 @@
 ### 测试与状态
 
 - 新增准入、JVM 验证和 Java/原生一致性测试。
-- 在父任务重新运行套件前，最新编译器父 XML 仍为 [#453](https://github.com/gaoyu06/native-obfuscator/pull/453)（**770**）。
-- 子任务 XML 将被丢弃。预期父 XML 总数为 **773**（`IrCompilerTest` 766 + `CodegenModeTest` 7）。
+- 父级 XML：**773**（`IrCompilerTest` 766 + `CodegenModeTest` 7），失败/错误/跳过均为 0。
+- 父级复跑包含 `threeImmediateNewExtraLocalSixFourthSixthArgChainInputsCompileAndRunWithJavaParity`。
 - 处理器已修改：**否**
 - 可直接发布：**否**
 - 生产目标仍未完成。
