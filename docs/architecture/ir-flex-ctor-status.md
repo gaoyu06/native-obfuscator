@@ -1716,6 +1716,22 @@ Synthetic bytecode unit tests in
   singular `MethodContext.proxyMethod`. Rewritten classfile-52 bytecode and
   selector paths `7`, `-7`, and `0` preserve JVM verification and
   plain-Java/CMake/g++ JNI parity under `-Xverify:all -Xcheck:jni`.
+- `admitsThreeImmediateReturnsWithNewExtraLocalSixFifthSixthArgChainInputs`,
+  `rewrittenThreeImmediateNewExtraLocalSixFifthSixthArgChainInputsPassJvmVerification`,
+  and
+  `threeImmediateNewExtraLocalSixFifthSixthArgChainInputsCompileAndRunWithJavaParity`
+  compose that six-argument leaf with the same proven prefix extra-local int
+  copy as the fifth and sixth initializer arguments:
+  `NEW GregorianCalendar; DUP; ICONST_1; ICONST_2; ICONST_3; ICONST_4;
+  ILOAD 3; ILOAD 3;
+  INVOKESPECIAL GregorianCalendar.<init>(IIIIII)V`. The prefix
+  `ILOAD 2; ISTORE 3`, complete allocations, and initializer calls stay in
+  retained JVM bytecode; the native body contains only `RETURN`, and the
+  rewrite keeps one hidden bridge and singular `MethodContext.proxyMethod`.
+  The existing per-argument int-family proof admits this composition without
+  a processor change. Rewritten classfile-52 bytecode and selector paths `7`,
+  `-7`, and `0` preserve JVM verification and plain-Java/CMake/g++ JNI parity
+  under `-Xverify:all -Xcheck:jni`.
 - `rejectsUnprovenNewChainInputsBeforeMutation` covers an uninitialized
   allocation, missing `DUP`, computed and `GETSTATIC` initializer inputs, a
   seven-int-argument synthetic `SevenIntHolder` initializer, `NEWARRAY`,
