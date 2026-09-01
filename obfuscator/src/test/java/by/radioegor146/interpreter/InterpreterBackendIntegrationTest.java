@@ -45,7 +45,7 @@ public class InterpreterBackendIntegrationTest {
         new NativeObfuscator().process(input, explicitCppOutput,
                 Collections.emptyList(), Collections.emptyList(), null,
                 null, null, Platform.HOTSPOT, false, false,
-                CodegenMode.LEGACY, CompilerBackend.CPP);
+                CodegenMode.IR, CompilerBackend.CPP);
 
         assertTreesEqual(defaultOutput.resolve("cpp"),
                 explicitCppOutput.resolve("cpp"));
@@ -58,7 +58,7 @@ public class InterpreterBackendIntegrationTest {
         new NativeObfuscator().process(input, interpreterOutput,
                 Collections.emptyList(), Collections.emptyList(), null,
                 null, null, Platform.HOTSPOT, false, false,
-                CodegenMode.LEGACY, CompilerBackend.INTERPRETER);
+                CodegenMode.IR, CompilerBackend.INTERPRETER);
 
         assertTrue(Files.exists(
                 interpreterOutput.resolve("cpp/native_jvm_interp.cpp")));
@@ -88,11 +88,12 @@ public class InterpreterBackendIntegrationTest {
         assertTrue(generated.contains(
                         "env->Throw(interp_frame.pending_exception);"),
                 "an unhandled interpreter exception must propagate through JNI");
-        assertTrue(generated.contains("cstack0.j = cstack0.i;"),
-                "unsupported I2L must use the active legacy codegen");
         assertTrue(generated.contains(
-                        "// unsupportedObjectCast(Ljava/lang/Object;)Ljava/lang/Object;"),
-                "unsupported object operation must use the active legacy codegen");
+                        "// IR codegen: InterpreterFixture.unsupportedConversion(I)I"),
+                "unsupported I2L must use IR codegen");
+        assertTrue(generated.contains(
+                        "// IR codegen: InterpreterFixture.unsupportedObjectCast(Ljava/lang/Object;)Ljava/lang/Object;"),
+                "unsupported object operation must use IR codegen");
     }
 
     @Test

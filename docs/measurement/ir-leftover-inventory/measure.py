@@ -28,7 +28,7 @@ CLASSIC_FIXTURES = [
 JDK_RELEASES = (17, 21, 25)
 FALLBACK_RE = re.compile(
     r"IR codegen unsupported for (.+)#([^(]+)(\(.*\).+?): (.*); "
-    r"(falling back to legacy for this method|leaving constructor bytecode unchanged)"
+    r"(falling back to legacy for this method|leaving constructor bytecode unchanged|leaving method bytecode unchanged)"
 )
 MARKER_RE = re.compile(r"// IR codegen: (.+)\.([^.()]+)(\(.*\).+)$")
 REASON_RE = re.compile(
@@ -410,7 +410,7 @@ def render_report(
         "`--codegen=ir`.",
         "- This is **not a JDK support badge** or a behavioral/native E2E claim.",
         "- This run changes no compiler/runtime source or defaults: "
-        "`--codegen=legacy`, `--ir-lower=direct`, and `--backend=cpp` remain "
+        "`--codegen=ir`, `--ir-lower=direct`, and `--backend=cpp` remain "
         "the defaults.",
         "- Master already contains #163 constructor prefix extra locals, #164 "
         "gapped extras, #165 shared-suffix multi-super diamonds, #166 "

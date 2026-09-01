@@ -6,9 +6,8 @@ Thanks for contributing. This repository is strict about **status wording** —
 read these two pages before changing anything:
 
 - [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md) —
-  the active goal: move all method-body codegen onto the typed CFG IR, then
-  delete the legacy snippet path. Not done; `--codegen` still defaults to
-  `legacy`.
+  method-body codegen is IR; the snippet path is deleted. `--codegen` defaults
+  to `ir`. Remaining leftovers restore original bytecode.
 - [`docs/architecture/project-status.md`](docs/architecture/project-status.md) —
   what is true on `master` and which claims are **not** allowed.
 
@@ -38,8 +37,8 @@ compile-and-run harnesses), not on code reading alone.
 - Do not invent benchmark numbers or claim a general native speedup versus
   HotSpot. The latest recorded run is
   [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md).
-- Do not flip the `--codegen` default or call the legacy path deleted — both
-  are explicit future steps in the current goal.
+- Do not restore `--codegen=legacy` or the snippet generator. Unsupported
+  methods restore original bytecode.
 - Do not present the interpreter, the eval lowering, or the C++ SDK as
   shipped products; they are default-off or packaging details.
 
@@ -48,8 +47,8 @@ compile-and-run harnesses), not on code reading alone.
 感谢参与。本仓库对**状态措辞**非常严格——改任何东西之前先读：
 
 - [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md)——
-  现行目标：把所有方法体代码生成迁到 typed CFG IR，然后删除 legacy 路径。
-  该目标尚未完成，`--codegen` 默认仍是 `legacy`。
+  方法体代码生成已是 IR；snippet 路径已删除。`--codegen` 默认是 `ir`。
+  剩余不支持的构造恢复原始字节码。
 - [`docs/architecture/project-status.md`](docs/architecture/project-status.md)——
   master 上什么是真的、哪些说法**不允许**出现。
 
@@ -64,7 +63,7 @@ compile-and-run harnesses), not on code reading alone.
 
 - 不要凭接纳率或小语料写“已支持 JDK 17/21/25”；Java 8 仍是唯一称过完整支持的版本。
 - 不要编造基准数字，也不要声称对 HotSpot 的普适加速。
-- 不要翻转 `--codegen` 默认值，也不要说 legacy 已删除——两者都是现行目标里明确的后续步骤。
+- 不要把 `--codegen=legacy` 或 snippet 生成器加回来。不支持的方法恢复原始字节码。
 - 解释器、eval 降级和 C++ SDK 都不是已发布的产品，不要如此描述。
 
 ## Issues

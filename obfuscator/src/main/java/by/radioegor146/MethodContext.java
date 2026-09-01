@@ -4,9 +4,8 @@ import by.radioegor146.source.StringPool;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.TryCatchBlockNode;
 
-import java.util.*;
+import java.util.ArrayList;
 
 public class MethodContext {
 
@@ -23,19 +22,9 @@ public class MethodContext {
     public Type ret;
     public ArrayList<Type> argTypes;
 
-    public int line;
-    public List<Integer> stack;
-    public List<Integer> locals;
-    public Set<TryCatchBlockNode> tryCatches;
-    public Map<CatchesBlock, String> catches;
-
     public HiddenMethodsPool.HiddenMethod proxyMethod;
     public MethodNode nativeMethod;
     public int constructorClassloaderArgumentIndex = -1;
-
-    public int stackPointer;
-
-    private final LabelPool labelPool = new LabelPool();
 
     public String cppNativeMethodName;
 
@@ -49,12 +38,6 @@ public class MethodContext {
 
         this.output = new StringBuilder();
         this.nativeMethods = new StringBuilder();
-
-        this.line = -1;
-        this.stack = new ArrayList<>();
-        this.locals = new ArrayList<>();
-        this.tryCatches = new HashSet<>();
-        this.catches = new HashMap<>();
     }
 
     public NodeCache<String> getCachedStrings() {
@@ -73,15 +56,7 @@ public class MethodContext {
         return obfuscator.getCachedFields();
     }
 
-    public Snippets getSnippets() {
-        return obfuscator.getSnippets();
-    }
-
     public StringPool getStringPool() {
         return obfuscator.getStringPool();
-    }
-
-    public LabelPool getLabelPool() {
-        return labelPool;
     }
 }

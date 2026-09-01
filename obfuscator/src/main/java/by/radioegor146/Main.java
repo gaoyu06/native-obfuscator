@@ -54,7 +54,7 @@ public class Main {
                 description = "Target platform: hotspot - standard standalone HotSpot JRE, std_java - java standard, android - for Android builds (w/o DefineClass)")
         private Platform platform;
 
-        @CommandLine.Option(names = {"--codegen"}, defaultValue = "legacy",
+        @CommandLine.Option(names = {"--codegen"}, defaultValue = "ir",
                 description = "Method code generator: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CodegenMode codegenMode;
 

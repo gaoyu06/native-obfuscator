@@ -50,9 +50,7 @@ public class NativeObfuscator {
             "by/radioegor146/sdk/NativePrimitives",
             "by/radioegor146/sdk/NativeStrings");
 
-    private final Snippets snippets;
     private final StringPool stringPool;
-    private final MethodProcessor methodProcessor;
     private final InterpreterMethodProcessor interpreterMethodProcessor;
     private final IrMethodCompiler irMethodCompiler;
 
@@ -99,13 +97,11 @@ public class NativeObfuscator {
 
     public NativeObfuscator() {
         stringPool = new StringPool();
-        snippets = new Snippets(stringPool);
         cachedStrings = new NodeCache<>("(cstrings[%d])");
         cachedClasses = new NodeCache<>("(cclasses[%d])");
         cachedMethods = new NodeCache<>("(cmethods[%d].load(std::memory_order_acquire))");
         cachedFields = new NodeCache<>("(cfields[%d].load(std::memory_order_acquire))");
         MethodShellEmitter shellEmitter = new MethodShellEmitter(this);
-        methodProcessor = new MethodProcessor(this, shellEmitter);
         interpreterMethodProcessor = new InterpreterMethodProcessor();
         irMethodCompiler = new IrMethodCompiler(shellEmitter);
     }
@@ -116,7 +112,7 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar) throws IOException {
         return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
                 customLibraryDirectory, platform, useAnnotations, generateDebugJar,
-                CodegenMode.LEGACY, CompilerBackend.CPP, IrLoweringMode.DIRECT);
+                CodegenMode.IR, CompilerBackend.CPP, IrLoweringMode.DIRECT);
     }
 
     public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
@@ -156,12 +152,11 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar,
                           CodegenMode codegenMode, CompilerBackend backend,
                           IrLoweringMode irLoweringMode) throws IOException {
-        final CodegenMode selectedCodegen = Objects.requireNonNull(codegenMode, "codegenMode");
+        Objects.requireNonNull(codegenMode, "codegenMode");
         final CompilerBackend selectedBackend = Objects.requireNonNull(backend, "backend");
         final IrLoweringMode selectedIrLowering =
                 Objects.requireNonNull(irLoweringMode, "irLoweringMode");
-        final boolean evaluatorRuntimeEnabled = selectedCodegen == CodegenMode.IR
-                && selectedIrLowering == IrLoweringMode.EVAL;
+        final boolean evaluatorRuntimeEnabled = selectedIrLowering == IrLoweringMode.EVAL;
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -325,7 +320,7 @@ public class NativeObfuscator {
 
                     if (!classMethodFilter.shouldProcess(rawClassNode) ||
                         rawClassNode.methods.stream().noneMatch(method ->
-                                MethodProcessor.shouldProcess(method, selectedCodegen) &&
+                                MethodProcessor.shouldProcess(method) &&
                                 classMethodFilter.shouldProcess(rawClassNode, method))) {
                         logger.info("Skipping {}", rawClassNode.name);
                         if (useAnnotations) {
@@ -349,31 +344,29 @@ public class NativeObfuscator {
 
                     List<MethodNode> methodsToPreprocess =
                             rawClassNode.methods.stream()
-                            .filter(method -> MethodProcessor.shouldProcess(
-                                    method, selectedCodegen))
+                            .filter(MethodProcessor::shouldProcess)
                             .filter(methodNode -> classMethodFilter.shouldProcess(rawClassNode, methodNode))
                             .collect(Collectors.toList());
-                    if (selectedCodegen == CodegenMode.IR) {
-                        List<MethodNode> preparedMethods =
-                                new ArrayList<>(methodsToPreprocess.size());
-                        for (MethodNode method : methodsToPreprocess) {
-                            preparedMethods.add(
-                                    JsrRetInliner.prepareForIr(
-                                            rawClassNode, method));
-                        }
-                        for (int i = 0; i < methodsToPreprocess.size(); i++) {
-                            MethodNode prepared = preparedMethods.get(i);
-                            if (prepared != methodsToPreprocess.get(i)) {
-                                JsrRetInliner.installCode(
-                                        methodsToPreprocess.get(i), prepared);
-                            }
+                    List<MethodNode> preparedMethods =
+                            new ArrayList<>(methodsToPreprocess.size());
+                    for (MethodNode method : methodsToPreprocess) {
+                        preparedMethods.add(
+                                prepareForIrLeavingOriginal(
+                                        rawClassNode, method));
+                    }
+                    for (int i = 0; i < methodsToPreprocess.size(); i++) {
+                        MethodNode prepared = preparedMethods.get(i);
+                        if (prepared != methodsToPreprocess.get(i)) {
+                            JsrRetInliner.installCode(
+                                    methodsToPreprocess.get(i), prepared);
                         }
                     }
                     methodsToPreprocess.forEach(methodNode ->
                             PreprocessorRunner.preprocess(
                                     rawClassNode, methodNode, platform));
 
-                    ClassWriter preprocessorClassWriter = new SafeClassWriter(metadataReader, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+                    ClassWriter preprocessorClassWriter = new SafeClassWriter(
+                            metadataReader, classWriterFlags(rawClassNode));
                     rawClassNode.accept(preprocessorClassWriter);
                     if (debug != null) {
                         Util.writeEntry(debug, entry.getName(), preprocessorClassWriter.toByteArray());
@@ -404,7 +397,7 @@ public class NativeObfuscator {
                         for (int i = 0; i < methodsToProcess; i++) {
                             MethodNode method = classNode.methods.get(i);
 
-                            if (!MethodProcessor.shouldProcess(method, selectedCodegen)) {
+                            if (!MethodProcessor.shouldProcess(method)) {
                                 continue;
                             }
 
@@ -419,30 +412,21 @@ public class NativeObfuscator {
                                             : null;
                             if (interpreted != null) {
                                 interpreterMethodProcessor.processMethod(context, interpreted);
-                            } else if (selectedCodegen == CodegenMode.IR) {
+                            } else {
                                 try {
                                     irMethodCompiler.processMethod(context, selectedIrLowering);
                                 } catch (UnsupportedIrConstructException ex) {
-                                    if ("<init>".equals(method.name)) {
-                                        logger.info("IR codegen unsupported for {}#{}{}: {}; "
-                                                        + "leaving constructor bytecode unchanged",
-                                                classNode.name, method.name, method.desc,
-                                                ex.getMessage());
-                                        MethodNode original = readOriginalMethod(
-                                                src, method.name, method.desc);
-                                        classNode.methods.set(i,
-                                                JsrRetInliner.prepareForIr(
-                                                        classNode, original));
-                                        continue;
-                                    }
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
-                                                    + "falling back to legacy for this method",
+                                                    + "leaving method bytecode unchanged",
                                             classNode.name, method.name, method.desc,
                                             ex.getMessage());
-                                    methodProcessor.processMethod(context);
+                                    MethodNode original = readOriginalMethod(
+                                            src, method.name, method.desc);
+                                    classNode.methods.set(i,
+                                            prepareForIrLeavingOriginal(
+                                                    classNode, original));
+                                    continue;
                                 }
-                            } else {
-                                methodProcessor.processMethod(context);
                             }
                             instructions.append(context.output.toString().replace("\n", "\n    "));
 
@@ -466,11 +450,15 @@ public class NativeObfuscator {
                         // Never downgrade: stamping e.g. a Java 17 (61) class as 52 makes the JVM
                         // ignore its NestHost/NestMembers, Record and PermittedSubclasses
                         // attributes even though ASM still writes them.
-                        if ((classNode.version & 0xFFFF) < Opcodes.V1_8) {
+                        if (containsJsrOrRet(classNode)) {
+                            if ((classNode.version & 0xFFFF) < Opcodes.V1_5) {
+                                classNode.version = Opcodes.V1_5;
+                            }
+                        } else if ((classNode.version & 0xFFFF) < Opcodes.V1_8) {
                             classNode.version = Opcodes.V1_8;
                         }
-                        ClassWriter classWriter = new SafeClassWriter(metadataReader,
-                                ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+                        ClassWriter classWriter = new SafeClassWriter(
+                                metadataReader, classWriterFlags(classNode));
                         classNode.accept(classWriter);
                         Util.writeEntry(out, entry.getName(), classWriter.toByteArray());
 
@@ -640,6 +628,38 @@ public class NativeObfuscator {
         return mf;
     }
 
+    private static boolean containsJsrOrRet(ClassNode classNode) {
+        for (MethodNode method : classNode.methods) {
+            if (method.instructions == null) {
+                continue;
+            }
+            for (AbstractInsnNode instruction : method.instructions.toArray()) {
+                int opcode = instruction.getOpcode();
+                if (opcode == Opcodes.JSR || opcode == Opcodes.RET) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int classWriterFlags(ClassNode classNode) {
+        return containsJsrOrRet(classNode)
+                ? ClassWriter.COMPUTE_MAXS
+                : ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES;
+    }
+
+    private MethodNode prepareForIrLeavingOriginal(ClassNode owner, MethodNode method) {
+        try {
+            return JsrRetInliner.prepareForIr(owner, method);
+        } catch (UnsupportedIrConstructException ex) {
+            logger.info("JSR/RET inlining unsupported for {}#{}{}: {}; "
+                            + "leaving method bytecode unchanged",
+                    owner.name, method.name, method.desc, ex.getMessage());
+            return method;
+        }
+    }
+
     private static MethodNode readOriginalMethod(byte[] classBytes, String name,
                                                  String descriptor) {
         ClassNode originalClass = new ClassNode(Opcodes.ASM9);
@@ -692,10 +712,6 @@ public class NativeObfuscator {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         sdkClass.accept(writer);
         return writer.toByteArray();
-    }
-
-    public Snippets getSnippets() {
-        return snippets;
     }
 
     public StringPool getStringPool() {

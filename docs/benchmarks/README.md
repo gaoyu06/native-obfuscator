@@ -1,10 +1,10 @@
-# Reproducible JVM versus legacy/IR transpiled-JNI benchmark
+# Reproducible JVM versus IR transpiled-JNI benchmark
 
-This harness measures the legacy and opt-in IR generators against plain Java.
-It does not claim that either transpiled mode is faster. One
-`:obfuscator:bench` run executes plain JVM, explicit `--codegen=legacy`, and
-explicit `--codegen=ir`. `--ir-lower=eval` exists on `master` as default-off
-and is **not** part of this three-mode harness.
+This harness measures the IR generator against plain Java.
+It does not claim that the transpiled mode is faster. One
+`:obfuscator:bench` run executes plain JVM and `--codegen=ir`.
+`--ir-lower=eval` exists on `master` as default-off and is **not** part of
+this harness. `--codegen=legacy` is gone.
 Do not invent numbers. Do not back-fill the #53 eval median (`N/A`).
 Current product status:
 [../architecture/project-status.md](../architecture/project-status.md).
@@ -25,9 +25,8 @@ CC=gcc CXX=g++ ./gradlew :obfuscator:bench
 ```
 
 `./gradlew bench` is also a Gradle task selector for the same task in this
-repository. One invocation runs plain JVM, explicit `--codegen=legacy`, and
-explicit `--codegen=ir` in sequence. The task is intentionally not a dependency
-of `check` or `test`.
+repository. One invocation runs plain JVM, then `--codegen=ir`. The task is
+intentionally not a dependency of `check` or `test`.
 
 The harness prints JSON and writes the identical report to:
 
@@ -50,16 +49,15 @@ Gradle builds one Java 8 benchmark JAR and the transpiler fat JAR. The Python
 driver then:
 
 1. runs the unmodified benchmark JAR on the JVM;
-2. transpiles only `benchmarks/kernels/**` from that same JAR with explicit
-   `--codegen=legacy`, then configures, compiles, and runs its shared library;
-3. repeats the native pipeline with explicit `--codegen=ir`;
-4. classifies each measured IR method from generated `// IR codegen:` markers
-   or the transpiler's per-method legacy-fallback logs;
-5. rejects unclassified methods, mismatched kernel sets, or checksums.
+2. transpiles only `benchmarks/kernels/**` from that same JAR with
+   `--codegen=ir`, then configures, compiles, and runs its shared library;
+3. classifies each measured IR method from generated `// IR codegen:` markers
+   or restore-original logs;
+4. rejects unclassified methods, mismatched kernel sets, or checksums.
 
 Transpiler stdout/stderr is retained in
-`build/benchmarks/logs/transpile-{legacy,ir}.log`. Generated trees remain under
-`build/benchmarks/work/{legacy,ir}/transpiled`.
+`build/benchmarks/logs/transpile-ir.log`. Generated trees remain under
+`build/benchmarks/work/ir/transpiled`.
 
 Every measured sample uses `System.nanoTime()`. An untimed checksum preflight
 and warmup iterations precede the recorded samples. A volatile sink consumes
@@ -84,9 +82,8 @@ CMake error, compiler error, native execution error, timeout, invalid JSON, or
 checksum mismatch produces a top-level `FAIL`, records the stage and command,
 marks the native result `FAIL`, writes the partial report, and makes the Gradle
 task fail. No native timings are emitted unless the transformed JAR actually
-runs successfully. Both native modes have separate status, failure stage, and
-command records; failure in one mode does not silently skip the other. An IR
-fallback is reported as fallback and is not labeled as an IR timing.
+runs successfully. A restored-bytecode method is reported as restore and is
+not labeled as an IR timing.
 
 ## Interpreting results
 

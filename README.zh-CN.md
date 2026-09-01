@@ -18,12 +18,12 @@
 
 `native-obfuscator` 读取一个 JAR，把选定的方法体转译成通过 `JNIEnv` 复现字节码语义的 JNI C++ 代码，并把这些方法替换为 `native` 桩。运行时由 JVM 调度进生成的共享库。
 
-CLI 默认仍是 **legacy**（基于 snippet 模板的旧生成器）。`master` 上还包含：可选的 typed CFG IR 路径（`--codegen=ir`）、默认关闭的共享求值器降级（`--ir-lower=eval`）、默认关闭的进程内解释器（`--backend=interpreter`）、一个随生成 JAR 打包的小型 C++ SDK、JDK 17+ 语料 harness 以及基准测试 harness。以上**都不是**生产级支持承诺。
+默认方法体生成器是 typed CFG IR（`--codegen=ir`）。`master` 上还包含：默认关闭的共享求值器降级（`--ir-lower=eval`）、默认关闭的进程内解释器（`--backend=interpreter`）、一个随生成 JAR 打包的小型 C++ SDK、JDK 17+ 语料 harness 以及基准测试 harness。以上**都不是**生产级支持承诺。不支持的构造会把该方法留在原始 Java 字节码里。
 
 > [!IMPORTANT]
 > 本工具做的是字节码到本地代码的**转译**。它本身不做二进制加壳，也不能单靠自己隐藏算法特征。请使用黑名单/白名单——把整个应用 JAR（比如游戏客户端）全部转译通常是错误的默认做法。
 
-**关于版本支持的措辞：** Java 8 是本项目唯一称过“完整支持”的版本；9+ 与 Android 仍是实验性的。JDK 17 / 21 / 25 的 IR 语料分别有过 11/11、6/6、4/4 的 stdout 对齐记录，但都只是**一台** Linux 虚拟机上的测量，**不能**写成“已支持 JDK 17/21/25”。现行目标（IR 全覆盖后废弃 legacy）**尚未完成**，默认生成器仍是 `legacy`。
+**关于版本支持的措辞：** Java 8 是本项目唯一称过“完整支持”的版本；9+ 与 Android 仍是实验性的。JDK 17 / 21 / 25 的 IR 语料分别有过 11/11、6/6、4/4 的 stdout 对齐记录，但都只是**一台** Linux 虚拟机上的测量，**不能**写成“已支持 JDK 17/21/25”。默认生成器是 `ir`。snippet / `--codegen=legacy` 已删除。IR 不支持的构造恢复原始字节码。
 
 ---
 
@@ -53,11 +53,11 @@ CLI 默认仍是 **legacy**（基于 snippet 模板的旧生成器）。`master`
 
 ## 工作原理
 
-<img src="docs/assets/architecture-pipeline.svg" alt="端到端流水线：输入 JAR、筛选、预处理、逐方法代码生成（legacy / IR / 解释器）、类级装配、CMake 或 Zig 编译、共享库、带 native 桩的输出 JAR" width="100%">
+<img src="docs/assets/architecture-pipeline.svg" alt="端到端流水线：输入 JAR、筛选、预处理、逐方法代码生成（IR / 解释器）、类级装配、CMake 或 Zig 编译、共享库、带 native 桩的输出 JAR" width="100%">
 
 1. **加载与筛选** — `NativeObfuscator.process` 流式读取 JAR，用 ASM 解析为 `ClassNode`，并应用 `ClassMethodFilter`（黑/白名单加 `@Native`/`@NotNative` 注解）。
-2. **字节码预处理** — `IndyPreprocessor` 与 `LdcPreprocessor` 降级 `invokedynamic` 及句柄/类型常量；随后用 `COMPUTE_MAXS | COMPUTE_FRAMES` 重新序列化并重读，保证栈帧信息在代码生成前是权威的。
-3. **逐方法代码生成** — `NativeObfuscator` 的方法循环是分派点。每个选定方法会进入 legacy snippet 生成器（`MethodProcessor`，默认）、typed CFG IR 路径（`--codegen=ir` 时的 `IrMethodCompiler`），或进程内解释器（`--backend=interpreter` 时的 `InterpreterMethodEmitter`，默认关闭）。`--ir-lower=eval` 是 IR 编译器内部的降级（`InterpreterStreamStrategy`），不是解释器后端。
+2. **字节码预处理** — `IndyPreprocessor` 与 `LdcPreprocessor` 降级 `invokedynamic` 及句柄/类型常量；随后用 `COMPUTE_MAXS | COMPUTE_FRAMES` 重新序列化并重读，保证栈帧信息在代码生成前是权威的。内联失败后仍含 `jsr`/`ret` 的类只用 `COMPUTE_MAXS`（ASM 无法为这些指令计算帧）。
+3. **逐方法代码生成** — `NativeObfuscator` 的方法循环是分派点。每个选定方法进入 typed CFG IR 路径（`IrMethodCompiler`）；当 `--backend=interpreter` 能接纳时走进程内解释器（`InterpreterMethodEmitter`，默认关闭）。解释器未覆盖时回退到 IR。IR 未覆盖时恢复原始字节码。`--ir-lower=eval` 是 IR 编译器内部的降级（`InterpreterStreamStrategy`），不是解释器后端。eval 未覆盖时回退到 direct IR。
 4. **类级装配** — `ClassSourceBuilder`、`CMakeFilesBuilder`、`MainSourceBuilder` 与 `StringPool` 写出 `cpp/` 目录，并把选定方法改写为 `native` 桩。
 5. **运行时辅助** — `native_jvm.{cpp,hpp}` 与 `string_pool.{cpp,hpp}` 随生成源码一起拷贝。
 6. **本地编译** — CMake，或加 `--use-zig` 时用 Zig。这是**独立的一步**；默认流程里工具本身不编译二进制。
@@ -86,9 +86,9 @@ sequenceDiagram
 
 | 主题 | 实际情况 |
 | --- | --- |
-| 现行目标 | 把所有方法体代码生成迁到 IR，然后删除 legacy snippet 路径。**尚未完成**。覆盖完整前默认保持 `legacy` |
-| 默认生成器 | `legacy`（snippet / `cppsnippets.properties`） |
-| 可选 IR | `--codegen=ir` — typed CFG，覆盖到 phase 20，另含 `LCMP`、`IF_ACMP*`、monitor / synchronized、可被预处理器降级的 `invokedynamic`、已验证的 `ConstantDynamic`（类与接口）、原始 MethodHandle / MethodType `LDC`、原始类型 `Class` `LDC`，以及规范 `jsr`/`ret` 内联。遇到不支持的构造时逐方法回退到 legacy |
+| 现行目标 | 方法体代码生成已是 IR。snippet 路径已删除。剩余不支持的构造恢复原始字节码 |
+| 默认生成器 | `ir`（typed CFG）。`--codegen=legacy` 已删除 |
+| IR 覆盖 | typed CFG，覆盖到 phase 20，另含 `LCMP`、`IF_ACMP*`、monitor / synchronized、可被预处理器降级的 `invokedynamic`、已验证的 `ConstantDynamic`（类与接口）、原始 MethodHandle / MethodType `LDC`、原始类型 `Class` `LDC`，以及规范 `jsr`/`ret` 内联。不支持的方法恢复原始字节码 |
 | 类文件元数据 | 保留输入的 major version（仅设 Java 8 下限）。不再因强制写 52 而抹掉 Nest / record / sealed 属性 |
 | Java 基线 | 历史 README 的说法保持不变：**Java 8 是本项目唯一称过完整支持的版本。** 9+ 与 Android 仍是实验性的 |
 | JDK 17 IR 语料 | 11 个 `--release 17` 程序在**一台** Linux x86-64 虚拟机上、`--codegen=ir` 下与 HotSpot stdout 对齐。这不是“支持 JDK 17”的产品级徽章 |
@@ -104,23 +104,24 @@ sequenceDiagram
 
 ## 代码生成模式
 
-<img src="docs/assets/codegen-modes.svg" alt="四种生成/降级模式：legacy（默认）、IR direct（可选）、IR eval（默认关闭）、解释器（默认关闭），以及逐方法回退规则" width="100%">
+<img src="docs/assets/codegen-modes.svg" alt="三种生成/降级模式：IR direct（默认）、IR eval（默认关闭）、解释器（默认关闭），以及逐方法恢复原始字节码" width="100%">
 
 各开关对每个选定方法的作用：
 
 ```mermaid
 flowchart TD
-    A["方法被选中转译"] --> B{"--codegen ?"}
-    B -- "legacy（默认）" --> C["cppsnippets.properties 模板拼接"]
-    B -- "ir（可选）" --> D{"IR 能接纳该方法?"}
-    D -- "否" --> E["逐方法回退到 legacy。<br/>被拒绝的构造器方法体<br/>恢复为原始字节码"]
+    A["方法被选中转译"] --> B{"--backend interpreter 且 ISA 能接纳?"}
+    B -- "是" --> C["InterpreterMethodEmitter"]
+    B -- "否" --> D{"IR 能接纳该方法?"}
+    D -- "否" --> E["恢复原始字节码"]
     D -- "是" --> F{"--ir-lower ?"}
     F -- "direct（默认）" --> G["DirectCppStrategy：结构化 C++"]
-    F -- "eval（默认关闭）" --> H["共享求值器降级<br/>（仅窄整数切片）"]
-    C --> I["生成的 C++ 写入 cpp/ 目录"]
-    E --> I
-    G --> I
-    H --> I
+    F -- "eval（默认关闭）" --> H{"求值器能接纳?"}
+    H -- "是" --> I["共享求值器降级"]
+    H -- "否" --> G
+    C --> J["生成的 C++ 写入 cpp/ 目录"]
+    G --> J
+    I --> J
 ```
 
 `--backend=interpreter` 是另一个独立、默认关闭的开关（默认为 `--backend=cpp`）：一个窄范围的进程内解释器，当前为 ISA v4（静态 `int`/`long`、引用、`ATHROW`/异常表；无 `NEW`、调用与字段）。它不是保护类产品。
@@ -130,7 +131,7 @@ flowchart TD
 <img src="docs/assets/usage-flow.svg" alt="使用流程：java -jar 转译、cmake 或 zig 编译、拷贝共享库、运行输出 JAR" width="100%">
 
 ```bash
-# 1. 转译（可选加 --codegen=ir）
+# 1. 转译
 java -jar native-obfuscator.jar app.jar out/
 
 # 2. 编译生成的 C++（已记录的 IR 构建使用 CC=gcc CXX=g++）
@@ -174,8 +175,8 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `<outputDirectory>` | 输出转换后 JAR 与 `cpp/` 目录的位置 |
 | `-l` | 依赖库目录（可选，推荐提供） |
 | `-p` | `hotspot`（默认）、`std_java` 或 `android` |
-| `--codegen` | `legacy`（默认）或 `ir` |
-| `--ir-lower` | `direct`（默认）或 `eval`；仅在 `--codegen=ir` 时才被读取 |
+| `--codegen` | `ir`（默认；仅剩这一项） |
+| `--ir-lower` | `direct`（默认）或 `eval` |
 | `--backend` | `cpp`（默认）或 `interpreter`（窄 int/i64/引用切片；默认关闭） |
 | `-a` | 启用 `@Native` / `@NotNative` 注解处理 |
 | `-w` / `-b` | 白名单 / 黑名单文件 |
@@ -188,7 +189,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--jdk-home` | 带 `include/jni.h` 的 JDK（默认取 `JAVA_HOME`） |
 | `--zig-install-dir` | Zig 的安装位置（默认 `~/.native-obfuscator/zig/`） |
 
-`--codegen=ir` 是可选项。其 `direct` 降级保持默认；`--ir-lower=eval` 选择窄范围的共享求值器降级。不支持的方法逐方法回退到 legacy 生成器；例外是被拒绝的 `<init>` 方法体，它们会恢复为原始字节码（含 `invokedynamic`），而不是留下内部预处理器标记。`--backend=interpreter` 是另一个独立可选项，默认关闭。
+`--codegen=ir` 是默认且仅剩的生成器。其 `direct` 降级保持默认；`--ir-lower=eval` 选择窄范围的共享求值器降级，未覆盖时回退到 direct IR。不支持的方法恢复原始字节码（含 `invokedynamic`），而不是留下内部预处理器标记。`--backend=interpreter` 是另一个独立可选项，默认关闭；解释器未覆盖时回退到 IR。
 
 ### 平台
 
@@ -220,7 +221,7 @@ mypackage/myotherpackage/Class1$SubClass#doOther!(I)V
 ### 基本流程
 
 1. `java -jar native-obfuscator.jar <input.jar> <output-dir>`
-2. 可选 IR：加 `--codegen=ir`（还可加 `--ir-lower=eval`）
+2. 可选求值器：加 `--ir-lower=eval`
 3. 在生成的 `cpp/` 目录里执行 `cmake .`（已记录的 IR 构建使用 `CC=gcc CXX=g++`）
 4. `cmake --build . --config Release`
 5. 把 `build/libs/` 下的共享库拷贝到 stdout 打印的装载路径（默认 `native0/`），命名形如：
@@ -296,7 +297,7 @@ Strings：与 Java 兼容的 UTF-16 `length`、`hashCode` 与 `concat`。已记�
 
 <img src="docs/assets/ir-compiler.svg" alt="IR 编译器内部：ASM 树、JSR/RET 内联、类型化 CFG、降级策略、C++ AST 生成" width="100%">
 
-可选的 `--codegen=ir` 路径从预处理后的 ASM 树构建类型化控制流图（值类型为 `i32`/`i64`/`f32`/`f64`/引用；`AsmToIr`、`CfgBuilder`，规范的 `jsr`/`ret` 先内联），经策略降级（默认 `DirectCppStrategy`，`--ir-lower=eval` 时为 `InterpreterStreamStrategy`），再由 `IrCppEmitter` 生成结构化 C++。`--backend=interpreter` 是 `NativeObfuscator` 上的并列路径（`InterpreterMethodEmitter`），不是 IR 编译器的降级。遇到不支持的构造会抛出 `UnsupportedIrConstructException` 并逐方法回退到 legacy 生成器；被拒绝的 `<init>` 方法体恢复为原始字节码。
+默认的 `--codegen=ir` 路径从预处理后的 ASM 树构建类型化控制流图（值类型为 `i32`/`i64`/`f32`/`f64`/引用；`AsmToIr`、`CfgBuilder`，规范的 `jsr`/`ret` 先内联），经策略降级（默认 `DirectCppStrategy`，`--ir-lower=eval` 时为 `InterpreterStreamStrategy`），再由 `IrCppEmitter` 生成结构化 C++。`--backend=interpreter` 是 `NativeObfuscator` 上的并列路径（`InterpreterMethodEmitter`），不是 IR 编译器的降级。遇到不支持的构造会抛出 `UnsupportedIrConstructException` 并恢复原始字节码。
 
 设计与状态：[`docs/architecture/ir-compiler.md`](docs/architecture/ir-compiler.md) ·
 [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md) ·
@@ -328,7 +329,7 @@ CI 是名为 “Main pipeline” 的工作流（[`.github/workflows/main.yml`](.
 | 文档 | 作用 |
 | --- | --- |
 | [架构总览](docs/architecture/overview.md) | 流水线的图解页（双语） |
-| [现行目标](docs/architecture/current-goal.md) | 现行目标：IR 覆盖完整后废弃 legacy |
+| [现行目标](docs/architecture/current-goal.md) | 替换已落地：默认生成器是 IR；snippet 路径已删除 |
 | [项目状态](docs/architecture/project-status.md) | master 上有什么、没有什么、不许声称什么 |
 | [IR 编译器](docs/architecture/ir-compiler.md) | typed CFG 设计 |
 | [IR phase 18](docs/architecture/ir-phase18-status.md) | 原始类型数组与 `MULTIANEWARRAY` |

@@ -2,6 +2,7 @@ package by.radioegor146.ir;
 
 import by.radioegor146.CodegenMode;
 import by.radioegor146.HiddenMethodsPool;
+import by.radioegor146.IrLoweringMode;
 import by.radioegor146.MethodContext;
 import by.radioegor146.MethodProcessor;
 import by.radioegor146.NativeObfuscator;
@@ -733,13 +734,11 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void admitsSimpleConstructorOnlyForIrAndKeepsGetterOnIr() {
+    public void admitsSimpleConstructorAndKeepsGetter() {
         MethodNode constructor = intFieldConstructor();
         ClassNode owner = constructorOwner("example/Math", "java/lang/Object");
 
-        assertFalse(MethodProcessor.shouldProcess(constructor));
-        assertFalse(MethodProcessor.shouldProcess(constructor, CodegenMode.LEGACY));
-        assertTrue(MethodProcessor.shouldProcess(constructor, CodegenMode.IR));
+        assertTrue(MethodProcessor.shouldProcess(constructor));
 
         IrMethod completeIr = frontend.build(owner.name, constructor);
         assertEquals(IrType.VOID, completeIr.getReturnType());
@@ -48643,7 +48642,7 @@ public class IrCompilerTest {
 
         assertEquals(Opcodes.LDC, error.getOpcode());
         assertTrue(error.getMessage().contains(
-                "bootstrap is not REF_invokeStatic"));
+                "bootstrap is not an invoke method handle"));
         assertEquals(originalInstructions,
                 Arrays.asList(method.instructions.toArray()));
         assertEquals(originalMethodCount, owner.methods.size());
@@ -48703,6 +48702,157 @@ public class IrCompilerTest {
         resolverMethod.setAccessible(true);
         assertEquals(42, resolverMethod.invoke(null));
         assertEquals(42, resolverMethod.invoke(null));
+    }
+
+    @Test
+    public void admitsPrimitiveClassBootstrapArgumentThroughTypedResolver()
+            throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicClassArgMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc))
+                .reduce((first, second) -> second)
+                .orElseThrow(AssertionError::new);
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        Method resolverMethod = generated.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        assertEquals("int", resolverMethod.invoke(null));
+        assertEquals("int", resolverMethod.invoke(null));
+        assertEquals(1, generated.getField("classArgCalls").getInt(null));
+
+        MethodNode roundTrip = constantDynamicClassArgMethod(
+                owner.name, Type.getObjectType("I"));
+        NativeObfuscator roundTripObfuscator = new NativeObfuscator();
+        ClassNode roundTripOwner = constantDynamicOwner();
+        roundTripOwner.methods.add(roundTrip);
+        MethodContext roundTripContext = new MethodContext(
+                roundTripObfuscator, roundTrip, 0, roundTripOwner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(roundTripObfuscator))
+                .processMethod(roundTripContext);
+        MethodNode roundTripResolver = roundTripOwner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc))
+                .reduce((first, second) -> second)
+                .orElseThrow(AssertionError::new);
+        assertTrue(emitsWrapperTypeGetstatic(roundTripResolver));
+        Class<?> generatedRoundTrip =
+                new ByteArrayClassLoader().define(writeClass(roundTripOwner));
+        Method roundTripMethod =
+                generatedRoundTrip.getDeclaredMethod(roundTripResolver.name);
+        roundTripMethod.setAccessible(true);
+        assertEquals("int", roundTripMethod.invoke(null));
+    }
+
+    @Test
+    public void admitsVarargsAndObjectReturningConstantDynamicBootstraps()
+            throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicVarargsAndObjectMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        MethodNode varargsResolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc)
+                        && mentionsBootstrap(candidate, "joinConstants"))
+                .findFirst().orElseThrow(AssertionError::new);
+        MethodNode objectResolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc)
+                        && mentionsBootstrap(candidate, "asObject"))
+                .findFirst().orElseThrow(AssertionError::new);
+        Method varargsMethod = generated.getDeclaredMethod(varargsResolver.name);
+        Method objectMethod = generated.getDeclaredMethod(objectResolver.name);
+        varargsMethod.setAccessible(true);
+        objectMethod.setAccessible(true);
+        assertEquals("ab", varargsMethod.invoke(null));
+        assertEquals("ab", varargsMethod.invoke(null));
+        assertEquals("boxed-string", objectMethod.invoke(null));
+        assertEquals(1, generated.getField("varargsCalls").getInt(null));
+        assertEquals(1, generated.getField("objectCalls").getInt(null));
+    }
+
+    @Test
+    public void packsSingleVarargsBootstrapArgument() throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicSingleVarargsMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc)
+                        && mentionsBootstrap(candidate, "firstConstant"))
+                .findFirst().orElseThrow(AssertionError::new);
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        Method resolverMethod = generated.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        assertEquals("solo", resolverMethod.invoke(null));
+        assertEquals(1, generated.getField("firstCalls").getInt(null));
+    }
+
+    @Test
+    public void boxesIntegerBootstrapArgumentForObjectParameter() throws Exception {
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicObjectParamIntMethod(owner.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && "()Ljava/lang/String;".equals(candidate.desc)
+                        && mentionsBootstrap(candidate, "objectParam"))
+                .findFirst().orElseThrow(AssertionError::new);
+        Class<?> generated = new ByteArrayClassLoader().define(writeClass(owner));
+        Method resolverMethod = generated.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        assertEquals("42", resolverMethod.invoke(null));
+        assertEquals("42", resolverMethod.invoke(null));
+        assertEquals(1, generated.getField("objectParamCalls").getInt(null));
+    }
+
+    @Test
+    public void admitsConstructorBootstrapConstantDynamic() throws Exception {
+        ClassNode holder = condyHolder();
+        ClassNode owner = constantDynamicOwner();
+        MethodNode method = constantDynamicConstructorMethod(holder.name);
+        owner.methods.add(method);
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context);
+
+        ByteArrayClassLoader loader = new ByteArrayClassLoader();
+        Class<?> generatedHolder = loader.define(writeClass(holder));
+        Class<?> generatedOwner = loader.define(writeClass(owner));
+        MethodNode resolver = owner.methods.stream()
+                .filter(candidate -> candidate.name.startsWith("$native$condy$")
+                        && candidate.desc.equals("()L" + holder.name + ";"))
+                .findFirst().orElseThrow(AssertionError::new);
+        Method resolverMethod = generatedOwner.getDeclaredMethod(resolver.name);
+        resolverMethod.setAccessible(true);
+        Object first = resolverMethod.invoke(null);
+        Object second = resolverMethod.invoke(null);
+        assertSame(first, second);
+        assertEquals("held", generatedHolder.getField("value").get(first));
     }
 
     @Test
@@ -50146,6 +50296,13 @@ public class IrCompilerTest {
         assertStackShuffle("dup2Form2Double", Opcodes.DUP2,
                 new Type[]{Type.DOUBLE_TYPE}, 0, 0);
 
+        assertStackShuffle("dupX1IntFloat", Opcodes.DUP_X1,
+                new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE}, 1, 0, 1);
+        assertStackShuffle("dupX1ReferenceInt", Opcodes.DUP_X1,
+                new Type[]{object, Type.INT_TYPE}, 1, 0, 1);
+        assertStackShuffle("dupX1FloatReference", Opcodes.DUP_X1,
+                new Type[]{Type.FLOAT_TYPE, object}, 1, 0, 1);
+
         assertStackShuffle("dupX2Form1", Opcodes.DUP_X2,
                 new Type[]{object, Type.INT_TYPE, Type.FLOAT_TYPE}, 2, 0, 1, 2);
         assertStackShuffle("dupX2Form2Long", Opcodes.DUP_X2,
@@ -50191,6 +50348,10 @@ public class IrCompilerTest {
         Type object = Type.getType(Object.class);
         assertIllegalStackShuffle(Opcodes.DUP2,
                 Type.LONG_TYPE, Type.INT_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP_X1,
+                Type.INT_TYPE, Type.LONG_TYPE);
+        assertIllegalStackShuffle(Opcodes.DUP_X1,
+                Type.DOUBLE_TYPE, Type.INT_TYPE);
         assertIllegalStackShuffle(Opcodes.DUP_X2,
                 object, Type.DOUBLE_TYPE);
         assertIllegalStackShuffle(Opcodes.DUP2_X1,
@@ -50895,8 +51056,94 @@ public class IrCompilerTest {
     }
 
     @Test
-    public void rejectsUnstructuredMonitorPairingBeforeMutation() {
+    public void admitsUnstructuredMonitorEnterWithoutExit() {
         MethodNode method = unstructuredMonitorMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        assertTrue(ir.toString().contains("monitorenter"));
+        assertFalse(ir.toString().contains("monitorexit"));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.unstructuredMonitor(Ljava/lang/Object;)V"));
+        assertTrue(cpp.contains("env->MonitorEnter"));
+        assertFalse(cpp.contains("cstack"));
+    }
+
+    @Test
+    public void admitsBackedgeToMethodEntryAsLocalPhis() {
+        MethodNode method = entryBackedgeLoopMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock entry = ir.getBlocks().get(0);
+        assertFalse(entry.getPhis().isEmpty());
+        assertTrue(entry.getPhis().stream()
+                .anyMatch(phi -> phi.getSlotKind() == IrPhi.SlotKind.LOCAL));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.entryLoop(I)I"));
+        assertFalse(cpp.contains("cstack"));
+        int entryLabel = cpp.indexOf("B0:");
+        assertTrue(entryLabel >= 0);
+        assertTrue(cpp.indexOf("= arg0;") >= 0
+                && cpp.indexOf("= arg0;") < entryLabel);
+        assertTrue(cpp.contains("goto B0;"));
+    }
+
+    @Test
+    public void evaluatorFallsBackToDirectForEntryLoopHeader() {
+        MethodNode method = entryBackedgeLoopMethod();
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context, IrLoweringMode.EVAL);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.entryLoop(I)I"));
+        assertFalse(cpp.contains("ir_method_data"));
+        assertFalse(cpp.contains("cstack"));
+        int entryLabel = cpp.indexOf("B0:");
+        assertTrue(entryLabel >= 0);
+        assertTrue(cpp.indexOf("= arg0;") >= 0
+                && cpp.indexOf("= arg0;") < entryLabel);
+    }
+
+    @Test
+    public void admitsHandlerEntryWithNormalPredecessor() {
+        MethodNode method = mixedHandlerPredecessorMethod();
+        IrMethod ir = frontend.build("example/Math", method);
+        IrBlock handler = ir.getBlocks().stream()
+                .filter(block -> block.getPhis().stream()
+                        .anyMatch(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK))
+                .findFirst().orElseThrow(AssertionError::new);
+        assertTrue(handler.getPhis().stream()
+                .anyMatch(phi -> phi.getSlotKind() == IrPhi.SlotKind.STACK));
+        assertTrue(handler.getInstructions().isEmpty()
+                || !(handler.getInstructions().get(0) instanceof IrNodes.CaughtException));
+
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/Math.mixedHandler(Ljava/lang/Throwable;)Ljava/lang/Throwable;"));
+        assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
+        assertTrue(cpp.contains("= (jobject) caught_exception;"));
+        assertFalse(cpp.contains("cstack"));
+    }
+
+    @Test
+    public void rejectsHandlerJumpWithMismatchedStackBeforeMutation() {
+        MethodNode method = mismatchedHandlerStackMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = new MethodContext(obfuscator, method, 0, owner(), 0);
 
@@ -50905,8 +51152,7 @@ public class IrCompilerTest {
                 () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
                         .processMethod(context));
 
-        assertEquals(Opcodes.MONITORENTER, error.getOpcode());
-        assertTrue(error.getMessage().contains("monitor is held"));
+        assertTrue(error.getMessage().contains("Mismatched operand-stack types"));
         assertUnchangedAfterRejectedIr(method, context, obfuscator);
     }
 
@@ -51368,6 +51614,9 @@ public class IrCompilerTest {
                 swapMethod(Type.INT_TYPE, Type.FLOAT_TYPE),
                 swapMethod(Type.FLOAT_TYPE, Type.getType(Object.class)),
                 swapMethod(Type.getType(Object.class), Type.INT_TYPE),
+                stackShuffleMethod("smokeDupX1", new int[]{Opcodes.DUP_X1},
+                        new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE},
+                        new int[]{1, 0, 1}),
                 stackShuffleMethod("smokeDup2Form1", new int[]{Opcodes.DUP2},
                         new Type[]{Type.INT_TYPE, Type.FLOAT_TYPE},
                         new int[]{0, 1, 0, 1}),
@@ -65608,6 +65857,74 @@ public class IrCompilerTest {
         return method;
     }
 
+    private MethodNode entryBackedgeLoopMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "entryLoop", "(I)I", null, null);
+        LabelNode start = new LabelNode();
+        method.instructions.add(start);
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new VarInsnNode(Opcodes.ISTORE, 0));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, 10));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ICMPLT, start));
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private MethodNode mixedHandlerPredecessorMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "mixedHandler",
+                "(Ljava/lang/Throwable;)Ljava/lang/Throwable;", null, null);
+        LabelNode tryStart = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFNONNULL, tryStart));
+        method.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, handler));
+        method.instructions.add(tryStart);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                tryStart, handler, handler, "java/lang/Throwable"));
+        method.maxLocals = 1;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode mismatchedHandlerStackMethod() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "badHandlerStack", "(I)I", null, null);
+        LabelNode tryStart = new LabelNode();
+        LabelNode handler = new LabelNode();
+        method.instructions.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        method.instructions.add(new JumpInsnNode(Opcodes.IFEQ, tryStart));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new JumpInsnNode(Opcodes.GOTO, handler));
+        method.instructions.add(tryStart);
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.NEW, "java/lang/RuntimeException"));
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/RuntimeException", "<init>", "()V", false));
+        method.instructions.add(new InsnNode(Opcodes.ATHROW));
+        method.instructions.add(handler);
+        method.instructions.add(new InsnNode(Opcodes.POP));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.tryCatchBlocks.add(new TryCatchBlockNode(
+                tryStart, handler, handler, "java/lang/Throwable"));
+        method.maxLocals = 1;
+        method.maxStack = 2;
+        return method;
+    }
+
     private MethodNode unsupportedWideOperationMethod() {
         // Monitors, INVOKEDYNAMIC, proven ConstantDynamic shapes, and valid
         // legacy subroutines are admitted.
@@ -65623,10 +65940,8 @@ public class IrCompilerTest {
     private MethodNode unlowerableConstantDynamicMethod() {
         MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
                 "condy", "()V", null, null);
-        Handle bootstrap = new Handle(Opcodes.H_INVOKEVIRTUAL,
-                "example/Bootstrap", "constant",
-                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
-                        + "Ljava/lang/Class;)Ljava/lang/String;", false);
+        Handle bootstrap = new Handle(Opcodes.H_GETSTATIC,
+                "example/Bootstrap", "constant", "Ljava/lang/String;", false);
         method.instructions.add(new LdcInsnNode(new ConstantDynamic(
                 "constant", "Ljava/lang/String;", bootstrap)));
         method.instructions.add(new InsnNode(Opcodes.POP));
@@ -65809,6 +66124,21 @@ public class IrCompilerTest {
         owner.fields.add(new FieldNode(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
                 "outerBootstrapCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "classArgCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "varargsCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "objectCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "firstCalls", "I", null, null));
+        owner.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "objectParamCalls", "I", null, null));
 
         MethodNode bootstrap = new MethodNode(Opcodes.ASM9,
                 Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
@@ -65857,7 +66187,275 @@ public class IrCompilerTest {
         intBootstrap.maxLocals = 3;
         intBootstrap.maxStack = 1;
         owner.methods.add(intBootstrap);
+
+        MethodNode classArgBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "classArgConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/Class;)Ljava/lang/String;",
+                null, null);
+        classArgBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "classArgCalls", "I"));
+        classArgBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        classArgBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        classArgBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "classArgCalls", "I"));
+        classArgBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        classArgBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getName",
+                "()Ljava/lang/String;", false));
+        classArgBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        classArgBootstrap.maxLocals = 4;
+        classArgBootstrap.maxStack = 2;
+        owner.methods.add(classArgBootstrap);
+
+        MethodNode varargsBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_VARARGS,
+                "joinConstants",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;[Ljava/lang/Object;)Ljava/lang/String;",
+                null, null);
+        varargsBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "varargsCalls", "I"));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        varargsBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "varargsCalls", "I"));
+        varargsBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.AALOAD));
+        varargsBootstrap.instructions.add(new TypeInsnNode(
+                Opcodes.CHECKCAST, "java/lang/String"));
+        varargsBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.AALOAD));
+        varargsBootstrap.instructions.add(new TypeInsnNode(
+                Opcodes.CHECKCAST, "java/lang/String"));
+        varargsBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL, "java/lang/String", "concat",
+                "(Ljava/lang/String;)Ljava/lang/String;", false));
+        varargsBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        varargsBootstrap.maxLocals = 4;
+        varargsBootstrap.maxStack = 3;
+        owner.methods.add(varargsBootstrap);
+
+        MethodNode objectBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "asObject",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/Object;",
+                null, null);
+        objectBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "objectCalls", "I"));
+        objectBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        objectBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        objectBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "objectCalls", "I"));
+        objectBootstrap.instructions.add(new LdcInsnNode("boxed-string"));
+        objectBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        objectBootstrap.maxLocals = 3;
+        objectBootstrap.maxStack = 2;
+        owner.methods.add(objectBootstrap);
+
+        MethodNode firstBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_VARARGS,
+                "firstConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;[Ljava/lang/Object;)Ljava/lang/String;",
+                null, null);
+        firstBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "firstCalls", "I"));
+        firstBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        firstBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        firstBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "firstCalls", "I"));
+        firstBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        firstBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        firstBootstrap.instructions.add(new InsnNode(Opcodes.AALOAD));
+        firstBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, "java/lang/String", "valueOf",
+                "(Ljava/lang/Object;)Ljava/lang/String;", false));
+        firstBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        firstBootstrap.maxLocals = 4;
+        firstBootstrap.maxStack = 2;
+        owner.methods.add(firstBootstrap);
+
+        MethodNode objectParamBootstrap = new MethodNode(Opcodes.ASM9,
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC,
+                "objectParam",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/String;",
+                null, null);
+        objectParamBootstrap.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                owner.name, "objectParamCalls", "I"));
+        objectParamBootstrap.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        objectParamBootstrap.instructions.add(new InsnNode(Opcodes.IADD));
+        objectParamBootstrap.instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC,
+                owner.name, "objectParamCalls", "I"));
+        objectParamBootstrap.instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        objectParamBootstrap.instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC, "java/lang/String", "valueOf",
+                "(Ljava/lang/Object;)Ljava/lang/String;", false));
+        objectParamBootstrap.instructions.add(new InsnNode(Opcodes.ARETURN));
+        objectParamBootstrap.maxLocals = 4;
+        objectParamBootstrap.maxStack = 2;
+        owner.methods.add(objectParamBootstrap);
         return owner;
+    }
+
+    private MethodNode constantDynamicClassArgMethod(String owner) {
+        return constantDynamicClassArgMethod(owner, Type.INT_TYPE);
+    }
+
+    private MethodNode constantDynamicClassArgMethod(String owner, Type classArg) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyClassArg", "()Ljava/lang/String;", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "classArgConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/Class;)Ljava/lang/String;",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "primitive", "Ljava/lang/String;", bootstrap, classArg)));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constantDynamicSingleVarargsMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condySingleVarargs", "()Ljava/lang/String;", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "firstConstant",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;[Ljava/lang/Object;)Ljava/lang/String;",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "solo", "Ljava/lang/String;", bootstrap, "solo")));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private MethodNode constantDynamicObjectParamIntMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyObjectParam", "()Ljava/lang/String;", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "objectParam",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/String;",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "boxedInt", "Ljava/lang/String;", bootstrap, 42)));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private boolean emitsWrapperTypeGetstatic(MethodNode method) {
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof FieldInsnNode
+                    && instruction.getOpcode() == Opcodes.GETSTATIC) {
+                FieldInsnNode field = (FieldInsnNode) instruction;
+                if ("TYPE".equals(field.name)
+                        && "Ljava/lang/Class;".equals(field.desc)
+                        && "java/lang/Integer".equals(field.owner)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private MethodNode constantDynamicVarargsAndObjectMethod(String owner) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyVarargsObject", "()I", null, null);
+        Handle varargs = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "joinConstants",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;[Ljava/lang/Object;)Ljava/lang/String;",
+                false);
+        Handle object = new Handle(Opcodes.H_INVOKESTATIC, owner,
+                "asObject",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;)Ljava/lang/Object;",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "joined", "Ljava/lang/String;", varargs, "a", "b")));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "boxed", "Ljava/lang/String;", object)));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/String", "length", "()I", false));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        return method;
+    }
+
+    private ClassNode condyHolder() {
+        ClassNode holder = new ClassNode(Opcodes.ASM9);
+        holder.version = Opcodes.V11;
+        holder.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER;
+        holder.name = "example/CondyHolder";
+        holder.superName = "java/lang/Object";
+        holder.fields.add(new FieldNode(
+                Opcodes.ACC_PUBLIC, "value", "Ljava/lang/String;", null, null));
+        MethodNode init = new MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC,
+                "<init>",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/String;)V",
+                null, null);
+        init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        init.instructions.add(new MethodInsnNode(Opcodes.INVOKESPECIAL,
+                "java/lang/Object", "<init>", "()V", false));
+        init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        init.instructions.add(new VarInsnNode(Opcodes.ALOAD, 4));
+        init.instructions.add(new FieldInsnNode(Opcodes.PUTFIELD,
+                holder.name, "value", "Ljava/lang/String;"));
+        init.instructions.add(new InsnNode(Opcodes.RETURN));
+        init.maxLocals = 5;
+        init.maxStack = 2;
+        holder.methods.add(init);
+        return holder;
+    }
+
+    private MethodNode constantDynamicConstructorMethod(String holder) {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "condyCtor", "()L" + holder + ";", null, null);
+        Handle bootstrap = new Handle(Opcodes.H_NEWINVOKESPECIAL, holder,
+                "<init>",
+                "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+                        + "Ljava/lang/Class;Ljava/lang/String;)V",
+                false);
+        method.instructions.add(new LdcInsnNode(new ConstantDynamic(
+                "holder", "L" + holder + ";", bootstrap, "held")));
+        method.instructions.add(new InsnNode(Opcodes.ARETURN));
+        method.maxLocals = 0;
+        method.maxStack = 1;
+        return method;
+    }
+
+    private boolean mentionsBootstrap(MethodNode method, String bootstrapName) {
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof LdcInsnNode
+                    && ((LdcInsnNode) instruction).cst instanceof Handle
+                    && bootstrapName.equals(
+                    ((Handle) ((LdcInsnNode) instruction).cst).getName())) {
+                return true;
+            }
+            if (instruction instanceof MethodInsnNode
+                    && bootstrapName.equals(
+                    ((MethodInsnNode) instruction).name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private MethodNode constantDynamicStringMethod(String owner) {

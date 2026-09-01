@@ -27,7 +27,7 @@ public class ManifestNativeAccessTest {
     Path tempDir;
 
     @Test
-    public void legacyRunEmitsEnableNativeAccessAndPreservesMainClass() throws Exception {
+    public void runEmitsEnableNativeAccessAndPreservesMainClass() throws Exception {
         Path inputJar = tempDir.resolve("input.jar");
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -42,7 +42,7 @@ public class ManifestNativeAccessTest {
         Path output = tempDir.resolve("output");
         new NativeObfuscator().process(inputJar, output,
                 Collections.emptyList(), Collections.emptyList(), null,
-                null, null, Platform.HOTSPOT, false, false, CodegenMode.LEGACY);
+                null, null, Platform.HOTSPOT, false, false);
 
         Manifest outManifest = readOutputManifest(output);
         assertEquals("ALL-UNNAMED",
@@ -52,7 +52,7 @@ public class ManifestNativeAccessTest {
     }
 
     @Test
-    public void legacyRunWithoutInputManifestCreatesMinimalManifest() throws Exception {
+    public void runWithoutInputManifestCreatesMinimalManifest() throws Exception {
         Path inputJar = tempDir.resolve("input.jar");
         try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(inputJar))) {
             jar.putNextEntry(new ZipEntry("example/Program.class"));
@@ -63,7 +63,7 @@ public class ManifestNativeAccessTest {
         Path output = tempDir.resolve("output");
         new NativeObfuscator().process(inputJar, output,
                 Collections.emptyList(), Collections.emptyList(), null,
-                null, null, Platform.HOTSPOT, false, false, CodegenMode.LEGACY);
+                null, null, Platform.HOTSPOT, false, false);
 
         Manifest outManifest = readOutputManifest(output);
         assertEquals("1.0",

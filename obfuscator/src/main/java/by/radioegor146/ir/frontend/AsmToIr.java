@@ -68,12 +68,6 @@ public final class AsmToIr {
 
         Set<CfgBuilder.Block> reachable = graph.reachableBlocks();
         CfgBuilder.Block entry = graph.getBlocks().get(0);
-        if (entry.getPredecessors().stream().anyMatch(reachable::contains)
-                || entry.getExceptionPredecessors().stream().anyMatch(reachable::contains)) {
-            throw new UnsupportedIrConstructException(
-                    "A backedge to the JVM method entry is outside the phase-two subset");
-        }
-        validateHandlerEntries(graph, reachable);
 
         Map<CfgBuilder.Block, List<IrType>> stackTypes =
                 computeStackTypes(graph, reachable, method, shape);
@@ -109,7 +103,11 @@ public final class AsmToIr {
                 continue;
             }
             IrBlock irBlock = irBlocks.get(rawBlock);
-            if (rawBlock == entry) {
+            boolean entryHasIncoming = rawBlock == entry
+                    && (entry.getPredecessors().stream().anyMatch(reachable::contains)
+                    || entry.getExceptionPredecessors().stream()
+                    .anyMatch(reachable::contains));
+            if (rawBlock == entry && !entryHasIncoming) {
                 inputs.put(rawBlock, new BlockInputs(entryLocals.clone(),
                         Collections.<IrValue>emptyList(), new IrPhi[method.maxLocals],
                         new IrPhi[0]));
@@ -132,7 +130,9 @@ public final class AsmToIr {
             List<IrType> blockStackTypes = stackTypes.get(rawBlock);
             List<IrValue> stack = new ArrayList<>();
             IrPhi[] stackPhis;
-            if (!rawBlock.getExceptionPredecessors().isEmpty()) {
+            boolean exceptionOnlyHandler = !rawBlock.getExceptionPredecessors().isEmpty()
+                    && rawBlock.getPredecessors().stream().noneMatch(reachable::contains);
+            if (exceptionOnlyHandler) {
                 if (!blockStackTypes.equals(
                         Collections.singletonList(IrType.REFERENCE))) {
                     throw new UnsupportedIrConstructException(
@@ -169,7 +169,6 @@ public final class AsmToIr {
 
         connectPhis(graph, reachable, inputs, outputs, irBlocks);
         propagateReferenceDescriptors(irMethod);
-        MonitorStructureValidator.validate(irMethod);
         return irMethod;
     }
 
@@ -372,19 +371,6 @@ public final class AsmToIr {
                 requiredLocals);
     }
 
-    private void validateHandlerEntries(CfgBuilder.Graph graph,
-                                        Set<CfgBuilder.Block> reachable) {
-        for (CfgBuilder.Block block : graph.getBlocks()) {
-            if (!reachable.contains(block) || block.getExceptionPredecessors().isEmpty()) {
-                continue;
-            }
-            if (block.getPredecessors().stream().anyMatch(reachable::contains)) {
-                throw new UnsupportedIrConstructException(
-                        "A handler entry with a normal predecessor is outside the phase-four subset");
-            }
-        }
-    }
-
     private void validateInstructions(CfgBuilder.Graph graph) {
         for (CfgBuilder.Block block : graph.getBlocks()) {
             for (CfgBuilder.Instruction instruction : block.getInstructions()) {
@@ -400,6 +386,7 @@ public final class AsmToIr {
                                 || opcode >= Opcodes.FCONST_0 && opcode <= Opcodes.FCONST_2
                                 || opcode == Opcodes.DCONST_0 || opcode == Opcodes.DCONST_1
                                 || opcode == Opcodes.DUP
+                                || opcode == Opcodes.DUP_X1
                                 || opcode == Opcodes.POP
                                 || opcode == Opcodes.SWAP
                                 || isWideStackOperation(opcode)
@@ -762,6 +749,13 @@ public final class AsmToIr {
             }
             stack.set(belowIndex, top);
             stack.set(topIndex, below);
+        } else if (opcode == Opcodes.DUP_X1) {
+            applyDupX1(stack, instruction, new ToIntFunction<IrType>() {
+                @Override
+                public int applyAsInt(IrType type) {
+                    return type.getJvmSlots();
+                }
+            });
         } else if (isWideStackOperation(opcode)) {
             applyWideStackOperation(stack, opcode, instruction,
                     new ToIntFunction<IrType>() {
@@ -1235,6 +1229,13 @@ public final class AsmToIr {
                 }
                 state.stack.set(belowIndex, top);
                 state.stack.set(topIndex, below);
+            } else if (opcode == Opcodes.DUP_X1) {
+                applyDupX1(state.stack, instruction, new ToIntFunction<IrValue>() {
+                    @Override
+                    public int applyAsInt(IrValue value) {
+                        return value.getType().getJvmSlots();
+                    }
+                });
             } else if (isWideStackOperation(opcode)) {
                 applyWideStackOperation(state.stack, opcode, instruction,
                         new ToIntFunction<IrValue>() {
@@ -1837,6 +1838,23 @@ public final class AsmToIr {
      * Applies category-aware stack-only operations in both the type pass and
      * value lowering. All operands are validated before the first mutation.
      */
+    private static <T> void applyDupX1(
+            List<T> stack, CfgBuilder.Instruction instruction,
+            ToIntFunction<T> slots) {
+        int size = stack.size();
+        if (size < 2) {
+            throw unsupported("Operand stack underflow", instruction);
+        }
+        T value1 = stack.get(size - 1);
+        T value2 = stack.get(size - 2);
+        if (slots.applyAsInt(value1) != 1 || slots.applyAsInt(value2) != 1) {
+            throw unsupported(
+                    "DUP_X1 operand categories do not match a legal JVM form",
+                    instruction);
+        }
+        stack.add(size - 2, value1);
+    }
+
     private static <T> void applyWideStackOperation(
             List<T> stack, int opcode, CfgBuilder.Instruction instruction,
             ToIntFunction<T> slots) {

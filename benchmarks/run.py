@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run plain-JVM, legacy-JNI, and IR-JNI benchmarks."""
+"""Build and run plain-JVM and IR-JNI benchmarks."""
 
 import json
 import os
@@ -18,7 +18,7 @@ WORK = ROOT / "build" / "benchmarks" / "work"
 LOG_DIR = ROOT / "build" / "benchmarks" / "logs"
 WARMUP = int(os.environ.get("BENCH_WARMUP", "5"))
 ITERATIONS = int(os.environ.get("BENCH_ITERATIONS", "10"))
-CODEGENS = ("legacy", "ir")
+CODEGENS = ("ir",)
 KERNEL_METHODS = (
     ("integer-loop", "benchmarks/kernels/IntegerLoopKernel", "run", "(I)J"),
     ("string-concat-hash", "benchmarks/kernels/StringConcatHashKernel", "run", "(I)I"),
@@ -199,28 +199,24 @@ def classify_method_paths(output, transpile_output, codegen, plain):
     method_paths = []
     for kernel, owner, name, descriptor in KERNEL_METHODS:
         method = "{}.{}{}".format(owner, name, descriptor)
-        if codegen == "legacy":
-            path = "legacy"
-            evidence = "--codegen=legacy selected"
+        marker = "IR codegen: {}".format(method)
+        fallback_prefix = "IR codegen unsupported for {}#{}{}".format(
+            owner, name, descriptor
+        )
+        fallback_matches = [
+            line for line in fallback_logs if fallback_prefix in line
+        ]
+        if fallback_matches:
+            path = "restored-bytecode"
+            evidence = fallback_matches[0]
+        elif marker in generated:
+            path = "ir"
+            evidence = "// {}".format(marker)
         else:
-            marker = "IR codegen: {}".format(method)
-            fallback_prefix = "IR codegen unsupported for {}#{}{}".format(
-                owner, name, descriptor
+            raise HarnessFailure(
+                "{}:method-path-check".format(codegen),
+                "no IR marker or restore log found for {}".format(method),
             )
-            fallback_matches = [
-                line for line in fallback_logs if fallback_prefix in line
-            ]
-            if fallback_matches:
-                path = "legacy-fallback"
-                evidence = fallback_matches[0]
-            elif marker in generated:
-                path = "ir"
-                evidence = "// {}".format(marker)
-            else:
-                raise HarnessFailure(
-                    "{}:method-path-check".format(codegen),
-                    "no IR marker or fallback log found for {}".format(method),
-                )
         method_paths.append(
             {
                 "kernel": kernel,
@@ -234,14 +230,11 @@ def classify_method_paths(output, transpile_output, codegen, plain):
     for kernel in measured_kernels:
         methods = [item for item in method_paths if item["kernel"] == kernel]
         paths = {item["path"] for item in methods}
-        if codegen == "legacy":
-            kernel_path = "legacy"
-            stayed_on_ir = None
-        elif paths == {"ir"}:
+        if paths == {"ir"}:
             kernel_path = "ir"
             stayed_on_ir = True
-        elif "legacy-fallback" in paths:
-            kernel_path = "legacy-fallback"
+        elif "restored-bytecode" in paths:
+            kernel_path = "restored-bytecode"
             stayed_on_ir = False
         else:
             raise HarnessFailure(

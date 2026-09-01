@@ -78,22 +78,21 @@ public class InterpreterStreamStrategyTest {
     }
 
     @Test
-    public void rejectsUnsupportedNodeBeforeShellMutation() {
+    public void unsupportedEvalNodeFallsBackToDirect() {
         MethodNode method = unaryMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = context(obfuscator, method);
+        IrMethod ir = new AsmToIr().build(context.clazz.name, method);
+        assertFalse(new InterpreterStreamStrategy().supports(ir));
 
-        assertThrows(UnsupportedIrConstructException.class,
-                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                        .processMethod(context, IrLoweringMode.EVAL));
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context, IrLoweringMode.EVAL);
 
-        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
-        assertEquals("", context.output.toString());
-        assertEquals("", context.nativeMethods.toString());
-        assertEquals(0, obfuscator.getCachedStrings().size());
-        assertEquals(0, obfuscator.getCachedClasses().size());
-        assertEquals(0, obfuscator.getCachedMethods().size());
-        assertEquals(0, obfuscator.getCachedFields().size());
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains("// IR codegen: example/EvalFixture.negate(I)I"));
+        assertFalse(cpp.contains("ir_method_data"));
+        assertFalse(cpp.contains("cstack"));
     }
 
     @Test
@@ -170,19 +169,22 @@ public class InterpreterStreamStrategyTest {
     }
 
     @Test
-    public void longDivideWithCatchFallsBackBeforeShellMutation() {
+    public void longDivideWithCatchFallsBackToDirect() {
         MethodNode method = longDivideCatchMethod();
         NativeObfuscator obfuscator = new NativeObfuscator();
         MethodContext context = context(obfuscator, method);
         IrMethod ir = new AsmToIr().build(context.clazz.name, method);
         assertFalse(new InterpreterStreamStrategy().supports(ir));
 
-        assertThrows(UnsupportedIrConstructException.class,
-                () -> new IrMethodCompiler(new MethodShellEmitter(obfuscator))
-                        .processMethod(context, IrLoweringMode.EVAL));
-        assertEquals(0, method.access & Opcodes.ACC_NATIVE);
-        assertEquals("", context.output.toString());
-        assertEquals("", context.nativeMethods.toString());
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator))
+                .processMethod(context, IrLoweringMode.EVAL);
+
+        String cpp = context.output.toString();
+        assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
+        assertTrue(cpp.contains(
+                "// IR codegen: example/EvalFixture.catchLongDivide(JJ)J"));
+        assertFalse(cpp.contains("ir_method_data"));
+        assertFalse(cpp.contains("cstack"));
     }
 
     @Test
@@ -291,10 +293,6 @@ public class InterpreterStreamStrategyTest {
         Path jar = input.resolve("fixture.jar");
         writeFixtureJar(jar);
 
-        Path legacyEval = tempDir.resolve("legacy-eval");
-        process(jar, legacyEval, CodegenMode.LEGACY, IrLoweringMode.EVAL);
-        assertFalse(Files.exists(legacyEval.resolve("cpp/native_jvm_eval.cpp")));
-
         Path irDirect = tempDir.resolve("ir-direct");
         process(jar, irDirect, CodegenMode.IR, IrLoweringMode.DIRECT);
         assertFalse(Files.exists(irDirect.resolve("cpp/native_jvm_eval.cpp")));
@@ -320,7 +318,9 @@ public class InterpreterStreamStrategyTest {
                 .contains("native_jvm::ir_eval::evaluate_i32"));
         String unsupported = generatedMethod(evalSource, "// negate(I)I");
         assertFalse(unsupported.contains("ir_method_data"));
-        assertTrue(unsupported.contains("cstack"));
+        assertTrue(unsupported.contains(
+                "// IR codegen: example/EvalFixture.negate(I)I"));
+        assertFalse(unsupported.contains("cstack"));
     }
 
     private void process(Path jar, Path output, CodegenMode codegen,

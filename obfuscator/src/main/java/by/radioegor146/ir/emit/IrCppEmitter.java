@@ -31,8 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Emits the typed IR directly through {@link CppAst}; it has no dependency on
- * the legacy snippet/property machinery.
+ * Emits the typed IR directly through {@link CppAst}.
  */
 public final class IrCppEmitter {
     private int edgeTemporaryId;
@@ -69,6 +68,7 @@ public final class IrCppEmitter {
         if (method.isSynchronizedMethod()) {
             statements.addAll(emitSynchronizedEnter(method));
         }
+        statements.addAll(initializeEntryPhis(method));
 
         for (IrBlock block : method.getBlocks()) {
             statements.add(new CppAst.Label(label(block)));
@@ -1548,23 +1548,59 @@ public final class IrCppEmitter {
         return statements;
     }
 
+    private List<CppAst.Statement> initializeEntryPhis(IrMethod method) {
+        if (method.getBlocks().isEmpty()) {
+            return Collections.emptyList();
+        }
+        IrBlock entry = method.getBlocks().get(0);
+        List<CppAst.Statement> statements = new ArrayList<>();
+        int localSlot = 0;
+        for (IrValue parameter : method.getParameters()) {
+            for (IrPhi phi : entry.getPhis()) {
+                if (phi.getSlotKind() == IrPhi.SlotKind.LOCAL
+                        && phi.getSlotIndex() == localSlot) {
+                    statements.add(new CppAst.Assignment(
+                            variable(phi.getResult()), expression(parameter)));
+                }
+            }
+            localSlot += parameter.getType().getJvmSlots();
+        }
+        return statements;
+    }
+
     private List<CppAst.Statement> phiCopies(IrBlock predecessor, IrBlock target) {
         List<CppAst.Statement> statements = new ArrayList<>();
+        List<IrPhi> copied = new ArrayList<>();
         List<String> temporaryNames = new ArrayList<>();
         for (IrPhi phi : target.getPhis()) {
             IrValue incoming = phi.getIncoming().get(predecessor);
             if (incoming == null) {
+                if (phi.getSlotKind() == IrPhi.SlotKind.STACK) {
+                    continue;
+                }
                 throw new IllegalStateException("Missing incoming value from "
                         + predecessor.getName() + " to " + target.getName());
             }
             String temporary = "edge" + edgeTemporaryId++;
+            copied.add(phi);
             temporaryNames.add(temporary);
             statements.add(new CppAst.Declaration(phi.getResult().getType().getCppType(),
                     temporary, expression(incoming)));
         }
-        for (int i = 0; i < target.getPhis().size(); i++) {
-            statements.add(new CppAst.Assignment(variable(target.getPhis().get(i).getResult()),
+        for (int i = 0; i < copied.size(); i++) {
+            statements.add(new CppAst.Assignment(variable(copied.get(i).getResult()),
                     new CppAst.Variable(temporaryNames.get(i))));
+        }
+        return statements;
+    }
+
+    private List<CppAst.Statement> assignCaughtExceptionToStackPhis(IrBlock handler) {
+        List<CppAst.Statement> statements = new ArrayList<>();
+        for (IrPhi phi : handler.getPhis()) {
+            if (phi.getSlotKind() == IrPhi.SlotKind.STACK) {
+                statements.add(new CppAst.Assignment(variable(phi.getResult()),
+                        new CppAst.Cast("jobject", variable("caught_exception"))));
+            }
         }
         return statements;
     }
@@ -1594,8 +1630,11 @@ public final class IrCppEmitter {
 
             boolean catchAll = false;
             for (IrExceptionEdge edge : dispatch.getKey().getEdges()) {
+                List<CppAst.Statement> taken = new ArrayList<>(
+                        assignCaughtExceptionToStackPhis(edge.getHandler()));
+                taken.add(new CppAst.Goto(label(edge.getHandler())));
                 if (edge.getCatchType() == null) {
-                    statements.add(new CppAst.Goto(label(edge.getHandler())));
+                    statements.addAll(taken);
                     catchAll = true;
                     break;
                 }
@@ -1603,9 +1642,7 @@ public final class IrCppEmitter {
                 CppAst.Expression matches = memberCall("env", "IsInstanceOf",
                         new CppAst.Cast("jobject", variable("caught_exception")),
                         array("cclasses", classId));
-                statements.add(new CppAst.If(matches,
-                        new CppAst.Block(Collections.<CppAst.Statement>singletonList(
-                                new CppAst.Goto(label(edge.getHandler())))), null));
+                statements.add(new CppAst.If(matches, new CppAst.Block(taken), null));
             }
             if (!catchAll) {
                 statements.add(new CppAst.ExpressionStatement(memberCall("env", "Throw",

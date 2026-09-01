@@ -13,6 +13,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -434,6 +435,82 @@ public final class DynamicConstantSupport {
 
     private static void appendBootstrapInvocation(String owner, MethodNode method,
                                                   ConstantDynamic constant) {
+        if (canInvokeBootstrapDirectly(constant)) {
+            appendDirectBootstrapInvocation(owner, method, constant);
+            appendConvertBootstrapResult(
+                    method, Type.getMethodType(
+                            constant.getBootstrapMethod().getDesc())
+                            .getReturnType(),
+                    Type.getType(constant.getDescriptor()));
+            return;
+        }
+        appendInvokeWithArgumentsBootstrap(owner, method, constant);
+    }
+
+    private static boolean canInvokeBootstrapDirectly(ConstantDynamic constant) {
+        Handle bootstrap = constant.getBootstrapMethod();
+        if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC) {
+            return false;
+        }
+        Type bootstrapType = Type.getMethodType(bootstrap.getDesc());
+        Type[] parameters = bootstrapType.getArgumentTypes();
+        int argumentCount = constant.getBootstrapMethodArgumentCount();
+        if (parameters.length != argumentCount + 3) {
+            return false;
+        }
+        if (parameters.length > 3
+                && parameters[parameters.length - 1].getSort() == Type.ARRAY) {
+            return false;
+        }
+        for (int index = 0; index < argumentCount; index++) {
+            if (!isDirectStackArgument(
+                    constant.getBootstrapMethodArgument(index),
+                    parameters[index + 3])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isDirectStackArgument(Object argument, Type parameter) {
+        if (argument instanceof Integer) {
+            return isIntLike(parameter);
+        }
+        if (argument instanceof Long) {
+            return parameter.getSort() == Type.LONG;
+        }
+        if (argument instanceof Float) {
+            return parameter.getSort() == Type.FLOAT;
+        }
+        if (argument instanceof Double) {
+            return parameter.getSort() == Type.DOUBLE;
+        }
+        if (argument instanceof String) {
+            return acceptsReference(parameter, STRING_DESCRIPTOR);
+        }
+        if (argument instanceof Handle) {
+            return acceptsReference(parameter, METHOD_HANDLE_DESCRIPTOR);
+        }
+        if (argument instanceof Type) {
+            Type type = (Type) argument;
+            if (asPrimitiveClassType(type) != null) {
+                return acceptsReference(parameter, CLASS_DESCRIPTOR);
+            }
+            String descriptor = type.getSort() == Type.METHOD
+                    ? METHOD_TYPE_DESCRIPTOR : CLASS_DESCRIPTOR;
+            return acceptsReference(parameter, descriptor)
+                    || type.getSort() == Type.METHOD
+                    && TYPE_DESCRIPTOR.equals(parameter.getDescriptor());
+        }
+        if (argument instanceof ConstantDynamic) {
+            return parameter.getDescriptor().equals(
+                    ((ConstantDynamic) argument).getDescriptor());
+        }
+        return false;
+    }
+
+    private static void appendDirectBootstrapInvocation(
+            String owner, MethodNode method, ConstantDynamic constant) {
         Handle bootstrap = constant.getBootstrapMethod();
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
                 "java/lang/invoke/MethodHandles", "lookup",
@@ -442,19 +519,211 @@ public final class DynamicConstantSupport {
         appendClassLiteral(method, Type.getType(constant.getDescriptor()));
         for (int index = 0;
              index < constant.getBootstrapMethodArgumentCount(); index++) {
-            Object argument = constant.getBootstrapMethodArgument(index);
-            if (argument instanceof ConstantDynamic) {
-                ConstantDynamic nested = (ConstantDynamic) argument;
-                method.instructions.add(new MethodInsnNode(
-                        Opcodes.INVOKESTATIC, owner, resolverName(nested),
-                        "()" + nested.getDescriptor(), false));
-            } else {
-                method.instructions.add(new LdcInsnNode(argument));
-            }
+            appendBootstrapArgument(owner, method,
+                    constant.getBootstrapMethodArgument(index), false);
         }
         method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
                 bootstrap.getOwner(), bootstrap.getName(), bootstrap.getDesc(),
                 bootstrap.isInterface()));
+    }
+
+    private static void appendInvokeWithArgumentsBootstrap(
+            String owner, MethodNode method, ConstantDynamic constant) {
+        int argumentCount = 3 + constant.getBootstrapMethodArgumentCount();
+        method.instructions.add(new LdcInsnNode(constant.getBootstrapMethod()));
+        pushInt(method, argumentCount);
+        method.instructions.add(new TypeInsnNode(
+                Opcodes.ANEWARRAY, "java/lang/Object"));
+
+        storeBoxedArgument(method, 0, () -> method.instructions.add(
+                new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/invoke/MethodHandles", "lookup",
+                        "()Ljava/lang/invoke/MethodHandles$Lookup;", false)));
+        storeBoxedArgument(method, 1, () -> method.instructions.add(
+                new LdcInsnNode(constant.getName())));
+        storeBoxedArgument(method, 2, () -> appendClassLiteral(
+                method, Type.getType(constant.getDescriptor())));
+        for (int index = 0;
+             index < constant.getBootstrapMethodArgumentCount(); index++) {
+            final Object argument = constant.getBootstrapMethodArgument(index);
+            storeBoxedArgument(method, index + 3, () -> appendBootstrapArgument(
+                    owner, method, argument, true));
+        }
+
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "java/lang/invoke/MethodHandle", "invokeWithArguments",
+                "([Ljava/lang/Object;)Ljava/lang/Object;", false));
+        appendConvertBootstrapResult(method, Type.getType(OBJECT_DESCRIPTOR),
+                Type.getType(constant.getDescriptor()));
+    }
+
+    private static void storeBoxedArgument(
+            MethodNode method, int index, Runnable value) {
+        method.instructions.add(new InsnNode(Opcodes.DUP));
+        pushInt(method, index);
+        value.run();
+        method.instructions.add(new InsnNode(Opcodes.AASTORE));
+    }
+
+    private static void appendBootstrapArgument(
+            String owner, MethodNode method, Object argument, boolean box) {
+        if (argument instanceof ConstantDynamic) {
+            ConstantDynamic nested = (ConstantDynamic) argument;
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC, owner, resolverName(nested),
+                    "()" + nested.getDescriptor(), false));
+            if (box) {
+                appendBox(method, Type.getType(nested.getDescriptor()));
+            }
+            return;
+        }
+        if (argument instanceof Type) {
+            Type type = (Type) argument;
+            Type primitiveClass = asPrimitiveClassType(type);
+            if (primitiveClass != null) {
+                appendClassLiteral(method, primitiveClass);
+                return;
+            }
+            method.instructions.add(new LdcInsnNode(type));
+            return;
+        }
+        method.instructions.add(new LdcInsnNode(argument));
+        if (box) {
+            if (argument instanceof Integer) {
+                appendBox(method, Type.INT_TYPE);
+            } else if (argument instanceof Long) {
+                appendBox(method, Type.LONG_TYPE);
+            } else if (argument instanceof Float) {
+                appendBox(method, Type.FLOAT_TYPE);
+            } else if (argument instanceof Double) {
+                appendBox(method, Type.DOUBLE_TYPE);
+            }
+        }
+    }
+
+    private static void appendBox(MethodNode method, Type type) {
+        switch (type.getSort()) {
+            case Type.BOOLEAN:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;",
+                        false));
+                break;
+            case Type.BYTE:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;",
+                        false));
+                break;
+            case Type.CHAR:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Character", "valueOf",
+                        "(C)Ljava/lang/Character;", false));
+                break;
+            case Type.SHORT:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Short", "valueOf", "(S)Ljava/lang/Short;",
+                        false));
+                break;
+            case Type.INT:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;",
+                        false));
+                break;
+            case Type.LONG:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;",
+                        false));
+                break;
+            case Type.FLOAT:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;",
+                        false));
+                break;
+            case Type.DOUBLE:
+                method.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC,
+                        "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;",
+                        false));
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void appendConvertBootstrapResult(
+            MethodNode method, Type produced, Type expected) {
+        if (expected.getDescriptor().equals(produced.getDescriptor())) {
+            return;
+        }
+        if (isReference(expected)) {
+            if (OBJECT_DESCRIPTOR.equals(expected.getDescriptor())) {
+                return;
+            }
+            method.instructions.add(new TypeInsnNode(
+                    Opcodes.CHECKCAST, expected.getInternalName()));
+            return;
+        }
+        String wrapper;
+        String unboxName;
+        String unboxDesc;
+        switch (expected.getSort()) {
+            case Type.BOOLEAN:
+                wrapper = "java/lang/Boolean";
+                unboxName = "booleanValue";
+                unboxDesc = "()Z";
+                break;
+            case Type.BYTE:
+                wrapper = "java/lang/Byte";
+                unboxName = "byteValue";
+                unboxDesc = "()B";
+                break;
+            case Type.CHAR:
+                wrapper = "java/lang/Character";
+                unboxName = "charValue";
+                unboxDesc = "()C";
+                break;
+            case Type.SHORT:
+                wrapper = "java/lang/Short";
+                unboxName = "shortValue";
+                unboxDesc = "()S";
+                break;
+            case Type.INT:
+                wrapper = "java/lang/Integer";
+                unboxName = "intValue";
+                unboxDesc = "()I";
+                break;
+            case Type.LONG:
+                wrapper = "java/lang/Long";
+                unboxName = "longValue";
+                unboxDesc = "()J";
+                break;
+            case Type.FLOAT:
+                wrapper = "java/lang/Float";
+                unboxName = "floatValue";
+                unboxDesc = "()F";
+                break;
+            case Type.DOUBLE:
+                wrapper = "java/lang/Double";
+                unboxName = "doubleValue";
+                unboxDesc = "()D";
+                break;
+            default:
+                throw new IllegalArgumentException(
+                        "Unsupported constant type " + expected);
+        }
+        method.instructions.add(new TypeInsnNode(Opcodes.CHECKCAST, wrapper));
+        method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                wrapper, unboxName, unboxDesc, false));
+    }
+
+    private static void pushInt(MethodNode method, int value) {
+        if (value >= -1 && value <= 5) {
+            method.instructions.add(new InsnNode(Opcodes.ICONST_0 + value));
+        } else if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
+            method.instructions.add(new IntInsnNode(Opcodes.BIPUSH, value));
+        } else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) {
+            method.instructions.add(new IntInsnNode(Opcodes.SIPUSH, value));
+        } else {
+            method.instructions.add(new LdcInsnNode(value));
+        }
     }
 
     private static void appendClassLiteral(MethodNode method, Type type) {
@@ -488,6 +757,9 @@ public final class DynamicConstantSupport {
             case Type.DOUBLE:
                 wrapper = "java/lang/Double";
                 break;
+            case Type.VOID:
+                wrapper = "java/lang/Void";
+                break;
             default:
                 throw new IllegalArgumentException(
                         "Unsupported constant type " + type);
@@ -497,7 +769,7 @@ public final class DynamicConstantSupport {
     }
 
     private static int bootstrapStackSize(ConstantDynamic constant) {
-        int stack = 3;
+        int stack = 6;
         for (Type argument :
                 Type.getArgumentTypes(constant.getBootstrapMethod().getDesc())) {
             stack += argument.getSize();
@@ -530,26 +802,12 @@ public final class DynamicConstantSupport {
             }
 
             Handle bootstrap = constant.getBootstrapMethod();
-            if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC) {
-                throw unsupported(
-                        "ConstantDynamic bootstrap is not REF_invokeStatic",
-                        bytecodeOffset);
-            }
+            validateInvokeBootstrap(bootstrap, bytecodeOffset);
             Type[] parameters = bootstrapType.getArgumentTypes();
-            if (parameters.length !=
-                    constant.getBootstrapMethodArgumentCount() + 3
-                    || !LOOKUP_DESCRIPTOR.equals(parameters[0].getDescriptor())
-                    || !STRING_DESCRIPTOR.equals(parameters[1].getDescriptor())
-                    || !CLASS_DESCRIPTOR.equals(parameters[2].getDescriptor())) {
-                throw unsupported(
-                        "ConstantDynamic bootstrap must take Lookup, String, Class, "
-                                + "then one exact parameter per static argument",
-                        bytecodeOffset);
-            }
-            if (!constant.getDescriptor().equals(
-                    bootstrapType.getReturnType().getDescriptor())) {
-                throw unsupported(
-                        "ConstantDynamic bootstrap return does not match its constant type",
+            if (bootstrap.getTag() == Opcodes.H_INVOKESTATIC
+                    || bootstrap.getTag() == Opcodes.H_NEWINVOKESPECIAL) {
+                validateStaticOrConstructorBootstrap(
+                        constant, bootstrap, bootstrapType, parameters,
                         bytecodeOffset);
             }
 
@@ -557,32 +815,12 @@ public final class DynamicConstantSupport {
                  index < constant.getBootstrapMethodArgumentCount(); index++) {
                 Object argument =
                         constant.getBootstrapMethodArgument(index);
-                if (argument instanceof ConstantDynamic) {
-                    validateDynamicConstant((ConstantDynamic) argument,
-                            bytecodeOffset, activeConstants);
-                } else if (argument instanceof Handle) {
-                    validateMethodHandle((Handle) argument, bytecodeOffset);
-                } else if (argument instanceof Type) {
-                    Type type = (Type) argument;
-                    if (type.getSort() == Type.METHOD) {
-                        validateMethodType(type, bytecodeOffset);
-                    } else if (type.getSort() != Type.OBJECT
-                            && type.getSort() != Type.ARRAY) {
-                        throw unsupported(
-                                "Primitive Type is not a loadable bootstrap argument",
-                                bytecodeOffset);
-                    }
-                } else if (!(argument instanceof Integer)
-                        && !(argument instanceof Long)
-                        && !(argument instanceof Float)
-                        && !(argument instanceof Double)
-                        && !(argument instanceof String)) {
-                    throw unsupported(
-                            "Unsupported ConstantDynamic bootstrap argument",
-                            bytecodeOffset);
-                }
-                if (!isBootstrapArgumentCompatible(
-                        argument, parameters[index + 3])) {
+                validateLoadableBootstrapArgument(
+                        argument, bytecodeOffset, activeConstants);
+                Type expected = expectedBootstrapParameter(
+                        constant, bootstrap, parameters, index);
+                if (expected != null
+                        && !isBootstrapArgumentCompatible(argument, expected)) {
                     throw unsupported(
                             "ConstantDynamic bootstrap argument does not match parameter "
                                     + (index + 3),
@@ -621,8 +859,193 @@ public final class DynamicConstantSupport {
         }
     }
 
+    private static void validateInvokeBootstrap(Handle bootstrap, int bytecodeOffset) {
+        switch (bootstrap.getTag()) {
+            case Opcodes.H_INVOKESTATIC:
+            case Opcodes.H_INVOKEVIRTUAL:
+            case Opcodes.H_INVOKESPECIAL:
+            case Opcodes.H_INVOKEINTERFACE:
+            case Opcodes.H_NEWINVOKESPECIAL:
+                validateMethodHandle(bootstrap, bytecodeOffset);
+                return;
+            default:
+                throw unsupported(
+                        "ConstantDynamic bootstrap is not an invoke method handle",
+                        bytecodeOffset);
+        }
+    }
+
+    private static void validateStaticOrConstructorBootstrap(
+            ConstantDynamic constant, Handle bootstrap, Type bootstrapType,
+            Type[] parameters, int bytecodeOffset) {
+        if (bootstrap.getTag() == Opcodes.H_NEWINVOKESPECIAL
+                && (!"<init>".equals(bootstrap.getName())
+                || bootstrapType.getReturnType().getSort() != Type.VOID
+                || !isReference(Type.getType(constant.getDescriptor())))) {
+            throw unsupported(
+                    "ConstantDynamic constructor bootstrap must allocate a reference",
+                    bytecodeOffset);
+        }
+        if (parameters.length < 3
+                || !LOOKUP_DESCRIPTOR.equals(parameters[0].getDescriptor())
+                || !STRING_DESCRIPTOR.equals(parameters[1].getDescriptor())
+                || !CLASS_DESCRIPTOR.equals(parameters[2].getDescriptor())) {
+            throw unsupported(
+                    "ConstantDynamic bootstrap must take Lookup, String, Class, "
+                            + "then one exact parameter per static argument",
+                    bytecodeOffset);
+        }
+        int argumentCount = constant.getBootstrapMethodArgumentCount();
+        boolean varargs = parameters.length > 3
+                && parameters[parameters.length - 1].getSort() == Type.ARRAY;
+        int fixed = parameters.length - 3 - (varargs ? 1 : 0);
+        if (argumentCount < fixed || (!varargs && argumentCount != fixed)) {
+            throw unsupported(
+                    "ConstantDynamic bootstrap must take Lookup, String, Class, "
+                            + "then one exact parameter per static argument",
+                    bytecodeOffset);
+        }
+        if (bootstrap.getTag() == Opcodes.H_INVOKESTATIC
+                && !isUsableBootstrapReturn(
+                bootstrapType.getReturnType(),
+                Type.getType(constant.getDescriptor()))) {
+            throw unsupported(
+                    "ConstantDynamic bootstrap return does not match its constant type",
+                    bytecodeOffset);
+        }
+    }
+
+    private static boolean isUsableBootstrapReturn(Type produced, Type expected) {
+        if (produced.getDescriptor().equals(expected.getDescriptor())) {
+            return true;
+        }
+        return isReference(produced)
+                && (isReference(expected) || isIntLike(expected)
+                || expected.getSort() == Type.LONG
+                || expected.getSort() == Type.FLOAT
+                || expected.getSort() == Type.DOUBLE);
+    }
+
+    private static Type expectedBootstrapParameter(
+            ConstantDynamic constant, Handle bootstrap, Type[] parameters,
+            int argumentIndex) {
+        if (bootstrap.getTag() != Opcodes.H_INVOKESTATIC
+                && bootstrap.getTag() != Opcodes.H_NEWINVOKESPECIAL) {
+            return null;
+        }
+        Type last = parameters.length > 3
+                ? parameters[parameters.length - 1] : null;
+        boolean packing = last != null
+                && last.getSort() == Type.ARRAY
+                && isVarargsPacking(constant, parameters, last);
+        int fixed = parameters.length - 3 - (packing ? 1 : 0);
+        if (argumentIndex < fixed) {
+            return parameters[argumentIndex + 3];
+        }
+        return packing ? last.getElementType() : parameters[argumentIndex + 3];
+    }
+
+    private static boolean isVarargsPacking(
+            ConstantDynamic constant, Type[] parameters, Type last) {
+        int argumentCount = constant.getBootstrapMethodArgumentCount();
+        int exact = parameters.length - 3;
+        if (argumentCount != exact) {
+            return true;
+        }
+        Object lastArgument =
+                constant.getBootstrapMethodArgument(argumentCount - 1);
+        return !isBootstrapArgumentCompatible(lastArgument, last)
+                && isBootstrapArgumentCompatible(
+                lastArgument, last.getElementType());
+    }
+
+    private static Type asPrimitiveClassType(Type type) {
+        switch (type.getSort()) {
+            case Type.BOOLEAN:
+            case Type.BYTE:
+            case Type.CHAR:
+            case Type.SHORT:
+            case Type.INT:
+            case Type.FLOAT:
+            case Type.LONG:
+            case Type.DOUBLE:
+            case Type.VOID:
+                return type;
+            case Type.OBJECT:
+                String name = type.getInternalName();
+                if (name.length() != 1) {
+                    return null;
+                }
+                switch (name.charAt(0)) {
+                    case 'Z':
+                        return Type.BOOLEAN_TYPE;
+                    case 'B':
+                        return Type.BYTE_TYPE;
+                    case 'C':
+                        return Type.CHAR_TYPE;
+                    case 'S':
+                        return Type.SHORT_TYPE;
+                    case 'I':
+                        return Type.INT_TYPE;
+                    case 'F':
+                        return Type.FLOAT_TYPE;
+                    case 'J':
+                        return Type.LONG_TYPE;
+                    case 'D':
+                        return Type.DOUBLE_TYPE;
+                    case 'V':
+                        return Type.VOID_TYPE;
+                    default:
+                        return null;
+                }
+            default:
+                return null;
+        }
+    }
+
+    private static void validateLoadableBootstrapArgument(
+            Object argument, int bytecodeOffset,
+            Set<ConstantDynamic> activeConstants) {
+        if (argument instanceof ConstantDynamic) {
+            validateDynamicConstant((ConstantDynamic) argument,
+                    bytecodeOffset, activeConstants);
+            return;
+        }
+        if (argument instanceof Handle) {
+            validateMethodHandle((Handle) argument, bytecodeOffset);
+            return;
+        }
+        if (argument instanceof Type) {
+            Type type = (Type) argument;
+            if (type.getSort() == Type.METHOD) {
+                validateMethodType(type, bytecodeOffset);
+            } else if (type.getSort() != Type.OBJECT
+                    && type.getSort() != Type.ARRAY
+                    && type.getSort() != Type.VOID
+                    && (type.getSort() < Type.BOOLEAN
+                    || type.getSort() > Type.DOUBLE)) {
+                throw unsupported(
+                        "Unsupported ConstantDynamic bootstrap argument",
+                        bytecodeOffset);
+            }
+            return;
+        }
+        if (!(argument instanceof Integer)
+                && !(argument instanceof Long)
+                && !(argument instanceof Float)
+                && !(argument instanceof Double)
+                && !(argument instanceof String)) {
+            throw unsupported(
+                    "Unsupported ConstantDynamic bootstrap argument",
+                    bytecodeOffset);
+        }
+    }
+
     private static boolean isBootstrapArgumentCompatible(Object argument,
                                                          Type parameter) {
+        if (OBJECT_DESCRIPTOR.equals(parameter.getDescriptor())) {
+            return true;
+        }
         if (argument instanceof Integer) {
             return isIntLike(parameter);
         }

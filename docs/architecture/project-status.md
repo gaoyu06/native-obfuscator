@@ -20,9 +20,11 @@ legacy。不能当成 JDK 支持矩阵。
 
 ## What landed / 已落地
 
-- **Legacy generator (default).** Snippet substitution through
-  `cppsnippets.properties` remains the CLI and API default (`--codegen=legacy`).
-- **Opt-in IR.** `--codegen=ir` lowers admitted methods through a typed CFG
+- **IR generator (default).** `--codegen=ir` is the CLI and API default.
+  The snippet path (`Snippets`, `cppsnippets.properties`, `instructions/*`)
+  is gone. `--codegen=legacy` is invalid. Unsupported methods restore
+  original bytecode. Eval misses retry direct IR.
+- **IR coverage.** `--codegen=ir` lowers admitted methods through a typed CFG
   (i32 / i64 / f32 / f64 / reference) to structured C++/JNI. Phase 19 adds
   `LAND`/`LOR`/`LXOR` and `LSHL`/`LSHR`/`LUSHR`. Phase 20
   ([#134](https://github.com/gaoyu06/native-obfuscator/pull/134); Sol accept
@@ -437,9 +439,8 @@ legacy。不能当成 JDK 支持矩阵。
   [#141](https://github.com/gaoyu06/native-obfuscator/pull/141) is one
   behavioral measurement (20/21 IR, one hybrid constructor, JEP 472 warning),
   not a support badge.
-- **Harnesses.** `benchmarks/run.py` now runs JVM, `--codegen=legacy`, and
-  `--codegen=ir` in one `:obfuscator:bench` invocation. JNI member-lookup
-  caching remains on the legacy path.
+- **Harnesses.** `benchmarks/run.py` now runs JVM and `--codegen=ir` in one
+  `:obfuscator:bench` invocation. `--codegen=legacy` is gone.
 - **Opt-in interpreter.** `--backend=interpreter` (default `cpp`) lowers a
   narrow slice to an opcode stream plus a C++17 `switch` dispatcher.
   ISA v2 is static `int`. ISA v3
@@ -474,8 +475,9 @@ legacy。不能当成 JDK 支持矩阵。
   not a JDK 25 support badge, and the #141 E2E warning was not re-run.
 - **Zig.** `install-zig` and `--use-zig` from the pre-integration `master`.
 
-默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。
-IR、evaluator 与解释器都需显式打开。SDK 随生成 JAR 提供，不是独立产品。
+默认是 `--codegen=ir`、`--ir-lower=direct` 与 `--backend=cpp`。
+snippet / `--codegen=legacy` 已删除。IR 不支持的构造恢复原始字节码。
+evaluator 与解释器仍需显式打开。SDK 随生成 JAR 提供，不是独立产品。
 classfile 不再无条件写成 major 52。
 
 ## Recorded measurements (do not invent more) / 已记录测量（勿编造）

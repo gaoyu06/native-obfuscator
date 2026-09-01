@@ -89,6 +89,16 @@ public final class InterpreterStreamStrategy implements MethodLoweringStrategy {
                 && method.getReturnType() != IrType.I64) {
             throw unsupported("Evaluator lowering requires an i32 or i64 method return", -1);
         }
+        if (!method.getBlocks().isEmpty()) {
+            IrBlock entry = method.getBlocks().get(0);
+            for (IrPhi phi : entry.getPhis()) {
+                if (phi.getSlotKind() == IrPhi.SlotKind.LOCAL) {
+                    throw unsupported(
+                            "Evaluator lowering does not support a loop header at the method entry",
+                            -1);
+                }
+            }
+        }
         for (int i = 0; i < method.getParameters().size(); i++) {
             IrValue parameter = method.getParameters().get(i);
             if (!isEvaluatorValueType(parameter.getType()) || parameter.getId() != i) {

@@ -12,7 +12,7 @@ with an older brief.
 | --- | --- | --- |
 | [architecture/overview.md](architecture/overview.md) | EN + 中文 | Visual architecture walkthrough (pipeline, codegen modes, IR internals, repo layout) with the diagrams from [assets/](assets/). |
 | [assets/](assets/) | EN + 中文 | Hand-authored SVG diagrams used by the READMEs and the overview. |
-| [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Active goal: IR-complete codegen, then delete legacy. |
+| [architecture/current-goal.md](architecture/current-goal.md) | EN + 中文 | Replacement landed: IR is the default generator; snippet path deleted. |
 | [architecture/project-status.md](architecture/project-status.md) | EN + 中文 | What is on `master` after #118–#456. Claims that are **not** allowed. |
 | [architecture/integration-master-tips.md](architecture/integration-master-tips.md) | EN | How the preferred draft tips were folded onto `master`. |
 | [architecture/human-decision-matrix.md](architecture/human-decision-matrix.md) | EN | Product decisions that still need a human (D1–D24). |
@@ -81,7 +81,7 @@ Do not invent numbers. Do not back-fill [#53](https://github.com/gaoyu06/native-
 
 | Document | Notes |
 | --- | --- |
-| [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + legacy + IR) |
+| [benchmarks/README.md](benchmarks/README.md) | How to run `benchmarks/run.py` (JVM + IR) |
 | [benchmarks/results-ir-vs-legacy-phase19.md](benchmarks/results-ir-vs-legacy-phase19.md) | Latest three-mode bench (all three kernels on IR; one VM). Fable accept-with-nits: [reviews/bench-ir-phase19-fable.md](reviews/bench-ir-phase19-fable.md) |
 | [benchmarks/results-ir-vs-legacy-master.md](benchmarks/results-ir-vs-legacy-master.md) | Pre-phase-19 three-mode bench; only `string-concat-hash` stayed fully IR |
 | [benchmarks/ir-leftover-inventory.md](benchmarks/ir-leftover-inventory.md) | Post-#452 admission inventory (#454; ClassicTest 108/108, JDK 17/21/25 82/82, 47/47, 21/21). Not coverage-complete |

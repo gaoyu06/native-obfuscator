@@ -1,8 +1,8 @@
 package by.radioegor146.ir;
 
 /**
- * Signals a capability miss that is safe to handle with per-method legacy
- * fallback. The frontend throws this before code generation mutates the method.
+ * Signals a capability miss. The frontend throws this before code generation
+ * mutates the method so the original bytecode can be left unchanged.
  */
 public final class UnsupportedIrConstructException extends RuntimeException {
     private final int bytecodeOffset;

@@ -43,14 +43,14 @@ Stage by stage (paths under `obfuscator/src/main/java/by/radioegor146`):
    `LdcPreprocessor` lower `invokedynamic` and handle/type `LDC` constants;
    the class is re-serialized with `COMPUTE_MAXS | COMPUTE_FRAMES` and
    re-read so frames and `maxStack`/`maxLocals` are authoritative.
+   Leftover `jsr`/`ret` after a failed inline uses `COMPUTE_MAXS` only.
 3. **Per-method codegen / 逐方法代码生成** — `NativeObfuscator`'s method
-   loop dispatches each selected method. Default: the legacy snippet
-   generator (`MethodProcessor` / `GenericInstructionHandler` + `Snippets`
-   + `cppsnippets.properties`). Opt-in: the typed CFG IR (`IrMethodCompiler`
-   when `--codegen=ir`). Default off: the in-process interpreter
-   (`InterpreterMethodEmitter` when `--backend=interpreter`). `--ir-lower=eval`
-   is an IR-compiler lowering (`InterpreterStreamStrategy`), not that
-   interpreter backend.
+   loop dispatches each selected method to the typed CFG IR
+   (`IrMethodCompiler`). Default off: the in-process interpreter
+   (`InterpreterMethodEmitter` when `--backend=interpreter`). Interpreter
+   misses retry IR. IR misses restore original bytecode.
+   `--ir-lower=eval` is an IR-compiler lowering (`InterpreterStreamStrategy`);
+   eval misses retry direct IR. It is not the interpreter backend.
 4. **Class assembly / 类级装配** — `ClassSourceBuilder` writes the per-class
    `.cpp`/`.hpp`, `CMakeFilesBuilder` writes `CMakeLists.txt`,
    `MainSourceBuilder` writes `native_jvm_output.cpp`, and `StringPool` emits
@@ -63,19 +63,17 @@ Stage by stage (paths under `obfuscator/src/main/java/by/radioegor146`):
 
 <img src="../assets/codegen-modes.svg" alt="Codegen and lowering modes with defaults marked" width="100%">
 
-Defaults on `master`: `--codegen=legacy`, `--ir-lower=direct`,
-`--backend=cpp`. The IR path is opt-in; `--ir-lower` is consulted only under
-`--codegen=ir`; `--ir-lower=eval` and `--backend=interpreter` are default off.
-IR methods that hit an unsupported construct fall back per method to legacy;
-rejected `<init>` bodies are restored to their original bytecode.
+Defaults on `master`: `--codegen=ir`, `--ir-lower=direct`,
+`--backend=cpp`. `--codegen=legacy` is removed. `--ir-lower=eval` and
+`--backend=interpreter` are default off. Unsupported methods restore original
+bytecode. Eval misses retry direct IR.
 
-`master` 上的默认值：`--codegen=legacy`、`--ir-lower=direct`、`--backend=cpp`。
-IR 路径需显式开启；`--ir-lower` 仅在 IR 模式下生效；`eval` 与解释器均默认关闭。
-IR 不支持的构造逐方法回退到 legacy；被拒绝的 `<init>` 恢复为原始字节码。
+`master` 上的默认值：`--codegen=ir`、`--ir-lower=direct`、`--backend=cpp`。
+`--codegen=legacy` 已删除。`eval` 与解释器均默认关闭。IR 不支持的构造恢复为
+原始字节码。eval 未覆盖时回退到 direct IR。
 
-The active goal is to move **all** method-body codegen onto IR and then delete
-the legacy path. That goal is **not** complete — see
-[current-goal.md](current-goal.md). 现行目标（IR 全覆盖后删除 legacy）**尚未完成**。
+Snippet replacement has landed. Remaining leftovers stay fail-closed — see
+[current-goal.md](current-goal.md). snippet 替换已落地；剩余缺口保持 fail-closed。
 
 ## 4. IR compiler internals / IR 编译器内部
 

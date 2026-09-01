@@ -20,18 +20,18 @@
 bytecode semantics through `JNIEnv`, and replaces those methods with `native` stubs. At runtime the
 JVM dispatches into the generated shared library.
 
-The tool still ships a **legacy** snippet-based generator as the CLI default. `master` also includes
-an opt-in typed CFG IR path (`--codegen=ir`), a default-off shared IR evaluator lowering
-(`--ir-lower=eval`), a default-off in-process interpreter (`--backend=interpreter`), a small
-Java-callable C++ SDK, JDK 17+ fixture harnesses, and a benchmark harness. None of that is a
-production-support claim.
+The default method-body generator is the typed CFG IR path (`--codegen=ir`). `master` also includes
+a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in-process interpreter
+(`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a
+benchmark harness. None of that is a production-support claim. Unsupported constructs leave the
+original method bytecode in Java.
 
 > [!IMPORTANT]
 > This tool **transpiles** bytecode to native. It does not pack binaries and does not, by itself,
 > hide algorithm identity from analysis. Use a blacklist/whitelist — transpiling a whole application
 > JAR (for example a game client) is usually the wrong default.
 
-**现状（中文）：** 现行目标是把所有方法体迁到 typed CFG IR，停止字符串拼接生成，直到可以完整废弃 legacy。默认仍是 `--codegen=legacy`、`--ir-lower=direct` 与 `--backend=cpp`。`--codegen=ir` 是可选 typed CFG IR；只有该模式会读取 `--ir-lower`。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。完整中文版见 [README.zh-CN.md](README.zh-CN.md)。
+**现状（中文）：** 默认生成器是 typed CFG IR（`--codegen=ir`），`--ir-lower=direct`，`--backend=cpp`。snippet / `--codegen=legacy` 路径已删除。IR 不支持的构造会把该方法恢复为原始字节码，不再回退到 snippet。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。完整中文版见 [README.zh-CN.md](README.zh-CN.md)。
 
 ---
 
@@ -61,18 +61,20 @@ production-support claim.
 
 ## How it works
 
-<img src="docs/assets/architecture-pipeline.svg" alt="End-to-end pipeline: input JAR, filter, preprocess, per-method codegen (legacy / IR / interpreter), class assembly, CMake or Zig build, shared library, output JAR with native stubs" width="100%">
+<img src="docs/assets/architecture-pipeline.svg" alt="End-to-end pipeline: input JAR, filter, preprocess, per-method codegen (IR / interpreter), class assembly, CMake or Zig build, shared library, output JAR with native stubs" width="100%">
 
 1. **Load + filter** — `NativeObfuscator.process` streams the JAR, parses classes with ASM into
    `ClassNode`s, and applies `ClassMethodFilter` (blacklist/whitelist plus `@Native`/`@NotNative`).
 2. **Bytecode preprocessing** — `IndyPreprocessor` and `LdcPreprocessor` lower `invokedynamic` and
    handle/type constants; the class is re-serialized with `COMPUTE_MAXS | COMPUTE_FRAMES` so frames
-   are authoritative before codegen.
+   are authoritative before codegen. Classes that still contain `jsr`/`ret` after a failed inline
+   use `COMPUTE_MAXS` only (ASM cannot compute frames for those instructions).
 3. **Per-method codegen** — `NativeObfuscator`'s method loop is the dispatch point. Each selected
-   method goes to the legacy snippet generator (`MethodProcessor`, default), the typed CFG IR path
-   (`IrMethodCompiler` when `--codegen=ir`), or the in-process interpreter (`InterpreterMethodEmitter`
-   when `--backend=interpreter`, default off). `--ir-lower=eval` is a lowering *inside* the IR
-   compiler (`InterpreterStreamStrategy`); it is not the interpreter backend.
+   method goes to the typed CFG IR path (`IrMethodCompiler`) or, when `--backend=interpreter` admits
+   it, the in-process interpreter (`InterpreterMethodEmitter`, default off). Interpreter misses retry
+   IR. IR misses restore the original method bytecode. `--ir-lower=eval` is a lowering *inside* the
+   IR compiler (`InterpreterStreamStrategy`); it is not the interpreter backend. Eval misses retry
+   direct IR.
 4. **Class assembly** — `ClassSourceBuilder`, `CMakeFilesBuilder`, `MainSourceBuilder`, and
    `StringPool` write the `cpp/` tree and rewrite the selected methods into `native` stubs.
 5. **Runtime helpers** — `native_jvm.{cpp,hpp}` and `string_pool.{cpp,hpp}` are copied alongside the
@@ -111,9 +113,9 @@ and the follow-up landings through
 
 | Topic | What is true |
 | --- | --- |
-| Active goal | Move all method-body codegen onto IR, then delete the legacy snippet path. Not done. Default stays `legacy` until coverage |
-| Default generator | `legacy` (snippet / `cppsnippets.properties`) |
-| Opt-in IR | `--codegen=ir` — typed CFG through phase 20 plus `LCMP`, `IF_ACMP*`, monitors / synchronized, preprocessor-lowerable `invokedynamic`, proven `ConstantDynamic` (class and interface), raw MethodHandle / MethodType `LDC`, primitive `Class` `LDC`, and well-formed `jsr`/`ret` inlining. Per-method fallback to legacy when a construct is unsupported |
+| Active goal | Method-body codegen is IR. The snippet path is deleted. Remaining unsupported shapes restore original bytecode |
+| Default generator | `ir` (typed CFG). `--codegen=legacy` is removed |
+| IR coverage | typed CFG through phase 20 plus `LCMP`, `IF_ACMP*`, monitors / synchronized, preprocessor-lowerable `invokedynamic`, proven `ConstantDynamic` (class and interface), raw MethodHandle / MethodType `LDC`, primitive `Class` `LDC`, and well-formed `jsr`/`ret` inlining. Unsupported methods restore original bytecode |
 | Classfile metadata | Input major versions are preserved (Java 8 floor only). Nest / record / sealed attributes are no longer wiped by forcing version 52 |
 | Java baseline | Historical README claim remains: **Java 8 is the only version this project has ever called fully supported.** 9+ and Android stay experimental |
 | JDK 17 IR fixtures | 11 `--release 17` programs matched HotSpot stdout on **one** Linux x86-64 VM under `--codegen=ir`. That is not a product “supports JDK 17” badge |
@@ -129,23 +131,24 @@ and the follow-up landings through
 
 ## Codegen modes
 
-<img src="docs/assets/codegen-modes.svg" alt="Four codegen/lowering modes: legacy (default), IR direct (opt-in), IR eval (default off), interpreter (default off), with per-method fallback rules" width="100%">
+<img src="docs/assets/codegen-modes.svg" alt="Three codegen/lowering modes: IR direct (default), IR eval (default off), interpreter (default off), with per-method restore-original fallback" width="100%">
 
 How the flags interact for each selected method:
 
 ```mermaid
 flowchart TD
-    A["Method selected for transpilation"] --> B{"--codegen ?"}
-    B -- "legacy (default)" --> C["Snippet templates from cppsnippets.properties"]
-    B -- "ir (opt-in)" --> D{"IR admits the method?"}
-    D -- "no" --> E["Per-method fallback to legacy.<br/>Rejected constructor bodies are<br/>restored to their original bytecode"]
+    A["Method selected for transpilation"] --> B{"--backend interpreter and ISA admits?"}
+    B -- "yes" --> C["InterpreterMethodEmitter"]
+    B -- "no" --> D{"IR admits the method?"}
+    D -- "no" --> E["Restore original bytecode"]
     D -- "yes" --> F{"--ir-lower ?"}
     F -- "direct (default)" --> G["DirectCppStrategy: structured C++"]
-    F -- "eval (default off)" --> H["Shared evaluator lowering<br/>(narrow integer slice only)"]
-    C --> I["Generated C++ into cpp/ tree"]
-    E --> I
-    G --> I
-    H --> I
+    F -- "eval (default off)" --> H{"Evaluator admits?"}
+    H -- "yes" --> I["Shared evaluator lowering"]
+    H -- "no" --> G
+    C --> J["Generated C++ into cpp/ tree"]
+    G --> J
+    I --> J
 ```
 
 `--backend=interpreter` is a separate, default-off switch (`--backend=cpp` is the default): a narrow
@@ -157,7 +160,7 @@ in-process interpreter at ISA v4 (static `int`/`long`, references, `ATHROW`/exce
 <img src="docs/assets/usage-flow.svg" alt="User workflow: transpile with java -jar, compile with cmake or zig, copy the shared library, run the output JAR" width="100%">
 
 ```bash
-# 1. Transpile (optionally add --codegen=ir)
+# 1. Transpile
 java -jar native-obfuscator.jar app.jar out/
 
 # 2. Compile the generated C++ (recorded IR builds used CC=gcc CXX=g++)
@@ -205,8 +208,8 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `<outputDirectory>` | Where the transformed JAR and `cpp/` tree are written |
 | `-l` | Directory of dependent libraries (optional, recommended) |
 | `-p` | `hotspot` (default), `std_java`, or `android` |
-| `--codegen` | `legacy` (default) or `ir` |
-| `--ir-lower` | `direct` (default) or `eval`; consulted only with `--codegen=ir` |
+| `--codegen` | `ir` (default; only remaining value) |
+| `--ir-lower` | `direct` (default) or `eval` |
 | `--backend` | `cpp` (default) or `interpreter` (narrow int/i64/reference slice; default off) |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
@@ -219,11 +222,11 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--jdk-home` | JDK with `include/jni.h` (defaults to `JAVA_HOME`) |
 | `--zig-install-dir` | Where Zig was installed (default `~/.native-obfuscator/zig/`) |
 
-`--codegen=ir` is opt-in. Its `direct` lowering remains the default; `--ir-lower=eval` selects a
-narrow shared evaluator lowering. Unsupported methods fall back per-method to the legacy generator,
-except rejected `<init>` bodies, which are restored to the original bytecode (including
-`invokedynamic`) instead of being left with internal preprocessor markers. `--backend=interpreter`
-is separately opt-in and default off.
+`--codegen=ir` is the default and only remaining generator. Its `direct` lowering remains the
+default; `--ir-lower=eval` selects a narrow shared evaluator lowering and retries direct IR on a
+miss. Unsupported methods restore original bytecode (including `invokedynamic`) instead of being
+left with internal preprocessor markers. `--backend=interpreter` is separately opt-in and default
+off; interpreter misses retry IR.
 
 ### Platforms
 
@@ -258,7 +261,7 @@ Wildcards: `*` is one `/`-separated segment; `**` is any remaining segments.
 ### Basic flow
 
 1. `java -jar native-obfuscator.jar <input.jar> <output-dir>`
-2. Optional IR: add `--codegen=ir` (and optionally `--ir-lower=eval`)
+2. Optional evaluator: add `--ir-lower=eval`
 3. `cmake .` in the generated `cpp/` directory (recorded IR builds used `CC=gcc CXX=g++`)
 4. `cmake --build . --config Release`
 5. Copy the shared library from `build/libs/` into the loader path printed on stdout (`native0/` by
@@ -347,14 +350,13 @@ Strings: Java-compatible UTF-16 `length`, `hashCode`, and `concat`. Recorded str
 
 <img src="docs/assets/ir-compiler.svg" alt="IR compiler internals: ASM tree, JSR/RET inlining, typed CFG, lowering strategies, C++ AST emission" width="100%">
 
-The opt-in `--codegen=ir` path builds a typed control-flow graph (`i32`/`i64`/`f32`/`f64`/reference
+The default `--codegen=ir` path builds a typed control-flow graph (`i32`/`i64`/`f32`/`f64`/reference
 values) from the preprocessed ASM tree (`AsmToIr`, `CfgBuilder`, with well-formed `jsr`/`ret`
 inlined first), lowers it through a strategy (`DirectCppStrategy` by default, or
 `InterpreterStreamStrategy` when `--ir-lower=eval`), and emits structured C++ via `IrCppEmitter`.
 `--backend=interpreter` is a separate `NativeObfuscator` path (`InterpreterMethodEmitter`), not an
 IR-compiler lowering. Methods with unsupported constructs raise `UnsupportedIrConstructException`
-and fall back per-method to the legacy generator; rejected `<init>` bodies are restored to their
-original bytecode.
+and restore original bytecode.
 
 Design and status: [`docs/architecture/ir-compiler.md`](docs/architecture/ir-compiler.md) ·
 [`docs/architecture/current-goal.md`](docs/architecture/current-goal.md) ·
@@ -389,7 +391,7 @@ Start at [`docs/README.md`](docs/README.md).
 | Doc | Role |
 | --- | --- |
 | [Architecture overview](docs/architecture/overview.md) | Visual walkthrough of the pipeline (bilingual) |
-| [Current goal](docs/architecture/current-goal.md) | Active goal: IR-complete codegen, then delete legacy |
+| [Current goal](docs/architecture/current-goal.md) | Replacement landed: IR is the default generator; snippet path deleted |
 | [Project status](docs/architecture/project-status.md) | What landed on master, what did not, what must not be claimed |
 | [IR compiler](docs/architecture/ir-compiler.md) | Typed CFG design |
 | [IR phase 18](docs/architecture/ir-phase18-status.md) | Primitive arrays and `MULTIANEWARRAY` |

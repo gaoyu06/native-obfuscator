@@ -12,43 +12,35 @@ They do not define what to work on next.
 
 ## Active goal / 现行目标
 
-1. **Move all method-body native codegen onto the typed CFG IR.**
-   Bytecode → IR → C/C++ → compile. Stop using the legacy snippet /
-   string-concatenation generator (`cppsnippets.properties`, `Snippets`,
-   `GenericInstructionHandler`, and the `instructions/*` string emitters)
-   for new work.
-2. **Keep going until the legacy path can be deleted.**
-   Every method that today’s tool would have sent through the snippet
-   generator must be admitted and emitted through IR with **no**
-   per-method legacy fallback. Then delete the legacy path so
-   `--codegen=legacy` is no longer required.
+Snippet replacement **has landed**:
 
-1. **把所有方法体原生代码生成迁到 typed CFG IR。**
-   字节码 → IR → C/C++ → 编译。新工作不要再走字符串拼接的 legacy 生成器。
-2. **一直做到可以完整废弃 legacy。**
-   今天会走 snippet 路径的方法都必须能被 IR 接纳并生成，不再逐方法
-   fallback。然后删除 legacy，使 `--codegen=legacy` 不再必要。
+- Method-body codegen is the typed CFG IR (`--codegen=ir`).
+- `--codegen=legacy` is invalid. `Snippets`, `cppsnippets.properties`,
+  `GenericInstructionHandler`, and `instructions/*` are gone.
+- Unsupported methods restore original bytecode. Interpreter misses retry
+  IR. Eval misses retry direct IR.
 
-This goal is **not** complete. `--codegen` still defaults to `legacy`.
-Unsupported IR constructs still fall back per method.
+Remaining work is leftover IR admission (constructor-split, unsafe condy,
+malformed `jsr`/`ret`). Those stay fail-closed. They are not a reason to
+restore snippets.
 
-本目标**尚未完成**。CLI 默认仍是 `legacy`。IR 不支持的构造仍会逐方法回退。
+snippet 替换**已落地**：默认生成器是 IR；`--codegen=legacy` 无效；snippet
+路径已删除。不支持的方法恢复原始字节码。剩余工作是 leftover 接纳，保持
+fail-closed，不要把 snippet 加回来。
 
 ## Done means / 完成标准
 
-The goal is complete only when all of the following are true:
+Replacement is complete when all of the following are true (they are):
 
-- `--codegen=ir` can compile the methods the product intends to support
-  without calling the snippet generator.
-- The CLI/API default is `ir` (or the only remaining path is IR).
+- `--codegen=ir` compiles the methods the product intends to support
+  without calling a snippet generator.
+- The CLI/API default is `ir` (the only remaining path is IR).
 - `Snippets`, `GenericInstructionHandler`, `cppsnippets.properties`, and
   the leftover string-concat instruction handlers are gone from the
   production tree.
-- A still-unsupported construct fails closed with a precise diagnostic
-  instead of silently emitting snippet C++.
+- A still-unsupported construct fails closed instead of emitting snippet C++.
 
-在此之前不要把本目标标成完成，也不要把接纳率或小语料 E2E 写成
-“已经废弃 legacy”。
+不要把接纳率或小语料 E2E 写成“已支持 JDK 17/21/25”。
 
 ## Sequencing / 顺序
 
@@ -165,13 +157,12 @@ The goal is complete only when all of the following are true:
    the earlier post-#206 snapshot; #199 remains the earlier post-#198
    snapshot; #191 remains the earlier post-#190 snapshot; #181 remains
    the earlier post-#180 snapshot.
-2. **Do not flip `--codegen` off `legacy`** until those supported methods
-   no longer need fallback. The default flip is reversible and comes
-   *after* coverage, not before.
-3. **Delete the legacy path** only after the default flip has soaked
-   and no supported method still needs snippet emission.
-   That deletion is now the approved destination (human decision D7),
-   not an optional afterthought.
+2. **Do not restore `--codegen=legacy` or the snippet generator.**
+   Unsupported methods restore original bytecode. Eval misses retry
+   direct IR.
+3. **Leftover admission continues as fail-closed IR work.**
+   Constructor-split rejects, unsafe condy, and malformed `jsr`/`ret`
+   stay Java. That is not a reason to bring snippets back.
 
 解释器（`--backend=interpreter`）和 evaluator（`--ir-lower=eval`）仍是
 默认关闭的旁路。它们**不能**代替把方法体迁到 IR。不要为了扩解释器 ISA

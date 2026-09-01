@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * Orchestrates the ASM frontend, selected IR lowering, and shared JNI shell.
  * Frontend/lowering work completes before the shell mutates bytecode, so
- * capability misses remain safe to fall back per method.
+ * capability misses remain safe to leave the original method body in Java.
  */
 public final class IrMethodCompiler {
     private final AsmToIr frontend;
@@ -68,13 +68,7 @@ public final class IrMethodCompiler {
         IrMethod method = frontend.build(
                 context.clazz.name, dynamicConstantResolverOwner, bytecodeBody);
         IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
-        if (selectedMode == IrLoweringMode.EVAL && method.isSynchronizedMethod()) {
-            throw new UnsupportedIrConstructException(
-                    "Evaluator lowering does not support synchronized methods");
-        }
-        MethodLoweringStrategy strategy = selectedMode == IrLoweringMode.EVAL
-                ? evaluatorStrategy : directStrategy;
-        LoweredMethod lowered = strategy.lower(method, new LoweringContext(context));
+        LoweredMethod lowered = lower(method, context, selectedMode);
         DynamicConstantSupport.installResolvers(
                 context.clazz, bytecodeBody,
                 context.obfuscator.getHiddenMethodsPool());
@@ -91,5 +85,21 @@ public final class IrMethodCompiler {
         MethodShellEmitter.Shell shell = shellEmitter.beginIr(context);
         context.output.append(lowered.getBody());
         shellEmitter.finishIr(context, shell);
+    }
+
+    private LoweredMethod lower(IrMethod method, MethodContext context,
+                                IrLoweringMode selectedMode) {
+        if (selectedMode != IrLoweringMode.EVAL) {
+            return directStrategy.lower(method, new LoweringContext(context));
+        }
+        try {
+            if (method.isSynchronizedMethod()) {
+                throw new UnsupportedIrConstructException(
+                        "Evaluator lowering does not support synchronized methods");
+            }
+            return evaluatorStrategy.lower(method, new LoweringContext(context));
+        } catch (UnsupportedIrConstructException ignored) {
+            return directStrategy.lower(method, new LoweringContext(context));
+        }
     }
 }
