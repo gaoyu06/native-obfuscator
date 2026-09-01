@@ -23,8 +23,7 @@
 ### Baseline and status
 
 - Rebased onto leftover-docs [#455](https://github.com/gaoyu06/native-obfuscator/pull/455) at `14d68873` (`14d68873b06dbf98ad4c3fb9314c4a82bc546544`).
-- Latest compiler parent XML until parent re-runs: [#455](https://github.com/gaoyu06/native-obfuscator/pull/455) (**773**).
-- Expected parent XML after parent re-run: **776** (`IrCompilerTest` 769 + `CodegenModeTest` 7). Do not treat child-local XML as a parent total.
+- Parent XML **776** (`IrCompilerTest` 769 + `CodegenModeTest` 7), 0 failures/errors/skipped. Parent re-ran `threeImmediateNewExtraLocalSixFifthSixthArgChainInputsCompileAndRunWithJavaParity`.
 - Processor changed: No.
 - Ship-ready: No.
 - The production goal remains incomplete.
@@ -52,9 +51,8 @@
 
 ### 基线与状态
 
-- 合并基线：leftover-docs [#454](https://github.com/gaoyu06/native-obfuscator/pull/454)，`a44e3237`（`a44e32370cafd2495dec92bd2c29f3763a5c8471`）。
-- 父级复跑前最新编译器 XML：[#453](https://github.com/gaoyu06/native-obfuscator/pull/453)（**770**）。
-- 父级复跑后预期 XML：**776**（`IrCompilerTest` 766 + `CodegenModeTest` 7）。子代理本地 XML 不得当作父级总数。
+- 已变基到 leftover-docs [#455](https://github.com/gaoyu06/native-obfuscator/pull/455)，`14d68873`（`14d68873b06dbf98ad4c3fb9314c4a82bc546544`）。
+- 父级 XML **776**（`IrCompilerTest` 769 + `CodegenModeTest` 7），0 失败/错误/跳过。父级复跑包含 `threeImmediateNewExtraLocalSixFifthSixthArgChainInputsCompileAndRunWithJavaParity`。
 - Processor changed：No。
 - Ship-ready：No。
 - 生产目标仍未完成。
