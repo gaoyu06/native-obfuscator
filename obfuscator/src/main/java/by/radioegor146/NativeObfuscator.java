@@ -47,12 +47,15 @@ public class NativeObfuscator {
 
     private static final Logger logger = LoggerFactory.getLogger(NativeObfuscator.class);
     private static final List<String> SDK_CLASS_NAMES = Arrays.asList(
+            "by/radioegor146/nativeobfuscator/NativePrimitives",
+            "by/radioegor146/nativeobfuscator/NativeStrings",
             "by/radioegor146/sdk/NativePrimitives",
             "by/radioegor146/sdk/NativeStrings");
 
     private final StringPool stringPool;
     private final InterpreterMethodProcessor interpreterMethodProcessor;
-    private final IrMethodCompiler irMethodCompiler;
+    private IrMethodCompiler irMethodCompiler;
+    private NativeIntrinsicsMode intrinsicsMode = NativeIntrinsicsMode.SAFE;
 
     private final NodeCache<String> cachedStrings;
     private final NodeCache<String> cachedClasses;
@@ -152,11 +155,45 @@ public class NativeObfuscator {
                           Platform platform, boolean useAnnotations, boolean generateDebugJar,
                           CodegenMode codegenMode, CompilerBackend backend,
                           IrLoweringMode irLoweringMode) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, backend, irLoweringMode, NativeIntrinsicsMode.SAFE);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, CompilerBackend backend,
+                          IrLoweringMode irLoweringMode,
+                          NativeIntrinsicsMode intrinsicsMode) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, backend, irLoweringMode, intrinsicsMode,
+                ControlFlowObfuscationMode.OFF);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, CompilerBackend backend,
+                          IrLoweringMode irLoweringMode,
+                          NativeIntrinsicsMode intrinsicsMode,
+                          ControlFlowObfuscationMode cfObfuscation) throws IOException {
         Objects.requireNonNull(codegenMode, "codegenMode");
         final CompilerBackend selectedBackend = Objects.requireNonNull(backend, "backend");
         final IrLoweringMode selectedIrLowering =
                 Objects.requireNonNull(irLoweringMode, "irLoweringMode");
-        final boolean evaluatorRuntimeEnabled = selectedIrLowering == IrLoweringMode.EVAL;
+        final ControlFlowObfuscationMode selectedCfObfuscation =
+                Objects.requireNonNull(cfObfuscation, "cfObfuscation");
+        this.intrinsicsMode = Objects.requireNonNull(intrinsicsMode, "intrinsicsMode");
+        this.irMethodCompiler = new IrMethodCompiler(
+                new MethodShellEmitter(this), this.intrinsicsMode);
+        final boolean[] evaluatorRuntimeCopied = {
+                selectedIrLowering == IrLoweringMode.EVAL};
+        final boolean[] interpreterRuntimeCopied = {
+                selectedBackend == CompilerBackend.INTERPRETER};
         if (Files.exists(outputDir) && Files.isSameFile(inputJarPath.toRealPath().getParent(), outputDir.toRealPath())) {
             throw new RuntimeException("Input jar can't be in the same directory as output directory");
         }
@@ -180,16 +217,11 @@ public class NativeObfuscator {
         Util.copyResource("sources/native_jvm.hpp", cppDir);
         Util.copyResource("sources/native_jvm_output.hpp", cppDir);
         Util.copyResource("sources/string_pool.hpp", cppDir);
-        if (evaluatorRuntimeEnabled) {
-            Util.copyResource("sources/native_jvm_eval.cpp", cppDir);
-            Util.copyResource("sources/native_jvm_eval.hpp", cppDir);
-            Files.write(cppDir.resolve("native_jvm.hpp"),
-                    "\n#include \"native_jvm_eval.hpp\"\n".getBytes(StandardCharsets.UTF_8),
-                    StandardOpenOption.APPEND);
+        if (evaluatorRuntimeCopied[0]) {
+            copyEvaluatorRuntime(cppDir);
         }
-        if (selectedBackend == CompilerBackend.INTERPRETER) {
-            Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
-            Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
+        if (interpreterRuntimeCopied[0]) {
+            copyInterpreterRuntime(cppDir);
         }
 
         Path sdkDir = cppDir.resolve("sdk");
@@ -235,13 +267,11 @@ public class NativeObfuscator {
         cMakeBuilder.addMainFile("sdk/third_party/sha-2/sha-256.cpp");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.h");
         cMakeBuilder.addMainFile("sdk/third_party/tiny-aes-c/aes.cpp");
-        if (evaluatorRuntimeEnabled) {
-            cMakeBuilder.addMainFile("native_jvm_eval.hpp");
-            cMakeBuilder.addMainFile("native_jvm_eval.cpp");
+        if (evaluatorRuntimeCopied[0]) {
+            addEvaluatorRuntimeToCmake(cMakeBuilder);
         }
-        if (selectedBackend == CompilerBackend.INTERPRETER) {
-            cMakeBuilder.addMainFile("native_jvm_interp.hpp");
-            cMakeBuilder.addMainFile("native_jvm_interp.cpp");
+        if (interpreterRuntimeCopied[0]) {
+            addInterpreterRuntimeToCmake(cMakeBuilder);
         }
 
         if (platform == Platform.HOTSPOT) {
@@ -387,10 +417,37 @@ public class NativeObfuscator {
                     cachedMethods.clear();
                     cachedFields.clear();
 
+                    boolean classUsesInterpreter = false;
+                    for (MethodNode method : classNode.methods) {
+                        if (!MethodProcessor.shouldProcess(method)
+                                || !classMethodFilter.shouldProcess(classNode, method)) {
+                            continue;
+                        }
+                        NativeAnnotationSupport.Options preview =
+                                NativeAnnotationSupport.resolve(
+                                        classNode, method, selectedIrLowering,
+                                        this.intrinsicsMode, selectedBackend,
+                                        selectedCfObfuscation);
+                        if (preview.getLowering() == IrLoweringMode.EVAL
+                                && !evaluatorRuntimeCopied[0]) {
+                            copyEvaluatorRuntime(cppDir);
+                            addEvaluatorRuntimeToCmake(cMakeBuilder);
+                            evaluatorRuntimeCopied[0] = true;
+                        }
+                        if (preview.getBackend() == CompilerBackend.INTERPRETER) {
+                            classUsesInterpreter = true;
+                            if (!interpreterRuntimeCopied[0]) {
+                                copyInterpreterRuntime(cppDir);
+                                addInterpreterRuntimeToCmake(cMakeBuilder);
+                                interpreterRuntimeCopied[0] = true;
+                            }
+                        }
+                    }
+
                     try (ClassSourceBuilder cppBuilder =
                                  new ClassSourceBuilder(cppOutput, classNode.name,
                                          classIndexReference[0]++, stringPool,
-                                         selectedBackend == CompilerBackend.INTERPRETER)) {
+                                         classUsesInterpreter)) {
                         StringBuilder instructions = new StringBuilder();
 
                         int methodsToProcess = classNode.methods.size();
@@ -405,16 +462,27 @@ public class NativeObfuscator {
                                 continue;
                             }
 
+                            NativeAnnotationSupport.Options options =
+                                    NativeAnnotationSupport.resolve(
+                                            classNode, method, selectedIrLowering,
+                                            this.intrinsicsMode, selectedBackend,
+                                            selectedCfObfuscation);
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
                             InterpreterMethodEmitter.CompiledMethod interpreted =
-                                    selectedBackend == CompilerBackend.INTERPRETER
+                                    options.getBackend() == CompilerBackend.INTERPRETER
                                             ? InterpreterMethodEmitter.tryCompile(classNode, method)
                                             : null;
                             if (interpreted != null) {
                                 interpreterMethodProcessor.processMethod(context, interpreted);
                             } else {
                                 try {
-                                    irMethodCompiler.processMethod(context, selectedIrLowering);
+                                    irMethodCompiler.processMethod(
+                                            context, options.getLowering(),
+                                            options.getIntrinsics(),
+                                            options.getBackend()
+                                                    == CompilerBackend.INTERPRETER
+                                                    ? ControlFlowObfuscationMode.OFF
+                                                    : options.getCfObfuscation());
                                 } catch (UnsupportedIrConstructException ex) {
                                     logger.info("IR codegen unsupported for {}#{}{}: {}; "
                                                     + "leaving method bytecode unchanged",
@@ -712,6 +780,33 @@ public class NativeObfuscator {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         sdkClass.accept(writer);
         return writer.toByteArray();
+    }
+
+    private static void copyEvaluatorRuntime(Path cppDir) throws IOException {
+        Util.copyResource("sources/native_jvm_eval.cpp", cppDir);
+        Util.copyResource("sources/native_jvm_eval.hpp", cppDir);
+        Files.write(cppDir.resolve("native_jvm.hpp"),
+                "\n#include \"native_jvm_eval.hpp\"\n".getBytes(StandardCharsets.UTF_8),
+                StandardOpenOption.APPEND);
+    }
+
+    private static void copyInterpreterRuntime(Path cppDir) throws IOException {
+        Util.copyResource("sources/native_jvm_interp.cpp", cppDir);
+        Util.copyResource("sources/native_jvm_interp.hpp", cppDir);
+    }
+
+    private static void addEvaluatorRuntimeToCmake(CMakeFilesBuilder cMakeBuilder) {
+        cMakeBuilder.addMainFile("native_jvm_eval.hpp");
+        cMakeBuilder.addMainFile("native_jvm_eval.cpp");
+    }
+
+    private static void addInterpreterRuntimeToCmake(CMakeFilesBuilder cMakeBuilder) {
+        cMakeBuilder.addMainFile("native_jvm_interp.hpp");
+        cMakeBuilder.addMainFile("native_jvm_interp.cpp");
+    }
+
+    public NativeIntrinsicsMode getIntrinsicsMode() {
+        return intrinsicsMode;
     }
 
     public StringPool getStringPool() {

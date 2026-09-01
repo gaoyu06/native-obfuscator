@@ -55,13 +55,23 @@ public final class IrCppEmitter {
         if (!dispatchLabels.isEmpty()) {
             statements.add(new CppAst.Declaration("jthrowable", "caught_exception"));
         }
+        Set<IrValue> declared = new LinkedHashSet<>();
         for (IrBlock block : method.getBlocks()) {
             for (IrPhi phi : block.getPhis()) {
-                statements.add(declaration(phi.getResult()));
+                if (declared.add(phi.getResult())) {
+                    statements.add(declaration(phi.getResult()));
+                }
             }
             for (IrInstruction instruction : block.getInstructions()) {
-                if (instruction.getResult() != null) {
+                if (instruction.getResult() != null
+                        && declared.add(instruction.getResult())) {
                     statements.add(declaration(instruction.getResult()));
+                }
+                if (instruction instanceof IrNodes.Assign) {
+                    IrValue target = ((IrNodes.Assign) instruction).getTarget();
+                    if (declared.add(target)) {
+                        statements.add(declaration(target));
+                    }
                 }
             }
         }
@@ -94,6 +104,17 @@ public final class IrCppEmitter {
     private List<CppAst.Statement> emitInstruction(IrMethod method, IrBlock block,
                                                    IrInstruction instruction,
                                                    MethodContext context) {
+        if (instruction instanceof IrNodes.Assign) {
+            IrNodes.Assign assign = (IrNodes.Assign) instruction;
+            return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                    variable(assign.getTarget()), expression(assign.getSource())));
+        }
+        if (instruction instanceof IrNodes.OpaqueTrue) {
+            return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
+                    variable(instruction.getResult()),
+                    new CppAst.Call("utils::cf_opaque_true",
+                            Collections.singletonList(variable("env")))));
+        }
         if (instruction instanceof IrNodes.CaughtException) {
             return Collections.<CppAst.Statement>singletonList(new CppAst.Assignment(
                     variable(instruction.getResult()),
@@ -200,6 +221,9 @@ public final class IrCppEmitter {
         }
         if (instruction instanceof IrNodes.StringLength) {
             return emitStringLength(method, block, (IrNodes.StringLength) instruction, context);
+        }
+        if (instruction instanceof IrNodes.Intrinsic) {
+            return emitIntrinsic(method, block, (IrNodes.Intrinsic) instruction, context);
         }
         if (instruction instanceof IrNodes.CheckCast) {
             return emitCheckCast(method, block, (IrNodes.CheckCast) instruction, context);
@@ -894,6 +918,162 @@ public final class IrCppEmitter {
         return statements;
     }
 
+    private List<CppAst.Statement> emitIntrinsic(IrMethod method, IrBlock block,
+                                                 IrNodes.Intrinsic intrinsic,
+                                                 MethodContext context) {
+        List<IrValue> arguments = intrinsic.getArguments();
+        List<CppAst.Statement> statements = new ArrayList<>();
+        switch (intrinsic.getKind()) {
+            case STRING_HASH_CODE:
+                statements.add(nullCheck(method, arguments.get(0), "String.hashCode npe",
+                        intrinsic.getSourceLine(), context, block));
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::string_hash_code", Arrays.asList(
+                                variable("env"),
+                                new CppAst.Cast("jstring", expression(arguments.get(0)))))));
+                statements.add(exceptionCheck(method, block));
+                return statements;
+            case STRING_CHAR_AT:
+                statements.add(nullCheck(method, arguments.get(0), "String.charAt npe",
+                        intrinsic.getSourceLine(), context, block));
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::string_char_at", Arrays.asList(
+                                variable("env"),
+                                new CppAst.Cast("jstring", expression(arguments.get(0))),
+                                expression(arguments.get(1))))));
+                statements.add(exceptionCheck(method, block));
+                return statements;
+            case STRING_IS_EMPTY:
+                statements.add(nullCheck(method, arguments.get(0), "String.isEmpty npe",
+                        intrinsic.getSourceLine(), context, block));
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Conditional(
+                                new CppAst.Binary(
+                                        memberCall("env", "GetStringLength",
+                                                new CppAst.Cast("jstring",
+                                                        expression(arguments.get(0)))),
+                                        "==", new CppAst.IntLiteral(0)),
+                                new CppAst.IntLiteral(1),
+                                new CppAst.IntLiteral(0))));
+                return statements;
+            case ARRAYCOPY:
+                statements.add(new CppAst.ExpressionStatement(new CppAst.Call(
+                        "utils::arraycopy", Arrays.asList(
+                        variable("env"),
+                        expression(arguments.get(0)),
+                        expression(arguments.get(1)),
+                        expression(arguments.get(2)),
+                        expression(arguments.get(3)),
+                        expression(arguments.get(4))))));
+                statements.add(exceptionCheck(method, block));
+                return statements;
+            case MATH_ABS_I:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        wrappingAbs(expression(arguments.get(0)), false)));
+                return statements;
+            case MATH_ABS_L:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        wrappingAbs(expression(arguments.get(0)), true)));
+                return statements;
+            case MATH_MIN_I:
+            case MATH_MAX_I:
+            case MATH_MIN_L:
+            case MATH_MAX_L:
+                boolean max = intrinsic.getKind() == IrNodes.Intrinsic.Kind.MATH_MAX_I
+                        || intrinsic.getKind() == IrNodes.Intrinsic.Kind.MATH_MAX_L;
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Conditional(
+                                new CppAst.Binary(expression(arguments.get(0)),
+                                        max ? ">" : "<",
+                                        expression(arguments.get(1))),
+                                expression(arguments.get(0)),
+                                expression(arguments.get(1)))));
+                return statements;
+            case BIT_COUNT_I:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::bit_count_i",
+                                Collections.singletonList(expression(arguments.get(0))))));
+                return statements;
+            case BIT_COUNT_L:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::bit_count_j",
+                                Collections.singletonList(expression(arguments.get(0))))));
+                return statements;
+            case NUMBER_OF_LEADING_ZEROS_I:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::number_of_leading_zeros_i",
+                                Collections.singletonList(expression(arguments.get(0))))));
+                return statements;
+            case NUMBER_OF_LEADING_ZEROS_L:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("utils::number_of_leading_zeros_j",
+                                Collections.singletonList(expression(arguments.get(0))))));
+                return statements;
+            case SDK_ABI_VERSION:
+                statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                        new CppAst.Call("native_obfuscator::sdk::abi_version",
+                                Collections.emptyList())));
+                return statements;
+            case SDK_SHA256:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_obfuscator::sdk::sha256", false);
+            case SDK_HMAC_SHA256:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_obfuscator::sdk::hmac_sha256", false);
+            case SDK_AES256_GCM_ENCRYPT:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_obfuscator::sdk::aes256_gcm_encrypt", false);
+            case SDK_AES256_GCM_DECRYPT:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_obfuscator::sdk::aes256_gcm_decrypt", false);
+            case SDK_CONSTANT_TIME_EQUALS:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_obfuscator::sdk::constant_time_equals", false);
+            case SDK_STRING_LENGTH:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_jvm::strings::length", true);
+            case SDK_STRING_HASH_CODE:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_jvm::strings::hash_code", true);
+            case SDK_STRING_CONCAT:
+                return emitSdkCall(method, block, intrinsic,
+                        "native_jvm::strings::concat", true);
+            default:
+                throw new IllegalStateException("Unknown intrinsic " + intrinsic.getKind());
+        }
+    }
+
+    private List<CppAst.Statement> emitSdkCall(IrMethod method, IrBlock block,
+                                               IrNodes.Intrinsic intrinsic,
+                                               String function, boolean stringArgs) {
+        List<CppAst.Expression> args = new ArrayList<>();
+        args.add(variable("env"));
+        for (IrValue argument : intrinsic.getArguments()) {
+            CppAst.Expression expr = expression(argument);
+            expr = new CppAst.Cast(stringArgs ? "jstring" : "jbyteArray", expr);
+            args.add(expr);
+        }
+        List<CppAst.Statement> statements = new ArrayList<>();
+        statements.add(new CppAst.Assignment(variable(intrinsic.getResult()),
+                new CppAst.Call(function, args)));
+        statements.add(exceptionCheck(method, block));
+        return statements;
+    }
+
+    private CppAst.Expression wrappingAbs(CppAst.Expression value, boolean wide) {
+        String unsignedType = wide ? "uint64_t" : "uint32_t";
+        String signedType = wide ? "jlong" : "jint";
+        CppAst.Expression zero = wide
+                ? new CppAst.LongLiteral(0L) : new CppAst.IntLiteral(0);
+        return new CppAst.Conditional(
+                new CppAst.Binary(value, ">=", zero),
+                value,
+                new CppAst.Cast(signedType, new CppAst.Binary(
+                        new CppAst.Cast(unsignedType, zero),
+                        "-",
+                        new CppAst.Cast(unsignedType, value))));
+    }
+
     private List<CppAst.Statement> emitCheckCast(IrMethod method, IrBlock block,
                                                  IrNodes.CheckCast checkCast,
                                                  MethodContext context) {
@@ -1575,11 +1755,7 @@ public final class IrCppEmitter {
         for (IrPhi phi : target.getPhis()) {
             IrValue incoming = phi.getIncoming().get(predecessor);
             if (incoming == null) {
-                if (phi.getSlotKind() == IrPhi.SlotKind.STACK) {
-                    continue;
-                }
-                throw new IllegalStateException("Missing incoming value from "
-                        + predecessor.getName() + " to " + target.getName());
+                continue;
             }
             String temporary = "edge" + edgeTemporaryId++;
             copied.add(phi);

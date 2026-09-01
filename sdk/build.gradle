@@ -9,3 +9,7 @@ java {
 }
 
 [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+dependencies {
+    implementation project(':annotations')
+}

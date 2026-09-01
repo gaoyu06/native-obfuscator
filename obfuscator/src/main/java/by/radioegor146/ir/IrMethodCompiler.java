@@ -1,7 +1,10 @@
 package by.radioegor146.ir;
 
+import by.radioegor146.ControlFlowObfuscationMode;
 import by.radioegor146.IrLoweringMode;
 import by.radioegor146.MethodContext;
+import by.radioegor146.NativeIntrinsicsMode;
+import by.radioegor146.ir.transform.ControlFlowObfuscator;
 import by.radioegor146.ir.backend.DirectCppStrategy;
 import by.radioegor146.ir.backend.InterpreterStreamStrategy;
 import by.radioegor146.ir.backend.LoweredMethod;
@@ -25,19 +28,28 @@ import java.util.Objects;
  */
 public final class IrMethodCompiler {
     private final AsmToIr frontend;
+    private final NativeIntrinsicsMode intrinsicsMode;
     private final MethodLoweringStrategy directStrategy;
     private final MethodLoweringStrategy evaluatorStrategy;
     private final MethodShellEmitter shellEmitter;
 
     public IrMethodCompiler(MethodShellEmitter shellEmitter) {
-        this(new AsmToIr(), new DirectCppStrategy(new IrCppEmitter()),
+        this(shellEmitter, NativeIntrinsicsMode.SAFE);
+    }
+
+    public IrMethodCompiler(MethodShellEmitter shellEmitter,
+                            NativeIntrinsicsMode intrinsicsMode) {
+        this(new AsmToIr(intrinsicsMode), intrinsicsMode,
+                new DirectCppStrategy(new IrCppEmitter()),
                 new InterpreterStreamStrategy(), shellEmitter);
     }
 
-    IrMethodCompiler(AsmToIr frontend, MethodLoweringStrategy directStrategy,
+    IrMethodCompiler(AsmToIr frontend, NativeIntrinsicsMode intrinsicsMode,
+                     MethodLoweringStrategy directStrategy,
                      MethodLoweringStrategy evaluatorStrategy,
                      MethodShellEmitter shellEmitter) {
         this.frontend = Objects.requireNonNull(frontend, "frontend");
+        this.intrinsicsMode = Objects.requireNonNull(intrinsicsMode, "intrinsicsMode");
         this.directStrategy = Objects.requireNonNull(directStrategy, "directStrategy");
         this.evaluatorStrategy = Objects.requireNonNull(
                 evaluatorStrategy, "evaluatorStrategy");
@@ -49,6 +61,22 @@ public final class IrMethodCompiler {
     }
 
     public void processMethod(MethodContext context, IrLoweringMode loweringMode) {
+        processMethod(context, loweringMode, this.intrinsicsMode);
+    }
+
+    public void processMethod(MethodContext context, IrLoweringMode loweringMode,
+                              NativeIntrinsicsMode methodIntrinsics) {
+        processMethod(context, loweringMode, methodIntrinsics,
+                ControlFlowObfuscationMode.OFF);
+    }
+
+    public void processMethod(MethodContext context, IrLoweringMode loweringMode,
+                              NativeIntrinsicsMode methodIntrinsics,
+                              ControlFlowObfuscationMode cfObfuscation) {
+        AsmToIr methodFrontend =
+                Objects.requireNonNull(methodIntrinsics, "methodIntrinsics")
+                        == this.intrinsicsMode
+                        ? this.frontend : new AsmToIr(methodIntrinsics);
         MethodNode workingMethod =
                 JsrRetInliner.prepareForIr(context.clazz, context.method);
         MethodNode bytecodeBody = workingMethod;
@@ -59,15 +87,19 @@ public final class IrMethodCompiler {
             // mandatory this/super call retained in bytecode.
             bytecodeBody = ConstructorSpecialMethodProcessor.createNativeBody(
                     context.clazz, workingMethod);
-            frontend.build(context.clazz.name, workingMethod);
+            methodFrontend.build(context.clazz.name, workingMethod);
         }
         String dynamicConstantResolverOwner =
                 DynamicConstantSupport.validateResolverInstallation(
                         context.clazz, bytecodeBody,
                         context.obfuscator.getHiddenMethodsPool());
-        IrMethod method = frontend.build(
+        IrMethod method = methodFrontend.build(
                 context.clazz.name, dynamicConstantResolverOwner, bytecodeBody);
         IrLoweringMode selectedMode = Objects.requireNonNull(loweringMode, "loweringMode");
+        if (Objects.requireNonNull(cfObfuscation, "cfObfuscation").enabled()
+                && selectedMode == IrLoweringMode.DIRECT) {
+            ControlFlowObfuscator.apply(method);
+        }
         LoweredMethod lowered = lower(method, context, selectedMode);
         DynamicConstantSupport.installResolvers(
                 context.clazz, bytecodeBody,

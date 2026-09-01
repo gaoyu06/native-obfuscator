@@ -177,7 +177,9 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-p` | `hotspot`（默认）、`std_java` 或 `android` |
 | `--codegen` | `ir`（默认；仅剩这一项） |
 | `--ir-lower` | `direct`（默认）或 `eval` |
+| `--native-intrinsics` | `safe`（默认）、`off` 或 `fast`。把部分 JDK 调用换成本地实现（`String.length`/`hashCode`/`charAt`/`isEmpty`、`System.arraycopy`、int/long 的 `Math.abs/min/max`）。`fast` 另外替换 `Integer`/`Long` 的 bitCount 与 numberOfLeadingZeros。文件 IO 不会被改写。 |
 | `--backend` | `cpp`（默认）或 `interpreter`（窄 int/i64/引用切片；默认关闭） |
+| `--ir-cf-obf` | `off`（默认）或 `basic`。`basic` 插入恒真假分支，把 IR 控制流打成 dispatcher，并打乱非入口块顺序。`--ir-lower=eval` 与 `--backend=interpreter` 会跳过。 |
 | `-a` | 启用 `@Native` / `@NotNative` 注解处理 |
 | `-w` / `-b` | 白名单 / 黑名单文件 |
 | `--plain-lib-name` | 单独分发本地库或用于 Android 时，`LoaderPlain` 使用的库名 |
@@ -203,6 +205,16 @@ Maven 坐标：`com.github.radioegor146.native-obfuscator:annotations:master-SNA
 
 - `@Native` — 包含该类或方法
 - `@NotNative` — 跳过 `@Native` 类中的某个方法
+- `@Native(lowering=…)`、`@Native(intrinsics=…)`、`@Native(backend=…)`、
+  `@Native(cfObfuscation=…)` — 覆盖对应的 `--ir-lower`、`--native-intrinsics`、
+  `--backend`、`--ir-cf-obf`。默认 `INHERIT`（跟 CLI）。
+  方法级优先于类级。`-a` 仍然只决定选哪些方法；这些属性在被选中的方法或其类带有
+  `@Native` 时生效。
+
+注解 JAR 里同时带有 `by.radioegor146.nativeobfuscator.NativePrimitives` 与
+`NativeStrings`。可以在普通 Java 里直接调用（有 JDK 回退）。native 混淆之后，
+被 nativize 的方法里对这些 API 的调用会被替换成生成库里的 C++ 实现。文件 IO
+不会被改写。
 
 白名单/黑名单优先于注解。
 
@@ -270,7 +282,10 @@ java -jar native-obfuscator.jar --use-zig \
 
 ## C++ SDK（随生成 JAR）
 
-生成的 JAR 可以包含 `by.radioegor146.sdk.NativePrimitives` 与 `NativeStrings`。这**不是**独立发版的产品 SDK。
+依赖注解产物，在 Java 里调用
+`by.radioegor146.nativeobfuscator.NativePrimitives` / `NativeStrings`。
+生成的 JAR 仍会打入旧的 `by.radioegor146.sdk` 名称，作为已弃用的转发。
+这**不是**独立发版的产品 SDK。
 
 Primitives（见 [`docs/sdk/v1-status.md`](docs/sdk/v1-status.md)）：
 
@@ -289,8 +304,8 @@ Strings：与 Java 兼容的 UTF-16 `length`、`hashCode` 与 `concat`。已记�
 | 路径 | 作用 |
 | --- | --- |
 | `obfuscator/` | CLI 与转译器本体（`by.radioegor146.*`、`ir/`、`interpreter/`、`zig/`、运行时源码） |
-| `annotations/` | `@Native` / `@NotNative`，可经 JitPack 使用 |
-| `sdk/` | `NativePrimitives` / `NativeStrings`，打进生成的 JAR |
+| `annotations/` | `@Native` / `@NotNative` 以及 `NativePrimitives` / `NativeStrings`，可经 JitPack 使用 |
+| `sdk/` | 已弃用的 `by.radioegor146.sdk` 转发，打进生成的 JAR |
 | `docs/` | 状态、设计、基准与审查文档——从 [`docs/README.md`](docs/README.md) 开始读 |
 
 ## IR 编译器内部

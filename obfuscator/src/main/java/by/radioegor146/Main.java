@@ -62,9 +62,17 @@ public class Main {
                 description = "IR lowering strategy: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private IrLoweringMode irLoweringMode;
 
+        @CommandLine.Option(names = {"--native-intrinsics"}, defaultValue = "safe",
+                description = "Replace selected JDK calls with native helpers: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private NativeIntrinsicsMode nativeIntrinsicsMode;
+
         @CommandLine.Option(names = {"--backend"}, defaultValue = "cpp",
                 description = "Compiler backend: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private CompilerBackend backend = CompilerBackend.CPP;
+
+        @CommandLine.Option(names = {"--ir-cf-obf"}, defaultValue = "off",
+                description = "IR control-flow obfuscation: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private ControlFlowObfuscationMode cfObfuscation = ControlFlowObfuscationMode.OFF;
 
         @CommandLine.Option(names = {"-a", "--annotations"}, description = "Use annotations to ignore/include native obfuscation")
         private boolean useAnnotations;
@@ -120,7 +128,7 @@ public class Main {
             String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
                     platform, useAnnotations, generateDebugJar, codegenMode, backend,
-                    irLoweringMode);
+                    irLoweringMode, nativeIntrinsicsMode, cfObfuscation);
 
             if (useZig) {
                 runZigBuild(outputDir, nativeDir);

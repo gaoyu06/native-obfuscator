@@ -210,7 +210,9 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `-p` | `hotspot` (default), `std_java`, or `android` |
 | `--codegen` | `ir` (default; only remaining value) |
 | `--ir-lower` | `direct` (default) or `eval` |
+| `--native-intrinsics` | `safe` (default), `off`, or `fast`. Replaces selected JDK calls (`String.length`/`hashCode`/`charAt`/`isEmpty`, `System.arraycopy`, `Math.abs/min/max` for int/long). `fast` also replaces `Integer`/`Long` bitCount and numberOfLeadingZeros. File I/O is never rewritten. |
 | `--backend` | `cpp` (default) or `interpreter` (narrow int/i64/reference slice; default off) |
+| `--ir-cf-obf` | `off` (default) or `basic`. `basic` inserts always-true fake branches, flattens IR control flow through a dispatcher, and permutes non-entry blocks. Skipped for `--ir-lower=eval` and `--backend=interpreter`. |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
 | `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
@@ -243,6 +245,17 @@ Maven coordinates: `com.github.radioegor146.native-obfuscator:annotations:master
 
 - `@Native` — include the class or method
 - `@NotNative` — skip a method inside a `@Native` class
+- `@Native(lowering=…)`, `@Native(intrinsics=…)`, `@Native(backend=…)`,
+  `@Native(cfObfuscation=…)` — override `--ir-lower`, `--native-intrinsics`,
+  `--backend`, and `--ir-cf-obf` for that class or method.
+  Defaults are `INHERIT` (CLI). Method values win over class values. `-a` still
+  selects which methods are nativized; these attributes apply whenever a selected
+  method or its class carries `@Native`.
+
+The annotations JAR also ships `by.radioegor146.nativeobfuscator.NativePrimitives`
+and `NativeStrings`. You can call them from ordinary Java (they have JDK
+fallbacks). After native obfuscation, calls from nativized methods are replaced
+with the generated C++ implementations. File I/O is never rewritten.
 
 Whitelist/blacklist win over annotations.
 
@@ -320,8 +333,10 @@ Known targets include `x64-linux`, `x64-windows`, `x64-macos`, `arm64-linux`, `a
 
 ## C++ SDK (generated JARs)
 
-Generated JARs can include `by.radioegor146.sdk.NativePrimitives` and `NativeStrings`. This is
-**not** a separately versioned product SDK.
+Depend on the annotations artifact and call
+`by.radioegor146.nativeobfuscator.NativePrimitives` / `NativeStrings` from Java.
+Generated JARs also still pack the older `by.radioegor146.sdk` names as
+deprecated delegates. This is **not** a separately versioned product SDK.
 
 Primitives (see [`docs/sdk/v1-status.md`](docs/sdk/v1-status.md)):
 
@@ -342,8 +357,8 @@ Strings: Java-compatible UTF-16 `length`, `hashCode`, and `concat`. Recorded str
 | Path | Role |
 | --- | --- |
 | `obfuscator/` | The CLI and transpiler (`by.radioegor146.*`, `ir/`, `interpreter/`, `zig/`, runtime sources) |
-| `annotations/` | `@Native` / `@NotNative`, consumable via JitPack |
-| `sdk/` | `NativePrimitives` / `NativeStrings`, packed into generated JARs |
+| `annotations/` | `@Native` / `@NotNative` plus `NativePrimitives` / `NativeStrings`, consumable via JitPack |
+| `sdk/` | Deprecated `by.radioegor146.sdk` delegates, packed into generated JARs |
 | `docs/` | Status, design, benchmark, and review documents — start at [`docs/README.md`](docs/README.md) |
 
 ## IR compiler internals

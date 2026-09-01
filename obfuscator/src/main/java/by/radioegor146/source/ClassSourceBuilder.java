@@ -50,6 +50,8 @@ public class ClassSourceBuilder implements AutoCloseable {
         if (interpreterBackend) {
             cppWriter.append("#include \"../native_jvm_interp.hpp\"\n");
         }
+        cppWriter.append("#include \"../sdk/native_primitives.hpp\"\n");
+        cppWriter.append("#include \"../sdk/native_strings.hpp\"\n");
         cppWriter.append("#include \"../string_pool.hpp\"\n");
         cppWriter.append("#include \"").append(getHppFilename()).append("\"\n");
         cppWriter.append("\n");

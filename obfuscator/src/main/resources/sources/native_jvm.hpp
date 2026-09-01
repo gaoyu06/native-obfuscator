@@ -92,6 +92,16 @@ namespace native_jvm::utils {
     void bastore(JNIEnv *env, jarray array, jint index, jint value);
     jbyte baload(JNIEnv *env, jarray array, jint index);
 
+    jint string_hash_code(JNIEnv *env, jstring value);
+    jint string_char_at(JNIEnv *env, jstring value, jint index);
+    void arraycopy(JNIEnv *env, jobject src, jint src_pos, jobject dest,
+            jint dest_pos, jint length);
+    jint bit_count_i(jint value);
+    jint bit_count_j(jlong value);
+    jint number_of_leading_zeros_i(jint value);
+    jint number_of_leading_zeros_j(jlong value);
+    jint cf_opaque_true(JNIEnv *env);
+
     void clear_refs(JNIEnv *env, std::unordered_set<jobject> &refs);
 
     jstring get_interned(JNIEnv *env, jstring value);

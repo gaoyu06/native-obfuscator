@@ -19,6 +19,69 @@ public final class IrNodes {
     }
 
     /**
+     * Writes {@code source} into an existing carrier. Used by control-flow
+     * transforms after phi lowering; the C++ emitter already treats SSA names
+     * as mutable locals.
+     */
+    public static final class Assign implements IrInstruction {
+        private final IrValue target;
+        private final IrValue source;
+        private final int bytecodeOffset;
+
+        public Assign(IrValue target, IrValue source, int bytecodeOffset) {
+            this.target = Objects.requireNonNull(target, "target");
+            this.source = Objects.requireNonNull(source, "source");
+            if (this.target.getType() != this.source.getType()) {
+                throw new IllegalArgumentException("Assign type mismatch: "
+                        + this.target.getType() + " vs " + this.source.getType());
+            }
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        public IrValue getTarget() {
+            return target;
+        }
+
+        public IrValue getSource() {
+            return source;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return null;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    /**
+     * Always-true predicate implemented in {@code native_jvm.cpp} so the
+     * generated translation unit cannot fold it.
+     */
+    public static final class OpaqueTrue implements IrInstruction {
+        private final IrValue result;
+        private final int bytecodeOffset;
+
+        public OpaqueTrue(IrValue result, int bytecodeOffset) {
+            this.result = requireI32(result, "result");
+            this.bytecodeOffset = bytecodeOffset;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+    }
+
+    /**
      * Materializes the exception selected by the shared dispatch for a handler.
      */
     public static final class CaughtException implements IrInstruction {
@@ -1119,6 +1182,76 @@ public final class IrNodes {
 
         public IrValue getReceiver() {
             return receiver;
+        }
+
+        @Override
+        public int getBytecodeOffset() {
+            return bytecodeOffset;
+        }
+
+        public int getSourceLine() {
+            return sourceLine;
+        }
+    }
+
+    /**
+     * Library call replaced by a dedicated helper. Arguments are in Java
+     * invoke order (receiver first for virtual calls).
+     */
+    public static final class Intrinsic implements IrInstruction {
+        public enum Kind {
+            STRING_HASH_CODE,
+            STRING_CHAR_AT,
+            STRING_IS_EMPTY,
+            ARRAYCOPY,
+            MATH_ABS_I,
+            MATH_MIN_I,
+            MATH_MAX_I,
+            MATH_ABS_L,
+            MATH_MIN_L,
+            MATH_MAX_L,
+            BIT_COUNT_I,
+            BIT_COUNT_L,
+            NUMBER_OF_LEADING_ZEROS_I,
+            NUMBER_OF_LEADING_ZEROS_L,
+            SDK_ABI_VERSION,
+            SDK_SHA256,
+            SDK_HMAC_SHA256,
+            SDK_AES256_GCM_ENCRYPT,
+            SDK_AES256_GCM_DECRYPT,
+            SDK_CONSTANT_TIME_EQUALS,
+            SDK_STRING_LENGTH,
+            SDK_STRING_HASH_CODE,
+            SDK_STRING_CONCAT
+        }
+
+        private final Kind kind;
+        private final IrValue result;
+        private final List<IrValue> arguments;
+        private final int bytecodeOffset;
+        private final int sourceLine;
+
+        public Intrinsic(Kind kind, IrValue result, List<IrValue> arguments,
+                         int bytecodeOffset, int sourceLine) {
+            this.kind = Objects.requireNonNull(kind, "kind");
+            this.result = result;
+            this.arguments = Collections.unmodifiableList(
+                    new ArrayList<IrValue>(Objects.requireNonNull(arguments, "arguments")));
+            this.bytecodeOffset = bytecodeOffset;
+            this.sourceLine = sourceLine;
+        }
+
+        public Kind getKind() {
+            return kind;
+        }
+
+        @Override
+        public IrValue getResult() {
+            return result;
+        }
+
+        public List<IrValue> getArguments() {
+            return arguments;
         }
 
         @Override

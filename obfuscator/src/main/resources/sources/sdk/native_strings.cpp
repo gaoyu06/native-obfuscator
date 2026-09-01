@@ -178,7 +178,8 @@ jstring concat(JNIEnv *env, jstring left, jstring right) {
 namespace native_obfuscator::sdk {
 
 bool register_native_strings(JNIEnv *env) {
-    jclass strings_class = env->FindClass("by/radioegor146/sdk/NativeStrings");
+    jclass strings_class = env->FindClass(
+            "by/radioegor146/nativeobfuscator/NativeStrings");
     if (strings_class == nullptr || env->ExceptionCheck()) {
         return false;
     }

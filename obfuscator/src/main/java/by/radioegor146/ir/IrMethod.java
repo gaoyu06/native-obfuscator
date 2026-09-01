@@ -2,8 +2,10 @@ package by.radioegor146.ir;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -90,6 +92,31 @@ public final class IrMethod {
         return block;
     }
 
+    /**
+     * Replaces the block list with a permutation of the same instances.
+     * The entry block ({@code getBlocks().get(0)}) must stay first so the
+     * emitter's fall-through into the first label remains valid.
+     */
+    public void replaceBlocks(List<IrBlock> newOrder) {
+        Objects.requireNonNull(newOrder, "newOrder");
+        if (newOrder.isEmpty() || blocks.isEmpty()) {
+            throw new IllegalArgumentException("Block list must not be empty");
+        }
+        if (newOrder.size() != blocks.size()) {
+            throw new IllegalArgumentException("Replacement must be a permutation");
+        }
+        if (newOrder.get(0) != blocks.get(0)) {
+            throw new IllegalArgumentException("Entry block must stay first");
+        }
+        Set<IrBlock> original = new HashSet<IrBlock>(blocks);
+        Set<IrBlock> replacement = new HashSet<IrBlock>(newOrder);
+        if (original.size() != blocks.size() || !original.equals(replacement)) {
+            throw new IllegalArgumentException("Replacement must be a permutation");
+        }
+        blocks.clear();
+        blocks.addAll(newOrder);
+    }
+
     public IrPhi addPhi(IrBlock block, IrType type, IrPhi.SlotKind slotKind, int slotIndex) {
         int id = nextValueId++;
         IrValue value = new IrValue(id, type, IrValue.Kind.PHI, "v" + id, null);
@@ -139,6 +166,15 @@ public final class IrMethod {
     }
 
     private String formatInstruction(IrInstruction instruction) {
+        if (instruction instanceof IrNodes.Assign) {
+            IrNodes.Assign assign = (IrNodes.Assign) instruction;
+            return assign.getTarget() + " = " + assign.getSource();
+        }
+        if (instruction instanceof IrNodes.OpaqueTrue) {
+            IrNodes.OpaqueTrue opaque = (IrNodes.OpaqueTrue) instruction;
+            return opaque.getResult() + ":" + opaque.getResult().getType()
+                    + " = opaque_true";
+        }
         if (instruction instanceof IrNodes.CaughtException) {
             IrNodes.CaughtException caught = (IrNodes.CaughtException) instruction;
             return caught.getResult() + ":" + caught.getResult().getType()
@@ -291,6 +327,19 @@ public final class IrMethod {
             IrNodes.StringLength length = (IrNodes.StringLength) instruction;
             return length.getResult() + ":" + length.getResult().getType()
                     + " = stringlength " + length.getReceiver();
+        }
+        if (instruction instanceof IrNodes.Intrinsic) {
+            IrNodes.Intrinsic intrinsic = (IrNodes.Intrinsic) instruction;
+            StringBuilder rendered = new StringBuilder();
+            if (intrinsic.getResult() != null) {
+                rendered.append(intrinsic.getResult()).append(':')
+                        .append(intrinsic.getResult().getType()).append(" = ");
+            }
+            rendered.append(intrinsic.getKind().name().toLowerCase());
+            for (IrValue argument : intrinsic.getArguments()) {
+                rendered.append(' ').append(argument);
+            }
+            return rendered.toString();
         }
         if (instruction instanceof IrNodes.CheckCast) {
             IrNodes.CheckCast checkCast = (IrNodes.CheckCast) instruction;

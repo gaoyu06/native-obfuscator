@@ -55,10 +55,22 @@ public final class IrBlock {
         exceptionEdges.add(Objects.requireNonNull(edge, "edge"));
     }
 
+    public void clearExceptionEdges() {
+        exceptionEdges.clear();
+    }
+
+    public void clearPhis() {
+        phis.clear();
+    }
+
     public void setTerminator(IrTerminator terminator) {
         if (this.terminator != null) {
             throw new IllegalStateException("Terminator already set for " + getName());
         }
+        this.terminator = Objects.requireNonNull(terminator, "terminator");
+    }
+
+    public void replaceTerminator(IrTerminator terminator) {
         this.terminator = Objects.requireNonNull(terminator, "terminator");
     }
 

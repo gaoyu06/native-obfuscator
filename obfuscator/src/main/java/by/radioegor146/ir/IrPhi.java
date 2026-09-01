@@ -42,6 +42,10 @@ public final class IrPhi {
                 Objects.requireNonNull(value, "value"));
     }
 
+    public void removeIncoming(IrBlock predecessor) {
+        incoming.remove(predecessor);
+    }
+
     public Map<IrBlock, IrValue> getIncoming() {
         return Collections.unmodifiableMap(incoming);
     }

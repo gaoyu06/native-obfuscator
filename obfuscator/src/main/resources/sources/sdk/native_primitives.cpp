@@ -545,9 +545,59 @@ extern "C" no_sdk_status_v1 no_sdk_equal_constant_time_v1(
 
 namespace native_obfuscator::sdk {
 
+jint abi_version() {
+    return jni_abi_version(nullptr, nullptr);
+}
+
+jbyteArray sha256(JNIEnv *env, jbyteArray input) {
+    return jni_sha256(env, nullptr, input);
+}
+
+jbyteArray hmac_sha256(JNIEnv *env, jbyteArray key, jbyteArray message) {
+    return jni_hmac_sha256(env, nullptr, key, message);
+}
+
+jbyteArray aes256_gcm_encrypt(JNIEnv *env, jbyteArray key, jbyteArray nonce,
+                              jbyteArray plaintext, jbyteArray aad) {
+    return jni_aes_256_gcm_encrypt(env, nullptr, key, nonce, plaintext, aad);
+}
+
+jbyteArray aes256_gcm_encrypt(JNIEnv *env, jbyteArray key, jbyteArray nonce,
+                              jbyteArray plaintext) {
+    jbyteArray empty = env->NewByteArray(0);
+    if (empty == nullptr || env->ExceptionCheck()) {
+        return nullptr;
+    }
+    jbyteArray result = aes256_gcm_encrypt(env, key, nonce, plaintext, empty);
+    env->DeleteLocalRef(empty);
+    return result;
+}
+
+jbyteArray aes256_gcm_decrypt(JNIEnv *env, jbyteArray key, jbyteArray nonce,
+                              jbyteArray ciphertext_and_tag, jbyteArray aad) {
+    return jni_aes_256_gcm_decrypt(
+            env, nullptr, key, nonce, ciphertext_and_tag, aad);
+}
+
+jbyteArray aes256_gcm_decrypt(JNIEnv *env, jbyteArray key, jbyteArray nonce,
+                              jbyteArray ciphertext_and_tag) {
+    jbyteArray empty = env->NewByteArray(0);
+    if (empty == nullptr || env->ExceptionCheck()) {
+        return nullptr;
+    }
+    jbyteArray result = aes256_gcm_decrypt(
+            env, key, nonce, ciphertext_and_tag, empty);
+    env->DeleteLocalRef(empty);
+    return result;
+}
+
+jboolean constant_time_equals(JNIEnv *env, jbyteArray left, jbyteArray right) {
+    return jni_constant_time_equals(env, nullptr, left, right);
+}
+
 bool register_natives(JNIEnv *env) {
-    jclass primitives_class =
-            env->FindClass("by/radioegor146/sdk/NativePrimitives");
+    jclass primitives_class = env->FindClass(
+            "by/radioegor146/nativeobfuscator/NativePrimitives");
     if (primitives_class == nullptr || env->ExceptionCheck()) {
         return false;
     }

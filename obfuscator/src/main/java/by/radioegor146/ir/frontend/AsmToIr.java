@@ -8,6 +8,7 @@ import by.radioegor146.ir.IrPhi;
 import by.radioegor146.ir.IrType;
 import by.radioegor146.ir.IrValue;
 import by.radioegor146.ir.UnsupportedIrConstructException;
+import by.radioegor146.NativeIntrinsicsMode;
 import by.radioegor146.Platform;
 import by.radioegor146.bytecode.IndyPreprocessor;
 import org.objectweb.asm.Opcodes;
@@ -38,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.ToIntFunction;
 
@@ -48,6 +50,15 @@ import java.util.function.ToIntFunction;
  */
 public final class AsmToIr {
     private final CfgBuilder cfgBuilder = new CfgBuilder();
+    private final NativeIntrinsicsMode intrinsics;
+
+    public AsmToIr() {
+        this(NativeIntrinsicsMode.SAFE);
+    }
+
+    public AsmToIr(NativeIntrinsicsMode intrinsics) {
+        this.intrinsics = Objects.requireNonNull(intrinsics, "intrinsics");
+    }
 
     public IrMethod build(String owner, MethodNode method) {
         return build(owner, owner, method);
@@ -1450,12 +1461,7 @@ public final class AsmToIr {
                 }
             } else if (node instanceof MethodInsnNode) {
                 MethodInsnNode invoke = (MethodInsnNode) node;
-                if (isStringLength(invoke)) {
-                    IrValue receiver = pop(state, IrType.REFERENCE, instruction);
-                    IrValue result = irMethod.newInstructionValue(IrType.I32);
-                    block.addInstruction(new IrNodes.StringLength(result, receiver,
-                            instruction.getOriginalIndex(), instruction.getSourceLine()));
-                    state.stack.add(result);
+                if (tryLowerIntrinsic(invoke, opcode, instruction, block, state, irMethod)) {
                     continue;
                 }
                 Type[] argumentTypes = Type.getArgumentTypes(invoke.desc);
@@ -2472,6 +2478,187 @@ public final class AsmToIr {
             default:
                 throw new IllegalArgumentException("Not an integer unary opcode: " + opcode);
         }
+    }
+
+    private boolean tryLowerIntrinsic(MethodInsnNode invoke, int opcode,
+                                      CfgBuilder.Instruction instruction, IrBlock block,
+                                      ValueState state, IrMethod irMethod) {
+        if (intrinsics.stringHelpers() && isStringLength(invoke)) {
+            IrValue receiver = pop(state, IrType.REFERENCE, instruction);
+            IrValue result = irMethod.newInstructionValue(IrType.I32);
+            block.addInstruction(new IrNodes.StringLength(result, receiver,
+                    instruction.getOriginalIndex(), instruction.getSourceLine()));
+            state.stack.add(result);
+            return true;
+        }
+        IrNodes.Intrinsic.Kind kind = matchIntrinsic(invoke);
+        if (kind == null) {
+            return false;
+        }
+        Type[] argumentTypes = Type.getArgumentTypes(invoke.desc);
+        List<IrValue> arguments = new ArrayList<>(
+                Collections.nCopies(argumentTypes.length, (IrValue) null));
+        for (int i = argumentTypes.length - 1; i >= 0; i--) {
+            arguments.set(i, pop(state, irType(argumentTypes[i]), instruction));
+        }
+        if (opcode != Opcodes.INVOKESTATIC) {
+            arguments.add(0, pop(state, IrType.REFERENCE, instruction));
+        }
+        Type returnType = Type.getReturnType(invoke.desc);
+        IrValue result = returnType.getSort() == Type.VOID ? null
+                : irMethod.newInstructionValue(irType(returnType));
+        block.addInstruction(new IrNodes.Intrinsic(kind, result, arguments,
+                instruction.getOriginalIndex(), instruction.getSourceLine()));
+        if (result != null) {
+            state.stack.add(result);
+        }
+        return true;
+    }
+
+    private IrNodes.Intrinsic.Kind matchIntrinsic(MethodInsnNode invoke) {
+        IrNodes.Intrinsic.Kind sdk = matchSdkIntrinsic(invoke);
+        if (sdk != null) {
+            return sdk;
+        }
+        if (intrinsics.stringHelpers()
+                && invoke.getOpcode() == Opcodes.INVOKEVIRTUAL
+                && "java/lang/String".equals(invoke.owner)) {
+            if ("hashCode".equals(invoke.name) && "()I".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.STRING_HASH_CODE;
+            }
+            if ("charAt".equals(invoke.name) && "(I)C".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.STRING_CHAR_AT;
+            }
+            if ("isEmpty".equals(invoke.name) && "()Z".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.STRING_IS_EMPTY;
+            }
+        }
+        if (intrinsics.arraycopyHelper()
+                && invoke.getOpcode() == Opcodes.INVOKESTATIC
+                && "java/lang/System".equals(invoke.owner)
+                && "arraycopy".equals(invoke.name)
+                && "(Ljava/lang/Object;ILjava/lang/Object;II)V".equals(invoke.desc)) {
+            return IrNodes.Intrinsic.Kind.ARRAYCOPY;
+        }
+        if (intrinsics.mathHelpers() && invoke.getOpcode() == Opcodes.INVOKESTATIC) {
+            IrNodes.Intrinsic.Kind math = matchMathIntrinsic(invoke);
+            if (math != null) {
+                return math;
+            }
+        }
+        if (intrinsics.bitHelpers() && invoke.getOpcode() == Opcodes.INVOKESTATIC) {
+            return matchBitIntrinsic(invoke);
+        }
+        return null;
+    }
+
+    private static IrNodes.Intrinsic.Kind matchMathIntrinsic(MethodInsnNode invoke) {
+        boolean mathOwner = "java/lang/Math".equals(invoke.owner)
+                || "java/lang/StrictMath".equals(invoke.owner)
+                || "java/lang/Integer".equals(invoke.owner)
+                || "java/lang/Long".equals(invoke.owner);
+        if (!mathOwner) {
+            return null;
+        }
+        if ("abs".equals(invoke.name) && "(I)I".equals(invoke.desc)
+                && !"java/lang/Long".equals(invoke.owner)) {
+            return IrNodes.Intrinsic.Kind.MATH_ABS_I;
+        }
+        if ("abs".equals(invoke.name) && "(J)J".equals(invoke.desc)
+                && !"java/lang/Integer".equals(invoke.owner)) {
+            return IrNodes.Intrinsic.Kind.MATH_ABS_L;
+        }
+        if ("min".equals(invoke.name) && "(II)I".equals(invoke.desc)) {
+            return IrNodes.Intrinsic.Kind.MATH_MIN_I;
+        }
+        if ("max".equals(invoke.name) && "(II)I".equals(invoke.desc)) {
+            return IrNodes.Intrinsic.Kind.MATH_MAX_I;
+        }
+        if ("min".equals(invoke.name) && "(JJ)J".equals(invoke.desc)) {
+            return IrNodes.Intrinsic.Kind.MATH_MIN_L;
+        }
+        if ("max".equals(invoke.name) && "(JJ)J".equals(invoke.desc)) {
+            return IrNodes.Intrinsic.Kind.MATH_MAX_L;
+        }
+        return null;
+    }
+
+    private static IrNodes.Intrinsic.Kind matchBitIntrinsic(MethodInsnNode invoke) {
+        if ("java/lang/Integer".equals(invoke.owner) && "(I)I".equals(invoke.desc)) {
+            if ("bitCount".equals(invoke.name)) {
+                return IrNodes.Intrinsic.Kind.BIT_COUNT_I;
+            }
+            if ("numberOfLeadingZeros".equals(invoke.name)) {
+                return IrNodes.Intrinsic.Kind.NUMBER_OF_LEADING_ZEROS_I;
+            }
+        }
+        if ("java/lang/Long".equals(invoke.owner) && "(J)I".equals(invoke.desc)) {
+            if ("bitCount".equals(invoke.name)) {
+                return IrNodes.Intrinsic.Kind.BIT_COUNT_L;
+            }
+            if ("numberOfLeadingZeros".equals(invoke.name)) {
+                return IrNodes.Intrinsic.Kind.NUMBER_OF_LEADING_ZEROS_L;
+            }
+        }
+        return null;
+    }
+
+    private static IrNodes.Intrinsic.Kind matchSdkIntrinsic(MethodInsnNode invoke) {
+        if (invoke.getOpcode() != Opcodes.INVOKESTATIC) {
+            return null;
+        }
+        if (isSdkPrimitivesOwner(invoke.owner)) {
+            if ("abiVersion".equals(invoke.name) && "()I".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_ABI_VERSION;
+            }
+            if ("sha256".equals(invoke.name) && "([B)[B".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_SHA256;
+            }
+            if ("hmacSha256".equals(invoke.name) && "([B[B)[B".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_HMAC_SHA256;
+            }
+            if ("aes256GcmEncrypt".equals(invoke.name)
+                    && ("([B[B[B)[B".equals(invoke.desc)
+                    || "([B[B[B[B)[B".equals(invoke.desc))) {
+                return IrNodes.Intrinsic.Kind.SDK_AES256_GCM_ENCRYPT;
+            }
+            if ("aes256GcmDecrypt".equals(invoke.name)
+                    && ("([B[B[B)[B".equals(invoke.desc)
+                    || "([B[B[B[B)[B".equals(invoke.desc))) {
+                return IrNodes.Intrinsic.Kind.SDK_AES256_GCM_DECRYPT;
+            }
+            if ("constantTimeEquals".equals(invoke.name)
+                    && "([B[B)Z".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_CONSTANT_TIME_EQUALS;
+            }
+            return null;
+        }
+        if (isSdkStringsOwner(invoke.owner)) {
+            if ("length".equals(invoke.name)
+                    && "(Ljava/lang/String;)I".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_STRING_LENGTH;
+            }
+            if ("hashCode".equals(invoke.name)
+                    && "(Ljava/lang/String;)I".equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_STRING_HASH_CODE;
+            }
+            if ("concat".equals(invoke.name)
+                    && "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
+                    .equals(invoke.desc)) {
+                return IrNodes.Intrinsic.Kind.SDK_STRING_CONCAT;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSdkPrimitivesOwner(String owner) {
+        return "by/radioegor146/nativeobfuscator/NativePrimitives".equals(owner)
+                || "by/radioegor146/sdk/NativePrimitives".equals(owner);
+    }
+
+    private static boolean isSdkStringsOwner(String owner) {
+        return "by/radioegor146/nativeobfuscator/NativeStrings".equals(owner)
+                || "by/radioegor146/sdk/NativeStrings".equals(owner);
     }
 
     private static boolean isStringLength(MethodInsnNode invoke) {

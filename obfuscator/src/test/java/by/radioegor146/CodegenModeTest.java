@@ -55,6 +55,31 @@ public class CodegenModeTest {
     }
 
     @Test
+    public void cliDefaultsToSafeNativeIntrinsics() throws Exception {
+        assertEquals(NativeIntrinsicsMode.SAFE,
+                parseNativeIntrinsics("input.jar", "output"));
+    }
+
+    @Test
+    public void cliAcceptsFastNativeIntrinsics() throws Exception {
+        assertEquals(NativeIntrinsicsMode.FAST,
+                parseNativeIntrinsics("input.jar", "output",
+                        "--native-intrinsics=fast"));
+    }
+
+    @Test
+    public void cliDefaultsToOffControlFlowObfuscation() throws Exception {
+        assertEquals(ControlFlowObfuscationMode.OFF,
+                parseCfObf("input.jar", "output"));
+    }
+
+    @Test
+    public void cliAcceptsBasicControlFlowObfuscation() throws Exception {
+        assertEquals(ControlFlowObfuscationMode.BASIC,
+                parseCfObf("input.jar", "output", "--ir-cf-obf=basic"));
+    }
+
+    @Test
     public void cliDefaultsToDirectIrLowering() throws Exception {
         assertEquals(IrLoweringMode.DIRECT,
                 parseIrLowering("input.jar", "output", "--codegen=ir"));
@@ -388,5 +413,23 @@ public class CodegenModeTest {
                 .getDeclaredField("irLoweringMode");
         field.setAccessible(true);
         return (IrLoweringMode) field.get(runner);
+    }
+
+    private NativeIntrinsicsMode parseNativeIntrinsics(String... args) throws Exception {
+        Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
+        new CommandLine(runner).setCaseInsensitiveEnumValuesAllowed(true).parseArgs(args);
+        Field field = Main.NativeObfuscatorRunner.class
+                .getDeclaredField("nativeIntrinsicsMode");
+        field.setAccessible(true);
+        return (NativeIntrinsicsMode) field.get(runner);
+    }
+
+    private ControlFlowObfuscationMode parseCfObf(String... args) throws Exception {
+        Main.NativeObfuscatorRunner runner = new Main.NativeObfuscatorRunner();
+        new CommandLine(runner).setCaseInsensitiveEnumValuesAllowed(true).parseArgs(args);
+        Field field = Main.NativeObfuscatorRunner.class
+                .getDeclaredField("cfObfuscation");
+        field.setAccessible(true);
+        return (ControlFlowObfuscationMode) field.get(runner);
     }
 }
