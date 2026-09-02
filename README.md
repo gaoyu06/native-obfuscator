@@ -36,6 +36,7 @@ fully supported.
 - [How it works](#how-it-works)
 - [Current status](#current-status)
 - [IR runtime](#ir-runtime)
+- [Self-hosting](#self-hosting)
 - [Codegen modes](#codegen-modes)
 - [Quick start](#quick-start)
 - [Prerequisites](#prerequisites)
@@ -125,6 +126,7 @@ and the follow-up landings through
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
 | Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). Not a portable speedup. Prefer a whitelist |
+| Self-hosting | One-machine two-generation run recorded below. Not CI, not a support badge |
 
 ## IR runtime
 
@@ -137,6 +139,31 @@ Default `--codegen=ir` C++ does the following. None of it is a HotSpot speedup.
 - Skip unused `lookup` / local-ref bookkeeping; instance methods still resolve the declaring class
 - `--ir-direct-native=on` (off by default): same-class static IR calls become C++ calls instead of `CallStatic*Method`. Deep recursion then uses the C stack and may abort instead of throwing `StackOverflowError`
 - Benchmark harness: `mixed-pricing` and `thin-pricing` are checksum/regression kernels, not speedup evidence. `BENCH_DIRECT_NATIVE=on` turns on direct calls for a bench run
+
+## Self-hosting
+
+Recorded 2026-09-02 on one macOS arm64 machine (Temurin 25, Apple clang as `gcc`/`g++`). This is
+local evidence that the IR pipeline can compile its own compiler, not a portable performance
+claim and not a “supports every class” badge.
+
+Whitelist: `by/radioegor146/**`. Blacklist: `by/radioegor146/compiletime/**` (loader templates
+copied into generated JARs). No extra classes were dropped to make the run pass.
+
+| Generation | How it was produced | Own classes processed | Methods restored | Then used to transpile product benches |
+| --- | --- | ---: | ---: | --- |
+| gen1 | Unobfuscated `obfuscator.jar` transpiles itself | 211 | 3 | All five kernels stayed on IR |
+| gen2 | gen1 transpiles the same unobfuscated `obfuscator.jar` | 211 | same 3 | All five kernels stayed on IR |
+
+The three restored methods were already fail-closed leftovers (not new exclusions):
+
+- `InterpreterStreamStrategy$Serializer.<init>(Lby/radioegor146/ir/IrMethod;)V`
+- `InterpreterStreamStrategy.validate(Lby/radioegor146/ir/IrMethod;)V`
+- `ZigTarget.<clinit>()V`
+
+gen2 `--help` ran. The benches it emitted were compiled and run; checksums matched the original
+plain-JVM JAR for `integer-loop`, `string-concat-hash`, `recursion`, `mixed-pricing`, and
+`thin-pricing`. `IF_ACMPEQ` / `IF_ACMPNE` lower through JNI `IsSameObject` (C++ pointer equality
+on two local refs is not Java identity).
 
 ## Codegen modes
 

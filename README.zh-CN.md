@@ -30,6 +30,7 @@
 - [工作原理](#工作原理)
 - [当前状态](#当前状态)
 - [IR 运行时](#ir-运行时)
+- [自举](#自举)
 - [代码生成模式](#代码生成模式)
 - [快速上手](#快速上手)
 - [前置条件](#前置条件)
@@ -100,6 +101,7 @@ sequenceDiagram
 | 共享求值器 | `--ir-lower=eval` 默认关闭（默认 `direct`），且只作用于已成功建成 IR 的方法的窄整数切片。未达可交付状态 |
 | 阅读者 / 分析门槛 | 未达标。在已记录的评估里，未借助工具的阅读者恢复出了 live IR 与操作码痕迹 |
 | 性能 | 最近一次三模式测试：[`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md)。不可外推为普适加速。优先用白名单 |
+| 自举 | 下面记录了单机两代自举。不是 CI，也不是支持徽章 |
 
 ## IR 运行时
 
@@ -112,6 +114,25 @@ sequenceDiagram
 - 跳过用不到的 `lookup` / 局部引用记账；实例方法仍解析声明类
 - `--ir-direct-native=on`（默认关）：本类静态 IR 互调改成直接调 C++，不再走 `CallStatic*Method`。很深的递归会走 C 栈，可能直接中止，而不是抛 `StackOverflowError`
 - 基准 harness 里的 `mixed-pricing`、`thin-pricing` 用来对 checksum 和回归，不是加速证据。`BENCH_DIRECT_NATIVE=on` 会在 bench 里打开直调
+
+## 自举
+
+记录于 2026-09-02，一台 macOS arm64（Temurin 25，`gcc`/`g++` 实际是 Apple clang）。这是 IR 管线能编译自己的本地证据，不是可外推的性能数字，也不是“每个类都支持”。
+
+白名单：`by/radioegor146/**`。黑名单：`by/radioegor146/compiletime/**`（会拷进生成 JAR 的 loader 模板）。没有为了跑通再额外排除类。
+
+| 代 | 怎么来的 | 处理的本项目类 | restore 的方法 | 再去转产品 bench |
+| --- | --- | ---: | ---: | --- |
+| 第一代 | 未混淆的 `obfuscator.jar` 转译自己 | 211 | 3 | 五个 kernel 都留在 IR |
+| 第二代 | 第一代再转译同一份未混淆的 `obfuscator.jar` | 211 | 同样 3 个 | 五个 kernel 都留在 IR |
+
+restore 的三个方法是本来就会 fail-closed 的 leftover，不是新排除的类：
+
+- `InterpreterStreamStrategy$Serializer.<init>(Lby/radioegor146/ir/IrMethod;)V`
+- `InterpreterStreamStrategy.validate(Lby/radioegor146/ir/IrMethod;)V`
+- `ZigTarget.<clinit>()V`
+
+第二代的 `--help` 能跑。它编出的 native bench 与原始 JVM JAR 的 checksum 一致：`integer-loop`、`string-concat-hash`、`recursion`、`mixed-pricing`、`thin-pricing`。`IF_ACMPEQ` / `IF_ACMPNE` 走 JNI `IsSameObject`（两个 local ref 的 C++ 指针相等不是 Java 身份相等）。
 
 ## 代码生成模式
 
