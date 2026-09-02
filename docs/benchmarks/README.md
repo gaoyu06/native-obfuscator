@@ -39,6 +39,12 @@ Warmup and measurement counts may be increased through environment variables:
 ```sh
 BENCH_WARMUP=10 BENCH_ITERATIONS=20 CC=gcc CXX=g++ \
   ./gradlew :obfuscator:bench
+
+Same-class native-to-native C++ calls stay off unless you set:
+
+```sh
+BENCH_DIRECT_NATIVE=on CC=gcc CXX=g++ ./gradlew :obfuscator:bench
+```
 ```
 
 At least one warmup and two measurement iterations are enforced.
@@ -68,7 +74,12 @@ The kernels are:
 
 - `integer-loop`: 5,000,000 iterations of deterministic integer arithmetic;
 - `string-concat-hash`: 200 calls of 96 concatenations plus `String.hashCode`;
-- `recursion`: 2,000 recursive traversals at depth 32.
+- `recursion`: 2,000 recursive traversals at depth 32;
+- `mixed-pricing`: one native entry walks 128 line objects for 1,500 passes
+  (int fields, `int[]` tax table, branches, `String.hashCode`/`length`, helper
+  invoke). Regression coverage for mixed IR, not a speedup kernel;
+- `thin-pricing`: Java loop of 128×80 calls into a small native `priceOne`.
+  Regression coverage for JNI entry cost on ordinary per-item methods.
 
 The work is batched inside each measured sample. In the string case, calls are
 split so the current JNI generator can release local references between calls.

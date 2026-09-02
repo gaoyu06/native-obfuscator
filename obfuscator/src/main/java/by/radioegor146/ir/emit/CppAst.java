@@ -140,6 +140,21 @@ public final class CppAst {
         }
     }
 
+    public static final class Subscript implements Expression {
+        private final Expression array;
+        private final Expression index;
+
+        public Subscript(Expression array, Expression index) {
+            this.array = Objects.requireNonNull(array, "array");
+            this.index = Objects.requireNonNull(index, "index");
+        }
+
+        @Override
+        public String render() {
+            return "(" + array.render() + ")[" + index.render() + "]";
+        }
+    }
+
     public static final class StringPoolPointer implements Expression {
         private final long offset;
 
@@ -216,7 +231,7 @@ public final class CppAst {
         private final Expression expression;
 
         public Cast(String type, Expression expression) {
-            this.type = identifier(type);
+            this.type = typeToken(type);
             this.expression = Objects.requireNonNull(expression, "expression");
         }
 
@@ -290,7 +305,7 @@ public final class CppAst {
         }
 
         public Declaration(String type, String name, Expression initializer) {
-            this.type = identifier(type);
+            this.type = typeToken(type);
             this.name = identifier(name);
             this.initializer = initializer;
         }
@@ -493,6 +508,14 @@ public final class CppAst {
         Objects.requireNonNull(value, "identifier");
         if (!value.matches("[A-Za-z_][A-Za-z0-9_]*")) {
             throw new IllegalArgumentException("Invalid C++ identifier: " + value);
+        }
+        return value;
+    }
+
+    private static String typeToken(String value) {
+        Objects.requireNonNull(value, "type");
+        if (!value.matches("[A-Za-z_][A-Za-z0-9_]*\\*?")) {
+            throw new IllegalArgumentException("Invalid C++ type: " + value);
         }
         return value;
     }

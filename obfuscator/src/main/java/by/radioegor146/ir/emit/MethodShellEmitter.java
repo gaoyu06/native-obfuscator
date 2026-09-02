@@ -29,14 +29,18 @@ public final class MethodShellEmitter {
     }
 
     public Shell beginIr(MethodContext context) {
-        return begin(context);
+        return begin(context, "");
+    }
+
+    public Shell beginIr(MethodContext context, String body) {
+        return begin(context, body == null ? "" : body);
     }
 
     public void finishIr(MethodContext context, Shell shell) {
         finish(context, shell);
     }
 
-    private Shell begin(MethodContext context) {
+    private Shell begin(MethodContext context, String body) {
         MethodNode method = context.method;
         StringBuilder output = context.output;
         SpecialMethodProcessor specialMethodProcessor = getSpecialMethodProcessor(method.name);
@@ -110,36 +114,42 @@ public final class MethodShellEmitter {
                         .append(";\n");
             } else {
                 output.append("    jclass clazz = utils::get_class_from_object(env, obj);\n");
-                output.append("    if (env->ExceptionCheck()) { ")
+                output.append("    if (clazz == nullptr) { ")
                         .append(String.format("return (%s) 0;",
                                 MethodProcessor.CPP_TYPES[context.ret.getSort()]))
                         .append(" }\n");
             }
         }
-        output.append("    jobject classloader = utils::get_classloader_from_class(env, clazz);\n");
-        output.append("    if (env->ExceptionCheck()) { ")
-                .append(String.format("return (%s) 0;",
-                        MethodProcessor.CPP_TYPES[context.ret.getSort()]))
-                .append(" }\n");
-        output.append("    if (classloader == nullptr) { env->FatalError(")
-                .append(context.getStringPool().get("classloader == null"))
-                .append(String.format("); return (%s) 0; }\n",
-                        MethodProcessor.CPP_TYPES[context.ret.getSort()]));
-        output.append("\n");
-        if (!isStatic) {
-            if (!hasConstructorClassloaderArgument) {
-                output.append("    env->DeleteLocalRef(clazz);\n");
-            }
-            output.append("    clazz = utils::find_class_wo_static(env, classloader, ")
-                    .append(context.getCachedStrings()
-                            .getPointer(context.clazz.name.replace('/', '.')))
-                    .append(");\n");
+        boolean needsClassloader = !isStatic
+                || body.contains("classloader")
+                || namedTryCatchNeedsLoader(method);
+        boolean needsLookup = body.contains("lookup");
+        if (needsClassloader) {
+            output.append("    jobject classloader = utils::get_classloader_from_class(env, clazz);\n");
             output.append("    if (env->ExceptionCheck()) { ")
                     .append(String.format("return (%s) 0;",
                             MethodProcessor.CPP_TYPES[context.ret.getSort()]))
                     .append(" }\n");
+            output.append("    if (classloader == nullptr) { env->FatalError(")
+                    .append(context.getStringPool().get("classloader == null"))
+                    .append(String.format("); return (%s) 0; }\n",
+                            MethodProcessor.CPP_TYPES[context.ret.getSort()]));
+            output.append("\n");
         }
-        output.append("    jobject lookup = nullptr;\n");
+        if (!isStatic && !hasConstructorClassloaderArgument) {
+            output.append("    env->DeleteLocalRef(clazz);\n");
+            output.append("    clazz = utils::find_class_wo_static(env, classloader, ")
+                    .append(context.getCachedStrings()
+                            .getPointer(context.clazz.name.replace('/', '.')))
+                    .append(");\n");
+            output.append("    if (clazz == nullptr) { ")
+                    .append(String.format("return (%s) 0;",
+                            MethodProcessor.CPP_TYPES[context.ret.getSort()]))
+                    .append(" }\n");
+        }
+        if (needsLookup) {
+            output.append("    jobject lookup = nullptr;\n");
+        }
 
         if (method.tryCatchBlocks != null) {
             Set<String> classesForTryCatches = method.tryCatchBlocks.stream()
@@ -160,9 +170,20 @@ public final class MethodShellEmitter {
             });
         }
 
-        output.append("    std::unordered_set<jobject> refs;\n");
         output.append("\n");
         return new Shell(specialMethodProcessor);
+    }
+
+    private static boolean namedTryCatchNeedsLoader(MethodNode method) {
+        if (method.tryCatchBlocks == null) {
+            return false;
+        }
+        for (TryCatchBlockNode block : method.tryCatchBlocks) {
+            if (block.type != null && !block.type.startsWith("[")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void finish(MethodContext context, Shell shell) {
@@ -185,6 +206,31 @@ public final class MethodShellEmitter {
             default:
                 return new DefaultSpecialMethodProcessor();
         }
+    }
+
+    /**
+     * JNI function symbol for a default (non-interface, non-{@code <init>}/
+     * {@code <clinit>}) method. Must match {@link #begin}.
+     */
+    public static String cppNativeFunctionName(MethodNode method, int methodIndex) {
+        String methodName = "native_" + method.name + methodIndex;
+        return Util.escapeCppNameString("__ngen_" + methodName.replace('/', '_'));
+    }
+
+    public static String jniFunctionPrototype(MethodNode method, int methodIndex) {
+        Type ret = Type.getReturnType(method.desc);
+        Type[] args = Type.getArgumentTypes(method.desc);
+        StringBuilder out = new StringBuilder();
+        out.append(MethodProcessor.CPP_TYPES[ret.getSort()])
+                .append(" JNICALL ")
+                .append(cppNativeFunctionName(method, methodIndex))
+                .append("(JNIEnv *env, jclass clazz");
+        for (int i = 0; i < args.length; i++) {
+            out.append(", ").append(MethodProcessor.CPP_TYPES[args[i].getSort()])
+                    .append(" arg").append(i);
+        }
+        out.append(')');
+        return out.toString();
     }
 
     public static final class Shell {

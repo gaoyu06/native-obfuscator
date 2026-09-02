@@ -23,6 +23,7 @@ public class NativeAnnotationSupportTest {
         assertEquals(NativeIntrinsicsMode.SAFE, options.getIntrinsics());
         assertEquals(CompilerBackend.CPP, options.getBackend());
         assertEquals(ControlFlowObfuscationMode.OFF, options.getCfObfuscation());
+        assertEquals(DirectNativeCallMode.OFF, options.getDirectNative());
     }
 
     @Test
@@ -50,6 +51,17 @@ public class NativeAnnotationSupportTest {
                 IrLoweringMode.DIRECT, NativeIntrinsicsMode.SAFE, CompilerBackend.CPP,
                 ControlFlowObfuscationMode.OFF);
         assertEquals(ControlFlowObfuscationMode.BASIC, options.getCfObfuscation());
+    }
+
+    @Test
+    public void directNativeMethodOverridesCli() {
+        MethodNode method = method();
+        method.invisibleAnnotations = annotations("directNative", "ON");
+        NativeAnnotationSupport.Options options = NativeAnnotationSupport.resolve(
+                classNode(), method,
+                IrLoweringMode.DIRECT, NativeIntrinsicsMode.SAFE, CompilerBackend.CPP,
+                ControlFlowObfuscationMode.OFF, DirectNativeCallMode.OFF);
+        assertEquals(DirectNativeCallMode.ON, options.getDirectNative());
     }
 
     @Test
@@ -89,6 +101,8 @@ public class NativeAnnotationSupportTest {
                 desc = "Lby/radioegor146/nativeobfuscator/NativeLowering;";
             } else if ("cfObfuscation".equals(name)) {
                 desc = "Lby/radioegor146/nativeobfuscator/NativeCfObfuscation;";
+            } else if ("directNative".equals(name)) {
+                desc = "Lby/radioegor146/nativeobfuscator/NativeDirectNative;";
             } else {
                 desc = "Lby/radioegor146/nativeobfuscator/NativeBackend;";
             }

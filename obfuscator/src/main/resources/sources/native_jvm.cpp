@@ -328,36 +328,42 @@ namespace native_jvm::utils {
         return ret_value;
     }
 
-    jint string_hash_code(JNIEnv *env, jstring value) {
+    bool string_hash_code(JNIEnv *env, jstring value, jint *out) {
         const jsize size = env->GetStringLength(value);
-        if (size == 0 || env->ExceptionCheck()) {
-            return 0;
+        if (env->ExceptionCheck()) {
+            return false;
+        }
+        if (size == 0) {
+            *out = 0;
+            return true;
         }
         const jchar *chars = env->GetStringCritical(value, nullptr);
         if (chars == nullptr) {
-            return 0;
+            return false;
         }
         std::uint32_t hash = 0;
         for (jsize index = 0; index < size; ++index) {
             hash = hash * 31U + static_cast<std::uint32_t>(chars[index]);
         }
         env->ReleaseStringCritical(value, chars);
-        return static_cast<jint>(hash);
+        *out = static_cast<jint>(hash);
+        return true;
     }
 
-    jint string_char_at(JNIEnv *env, jstring value, jint index) {
+    bool string_char_at(JNIEnv *env, jstring value, jint index, jint *out) {
         const jsize size = env->GetStringLength(value);
         if (env->ExceptionCheck()) {
-            return 0;
+            return false;
         }
         if (index < 0 || index >= size) {
             throw_re(env, "java/lang/StringIndexOutOfBoundsException",
                     "String.charAt", 0);
-            return 0;
+            return false;
         }
         jchar ch = 0;
         env->GetStringRegion(value, index, 1, &ch);
-        return static_cast<jint>(ch);
+        *out = static_cast<jint>(ch);
+        return true;
     }
 
     static bool arraycopy_bounds(jsize src_len, jsize dest_len, jint src_pos,
@@ -432,11 +438,11 @@ namespace native_jvm::utils {
         }
     }
 
-    static void arraycopy_primitive(JNIEnv *env, jobject src, jint src_pos,
+    static bool arraycopy_primitive(JNIEnv *env, jobject src, jint src_pos,
             jobject dest, jint dest_pos, jint length, std::size_t element_size) {
         const jboolean same = env->IsSameObject(src, dest);
         if (env->ExceptionCheck()) {
-            return;
+            return false;
         }
         const std::size_t bytes =
                 static_cast<std::size_t>(length) * element_size;
@@ -444,7 +450,7 @@ namespace native_jvm::utils {
             void *data = env->GetPrimitiveArrayCritical(
                     static_cast<jarray>(src), nullptr);
             if (data == nullptr) {
-                return;
+                return false;
             }
             std::memmove(
                     static_cast<char *>(data)
@@ -453,18 +459,18 @@ namespace native_jvm::utils {
                             + static_cast<std::size_t>(src_pos) * element_size,
                     bytes);
             env->ReleasePrimitiveArrayCritical(static_cast<jarray>(src), data, 0);
-            return;
+            return true;
         }
         char *buffer = bytes == 0 ? nullptr : new (std::nothrow) char[bytes];
         if (bytes != 0 && buffer == nullptr) {
             throw_re(env, "java/lang/OutOfMemoryError", "arraycopy", 0);
-            return;
+            return false;
         }
         void *src_data = env->GetPrimitiveArrayCritical(
                 static_cast<jarray>(src), nullptr);
         if (src_data == nullptr) {
             delete[] buffer;
-            return;
+            return false;
         }
         std::memcpy(
                 buffer,
@@ -477,7 +483,7 @@ namespace native_jvm::utils {
                 static_cast<jarray>(dest), nullptr);
         if (dest_data == nullptr) {
             delete[] buffer;
-            return;
+            return false;
         }
         std::memcpy(
                 static_cast<char *>(dest_data)
@@ -487,9 +493,10 @@ namespace native_jvm::utils {
         env->ReleasePrimitiveArrayCritical(
                 static_cast<jarray>(dest), dest_data, 0);
         delete[] buffer;
+        return true;
     }
 
-    static void arraycopy_objects(JNIEnv *env, jobject src, jint src_pos,
+    static bool arraycopy_objects(JNIEnv *env, jobject src, jint src_pos,
             jobject dest, jint dest_pos, jint length) {
         const bool reverse = env->IsSameObject(src, dest) && src_pos < dest_pos;
         if (reverse) {
@@ -497,66 +504,66 @@ namespace native_jvm::utils {
                 jobject value = env->GetObjectArrayElement(
                         static_cast<jobjectArray>(src), src_pos + i);
                 if (env->ExceptionCheck()) {
-                    return;
+                    return false;
                 }
                 env->SetObjectArrayElement(static_cast<jobjectArray>(dest),
                         dest_pos + i, value);
                 env->DeleteLocalRef(value);
                 if (env->ExceptionCheck()) {
-                    return;
+                    return false;
                 }
             }
-            return;
+            return true;
         }
         for (jint i = 0; i < length; ++i) {
             jobject value = env->GetObjectArrayElement(
                     static_cast<jobjectArray>(src), src_pos + i);
             if (env->ExceptionCheck()) {
-                return;
+                return false;
             }
             env->SetObjectArrayElement(static_cast<jobjectArray>(dest),
                     dest_pos + i, value);
             env->DeleteLocalRef(value);
             if (env->ExceptionCheck()) {
-                return;
+                return false;
             }
         }
+        return true;
     }
 
-    void arraycopy(JNIEnv *env, jobject src, jint src_pos, jobject dest,
+    bool arraycopy(JNIEnv *env, jobject src, jint src_pos, jobject dest,
             jint dest_pos, jint length) {
         if (src == nullptr || dest == nullptr) {
             throw_re(env, "java/lang/NullPointerException", "arraycopy", 0);
-            return;
+            return false;
         }
         const arraycopy_kind src_kind = classify_array(env, src);
         const arraycopy_kind dest_kind = classify_array(env, dest);
         if (src_kind == ARRAYCOPY_NONE || dest_kind == ARRAYCOPY_NONE
                 || src_kind != dest_kind) {
             throw_re(env, "java/lang/ArrayStoreException", "arraycopy", 0);
-            return;
+            return false;
         }
         const jsize src_len = env->GetArrayLength(static_cast<jarray>(src));
         if (env->ExceptionCheck()) {
-            return;
+            return false;
         }
         const jsize dest_len = env->GetArrayLength(static_cast<jarray>(dest));
         if (env->ExceptionCheck()) {
-            return;
+            return false;
         }
         if (!arraycopy_bounds(src_len, dest_len, src_pos, dest_pos, length)) {
             throw_re(env, "java/lang/ArrayIndexOutOfBoundsException",
                     "arraycopy", 0);
-            return;
+            return false;
         }
         if (length == 0) {
-            return;
+            return true;
         }
         if (src_kind == ARRAYCOPY_OBJECT) {
-            arraycopy_objects(env, src, src_pos, dest, dest_pos, length);
-            return;
+            return arraycopy_objects(env, src, src_pos, dest, dest_pos, length);
         }
-        arraycopy_primitive(env, src, src_pos, dest, dest_pos, length,
+        return arraycopy_primitive(env, src, src_pos, dest, dest_pos, length,
                 primitive_element_size(src_kind));
     }
 
@@ -611,11 +618,10 @@ namespace native_jvm::utils {
     }
 
     jclass get_class_from_object(JNIEnv *env, jobject object) {
-        jobject result_class = env->CallObjectMethod(object, get_class_method);
-        if (env->ExceptionCheck()) {
+        if (object == nullptr) {
             return nullptr;
         }
-        return (jclass) result_class;
+        return env->GetObjectClass(object);
     }
 
     jobject get_classloader_from_class(JNIEnv *env, jclass clazz) {

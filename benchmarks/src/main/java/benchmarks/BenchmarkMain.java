@@ -1,6 +1,7 @@
 package benchmarks;
 
 import benchmarks.kernels.IntegerLoopKernel;
+import benchmarks.kernels.MixedPricingKernel;
 import benchmarks.kernels.RecursionKernel;
 import benchmarks.kernels.StringConcatHashKernel;
 
@@ -39,6 +40,20 @@ public final class BenchmarkMain {
                     long call() {
                         return RecursionKernel.run(2_000, 32);
                     }
+                },
+                new KernelSpec("mixed-pricing",
+                        "1 native entry; 128 lines x 1,500 passes") {
+                    @Override
+                    long call() {
+                        return MixedPricingKernel.run(1_500);
+                    }
+                },
+                new KernelSpec("thin-pricing",
+                        "Java loop; 128 lines x 80 native priceOne calls") {
+                    @Override
+                    long call() {
+                        return thinPricing();
+                    }
                 }
         };
 
@@ -63,6 +78,29 @@ public final class BenchmarkMain {
             check(kernel, expected, actual);
         }
         return new KernelResult(kernel.name, kernel.workload, samples, expected);
+    }
+
+    private static long thinPricing() {
+        long total = 0;
+        for (int pass = 0; pass < 80; pass++) {
+            for (int i = 0; i < 128; i++) {
+                total += MixedPricingKernel.priceOne(
+                        1 + (i % 20), 99 + (i * 3),
+                        THIN_TAX[i & 3], THIN_SKUS[i]);
+            }
+        }
+        return total;
+    }
+
+    private static final int[] THIN_TAX = {0, 500, 1000, 1300};
+    private static final String[] THIN_SKUS = thinSkus();
+
+    private static String[] thinSkus() {
+        String[] skus = new String[128];
+        for (int i = 0; i < skus.length; i++) {
+            skus[i] = "SKU-" + i;
+        }
+        return skus;
     }
 
     private static long consume(long value) {

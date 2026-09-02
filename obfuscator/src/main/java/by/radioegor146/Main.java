@@ -74,6 +74,10 @@ public class Main {
                 description = "IR control-flow obfuscation: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
         private ControlFlowObfuscationMode cfObfuscation = ControlFlowObfuscationMode.OFF;
 
+        @CommandLine.Option(names = {"--ir-direct-native"}, defaultValue = "off",
+                description = "Same-class IR static calls as direct C++ instead of CallStatic*Method: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
+        private DirectNativeCallMode directNative = DirectNativeCallMode.OFF;
+
         @CommandLine.Option(names = {"-a", "--annotations"}, description = "Use annotations to ignore/include native obfuscation")
         private boolean useAnnotations;
 
@@ -128,7 +132,7 @@ public class Main {
             String nativeDir = new NativeObfuscator().process(jarFile.toPath(), outputDir,
                     libs, blackList, whiteList, libraryName, customLibraryDirectory,
                     platform, useAnnotations, generateDebugJar, codegenMode, backend,
-                    irLoweringMode, nativeIntrinsicsMode, cfObfuscation);
+                    irLoweringMode, nativeIntrinsicsMode, cfObfuscation, directNative);
 
             if (useZig) {
                 runZigBuild(outputDir, nativeDir);

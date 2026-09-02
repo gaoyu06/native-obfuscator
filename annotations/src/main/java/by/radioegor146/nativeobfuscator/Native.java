@@ -23,4 +23,6 @@ public @interface Native {
     NativeBackend backend() default NativeBackend.INHERIT;
 
     NativeCfObfuscation cfObfuscation() default NativeCfObfuscation.INHERIT;
+
+    NativeDirectNative directNative() default NativeDirectNative.INHERIT;
 }

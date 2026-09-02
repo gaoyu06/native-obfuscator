@@ -18,12 +18,16 @@ WORK = ROOT / "build" / "benchmarks" / "work"
 LOG_DIR = ROOT / "build" / "benchmarks" / "logs"
 WARMUP = int(os.environ.get("BENCH_WARMUP", "5"))
 ITERATIONS = int(os.environ.get("BENCH_ITERATIONS", "10"))
+DIRECT_NATIVE = os.environ.get("BENCH_DIRECT_NATIVE", "off")
 CODEGENS = ("ir",)
 KERNEL_METHODS = (
     ("integer-loop", "benchmarks/kernels/IntegerLoopKernel", "run", "(I)J"),
     ("string-concat-hash", "benchmarks/kernels/StringConcatHashKernel", "run", "(I)I"),
     ("recursion", "benchmarks/kernels/RecursionKernel", "run", "(II)J"),
     ("recursion", "benchmarks/kernels/RecursionKernel", "recurse", "(IJ)J"),
+    ("mixed-pricing", "benchmarks/kernels/MixedPricingKernel", "run", "(I)J"),
+    ("thin-pricing", "benchmarks/kernels/MixedPricingKernel", "priceOne",
+     "(IIILjava/lang/String;)I"),
 )
 
 
@@ -274,6 +278,7 @@ def run_native(report, codegen, input_jar, obfuscator_jar, plain, cc, cxx):
         "--white-list={}".format(ROOT / "benchmarks" / "whitelist.txt"),
         "--plain-lib-name=native_library",
         "--codegen={}".format(codegen),
+        "--ir-direct-native={}".format(DIRECT_NATIVE),
         input_jar,
         output,
     ]

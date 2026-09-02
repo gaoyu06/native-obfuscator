@@ -92,9 +92,9 @@ namespace native_jvm::utils {
     void bastore(JNIEnv *env, jarray array, jint index, jint value);
     jbyte baload(JNIEnv *env, jarray array, jint index);
 
-    jint string_hash_code(JNIEnv *env, jstring value);
-    jint string_char_at(JNIEnv *env, jstring value, jint index);
-    void arraycopy(JNIEnv *env, jobject src, jint src_pos, jobject dest,
+    bool string_hash_code(JNIEnv *env, jstring value, jint *out);
+    bool string_char_at(JNIEnv *env, jstring value, jint index, jint *out);
+    bool arraycopy(JNIEnv *env, jobject src, jint src_pos, jobject dest,
             jint dest_pos, jint length);
     jint bit_count_i(jint value);
     jint bit_count_j(jlong value);

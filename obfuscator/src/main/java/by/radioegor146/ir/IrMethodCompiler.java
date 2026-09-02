@@ -17,6 +17,7 @@ import by.radioegor146.ir.frontend.DynamicConstantSupport;
 import by.radioegor146.ir.frontend.JsrRetInliner;
 import by.radioegor146.special.ConstructorSpecialMethodProcessor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.Objects;
@@ -114,9 +115,30 @@ public final class IrMethodCompiler {
             // access flag only after frontend and lowering validation succeed.
             context.method.access &= ~Opcodes.ACC_SYNCHRONIZED;
         }
-        MethodShellEmitter.Shell shell = shellEmitter.beginIr(context);
+        MethodShellEmitter.Shell shell = shellEmitter.beginIr(context, lowered.getBody());
         context.output.append(lowered.getBody());
         shellEmitter.finishIr(context, shell);
+    }
+
+    public boolean admitsIr(ClassNode classNode, MethodNode method,
+                            NativeIntrinsicsMode methodIntrinsics) {
+        if ("<init>".equals(method.name) || "<clinit>".equals(method.name)) {
+            return false;
+        }
+        AsmToIr methodFrontend =
+                Objects.requireNonNull(methodIntrinsics, "methodIntrinsics")
+                        == this.intrinsicsMode
+                        ? this.frontend : new AsmToIr(methodIntrinsics);
+        try {
+            MethodNode workingMethod =
+                    JsrRetInliner.prepareForIr(classNode, method);
+            DynamicConstantSupport.validateResolverInstallation(
+                    classNode, workingMethod);
+            methodFrontend.build(classNode.name, workingMethod);
+            return true;
+        } catch (UnsupportedIrConstructException ignored) {
+            return false;
+        }
     }
 
     private LoweredMethod lower(IrMethod method, MethodContext context,

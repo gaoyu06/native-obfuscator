@@ -6,6 +6,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
+import java.util.Map;
 
 public class MethodContext {
 
@@ -27,6 +28,14 @@ public class MethodContext {
     public int constructorClassloaderArgumentIndex = -1;
 
     public String cppNativeMethodName;
+
+    public DirectNativeCallMode directNativeCall = DirectNativeCallMode.OFF;
+
+    /**
+     * Same-class static IR methods that have a generated JNI function, keyed
+     * by {@code name + desc}. Used when {@link #directNativeCall} is on.
+     */
+    public Map<String, String> sameClassDirectNativeNames;
 
     public MethodContext(NativeObfuscator obfuscator, MethodNode method, int methodIndex, ClassNode clazz,
                          int classIndex) {

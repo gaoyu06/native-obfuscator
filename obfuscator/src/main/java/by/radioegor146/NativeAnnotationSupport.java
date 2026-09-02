@@ -3,6 +3,7 @@ package by.radioegor146;
 import by.radioegor146.nativeobfuscator.Native;
 import by.radioegor146.nativeobfuscator.NativeBackend;
 import by.radioegor146.nativeobfuscator.NativeCfObfuscation;
+import by.radioegor146.nativeobfuscator.NativeDirectNative;
 import by.radioegor146.nativeobfuscator.NativeIntrinsics;
 import by.radioegor146.nativeobfuscator.NativeLowering;
 import org.objectweb.asm.Type;
@@ -28,13 +29,16 @@ public final class NativeAnnotationSupport {
         private final NativeIntrinsicsMode intrinsics;
         private final CompilerBackend backend;
         private final ControlFlowObfuscationMode cfObfuscation;
+        private final DirectNativeCallMode directNative;
 
         Options(IrLoweringMode lowering, NativeIntrinsicsMode intrinsics,
-                CompilerBackend backend, ControlFlowObfuscationMode cfObfuscation) {
+                CompilerBackend backend, ControlFlowObfuscationMode cfObfuscation,
+                DirectNativeCallMode directNative) {
             this.lowering = Objects.requireNonNull(lowering, "lowering");
             this.intrinsics = Objects.requireNonNull(intrinsics, "intrinsics");
             this.backend = Objects.requireNonNull(backend, "backend");
             this.cfObfuscation = Objects.requireNonNull(cfObfuscation, "cfObfuscation");
+            this.directNative = Objects.requireNonNull(directNative, "directNative");
         }
 
         public IrLoweringMode getLowering() {
@@ -52,6 +56,10 @@ public final class NativeAnnotationSupport {
         public ControlFlowObfuscationMode getCfObfuscation() {
             return cfObfuscation;
         }
+
+        public DirectNativeCallMode getDirectNative() {
+            return directNative;
+        }
     }
 
     public static Options resolve(ClassNode classNode, MethodNode methodNode,
@@ -67,6 +75,16 @@ public final class NativeAnnotationSupport {
                                   NativeIntrinsicsMode cliIntrinsics,
                                   CompilerBackend cliBackend,
                                   ControlFlowObfuscationMode cliCfObfuscation) {
+        return resolve(classNode, methodNode, cliLowering, cliIntrinsics,
+                cliBackend, cliCfObfuscation, DirectNativeCallMode.OFF);
+    }
+
+    public static Options resolve(ClassNode classNode, MethodNode methodNode,
+                                  IrLoweringMode cliLowering,
+                                  NativeIntrinsicsMode cliIntrinsics,
+                                  CompilerBackend cliBackend,
+                                  ControlFlowObfuscationMode cliCfObfuscation,
+                                  DirectNativeCallMode cliDirectNative) {
         Parsed classParsed = parse(classNode.invisibleAnnotations);
         Parsed methodParsed = parse(methodNode.invisibleAnnotations);
         return new Options(
@@ -77,7 +95,9 @@ public final class NativeAnnotationSupport {
                 resolveBackend(methodParsed.backend, classParsed.backend,
                         cliBackend),
                 resolveCfObfuscation(methodParsed.cfObfuscation,
-                        classParsed.cfObfuscation, cliCfObfuscation));
+                        classParsed.cfObfuscation, cliCfObfuscation),
+                resolveDirectNative(methodParsed.directNative,
+                        classParsed.directNative, cliDirectNative));
     }
 
     private static final class Parsed {
@@ -85,6 +105,7 @@ public final class NativeAnnotationSupport {
         NativeIntrinsics intrinsics = NativeIntrinsics.INHERIT;
         NativeBackend backend = NativeBackend.INHERIT;
         NativeCfObfuscation cfObfuscation = NativeCfObfuscation.INHERIT;
+        NativeDirectNative directNative = NativeDirectNative.INHERIT;
     }
 
     private static Parsed parse(List<AnnotationNode> annotations) {
@@ -118,6 +139,10 @@ public final class NativeAnnotationSupport {
                     case "cfObfuscation":
                         parsed.cfObfuscation = enumValue(NativeCfObfuscation.class,
                                 value, NativeCfObfuscation.INHERIT);
+                        break;
+                    case "directNative":
+                        parsed.directNative = enumValue(NativeDirectNative.class,
+                                value, NativeDirectNative.INHERIT);
                         break;
                     default:
                         break;
@@ -195,6 +220,20 @@ public final class NativeAnnotationSupport {
         }
         if (chosen == NativeCfObfuscation.BASIC) {
             return ControlFlowObfuscationMode.BASIC;
+        }
+        return Objects.requireNonNull(cli, "cli");
+    }
+
+    private static DirectNativeCallMode resolveDirectNative(
+            NativeDirectNative method, NativeDirectNative owner,
+            DirectNativeCallMode cli) {
+        NativeDirectNative chosen = method != NativeDirectNative.INHERIT
+                ? method : owner;
+        if (chosen == NativeDirectNative.OFF) {
+            return DirectNativeCallMode.OFF;
+        }
+        if (chosen == NativeDirectNative.ON) {
+            return DirectNativeCallMode.ON;
         }
         return Objects.requireNonNull(cli, "cli");
     }

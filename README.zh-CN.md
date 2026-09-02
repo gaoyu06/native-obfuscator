@@ -20,6 +20,8 @@
 
 默认方法体生成器是 typed CFG IR（`--codegen=ir`）。`master` 上还包含：默认关闭的共享求值器降级（`--ir-lower=eval`）、默认关闭的进程内解释器（`--backend=interpreter`）、一个随生成 JAR 打包的小型 C++ SDK、JDK 17+ 语料 harness 以及基准测试 harness。以上**都不是**生产级支持承诺。不支持的构造会把该方法留在原始 Java 字节码里。
 
+默认 IR 生成的 C++ 会：在方法入口提升 JNI 的 class/field/method ID，收缩多余的 `ExceptionCheck`，缓冲本类非 volatile 的 `int` 实例字段，并用 `GetIntArrayElements` pin `int[]`。JNI 外壳会跳过用不到的 `lookup` / 局部引用记账；实例方法仍解析声明类。本类静态 IR 互调可用 `--ir-direct-native=on`（默认 off）改成直接调 C++，不再走 `CallStatic*Method`。基准 harness 增加了 `mixed-pricing` 和 `thin-pricing`，用来对 checksum 和回归，不是 HotSpot 加速证据。
+
 > [!IMPORTANT]
 > 本工具做的是字节码到本地代码的**转译**。它本身不做二进制加壳，也不能单靠自己隐藏算法特征。请使用黑名单/白名单——把整个应用 JAR（比如游戏客户端）全部转译通常是错误的默认做法。
 
@@ -99,8 +101,9 @@ sequenceDiagram
 | C++ SDK | `NativePrimitives` + `NativeStrings` 打进生成的 JAR。不是独立发布的产品 SDK |
 | 解释器 | `--backend=interpreter` 默认关闭（默认 `cpp`）。ISA v4：静态 `int`/`long`、引用，以及首个异常表（`ATHROW`）。无 `NEW`、调用与字段。不是保护类产品 |
 | 共享求值器 | `--ir-lower=eval` 默认关闭（默认 `direct`），且只作用于已成功建成 IR 的方法的窄整数切片。未达可交付状态 |
+| IR JNI 运行时 | 默认 IR 会提升 JNI ID、收缩 `ExceptionCheck`、缓冲本类 `int` 字段、pin `int[]`。`--ir-direct-native` 是可选的本类静态 C++ 直调。都不是 HotSpot 加速 |
 | 阅读者 / 分析门槛 | 未达标。在已记录的评估里，未借助工具的阅读者恢复出了 live IR 与操作码痕迹 |
-| 性能 | 最近一次三模式测试：[`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md)。三个 kernel 在一台虚拟机上都留在了 IR。不可外推为普适加速。优先用白名单 |
+| 性能 | 最近一次三模式测试：[`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md)。harness 另有 `mixed-pricing` / `thin-pricing` 回归 kernel。不可外推为普适加速。优先用白名单 |
 
 ## 代码生成模式
 
@@ -180,6 +183,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--native-intrinsics` | `safe`（默认）、`off` 或 `fast`。把部分 JDK 调用换成本地实现（`String.length`/`hashCode`/`charAt`/`isEmpty`、`System.arraycopy`、int/long 的 `Math.abs/min/max`）。`fast` 另外替换 `Integer`/`Long` 的 bitCount 与 numberOfLeadingZeros。文件 IO 不会被改写。 |
 | `--backend` | `cpp`（默认）或 `interpreter`（窄 int/i64/引用切片；默认关闭） |
 | `--ir-cf-obf` | `off`（默认）或 `basic`。`basic` 插入恒真假分支，把 IR 控制流打成 dispatcher，并打乱非入口块顺序。`--ir-lower=eval` 与 `--backend=interpreter` 会跳过。 |
+| `--ir-direct-native` | `off`（默认）或 `on`。`on` 时，本类里对另一个已 IR 转译的静态方法的 `invokestatic` 改成直接调 C++，不再 `CallStatic*Method`。不覆盖 `synchronized`、`<init>`/`<clinit>`、接口、虚调用。会少掉那一层 Java native 栈帧。Java 调进来的入口不变。很深的本类递归走 C 栈，可能直接中止进程，而不是抛 `StackOverflowError`。 |
 | `-a` | 启用 `@Native` / `@NotNative` 注解处理 |
 | `-w` / `-b` | 白名单 / 黑名单文件 |
 | `--plain-lib-name` | 单独分发本地库或用于 Android 时，`LoaderPlain` 使用的库名 |
@@ -206,8 +210,8 @@ Maven 坐标：`com.github.radioegor146.native-obfuscator:annotations:master-SNA
 - `@Native` — 包含该类或方法
 - `@NotNative` — 跳过 `@Native` 类中的某个方法
 - `@Native(lowering=…)`、`@Native(intrinsics=…)`、`@Native(backend=…)`、
-  `@Native(cfObfuscation=…)` — 覆盖对应的 `--ir-lower`、`--native-intrinsics`、
-  `--backend`、`--ir-cf-obf`。默认 `INHERIT`（跟 CLI）。
+  `@Native(cfObfuscation=…)`、`@Native(directNative=…)` — 覆盖对应的 `--ir-lower`、`--native-intrinsics`、
+  `--backend`、`--ir-cf-obf`、`--ir-direct-native`。默认 `INHERIT`（跟 CLI）。
   方法级优先于类级。`-a` 仍然只决定选哪些方法；这些属性在被选中的方法或其类带有
   `@Native` 时生效。
 

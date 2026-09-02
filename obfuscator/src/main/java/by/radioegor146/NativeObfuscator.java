@@ -33,7 +33,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -181,12 +183,29 @@ public class NativeObfuscator {
                           IrLoweringMode irLoweringMode,
                           NativeIntrinsicsMode intrinsicsMode,
                           ControlFlowObfuscationMode cfObfuscation) throws IOException {
+        return process(inputJarPath, outputDir, inputLibs, blackList, whiteList, plainLibName,
+                customLibraryDirectory, platform, useAnnotations, generateDebugJar,
+                codegenMode, backend, irLoweringMode, intrinsicsMode, cfObfuscation,
+                DirectNativeCallMode.OFF);
+    }
+
+    public String process(Path inputJarPath, Path outputDir, List<Path> inputLibs,
+                          List<String> blackList, List<String> whiteList, String plainLibName,
+                          String customLibraryDirectory,
+                          Platform platform, boolean useAnnotations, boolean generateDebugJar,
+                          CodegenMode codegenMode, CompilerBackend backend,
+                          IrLoweringMode irLoweringMode,
+                          NativeIntrinsicsMode intrinsicsMode,
+                          ControlFlowObfuscationMode cfObfuscation,
+                          DirectNativeCallMode directNativeCall) throws IOException {
         Objects.requireNonNull(codegenMode, "codegenMode");
         final CompilerBackend selectedBackend = Objects.requireNonNull(backend, "backend");
         final IrLoweringMode selectedIrLowering =
                 Objects.requireNonNull(irLoweringMode, "irLoweringMode");
         final ControlFlowObfuscationMode selectedCfObfuscation =
                 Objects.requireNonNull(cfObfuscation, "cfObfuscation");
+        final DirectNativeCallMode selectedDirectNative =
+                Objects.requireNonNull(directNativeCall, "directNativeCall");
         this.intrinsicsMode = Objects.requireNonNull(intrinsicsMode, "intrinsicsMode");
         this.irMethodCompiler = new IrMethodCompiler(
                 new MethodShellEmitter(this), this.intrinsicsMode);
@@ -427,7 +446,7 @@ public class NativeObfuscator {
                                 NativeAnnotationSupport.resolve(
                                         classNode, method, selectedIrLowering,
                                         this.intrinsicsMode, selectedBackend,
-                                        selectedCfObfuscation);
+                                        selectedCfObfuscation, selectedDirectNative);
                         if (preview.getLowering() == IrLoweringMode.EVAL
                                 && !evaluatorRuntimeCopied[0]) {
                             copyEvaluatorRuntime(cppDir);
@@ -449,6 +468,25 @@ public class NativeObfuscator {
                                          classIndexReference[0]++, stringPool,
                                          classUsesInterpreter)) {
                         StringBuilder instructions = new StringBuilder();
+                        Map<String, String> sameClassDirectNativeNames =
+                                collectSameClassDirectNativeNames(
+                                        classNode, classMethodFilter, selectedIrLowering,
+                                        selectedBackend, selectedCfObfuscation,
+                                        selectedDirectNative);
+                        if (!sameClassDirectNativeNames.isEmpty()) {
+                            for (int i = 0; i < classNode.methods.size(); i++) {
+                                MethodNode method = classNode.methods.get(i);
+                                if (!sameClassDirectNativeNames.containsKey(
+                                        method.name + method.desc)) {
+                                    continue;
+                                }
+                                instructions.append("    ")
+                                        .append(MethodShellEmitter.jniFunctionPrototype(
+                                                method, i))
+                                        .append(";\n");
+                            }
+                            instructions.append('\n');
+                        }
 
                         int methodsToProcess = classNode.methods.size();
                         for (int i = 0; i < methodsToProcess; i++) {
@@ -466,8 +504,10 @@ public class NativeObfuscator {
                                     NativeAnnotationSupport.resolve(
                                             classNode, method, selectedIrLowering,
                                             this.intrinsicsMode, selectedBackend,
-                                            selectedCfObfuscation);
+                                            selectedCfObfuscation, selectedDirectNative);
                             MethodContext context = new MethodContext(this, method, i, classNode, currentClassId);
+                            context.directNativeCall = options.getDirectNative();
+                            context.sameClassDirectNativeNames = sameClassDirectNativeNames;
                             InterpreterMethodEmitter.CompiledMethod interpreted =
                                     options.getBackend() == CompilerBackend.INTERPRETER
                                             ? InterpreterMethodEmitter.tryCompile(classNode, method)
@@ -803,6 +843,57 @@ public class NativeObfuscator {
     private static void addInterpreterRuntimeToCmake(CMakeFilesBuilder cMakeBuilder) {
         cMakeBuilder.addMainFile("native_jvm_interp.hpp");
         cMakeBuilder.addMainFile("native_jvm_interp.cpp");
+    }
+
+    private Map<String, String> collectSameClassDirectNativeNames(
+            ClassNode classNode, ClassMethodFilter filter,
+            IrLoweringMode irLowering, CompilerBackend backend,
+            ControlFlowObfuscationMode cfObfuscation,
+            DirectNativeCallMode cliDirectNative) {
+        Map<String, String> names = new LinkedHashMap<String, String>();
+        if (Util.getFlag(classNode.access, Opcodes.ACC_INTERFACE)) {
+            return names;
+        }
+        boolean anyEnabled = false;
+        for (int i = 0; i < classNode.methods.size(); i++) {
+            MethodNode method = classNode.methods.get(i);
+            if (!MethodProcessor.shouldProcess(method)
+                    || !filter.shouldProcess(classNode, method)) {
+                continue;
+            }
+            NativeAnnotationSupport.Options options = NativeAnnotationSupport.resolve(
+                    classNode, method, irLowering, this.intrinsicsMode, backend,
+                    cfObfuscation, cliDirectNative);
+            if (options.getDirectNative().enabled()) {
+                anyEnabled = true;
+                break;
+            }
+        }
+        if (!anyEnabled) {
+            return names;
+        }
+        for (int i = 0; i < classNode.methods.size(); i++) {
+            MethodNode method = classNode.methods.get(i);
+            if (!MethodProcessor.shouldProcess(method)
+                    || !filter.shouldProcess(classNode, method)) {
+                continue;
+            }
+            NativeAnnotationSupport.Options options = NativeAnnotationSupport.resolve(
+                    classNode, method, irLowering, this.intrinsicsMode, backend,
+                    cfObfuscation, cliDirectNative);
+            if (options.getBackend() == CompilerBackend.INTERPRETER) {
+                continue;
+            }
+            if (!DirectNativeCallMode.calleeEligible(classNode, method)) {
+                continue;
+            }
+            if (!irMethodCompiler.admitsIr(classNode, method, options.getIntrinsics())) {
+                continue;
+            }
+            names.put(method.name + method.desc,
+                    MethodShellEmitter.cppNativeFunctionName(method, i));
+        }
+        return names;
     }
 
     public NativeIntrinsicsMode getIntrinsicsMode() {

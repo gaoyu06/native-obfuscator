@@ -26,12 +26,20 @@ a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in
 benchmark harness. None of that is a production-support claim. Unsupported constructs leave the
 original method bytecode in Java.
 
+Default IR C++ now hoists per-method JNI class/field/method IDs, contracts redundant
+`ExceptionCheck` polls, buffers own-class non-volatile `int` instance fields, and pins `int[]`
+through `GetIntArrayElements`. The JNI shell skips unused `lookup` / local-ref bookkeeping;
+instance methods still resolve the declaring class. Same-class static IR-to-IR calls can use
+`--ir-direct-native=on` (off by default) instead of `CallStatic*Method`. The benchmark harness
+adds `mixed-pricing` and `thin-pricing` as checksum/regression kernels, not as HotSpot speedup
+evidence.
+
 > [!IMPORTANT]
 > This tool **transpiles** bytecode to native. It does not pack binaries and does not, by itself,
 > hide algorithm identity from analysis. Use a blacklist/whitelist — transpiling a whole application
 > JAR (for example a game client) is usually the wrong default.
 
-**现状（中文）：** 默认生成器是 typed CFG IR（`--codegen=ir`），`--ir-lower=direct`，`--backend=cpp`。snippet / `--codegen=legacy` 路径已删除。IR 不支持的构造会把该方法恢复为原始字节码，不再回退到 snippet。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。完整中文版见 [README.zh-CN.md](README.zh-CN.md)。
+**现状（中文）：** 默认生成器是 typed CFG IR（`--codegen=ir`），`--ir-lower=direct`，`--backend=cpp`。snippet / `--codegen=legacy` 路径已删除。IR 不支持的构造会把该方法恢复为原始字节码，不再回退到 snippet。默认 IR 会提升方法内 JNI class/field/method ID、收缩多余的 `ExceptionCheck`、缓冲本类非 volatile `int` 实例字段，并用 `GetIntArrayElements` pin `int[]`。`--ir-direct-native` 默认关闭。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。完整中文版见 [README.zh-CN.md](README.zh-CN.md)。
 
 ---
 
@@ -126,8 +134,9 @@ and the follow-up landings through
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
 | Interpreter | `--backend=interpreter` default off (`cpp`). ISA v4: static `int`/`long` plus references and a first exception table (`ATHROW`). No `NEW`, invoke, or fields. Not a protection product |
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
+| IR JNI runtime | Default IR emission hoists JNI IDs, contracts `ExceptionCheck`, buffers own-class `int` fields, and pins `int[]`. `--ir-direct-native` is opt-in same-class static C++ calls. None of this is a HotSpot speedup |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
-| Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). All three kernels stayed on IR on one VM. Not a portable speedup. Prefer a whitelist |
+| Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). The harness also has `mixed-pricing` / `thin-pricing` regression kernels. Not a portable speedup. Prefer a whitelist |
 
 ## Codegen modes
 
@@ -213,6 +222,7 @@ Usage: native-obfuscator [-ahV] [--debug] [--codegen=<mode>]
 | `--native-intrinsics` | `safe` (default), `off`, or `fast`. Replaces selected JDK calls (`String.length`/`hashCode`/`charAt`/`isEmpty`, `System.arraycopy`, `Math.abs/min/max` for int/long). `fast` also replaces `Integer`/`Long` bitCount and numberOfLeadingZeros. File I/O is never rewritten. |
 | `--backend` | `cpp` (default) or `interpreter` (narrow int/i64/reference slice; default off) |
 | `--ir-cf-obf` | `off` (default) or `basic`. `basic` inserts always-true fake branches, flattens IR control flow through a dispatcher, and permutes non-entry blocks. Skipped for `--ir-lower=eval` and `--backend=interpreter`. |
+| `--ir-direct-native` | `off` (default) or `on`. When `on`, same-class `invokestatic` of another IR-transpiled static method becomes a direct C++ call instead of `CallStatic*Method`. Skips `synchronized`, `<init>`, `<clinit>`, interfaces, and virtual/interface calls. Omits the extra Java native frame. Java-to-native entries are unchanged. Deep same-class recursion uses the C stack and may abort instead of throwing `StackOverflowError`. |
 | `-a` | Enable `@Native` / `@NotNative` annotation processing |
 | `-w` / `-b` | Whitelist / blacklist files |
 | `--plain-lib-name` | Library name for `LoaderPlain` when you ship natives separately or for Android |
@@ -246,8 +256,8 @@ Maven coordinates: `com.github.radioegor146.native-obfuscator:annotations:master
 - `@Native` — include the class or method
 - `@NotNative` — skip a method inside a `@Native` class
 - `@Native(lowering=…)`, `@Native(intrinsics=…)`, `@Native(backend=…)`,
-  `@Native(cfObfuscation=…)` — override `--ir-lower`, `--native-intrinsics`,
-  `--backend`, and `--ir-cf-obf` for that class or method.
+  `@Native(cfObfuscation=…)`, `@Native(directNative=…)` — override `--ir-lower`, `--native-intrinsics`,
+  `--backend`, `--ir-cf-obf`, and `--ir-direct-native` for that class or method.
   Defaults are `INHERIT` (CLI). Method values win over class values. `-a` still
   selects which methods are nativized; these attributes apply whenever a selected
   method or its class carries `@Native`.

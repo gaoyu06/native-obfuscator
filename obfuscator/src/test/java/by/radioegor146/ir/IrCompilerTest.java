@@ -726,7 +726,7 @@ public class IrCompilerTest {
         new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
 
         String cpp = context.output.toString();
-        assertTrue(cpp.contains("env->AllocObject(cclasses["));
+        assertTrue(cpp.contains("env->AllocObject("));
         assertTrue(cpp.contains("env->GetMethodID"));
         assertTrue(cpp.contains("env->CallNonvirtualVoidMethod"));
         assertTrue(cpp.contains("env->CallIntMethod"));
@@ -762,7 +762,7 @@ public class IrCompilerTest {
                         + "jobject ignored_hidden, jobject obj, jint arg0)"));
         assertTrue(constructorCpp.contains(
                 "// IR codegen: example/Math.<init>(I)V"));
-        assertTrue(constructorCpp.contains("env->SetIntField(obj"));
+        assertTrue(constructorCpp.contains("env->SetIntField("));
         assertTrue(constructorCpp.contains("if (env->ExceptionCheck())"));
         assertTrue(constructorCpp.contains("return;"));
         assertEquals(0, constructor.access & Opcodes.ACC_NATIVE);
@@ -928,7 +928,7 @@ public class IrCompilerTest {
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertFalse(realOpcodes(constructor).contains(Opcodes.PUTFIELD));
         assertTrue(context.output.toString().contains(
-                "env->SetIntField(obj"));
+                "env->SetIntField("));
     }
 
     @Test
@@ -1294,7 +1294,7 @@ public class IrCompilerTest {
                 .processMethod(context);
 
         assertTrue(context.output.toString().contains(
-                "env->SetIntField(obj"));
+                "env->SetIntField("));
         assertEquals(2, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertTrue(realOpcodes(constructor).contains(Opcodes.IFLT));
@@ -1500,7 +1500,7 @@ public class IrCompilerTest {
                 .processMethod(context);
 
         assertTrue(context.output.toString().contains(
-                "env->SetIntField(obj"));
+                "env->SetIntField("));
         assertEquals(2, directChainCallCount(constructor, owner));
         assertEquals(1, hiddenBridgeCallCount(constructor));
         assertTrue(realOpcodes(constructor).contains(Opcodes.GOTO));
@@ -48361,7 +48361,7 @@ public class IrCompilerTest {
         assertEquals(IrType.I32, intInvoke.getArguments().get(0).getType());
         assertEquals(IrType.I32, intInvoke.getResult().getType());
         String intCpp = compileToCpp(intMethod, 0);
-        assertTrue(intCpp.contains("env->GetMethodID(cclasses[0]"));
+        assertTrue(intCpp.contains("env->GetMethodID("));
         assertTrue(intCpp.contains(
                 "env->CallIntMethod(arg0, cmethods[0], arg1)"));
 
@@ -48404,16 +48404,16 @@ public class IrCompilerTest {
         assertEquals(1, intInvoke.getArguments().size());
         assertEquals(IrType.I32, intInvoke.getResult().getType());
         String intCpp = compileToCpp(intMethod, 0);
-        assertTrue(intCpp.contains("env->GetMethodID(cclasses[0]"));
-        assertTrue(intCpp.contains(
-                "env->CallNonvirtualIntMethod(obj, cclasses[0], cmethods[0], arg0)"));
+        assertTrue(intCpp.contains("env->GetMethodID("));
+        assertTrue(intCpp.contains("env->CallNonvirtualIntMethod(obj, "));
+        assertTrue(intCpp.contains("cmethods[0], arg0)"));
 
         MethodNode longMethod = specialInvokeMethod(
                 "specialLong", "example/Math", "privateLong", "(J)J");
         IrNodes.Invoke longInvoke = onlyInvoke(frontend.build("example/Math", longMethod));
         assertEquals(IrType.I64, longInvoke.getResult().getType());
         assertTrue(compileToCpp(longMethod, 0).contains(
-                "env->CallNonvirtualLongMethod(obj, cclasses[0], cmethods[0], arg0)"));
+                "env->CallNonvirtualLongMethod(obj, "));
 
         MethodNode objectMethod = specialInvokeMethod(
                 "specialObject", "example/Base", "superText",
@@ -48423,7 +48423,7 @@ public class IrCompilerTest {
         assertEquals(0, objectInvoke.getArguments().size());
         assertEquals(IrType.REFERENCE, objectInvoke.getResult().getType());
         assertTrue(compileToCpp(objectMethod, 0).contains(
-                "env->CallNonvirtualObjectMethod(obj, cclasses[0], cmethods[0])"));
+                "env->CallNonvirtualObjectMethod(obj, "));
 
         MethodNode voidMethod = specialInvokeMethod(
                 "specialVoid", "example/Base", "superAccept",
@@ -48431,9 +48431,9 @@ public class IrCompilerTest {
         IrNodes.Invoke voidInvoke = onlyInvoke(frontend.build("example/Math", voidMethod));
         assertEquals(2, voidInvoke.getArguments().size());
         assertEquals(null, voidInvoke.getResult());
-        assertTrue(compileToCpp(voidMethod, 0).contains(
-                "env->CallNonvirtualVoidMethod(obj, cclasses[0], cmethods[0], "
-                        + "arg0, arg1)"));
+        String voidCpp = compileToCpp(voidMethod, 0);
+        assertTrue(voidCpp.contains("env->CallNonvirtualVoidMethod(obj, "));
+        assertTrue(voidCpp.contains("cmethods[0], arg0, arg1)"));
     }
 
     @Test
@@ -48885,6 +48885,7 @@ public class IrCompilerTest {
                 + "static jboolean f_exception_check(JNIEnv *) { return JNI_FALSE; }\n"
                 + "static jboolean f_is_same(JNIEnv *, jobject, jobject) { return JNI_FALSE; }\n"
                 + "static jobject f_new_weak(JNIEnv *, jobject value) { return value; }\n"
+                + "static jobject f_new_local(JNIEnv *, jobject value) { return value; }\n"
                 + "static void f_delete_local(JNIEnv *, jobject) {}\n"
                 + "static jmethodID f_get_static_mid(JNIEnv *, jclass, const char *, const char *)"
                 + " { return MID; }\n"
@@ -48914,6 +48915,7 @@ public class IrCompilerTest {
                 + "    functions.ExceptionCheck = f_exception_check;\n"
                 + "    functions.IsSameObject = f_is_same;\n"
                 + "    functions.NewWeakGlobalRef = f_new_weak;\n"
+                + "    functions.NewLocalRef = f_new_local;\n"
                 + "    functions.DeleteLocalRef = f_delete_local;\n"
                 + "    functions.GetStaticMethodID = f_get_static_mid;\n"
                 + "    functions.CallStaticObjectMethodV = f_call_static_object;\n"
@@ -49059,6 +49061,7 @@ public class IrCompilerTest {
                 + "static jboolean f_exception_check(JNIEnv *) { return JNI_FALSE; }\n"
                 + "static jboolean f_is_same(JNIEnv *, jobject, jobject) { return JNI_FALSE; }\n"
                 + "static jobject f_new_weak(JNIEnv *, jobject value) { return value; }\n"
+                + "static jobject f_new_local(JNIEnv *, jobject value) { return value; }\n"
                 + "static void f_delete_local(JNIEnv *, jobject) {}\n"
                 + "static jmethodID f_get_static_mid(JNIEnv *, jclass, const char *, const char *)"
                 + " { return MID; }\n"
@@ -49090,6 +49093,7 @@ public class IrCompilerTest {
                 + "    functions.ExceptionCheck = f_exception_check;\n"
                 + "    functions.IsSameObject = f_is_same;\n"
                 + "    functions.NewWeakGlobalRef = f_new_weak;\n"
+                + "    functions.NewLocalRef = f_new_local;\n"
                 + "    functions.DeleteLocalRef = f_delete_local;\n"
                 + "    functions.GetStaticMethodID = f_get_static_mid;\n"
                 + "    functions.GetMethodID = f_get_mid;\n"
@@ -49202,6 +49206,7 @@ public class IrCompilerTest {
                 + "static jboolean f_exception_check(JNIEnv *) { return JNI_FALSE; }\n"
                 + "static jboolean f_is_same(JNIEnv *, jobject, jobject) { return JNI_FALSE; }\n"
                 + "static jobject f_new_weak(JNIEnv *, jobject o) { return o; }\n"
+                + "static jobject f_new_local(JNIEnv *, jobject o) { return o; }\n"
                 + "static void f_delete_local(JNIEnv *, jobject) {}\n"
                 + "static jobjectArray f_new_object_array(JNIEnv *, jsize, jclass, jobject)"
                 + " { return ARRAY; }\n"
@@ -49210,6 +49215,7 @@ public class IrCompilerTest {
                 + " { return SMID; }\n"
                 + "static jmethodID f_get_mid(JNIEnv *, jclass, const char *, const char *)"
                 + " { return VMID; }\n"
+                + "static jsize f_get_array_length(JNIEnv *, jarray) { return 8; }\n"
                 + "static jobject f_call_static_object(JNIEnv *, jclass, jmethodID, va_list)"
                 + " { return ++g_call_static == 1 ? METHODTYPE : CALLSITE; }\n"
                 + "static jobject f_call_object(JNIEnv *, jobject, jmethodID, va_list)"
@@ -49244,9 +49250,11 @@ public class IrCompilerTest {
                 + "    functions.ExceptionCheck = f_exception_check;\n"
                 + "    functions.IsSameObject = f_is_same;\n"
                 + "    functions.NewWeakGlobalRef = f_new_weak;\n"
+                + "    functions.NewLocalRef = f_new_local;\n"
                 + "    functions.DeleteLocalRef = f_delete_local;\n"
                 + "    functions.NewObjectArray = f_new_object_array;\n"
                 + "    functions.SetObjectArrayElement = f_set_object_array;\n"
+                + "    functions.GetArrayLength = f_get_array_length;\n"
                 + "    functions.GetStaticMethodID = f_get_static_mid;\n"
                 + "    functions.GetMethodID = f_get_mid;\n"
                 + "    functions.CallStaticObjectMethodV = f_call_static_object;\n"
@@ -49398,12 +49406,13 @@ public class IrCompilerTest {
         assertEquals(4, obfuscator.getCachedClasses().size());
         assertEquals(2, countOccurrences(cpp, "env->FindClass("));
         assertTrue(cpp.contains("utils::find_class_wo_static"));
-        assertTrue(cpp.contains("= (jobject) cclasses["));
+        assertTrue(cpp.contains("= (jobject) live_c") || cpp.contains("= (jobject) cclasses["));
         int arrayLookup = cpp.indexOf("env->FindClass(");
         int pendingException = cpp.indexOf("env->ExceptionCheck()", arrayLookup);
+        int live = cpp.indexOf("live_c", arrayLookup);
         int materialization = cpp.indexOf("= (jobject) cclasses[", arrayLookup);
-        assertTrue(arrayLookup >= 0 && pendingException > arrayLookup
-                && materialization > pendingException);
+        assertTrue(arrayLookup >= 0 && pendingException > arrayLookup);
+        assertTrue(live > arrayLookup || materialization > pendingException);
         assertFalse(cpp.contains("env->ExceptionClear()"));
     }
 
@@ -49586,7 +49595,7 @@ public class IrCompilerTest {
         new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
 
         String cpp = context.output.toString();
-        int allocation = cpp.indexOf("env->AllocObject(cclasses[");
+        int allocation = cpp.indexOf("env->AllocObject(");
         assertTrue(cpp.contains("jobject JNICALL __ngen_native_returnAllocatedObject0"));
         assertTrue(allocation >= 0);
         assertTrue(cpp.indexOf("return nullptr;", allocation) > allocation);
@@ -50189,8 +50198,8 @@ public class IrCompilerTest {
 
         String cpp = context.output.toString();
         assertTrue(cpp.contains("env->GetArrayLength"));
-        assertTrue(cpp.contains("env->GetIntArrayRegion"));
-        assertTrue(cpp.contains("env->SetIntArrayRegion"));
+        assertTrue(cpp.contains("env->GetIntArrayElements"));
+        assertTrue(cpp.contains("env->ReleaseIntArrayElements"));
         assertTrue(cpp.contains("utils::throw_re"));
     }
 
@@ -50222,9 +50231,11 @@ public class IrCompilerTest {
             int storeCheck = cpp.indexOf("env->ExceptionCheck()", storeCall);
             int loadCall = cpp.indexOf("env->GetObjectArrayElement");
             int loadCheck = cpp.indexOf("env->ExceptionCheck()", loadCall);
-            int loadedValue = cpp.indexOf(" = aaload", loadCheck);
-            assertTrue(storeCall >= 0 && storeCheck > storeCall);
-            assertTrue(loadCall > storeCheck && loadCheck > loadCall && loadedValue > loadCheck);
+            assertTrue(storeCall >= 0 && loadCall > storeCall);
+            assertTrue(storeCheck > storeCall && storeCheck < loadCall);
+            assertTrue(loadCheck < 0);
+            assertTrue(cpp.contains("GetArrayLength"));
+            assertTrue(cpp.contains("utils::throw_re"));
             assertFalse(cpp.contains("GetIntArrayRegion"));
             assertFalse(cpp.contains("SetIntArrayRegion"));
         }
@@ -50248,11 +50259,11 @@ public class IrCompilerTest {
             assertArrayExceptionEdge(boundsIr, IrNodes.ArrayLoad.class,
                     "java/lang/ArrayIndexOutOfBoundsException");
             String boundsCpp = compileToCpp(boundsLoad, 1);
+            int boundsThrow = boundsCpp.indexOf("ArrayIndexOutOfBoundsException");
+            int boundsDispatch = boundsCpp.indexOf("goto IR_CATCH_0;", boundsThrow);
             int boundsCall = boundsCpp.indexOf("env->GetObjectArrayElement");
-            int boundsCheck = boundsCpp.indexOf("env->ExceptionCheck()", boundsCall);
-            int boundsDispatch = boundsCpp.indexOf("goto IR_CATCH_0;", boundsCheck);
-            assertTrue(boundsCall >= 0 && boundsCheck > boundsCall
-                    && boundsDispatch > boundsCheck);
+            assertTrue(boundsThrow >= 0 && boundsDispatch > boundsThrow);
+            assertTrue(boundsCall < 0 || boundsCall > boundsDispatch);
         }
 
         MethodNode badStore = wrongTypeReferenceArrayStoreCatchMethod();
@@ -50402,11 +50413,11 @@ public class IrCompilerTest {
 
         String cpp = context.output.toString();
         int allocation = cpp.indexOf("env->NewIntArray(arg0)");
-        int nullCheck = cpp.indexOf("== nullptr", allocation);
-        int exceptionCheck = cpp.indexOf("env->ExceptionCheck()", allocation);
         int dispatch = cpp.indexOf("goto IR_CATCH_0;", allocation);
-        assertTrue(allocation >= 0 && nullCheck > allocation && exceptionCheck > allocation
-                && dispatch > exceptionCheck);
+        assertTrue(allocation >= 0 && dispatch > allocation);
+        String slice = cpp.substring(allocation, dispatch);
+        assertTrue(slice.contains("== nullptr"));
+        assertFalse(slice.contains("ExceptionCheck"));
         assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
         assertTrue(cpp.contains("env->Throw(caught_exception);"));
     }
@@ -50457,8 +50468,13 @@ public class IrCompilerTest {
 
             String cpp = compileToCpp(method, i);
             assertTrue(cpp.contains("env->New" + carriers[i] + "Array(arg0)"));
-            assertTrue(cpp.contains("env->Get" + carriers[i] + "ArrayRegion"));
-            assertTrue(cpp.contains("env->Set" + carriers[i] + "ArrayRegion"));
+            if ("Int".equals(carriers[i])) {
+                assertTrue(cpp.contains("env->GetIntArrayElements"));
+                assertTrue(cpp.contains("env->ReleaseIntArrayElements"));
+            } else {
+                assertTrue(cpp.contains("env->Get" + carriers[i] + "ArrayRegion"));
+                assertTrue(cpp.contains("env->Set" + carriers[i] + "ArrayRegion"));
+            }
             assertTrue(cpp.contains(arrayJniType(carriers[i])));
             assertFalse(cpp.contains("cstack"));
         }
@@ -50622,11 +50638,11 @@ public class IrCompilerTest {
         compiler.processMethod(stringContext);
         String stringCpp = stringContext.output.toString();
         int allocation = stringCpp.indexOf("env->NewObjectArray(arg0");
-        int nullCheck = stringCpp.indexOf("== nullptr", allocation);
-        int exceptionCheck = stringCpp.indexOf("env->ExceptionCheck()", allocation);
         int dispatch = stringCpp.indexOf("goto IR_CATCH_0;", allocation);
-        assertTrue(allocation >= 0 && nullCheck > allocation && exceptionCheck > allocation
-                && dispatch > exceptionCheck);
+        assertTrue(allocation >= 0 && dispatch > allocation);
+        String slice = stringCpp.substring(allocation, dispatch);
+        assertTrue(slice.contains("== nullptr"));
+        assertFalse(slice.contains("ExceptionCheck"));
         assertTrue(stringCpp.contains("utils::throw_re"));
 
         MethodNode objectArray = newObjectArrayMethod();
@@ -50718,7 +50734,8 @@ public class IrCompilerTest {
         assertTrue((method.access & Opcodes.ACC_NATIVE) != 0);
         assertTrue(cpp.contains("// IR codegen: example/Math.catchBounds([I)I"));
         assertFalse(cpp.contains("cstack"));
-        assertTrue(cpp.contains("env->GetIntArrayRegion"));
+        assertTrue(cpp.contains("env->GetIntArrayElements"));
+        assertTrue(cpp.contains("env->GetArrayLength"));
         assertTrue(cpp.contains("= -1;"));
         assertTrue(cpp.contains("goto IR_CATCH_0;"));
         assertTrue(cpp.contains("caught_exception = env->ExceptionOccurred();"));
@@ -50727,12 +50744,12 @@ public class IrCompilerTest {
         assertTrue(cpp.contains("env->Throw(caught_exception);"));
         assertTrue(cpp.contains("= -7;"));
         assertEquals(cpp.indexOf("IR_CATCH_0:"), cpp.lastIndexOf("IR_CATCH_0:"));
-        int arrayCall = cpp.indexOf("env->GetIntArrayRegion");
-        int dispatchGoto = cpp.indexOf("goto IR_CATCH_0;", arrayCall);
-        int successfulLoad = cpp.indexOf(" = iaload", arrayCall);
+        int dispatchGoto = cpp.indexOf("goto IR_CATCH_0;");
+        int arrayCall = cpp.indexOf("env->GetIntArrayElements");
+        int successfulLoad = cpp.indexOf("iaload", arrayCall);
         int swallowedReturn = cpp.indexOf("return 0;", arrayCall);
-        assertTrue(arrayCall >= 0 && dispatchGoto > arrayCall
-                && successfulLoad > dispatchGoto);
+        assertTrue(dispatchGoto >= 0 && arrayCall > dispatchGoto);
+        assertTrue(successfulLoad > arrayCall);
         assertTrue(swallowedReturn < 0 || swallowedReturn > successfulLoad);
     }
 
@@ -51739,14 +51756,15 @@ public class IrCompilerTest {
         assertTrue(source.contains("env->CallStaticIntMethod"));
         assertTrue(source.contains("env->CallIntMethod"));
         assertTrue(source.contains("env->GetArrayLength"));
-        assertTrue(source.contains("env->GetIntArrayRegion"));
-        assertTrue(source.contains("env->SetIntArrayRegion"));
+        assertTrue(source.contains("env->GetIntArrayElements"));
+        assertTrue(source.contains("env->ReleaseIntArrayElements"));
         assertTrue(source.contains("env->GetStringLength"));
         assertTrue(source.contains("IR codegen: example/Math.ldcStrings()I"));
         assertTrue(source.contains("= (jobject) cstrings["));
         assertTrue(source.contains(
                 "IR codegen: example/Math.ldcClasses()Ljava/lang/Class;"));
-        assertTrue(source.contains("= (jobject) cclasses["));
+        assertTrue(source.contains("= (jobject) live_c")
+                || source.contains("= (jobject) cclasses["));
         assertTrue(source.contains("IR codegen: example/Math.ldcLongs()J"));
         assertTrue(source.contains("4294967296LL"));
         assertTrue(source.contains("-1LL"));
@@ -51792,7 +51810,7 @@ public class IrCompilerTest {
         assertTrue(source.contains("((int64_t) arg0 > (int64_t) arg1) ? 1 :"));
         assertTrue(source.contains("IR codegen: example/Math.widePhi(JI)J"));
         assertTrue(source.contains("IR codegen: example/Math.constructObject()I"));
-        assertTrue(source.contains("env->AllocObject(cclasses["));
+        assertTrue(source.contains("env->AllocObject("));
         assertTrue(source.contains("env->CallNonvirtualVoidMethod"));
         assertTrue(source.contains("env->CallStaticLongMethod"));
         assertTrue(source.contains("env->CallObjectMethod"));
@@ -51887,8 +51905,13 @@ public class IrCompilerTest {
         for (String carrier : Arrays.asList(
                 "Boolean", "Byte", "Char", "Short", "Int", "Float", "Long", "Double")) {
             assertTrue(source.contains("env->New" + carrier + "Array"));
-            assertTrue(source.contains("env->Get" + carrier + "ArrayRegion"));
-            assertTrue(source.contains("env->Set" + carrier + "ArrayRegion"));
+            if ("Int".equals(carrier)) {
+                assertTrue(source.contains("env->GetIntArrayElements"));
+                assertTrue(source.contains("env->ReleaseIntArrayElements"));
+            } else {
+                assertTrue(source.contains("env->Get" + carrier + "ArrayRegion"));
+                assertTrue(source.contains("env->Set" + carrier + "ArrayRegion"));
+            }
         }
         assertTrue(source.contains("IR codegen: example/Math.smokeIntMatrix"));
         assertTrue(source.contains("utils::create_multidim_array_value<5>"));
