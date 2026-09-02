@@ -16,30 +16,18 @@
 
 </div>
 
-`native-obfuscator` reads a JAR, transpiles selected method bodies into JNI C++ that reproduces the
-bytecode semantics through `JNIEnv`, and replaces those methods with `native` stubs. At runtime the
-JVM dispatches into the generated shared library.
+`native-obfuscator` reads a JAR, transpiles selected method bodies into JNI C++, and replaces those
+methods with `native` stubs. The JVM then dispatches into the generated shared library.
 
-The default method-body generator is the typed CFG IR path (`--codegen=ir`). `master` also includes
-a default-off shared IR evaluator lowering (`--ir-lower=eval`), a default-off in-process interpreter
-(`--backend=interpreter`), a small Java-callable C++ SDK, JDK 17+ fixture harnesses, and a
-benchmark harness. None of that is a production-support claim. Unsupported constructs leave the
-original method bytecode in Java.
-
-Default IR C++ now hoists per-method JNI class/field/method IDs, contracts redundant
-`ExceptionCheck` polls, buffers own-class non-volatile `int` instance fields, and pins `int[]`
-through `GetIntArrayElements`. The JNI shell skips unused `lookup` / local-ref bookkeeping;
-instance methods still resolve the declaring class. Same-class static IR-to-IR calls can use
-`--ir-direct-native=on` (off by default) instead of `CallStatic*Method`. The benchmark harness
-adds `mixed-pricing` and `thin-pricing` as checksum/regression kernels, not as HotSpot speedup
-evidence.
+The default generator is typed CFG IR (`--codegen=ir`). Unsupported methods keep their original
+bytecode. `--codegen=legacy` is gone. `--ir-lower=eval` and `--backend=interpreter` exist and are
+**off** by default; they are not a support claim. Java 8 is the only version this project has called
+fully supported.
 
 > [!IMPORTANT]
 > This tool **transpiles** bytecode to native. It does not pack binaries and does not, by itself,
 > hide algorithm identity from analysis. Use a blacklist/whitelist — transpiling a whole application
 > JAR (for example a game client) is usually the wrong default.
-
-**现状（中文）：** 默认生成器是 typed CFG IR（`--codegen=ir`），`--ir-lower=direct`，`--backend=cpp`。snippet / `--codegen=legacy` 路径已删除。IR 不支持的构造会把该方法恢复为原始字节码，不再回退到 snippet。默认 IR 会提升方法内 JNI class/field/method ID、收缩多余的 `ExceptionCheck`、缓冲本类非 volatile `int` 实例字段，并用 `GetIntArrayElements` pin `int[]`。`--ir-direct-native` 默认关闭。`--ir-lower=eval` 和 `--backend=interpreter` 都默认关闭；解释器现为 ISA v4（int/long + 引用 + `ATHROW`/异常表），仍无 NEW/调用/字段。C++ SDK 会打进生成 JAR。JDK 17 / 21 / 25 IR 语料分别有过 11/11、6/6、4/4 对齐记录，都只是一台 Linux VM 上的测量，**不能**写成“已支持”对应 JDK。完整中文版见 [README.zh-CN.md](README.zh-CN.md)。
 
 ---
 
@@ -47,6 +35,7 @@ evidence.
 
 - [How it works](#how-it-works)
 - [Current status](#current-status)
+- [IR runtime](#ir-runtime)
 - [Codegen modes](#codegen-modes)
 - [Quick start](#quick-start)
 - [Prerequisites](#prerequisites)
@@ -134,9 +123,20 @@ and the follow-up landings through
 | C++ SDK | `NativePrimitives` + `NativeStrings` in generated JARs. Not a shipped standalone product SDK |
 | Interpreter | `--backend=interpreter` default off (`cpp`). ISA v4: static `int`/`long` plus references and a first exception table (`ATHROW`). No `NEW`, invoke, or fields. Not a protection product |
 | Shared evaluator | `--ir-lower=eval` is default off (`direct`) and applies only to successfully built IR methods in its narrow integer slice. Not ship-ready |
-| IR JNI runtime | Default IR emission hoists JNI IDs, contracts `ExceptionCheck`, buffers own-class `int` fields, and pins `int[]`. `--ir-direct-native` is opt-in same-class static C++ calls. None of this is a HotSpot speedup |
 | Reader / analysis bar | Unmet. Live IR and opcode artifacts were recovered by unaided readers in the recorded evals |
-| Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). The harness also has `mixed-pricing` / `thin-pricing` regression kernels. Not a portable speedup. Prefer a whitelist |
+| Performance | Latest three-mode run: [`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md). Not a portable speedup. Prefer a whitelist |
+
+## IR runtime
+
+Default `--codegen=ir` C++ does the following. None of it is a HotSpot speedup.
+
+- Hoist class, field, and method IDs at method entry
+- Skip redundant `ExceptionCheck` polls
+- Buffer own-class non-volatile `int` instance fields
+- Pin `int[]` with `GetIntArrayElements`
+- Skip unused `lookup` / local-ref bookkeeping; instance methods still resolve the declaring class
+- `--ir-direct-native=on` (off by default): same-class static IR calls become C++ calls instead of `CallStatic*Method`. Deep recursion then uses the C stack and may abort instead of throwing `StackOverflowError`
+- Benchmark harness: `mixed-pricing` and `thin-pricing` are checksum/regression kernels, not speedup evidence. `BENCH_DIRECT_NATIVE=on` turns on direct calls for a bench run
 
 ## Codegen modes
 

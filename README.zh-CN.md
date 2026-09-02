@@ -16,16 +16,12 @@
 
 </div>
 
-`native-obfuscator` 读取一个 JAR，把选定的方法体转译成通过 `JNIEnv` 复现字节码语义的 JNI C++ 代码，并把这些方法替换为 `native` 桩。运行时由 JVM 调度进生成的共享库。
+`native-obfuscator` 读取一个 JAR，把选定的方法体转译成 JNI C++，再把这些方法换成 `native` 桩。运行时由 JVM 调度进生成的共享库。
 
-默认方法体生成器是 typed CFG IR（`--codegen=ir`）。`master` 上还包含：默认关闭的共享求值器降级（`--ir-lower=eval`）、默认关闭的进程内解释器（`--backend=interpreter`）、一个随生成 JAR 打包的小型 C++ SDK、JDK 17+ 语料 harness 以及基准测试 harness。以上**都不是**生产级支持承诺。不支持的构造会把该方法留在原始 Java 字节码里。
-
-默认 IR 生成的 C++ 会：在方法入口提升 JNI 的 class/field/method ID，收缩多余的 `ExceptionCheck`，缓冲本类非 volatile 的 `int` 实例字段，并用 `GetIntArrayElements` pin `int[]`。JNI 外壳会跳过用不到的 `lookup` / 局部引用记账；实例方法仍解析声明类。本类静态 IR 互调可用 `--ir-direct-native=on`（默认 off）改成直接调 C++，不再走 `CallStatic*Method`。基准 harness 增加了 `mixed-pricing` 和 `thin-pricing`，用来对 checksum 和回归，不是 HotSpot 加速证据。
+默认生成器是 typed CFG IR（`--codegen=ir`）。不支持的方法保留原始字节码。`--codegen=legacy` 已删除。`--ir-lower=eval` 和 `--backend=interpreter` 都在树上，且**默认关闭**，不是支持承诺。本项目唯一称过完整支持的版本是 Java 8。
 
 > [!IMPORTANT]
 > 本工具做的是字节码到本地代码的**转译**。它本身不做二进制加壳，也不能单靠自己隐藏算法特征。请使用黑名单/白名单——把整个应用 JAR（比如游戏客户端）全部转译通常是错误的默认做法。
-
-**关于版本支持的措辞：** Java 8 是本项目唯一称过“完整支持”的版本；9+ 与 Android 仍是实验性的。JDK 17 / 21 / 25 的 IR 语料分别有过 11/11、6/6、4/4 的 stdout 对齐记录，但都只是**一台** Linux 虚拟机上的测量，**不能**写成“已支持 JDK 17/21/25”。默认生成器是 `ir`。snippet / `--codegen=legacy` 已删除。IR 不支持的构造恢复原始字节码。
 
 ---
 
@@ -33,6 +29,7 @@
 
 - [工作原理](#工作原理)
 - [当前状态](#当前状态)
+- [IR 运行时](#ir-运行时)
 - [代码生成模式](#代码生成模式)
 - [快速上手](#快速上手)
 - [前置条件](#前置条件)
@@ -101,9 +98,20 @@ sequenceDiagram
 | C++ SDK | `NativePrimitives` + `NativeStrings` 打进生成的 JAR。不是独立发布的产品 SDK |
 | 解释器 | `--backend=interpreter` 默认关闭（默认 `cpp`）。ISA v4：静态 `int`/`long`、引用，以及首个异常表（`ATHROW`）。无 `NEW`、调用与字段。不是保护类产品 |
 | 共享求值器 | `--ir-lower=eval` 默认关闭（默认 `direct`），且只作用于已成功建成 IR 的方法的窄整数切片。未达可交付状态 |
-| IR JNI 运行时 | 默认 IR 会提升 JNI ID、收缩 `ExceptionCheck`、缓冲本类 `int` 字段、pin `int[]`。`--ir-direct-native` 是可选的本类静态 C++ 直调。都不是 HotSpot 加速 |
 | 阅读者 / 分析门槛 | 未达标。在已记录的评估里，未借助工具的阅读者恢复出了 live IR 与操作码痕迹 |
-| 性能 | 最近一次三模式测试：[`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md)。harness 另有 `mixed-pricing` / `thin-pricing` 回归 kernel。不可外推为普适加速。优先用白名单 |
+| 性能 | 最近一次三模式测试：[`docs/benchmarks/results-ir-vs-legacy-phase19.md`](docs/benchmarks/results-ir-vs-legacy-phase19.md)。不可外推为普适加速。优先用白名单 |
+
+## IR 运行时
+
+默认 `--codegen=ir` 生成的 C++ 会做下面这些事。都不是 HotSpot 加速。
+
+- 方法入口提升 class / field / method ID
+- 去掉多余的 `ExceptionCheck`
+- 缓冲本类非 volatile 的 `int` 实例字段
+- 用 `GetIntArrayElements` pin `int[]`
+- 跳过用不到的 `lookup` / 局部引用记账；实例方法仍解析声明类
+- `--ir-direct-native=on`（默认关）：本类静态 IR 互调改成直接调 C++，不再走 `CallStatic*Method`。很深的递归会走 C 栈，可能直接中止，而不是抛 `StackOverflowError`
+- 基准 harness 里的 `mixed-pricing`、`thin-pricing` 用来对 checksum 和回归，不是加速证据。`BENCH_DIRECT_NATIVE=on` 会在 bench 里打开直调
 
 ## 代码生成模式
 
