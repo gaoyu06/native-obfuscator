@@ -2073,28 +2073,23 @@ public final class IrNodes {
      * JVM {@code IF_ACMPEQ} / {@code IF_ACMPNE}. Compares two references by
      * object identity (both null counts as equal). Kept separate from the
      * null-only {@link ReferenceBranch} and from the i32 {@link Branch} because
-     * both operands are {@link IrType#REFERENCE}, not I32, and the comparison is
-     * pointer identity rather than a numeric relation. It never throws.
+     * both operands are {@link IrType#REFERENCE}, not I32. Lowering must use
+     * JNI {@code IsSameObject}: two local refs to one Java object are not
+     * the same C++ pointer. It never throws.
      */
     public static final class ReferenceCompareBranch implements IrTerminator {
         public enum Condition {
-            EQ("if_acmpeq", "=="),
-            NE("if_acmpne", "!=");
+            EQ("if_acmpeq"),
+            NE("if_acmpne");
 
             private final String mnemonic;
-            private final String cppOperator;
 
-            Condition(String mnemonic, String cppOperator) {
+            Condition(String mnemonic) {
                 this.mnemonic = mnemonic;
-                this.cppOperator = cppOperator;
             }
 
             public String getMnemonic() {
                 return mnemonic;
-            }
-
-            public String getCppOperator() {
-                return cppOperator;
             }
         }
 

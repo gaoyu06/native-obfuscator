@@ -2421,10 +2421,12 @@ public final class IrCppEmitter {
         if (terminator instanceof IrNodes.ReferenceCompareBranch) {
             IrNodes.ReferenceCompareBranch branch =
                     (IrNodes.ReferenceCompareBranch) terminator;
+            CppAst.Expression same = memberCall("env", "IsSameObject",
+                    expression(branch.getLeft()), expression(branch.getRight()));
+            String op = branch.getCondition()
+                    == IrNodes.ReferenceCompareBranch.Condition.EQ ? "!=" : "==";
             CppAst.Expression condition = new CppAst.Binary(
-                    expression(branch.getLeft()),
-                    branch.getCondition().getCppOperator(),
-                    expression(branch.getRight()));
+                    same, op, new CppAst.IntLiteral(0));
             statements.add(new CppAst.If(condition,
                     new CppAst.Block(edgeTransfer(predecessor, branch.getTrueTarget())),
                     new CppAst.Block(edgeTransfer(predecessor, branch.getFalseTarget()))));

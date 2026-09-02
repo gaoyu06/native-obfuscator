@@ -49690,7 +49690,9 @@ public class IrCompilerTest {
         assertEquals(IrType.REFERENCE, acmpEqBranch.getRight().getType());
         assertTrue(acmpEq.toString().contains("branch if_acmpeq %arg0, %arg1"));
         String acmpEqCpp = emitter.emitBody(acmpEq);
-        assertTrue(acmpEqCpp.contains("if (arg0 == arg1) {"));
+        assertTrue(acmpEqCpp.contains("env->IsSameObject(arg0, arg1)"));
+        assertTrue(acmpEqCpp.contains("!= 0) {"));
+        assertFalse(acmpEqCpp.contains("if (arg0 == arg1) {"));
         assertFalse(acmpEqCpp.contains("nullptr) {"));
 
         MethodNode acmpNeMethod =
@@ -49707,8 +49709,42 @@ public class IrCompilerTest {
         assertEquals(IrType.REFERENCE, acmpNeBranch.getRight().getType());
         assertTrue(acmpNe.toString().contains("branch if_acmpne %arg0, %arg1"));
         String acmpNeCpp = emitter.emitBody(acmpNe);
-        assertTrue(acmpNeCpp.contains("if (arg0 != arg1) {"));
+        assertTrue(acmpNeCpp.contains("env->IsSameObject(arg0, arg1)"));
+        assertTrue(acmpNeCpp.contains("== 0) {"));
+        assertFalse(acmpNeCpp.contains("if (arg0 != arg1) {"));
         assertFalse(acmpNeCpp.contains("nullptr) {"));
+    }
+
+    @Test
+    public void getstaticTwiceUsesIsSameObject() {
+        MethodNode method = new MethodNode(Opcodes.ASM9, Opcodes.ACC_STATIC,
+                "sameBox", "()I", null, null);
+        LabelNode taken = new LabelNode();
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "box", "Ljava/lang/Object;"));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETSTATIC,
+                "example/Math", "box", "Ljava/lang/Object;"));
+        method.instructions.add(new JumpInsnNode(Opcodes.IF_ACMPEQ, taken));
+        method.instructions.add(new InsnNode(Opcodes.ICONST_0));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.instructions.add(taken);
+        method.instructions.add(new InsnNode(Opcodes.ICONST_1));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxLocals = 0;
+        method.maxStack = 2;
+        NativeObfuscator obfuscator = new NativeObfuscator();
+        ClassNode owner = owner();
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "box", "Ljava/lang/Object;", null, null));
+        MethodContext context = new MethodContext(obfuscator, method, 0, owner, 0);
+        new IrMethodCompiler(new MethodShellEmitter(obfuscator)).processMethod(context);
+        String cpp = context.output.toString();
+        int first = cpp.indexOf("GetStaticObjectField");
+        int second = cpp.indexOf("GetStaticObjectField", first + 1);
+        assertTrue(first >= 0 && second > first, cpp);
+        assertTrue(cpp.contains("IsSameObject"), cpp);
+        assertFalse(cpp.contains(" == v") && cpp.matches("(?s).*\\bv\\d+ == v\\d+.*"),
+                cpp);
     }
 
     @Test
@@ -49729,28 +49765,37 @@ public class IrCompilerTest {
         String acmpNeBody = emitter.emitBody(
                 frontend.build("example/Math",
                         referenceCompareBranchMethod("acmpNe", Opcodes.IF_ACMPNE)));
-        String source = "#include <jni.h>\n"
-                + "#include <cstdint>\n"
-                + "static jint acmpeq(jobject arg0, jobject arg1) {\n"
+        String source = "#include <cstdint>\n"
+                + "typedef void *jobject;\n"
+                + "typedef int32_t jint;\n"
+                + "typedef uint8_t jboolean;\n"
+                + "struct JNIEnv {\n"
+                + "    jboolean IsSameObject(jobject left, jobject right) {\n"
+                + "        return left == right;\n"
+                + "    }\n"
+                + "};\n"
+                + "static jint acmpeq(JNIEnv *env, jobject arg0, jobject arg1) {\n"
                 + acmpEqBody
                 + "}\n"
-                + "static jint acmpne(jobject arg0, jobject arg1) {\n"
+                + "static jint acmpne(JNIEnv *env, jobject arg0, jobject arg1) {\n"
                 + acmpNeBody
                 + "}\n"
                 + "int main() {\n"
+                + "    JNIEnv env_storage;\n"
+                + "    JNIEnv *env = &env_storage;\n"
                 + "    jobject a = reinterpret_cast<jobject>(0x1000);\n"
                 + "    jobject b = reinterpret_cast<jobject>(0x2000);\n"
                 + "    jobject n = nullptr;\n"
                 // IF_ACMPEQ: 1 iff the same object, both null included.
-                + "    if (acmpeq(a, a) != 1) return 1;\n"
-                + "    if (acmpeq(a, b) != 0) return 2;\n"
-                + "    if (acmpeq(n, n) != 1) return 3;\n"
-                + "    if (acmpeq(a, n) != 0) return 4;\n"
+                + "    if (acmpeq(env, a, a) != 1) return 1;\n"
+                + "    if (acmpeq(env, a, b) != 0) return 2;\n"
+                + "    if (acmpeq(env, n, n) != 1) return 3;\n"
+                + "    if (acmpeq(env, a, n) != 0) return 4;\n"
                 // IF_ACMPNE: complement of the above.
-                + "    if (acmpne(a, a) != 0) return 5;\n"
-                + "    if (acmpne(a, b) != 1) return 6;\n"
-                + "    if (acmpne(n, n) != 0) return 7;\n"
-                + "    if (acmpne(a, n) != 1) return 8;\n"
+                + "    if (acmpne(env, a, a) != 0) return 5;\n"
+                + "    if (acmpne(env, a, b) != 1) return 6;\n"
+                + "    if (acmpne(env, n, n) != 0) return 7;\n"
+                + "    if (acmpne(env, a, n) != 1) return 8;\n"
                 + "    return 0;\n"
                 + "}\n";
 
